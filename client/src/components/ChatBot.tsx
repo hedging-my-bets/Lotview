@@ -1,6 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { X, MessageSquare } from "lucide-react";
+import { X, MessageSquare, Send, Loader2 } from "lucide-react";
+import { sendChatMessage, type ChatMessage } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 
 interface ChatBotProps {
   vehicleName?: string;
@@ -10,6 +12,28 @@ interface ChatBotProps {
 export function ChatBot({ vehicleName, action }: ChatBotProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [hasOpened, setHasOpened] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [inputValue, setInputValue] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
+
+  // Scroll to bottom of messages
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  // Initialize chat with context-aware message when opened
+  useEffect(() => {
+    if (isOpen && messages.length === 0) {
+      const initialMessage = getInitialMessage();
+      setMessages([{ role: "assistant", content: initialMessage }]);
+    }
+  }, [isOpen]);
 
   // Open immediately if action is provided
   useEffect(() => {
@@ -30,8 +54,8 @@ export function ChatBot({ vehicleName, action }: ChatBotProps) {
     }
   }, [vehicleName, hasOpened, action]);
 
-  // Generate message based on action
-  const getMessage = () => {
+  // Generate initial message based on action
+  const getInitialMessage = () => {
     if (!vehicleName) {
       return "Welcome to Olympic Auto Group! Can I help you find your dream car today?";
     }
@@ -47,39 +71,129 @@ export function ChatBot({ vehicleName, action }: ChatBotProps) {
     return `Hi there! I see you're looking at the ${vehicleName}. It's a great choice! Would you like to see the CarFax report or schedule a test drive?`;
   };
 
-  const message = getMessage();
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!inputValue.trim() || isLoading) return;
+
+    const userMessage: ChatMessage = {
+      role: "user",
+      content: inputValue.trim()
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setInputValue("");
+    setIsLoading(true);
+
+    try {
+      // Build context message that includes CTA action if present
+      let contextPrefix = "";
+      if (action === 'test-drive') {
+        contextPrefix = "The customer clicked 'Book Test Drive' and wants to schedule a test drive. ";
+      } else if (action === 'reserve') {
+        contextPrefix = "The customer clicked 'Reserve Vehicle' and wants to reserve this vehicle. ";
+      }
+
+      const vehicleContextWithAction = vehicleName 
+        ? `${contextPrefix}Vehicle: ${vehicleName}`
+        : contextPrefix;
+
+      const response = await sendChatMessage(
+        [...messages, userMessage],
+        vehicleContextWithAction
+      );
+
+      setMessages(prev => [...prev, { role: "assistant", content: response }]);
+    } catch (error) {
+      console.error("Chat error:", error);
+      toast({
+        title: "Error",
+        description: "Failed to send message. Please try again.",
+        variant: "destructive"
+      });
+      // Remove the user message if the request failed
+      setMessages(prev => prev.slice(0, -1));
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
-    <div className="fixed bottom-24 right-4 md:right-8 z-40 w-80 pointer-events-none">
+    <div className="fixed bottom-24 right-4 md:right-8 z-40 w-96 pointer-events-none">
       <AnimatePresence>
         {isOpen && (
           <motion.div 
             initial={{ x: 100, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 100, opacity: 0 }}
-            className="glass-panel rounded-2xl shadow-2xl overflow-hidden border border-blue-100 pointer-events-auto mb-4"
+            className="glass-panel rounded-2xl shadow-2xl overflow-hidden border border-blue-100 pointer-events-auto mb-4 flex flex-col"
+            style={{ maxHeight: '500px' }}
           >
-            <div className="bg-primary p-4 flex items-center gap-3">
+            {/* Header */}
+            <div className="bg-primary p-4 flex items-center gap-3 shrink-0">
               <div className="relative">
                 <img src="https://randomuser.me/api/portraits/men/32.jpg" className="w-10 h-10 rounded-full border-2 border-white" alt="Agent" />
                 <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 rounded-full border-2 border-primary"></div>
               </div>
               <div>
-                <p className="text-white font-bold text-sm">General Manager</p>
+                <p className="text-white font-bold text-sm">Sales Consultant</p>
                 <p className="text-blue-200 text-xs">Active Now</p>
               </div>
-              <button onClick={() => setIsOpen(false)} className="ml-auto text-white/50 hover:text-white">
+              <button onClick={() => setIsOpen(false)} className="ml-auto text-white/50 hover:text-white transition">
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="p-4 bg-slate-50">
-              <div className="bg-white p-3 rounded-xl rounded-tl-none shadow-sm text-sm text-slate-600 leading-relaxed">
-                {message}
-              </div>
-              <button className="mt-3 w-full bg-secondary text-white py-2 rounded-lg text-sm font-bold hover:bg-blue-600 transition">
-                Yes, show me
-              </button>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-4 bg-slate-50 space-y-3" style={{ maxHeight: '340px' }}>
+              {messages.map((msg, idx) => (
+                <div
+                  key={idx}
+                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`max-w-[85%] p-3 rounded-xl text-sm leading-relaxed ${
+                      msg.role === 'user'
+                        ? 'bg-primary text-white rounded-br-none'
+                        : 'bg-white text-slate-700 rounded-tl-none shadow-sm'
+                    }`}
+                  >
+                    {msg.content}
+                  </div>
+                </div>
+              ))}
+              {isLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-white text-slate-700 p-3 rounded-xl rounded-tl-none shadow-sm">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
             </div>
+
+            {/* Input */}
+            <form onSubmit={handleSendMessage} className="p-3 bg-white border-t border-slate-100 shrink-0">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  placeholder="Type your message..."
+                  className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  disabled={isLoading}
+                  data-testid="input-chat-message"
+                />
+                <button
+                  type="submit"
+                  disabled={isLoading || !inputValue.trim()}
+                  className="bg-primary text-white p-2 rounded-lg hover:bg-blue-900 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  data-testid="button-send-message"
+                >
+                  <Send className="w-5 h-5" />
+                </button>
+              </div>
+            </form>
           </motion.div>
         )}
       </AnimatePresence>
@@ -91,6 +205,7 @@ export function ChatBot({ vehicleName, action }: ChatBotProps) {
           animate={{ scale: 1 }}
           onClick={() => setIsOpen(true)}
           className="pointer-events-auto absolute bottom-0 right-0 w-14 h-14 bg-primary rounded-full shadow-lg flex items-center justify-center text-white hover:bg-primary/90 transition-colors"
+          data-testid="button-open-chat"
         >
           <MessageSquare className="w-6 h-6" />
         </motion.button>

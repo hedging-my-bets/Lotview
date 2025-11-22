@@ -5,6 +5,7 @@ import { insertVehicleSchema, insertVehicleViewSchema, insertFacebookPageSchema 
 import { fromZodError } from "zod-validation-error";
 import { triggerManualSync } from "./scheduler";
 import { testBadgeDetection } from "./scraper";
+import { generateChatResponse, type ChatMessage } from "./openai";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
@@ -231,6 +232,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error testing badges:", error);
       res.status(500).json({ error: "Failed to test badges" });
+    }
+  });
+
+  // ===== CHAT ROUTES =====
+  
+  // Chat endpoint for AI responses
+  app.post("/api/chat", async (req, res) => {
+    try {
+      const { messages, vehicleContext } = req.body;
+
+      if (!Array.isArray(messages) || messages.length === 0) {
+        return res.status(400).json({ error: "Messages array is required" });
+      }
+
+      // Validate message format
+      for (const msg of messages) {
+        if (!msg.role || !msg.content) {
+          return res.status(400).json({ error: "Each message must have role and content" });
+        }
+        if (!["user", "assistant", "system"].includes(msg.role)) {
+          return res.status(400).json({ error: "Invalid message role" });
+        }
+      }
+
+      const response = await generateChatResponse(messages as ChatMessage[], vehicleContext);
+      res.json({ message: response });
+    } catch (error) {
+      console.error("Error generating chat response:", error);
+      res.status(500).json({ error: "Failed to generate chat response" });
     }
   });
 

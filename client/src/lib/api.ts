@@ -61,3 +61,23 @@ export async function updateFacebookPage(id: number, data: Partial<FacebookPage>
   if (!response.ok) throw new Error("Failed to update page");
   return response.json();
 }
+
+// Chat API
+export interface ChatMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
+}
+
+export async function sendChatMessage(
+  messages: ChatMessage[],
+  vehicleContext?: string
+): Promise<string> {
+  const response = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages, vehicleContext }),
+  });
+  if (!response.ok) throw new Error("Failed to send chat message");
+  const data = await response.json();
+  return data.message;
+}
