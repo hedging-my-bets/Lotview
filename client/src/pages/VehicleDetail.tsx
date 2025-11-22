@@ -190,6 +190,30 @@ export default function VehicleDetail() {
               )}
             </div>
 
+            {/* AI-Generated Vehicle Video (Gemini Veo) */}
+            {car.videoUrl && (
+              <div className="aspect-video rounded-2xl overflow-hidden shadow-lg relative group bg-black">
+                <video 
+                  src={`/${car.videoUrl}`}
+                  controls
+                  loop
+                  muted
+                  autoPlay
+                  playsInline
+                  className="w-full h-full object-contain"
+                  data-testid="video-vehicle-showcase"
+                />
+                <div className="absolute top-4 left-4 z-10">
+                  <span className="bg-gradient-to-r from-purple-600 to-pink-600 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-lg flex items-center gap-1.5">
+                    <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" />
+                    </svg>
+                    AI-Generated Video
+                  </span>
+                </div>
+              </div>
+            )}
+
             {/* Thumbnail Grid */}
             <div className="grid grid-cols-5 gap-2">
               {car.images.slice(0, 5).map((img, i) => (

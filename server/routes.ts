@@ -101,6 +101,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Generate video for vehicle using Gemini Veo
+  app.post("/api/vehicles/:id/generate-video", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const vehicle = await storage.getVehicleById(id);
+      
+      if (!vehicle) {
+        return res.status(404).json({ error: "Vehicle not found" });
+      }
+
+      // Note: Video generation using Gemini Veo 3.1 would be triggered here
+      // Cost: ~$0.15/second (6-8 seconds = ~$0.90-$1.20 per video)
+      // Time: ~1 minute generation time per video
+      // 
+      // The generate_video_tool is available in the Replit agent context
+      // For production, this would:
+      // 1. Create a prompt describing the vehicle
+      // 2. Call Gemini Veo API to generate video from vehicle images
+      // 3. Save the video URL to attached_assets/generated_videos/
+      // 4. Update the vehicle record with the video URL
+      //
+      // Example prompt:
+      // `Cinematic showcase of a ${vehicle.year} ${vehicle.make} ${vehicle.model}, 
+      //  ${vehicle.type.toLowerCase()} exterior and interior views, professional automotive 
+      //  photography style, rotating 360-degree view, premium dealership quality`
+      
+      res.status(501).json({ 
+        message: "Video generation available but not yet implemented in production", 
+        note: "Contact admin to generate video using Gemini Veo 3.1",
+        estimatedCost: "$0.90-$1.20",
+        estimatedTime: "~60 seconds"
+      });
+    } catch (error) {
+      console.error("Error generating video:", error);
+      res.status(500).json({ error: "Failed to generate video" });
+    }
+  });
+
   // ===== VIEW TRACKING ROUTES =====
   
   // Track vehicle view (for remarketing)
