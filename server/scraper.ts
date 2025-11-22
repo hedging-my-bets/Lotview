@@ -3,6 +3,7 @@ import { execSync } from 'child_process';
 import { sql } from 'drizzle-orm';
 import { db } from './db';
 import { vehicles } from '@shared/schema';
+import { scrapeAllCarGurusDealers } from './cargurus-scraper';
 
 interface ScrapedVehicle {
   year: number;
@@ -456,26 +457,74 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
 }
 
 export async function scrapeAllDealerships(): Promise<number> {
-  console.log('Starting Olympic Auto Group inventory scrape...');
+  console.log('Starting comprehensive inventory scrape...');
+  console.log('1/2: Scraping Olympic Auto Group...');
   
   try {
     const scrapedVehicles = await scrapeInventoryPage();
     
-    if (scrapedVehicles.length > 0) {
-      console.log(`Scraped ${scrapedVehicles.length} vehicles. Saving to database...`);
-      
-      // Clear existing inventory (delete views first to avoid foreign key constraint)
-      await db.execute(sql`TRUNCATE TABLE vehicle_views, vehicles RESTART IDENTITY CASCADE`);
-      
-      // Insert new inventory
-      await db.insert(vehicles).values(scrapedVehicles);
-      
-      console.log(`✓ Successfully scraped and saved ${scrapedVehicles.length} vehicles`);
-    } else {
-      console.log('⚠ No vehicles scraped');
+    if (scrapedVehicles.length === 0) {
+      console.log('⚠ No vehicles scraped from Olympic Auto Group');
+      return 0;
     }
     
-    return scrapedVehicles.length;
+    console.log(`✓ Scraped ${scrapedVehicles.length} vehicles from Olympic Auto Group`);
+    
+    // Scrape CarGurus for deal ratings and market data
+    console.log('2/2: Scraping CarGurus for market data...');
+    let cargurusData: Map<string, any> | null = null;
+    
+    try {
+      cargurusData = await scrapeAllCarGurusDealers();
+      console.log(`✓ Scraped ${cargurusData.size} listings from CarGurus`);
+    } catch (error) {
+      console.error('⚠ CarGurus scraping failed (continuing with Olympic data only):', error);
+    }
+    
+    // Merge CarGurus data with Olympic inventory by VIN
+    let mergedCount = 0;
+    const vehiclesWithCarGurusData = scrapedVehicles.map(vehicle => {
+      if (vehicle.vin && cargurusData) {
+        // Normalize VIN for matching
+        const normalizedVin = vehicle.vin.trim().toUpperCase();
+        if (cargurusData.has(normalizedVin)) {
+          const cgData = cargurusData.get(normalizedVin);
+          mergedCount++;
+          return {
+            ...vehicle,
+            vin: normalizedVin, // Use normalized VIN
+            cargurusPrice: cgData.cargurusPrice,
+            cargurusUrl: cgData.cargurusUrl,
+            dealRating: cgData.dealRating
+          };
+        }
+        // Return with normalized VIN even if no CarGurus match
+        return {
+          ...vehicle,
+          vin: normalizedVin
+        };
+      }
+      return vehicle;
+    });
+    
+    if (mergedCount > 0) {
+      console.log(`✓ Merged CarGurus data for ${mergedCount}/${scrapedVehicles.length} vehicles`);
+    }
+    
+    // Save to database
+    console.log('Saving to database...');
+    
+    // Clear existing inventory (delete views first to avoid foreign key constraint)
+    await db.execute(sql`TRUNCATE TABLE vehicle_views, vehicles RESTART IDENTITY CASCADE`);
+    
+    // Insert new inventory
+    await db.insert(vehicles).values(vehiclesWithCarGurusData);
+    
+    console.log(`✓ Successfully scraped and saved ${vehiclesWithCarGurusData.length} vehicles`);
+    console.log(`  - Olympic Auto Group: ${scrapedVehicles.length} vehicles`);
+    console.log(`  - CarGurus matches: ${mergedCount} vehicles`);
+    
+    return vehiclesWithCarGurusData.length;
   } catch (error) {
     console.error('✗ Scraping failed:', error);
     throw error;

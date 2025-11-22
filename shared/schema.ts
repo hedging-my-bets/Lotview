@@ -19,6 +19,9 @@ export const vehicles = pgTable("vehicles", {
   description: text("description").notNull(),
   vin: text("vin"), // VIN number
   stockNumber: text("stock_number"), // Stock # from dealership
+  cargurusPrice: integer("cargurus_price"), // Price on CarGurus (for comparison)
+  cargurusUrl: text("cargurus_url"), // Link to CarGurus listing
+  dealRating: text("deal_rating"), // CarGurus deal rating (Great Deal, Good Deal, etc.)
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
