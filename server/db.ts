@@ -5,20 +5,27 @@ import * as schema from "@shared/schema";
 
 neonConfig.webSocketConstructor = ws;
 
-let connectionString = process.env.DATABASE_URL;
-
-if (!connectionString || connectionString.trim() === '') {
-  const { PGHOST, PGUSER, PGPASSWORD, PGDATABASE, PGPORT } = process.env;
-  if (PGHOST && PGUSER && PGDATABASE && PGPORT) {
-    const password = PGPASSWORD ? `:${PGPASSWORD}` : '';
-    connectionString = `postgresql://${PGUSER}${password}@${PGHOST}:${PGPORT}/${PGDATABASE}`;
-    console.log('Constructed DATABASE_URL from individual PG environment variables');
-  } else {
-    throw new Error(
-      "DATABASE_URL must be set. Did you forget to provision a database?",
-    );
-  }
+if (!process.env.DATABASE_URL || process.env.DATABASE_URL.trim() === '') {
+  console.error('\n❌ DATABASE_URL environment variable is not set or is empty.\n');
+  console.error('📝 To fix this, you need to set up a PostgreSQL database:');
+  console.error('');
+  console.error('Option 1 - Use Neon (Recommended):');
+  console.error('  1. Go to https://neon.tech and create a free account');
+  console.error('  2. Create a new project');
+  console.error('  3. Copy the connection string');
+  console.error('  4. In Replit, open the Secrets panel (lock icon in sidebar)');
+  console.error('  5. Find DATABASE_URL and paste the connection string');
+  console.error('');
+  console.error('Option 2 - Use Supabase:');
+  console.error('  1. Go to https://supabase.com and create a free account');
+  console.error('  2. Create a new project');
+  console.error('  3. Go to Settings → Database → Connection String');
+  console.error('  4. Copy the connection string (use the "Session pooler" connection)');
+  console.error('  5. In Replit, open the Secrets panel (lock icon in sidebar)');
+  console.error('  6. Find DATABASE_URL and paste the connection string');
+  console.error('');
+  throw new Error('DATABASE_URL must be set. Please follow the instructions above.');
 }
 
-export const pool = new Pool({ connectionString });
+export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 export const db = drizzle({ client: pool, schema });
