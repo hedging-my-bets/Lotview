@@ -83,7 +83,7 @@ export default function VehicleDetail() {
               </div>
 
               <div className="flex gap-2 mb-6">
-                {car.badges.map(b => (
+                {car.badges.map((b: string) => (
                   <span key={b} className="bg-blue-50 text-primary px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border border-blue-100">
                     {b}
                   </span>
