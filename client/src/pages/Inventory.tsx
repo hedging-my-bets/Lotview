@@ -6,7 +6,7 @@ import { VehicleCard } from "@/components/VehicleCard";
 import { ChatBot } from "@/components/ChatBot";
 import { getVehicles } from "@/lib/api";
 import { FilterState } from "@/lib/types";
-import { Loader2 } from "lucide-react";
+import { Loader2, LogIn } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Inventory() {
@@ -15,6 +15,7 @@ export default function Inventory() {
     type: 'all',
     priceMax: 100000,
     location: 'all',
+    dealership: 'all',
     search: ''
   });
 
@@ -27,7 +28,8 @@ export default function Inventory() {
     const matchesType = filters.type === 'all' || car.type === filters.type;
     const matchesPrice = car.price <= filters.priceMax;
     const matchesLocation = filters.location === 'all' || car.location === filters.location;
-    return matchesType && matchesPrice && matchesLocation;
+    const matchesDealership = filters.dealership === 'all' || car.dealership === filters.dealership;
+    return matchesType && matchesPrice && matchesLocation && matchesDealership;
   });
 
   const handleRefresh = () => {
@@ -35,6 +37,10 @@ export default function Inventory() {
     refetch().then(() => {
       toast({ title: "Inventory Updated", description: "Inventory is up to date." });
     });
+  };
+
+  const handleLogin = () => {
+    toast({ title: "Login", description: "Sales team login coming soon..." });
   };
 
   return (
@@ -67,7 +73,7 @@ export default function Inventory() {
             ) : filteredInventory.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-slate-400">
                 <p>No vehicles match your criteria.</p>
-                <button onClick={() => setFilters({ type: 'all', priceMax: 100000, location: 'all', search: '' })} className="text-primary font-bold mt-2 hover:underline">Clear Filters</button>
+                <button onClick={() => setFilters({ type: 'all', priceMax: 100000, location: 'all', dealership: 'all', search: '' })} className="text-primary font-bold mt-2 hover:underline">Clear Filters</button>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -77,6 +83,17 @@ export default function Inventory() {
               </div>
             )}
           </main>
+        </div>
+
+        {/* Login Button at Bottom */}
+        <div className="mt-12 flex justify-center">
+          <button 
+            onClick={handleLogin}
+            className="glass-panel px-6 py-3 rounded-xl font-bold text-slate-600 hover:text-primary hover:border-primary transition flex items-center gap-2 border-2 border-slate-200"
+          >
+            <LogIn className="w-4 h-4" />
+            Sales Team Login
+          </button>
         </div>
       </div>
 

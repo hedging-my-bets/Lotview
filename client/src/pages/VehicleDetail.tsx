@@ -4,6 +4,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Navbar } from "@/components/Navbar";
 import { ChatBot } from "@/components/ChatBot";
 import { getVehicleById, trackVehicleView } from "@/lib/api";
+import { FINANCE_TERMS, calculateMonthlyPayment, type FinanceTerm } from "@/lib/types";
 import { ArrowLeft, Calendar, CheckCircle2, MapPin, Gauge, Flame, Share2, Heart } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
@@ -13,6 +14,7 @@ export default function VehicleDetail() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [sessionId] = useState(() => `session-${Date.now()}-${Math.random()}`);
+  const [selectedTerm, setSelectedTerm] = useState<FinanceTerm>(84);
 
   const vehicleId = Number(params?.id);
 
@@ -65,7 +67,7 @@ export default function VehicleDetail() {
     );
   }
 
-  const monthlyPayment = Math.floor((car.price * 1.05) / 84 * 1.07);
+  const monthlyPayment = calculateMonthlyPayment(car.price, selectedTerm);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -84,6 +86,15 @@ export default function VehicleDetail() {
           <div className="space-y-4">
             <div className="aspect-[4/3] rounded-2xl overflow-hidden shadow-lg relative group">
               <img src={car.image} alt={car.model} className="w-full h-full object-cover" />
+              
+              {/* Dealership Badge */}
+              <div className="absolute top-4 left-4">
+                <span className="bg-primary text-white text-sm font-bold px-4 py-2 rounded-full shadow-lg flex items-center gap-2">
+                  <MapPin className="w-4 h-4" />
+                  {car.dealership}
+                </span>
+              </div>
+
               <div className="absolute top-4 right-4 flex gap-2">
                 <button className="p-2 bg-white/90 backdrop-blur rounded-full text-slate-600 hover:text-red-500 transition shadow-sm">
                   <Heart className="w-5 h-5" />
@@ -116,9 +127,10 @@ export default function VehicleDetail() {
                 </div>
               </div>
 
-              <div className="flex gap-2 mb-6">
+              <div className="flex gap-2 mb-6 flex-wrap">
                 {car.badges.map((b: string) => (
-                  <span key={b} className="bg-blue-50 text-primary px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border border-blue-100">
+                  <span key={b} className="bg-blue-50 text-primary px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border border-blue-100 flex items-center gap-1">
+                    <Flame className="w-3 h-3 text-orange-500" />
                     {b}
                   </span>
                 ))}
@@ -139,21 +151,41 @@ export default function VehicleDetail() {
                     <p className="font-bold text-slate-700">{car.location}</p>
                   </div>
                 </div>
-                 <div className="flex items-center gap-3">
+                 <div className="flex items-center gap-3 col-span-2">
                   <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-orange-400 shadow-sm"><Flame className="w-5 h-5" /></div>
                   <div>
                     <p className="text-xs text-slate-400 font-bold uppercase">Interest (24h)</p>
-                    <p className="font-bold text-slate-700">{car.views} views</p>
+                    <p className="font-bold text-slate-700">{car.views} people viewing</p>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-primary/5 border border-primary/10 p-6 rounded-xl mb-6">
-                <div className="flex justify-between items-center mb-2">
+              <div className="bg-primary/5 border border-primary/10 p-6 rounded-xl mb-4">
+                <div className="flex justify-between items-center mb-3">
                   <p className="font-bold text-slate-900">Estimated Finance</p>
                   <p className="text-2xl font-black text-primary">${monthlyPayment}<span className="text-sm text-slate-500 font-medium">/mo</span></p>
                 </div>
-                <p className="text-xs text-slate-500">Based on 6.99% APR for 84 months. $0 down. Taxes and fees extra.</p>
+                <p className="text-xs text-slate-500 mb-4">Based on 6.99% APR. $0 down. Taxes and fees extra.</p>
+                
+                {/* Term Selector */}
+                <div className="space-y-2">
+                  <p className="text-xs font-bold text-slate-400 uppercase">Select Term</p>
+                  <div className="grid grid-cols-5 gap-2">
+                    {FINANCE_TERMS.map(term => (
+                      <button
+                        key={term}
+                        onClick={() => setSelectedTerm(term)}
+                        className={`py-2 rounded-lg text-sm font-bold transition ${
+                          selectedTerm === term 
+                            ? 'bg-secondary text-white shadow-md' 
+                            : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                        }`}
+                      >
+                        {term}mo
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

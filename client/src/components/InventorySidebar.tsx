@@ -1,10 +1,10 @@
 import { FilterState } from "@/lib/types";
-import { SlidersHorizontal, MapPin, CarFront, DollarSign, Check } from "lucide-react";
+import { SlidersHorizontal, MapPin, CarFront, DollarSign, Check, Building2 } from "lucide-react";
 
 const LOCATIONS = ["Vancouver", "Burnaby", "Richmond"];
 const BODY_STYLES = ["SUV", "Truck", "Sedan", "Coupe", "Hatchback"];
+const DEALERSHIPS = ["Olympic Hyundai Vancouver", "Boundary Hyundai Vancouver", "Kia Vancouver"];
 import { Slider } from "@/components/ui/slider";
-import { Checkbox } from "@/components/ui/checkbox";
 
 interface InventorySidebarProps {
   filters: FilterState;
@@ -14,17 +14,18 @@ interface InventorySidebarProps {
 export function InventorySidebar({ filters, setFilters }: InventorySidebarProps) {
   
   const handleTypeChange = (type: string) => {
-    // If clicking the currently selected type (and it's not 'all'), deselect it back to 'all'
-    // Or standard radio behavior: select new type
     const newType = filters.type === type ? 'all' : type;
     setFilters({ ...filters, type: newType });
   };
 
   const handleLocationChange = (loc: string) => {
-    // Toggle logic if we wanted multiple locations, but let's keep it simple first: Single select or All
-    // Or let's allow 'all' vs specific
     const newLoc = filters.location === loc ? 'all' : loc;
     setFilters({ ...filters, location: newLoc });
+  };
+
+  const handleDealershipChange = (dealer: string) => {
+    const newDealer = filters.dealership === dealer ? 'all' : dealer;
+    setFilters({ ...filters, dealership: newDealer });
   };
 
   return (
@@ -34,10 +35,47 @@ export function InventorySidebar({ filters, setFilters }: InventorySidebarProps)
           <SlidersHorizontal className="w-4 h-4" /> Filters
         </h3>
 
+        {/* Dealership Filter */}
+        <div className="mb-8">
+          <p className="text-xs font-bold text-slate-400 uppercase mb-3 flex items-center gap-2">
+            <Building2 className="w-3 h-3" /> Dealership
+          </p>
+          <div className="space-y-2">
+            <label className="flex items-center gap-3 cursor-pointer group">
+              <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${filters.dealership === 'all' ? 'bg-primary border-primary text-white' : 'border-slate-300 bg-white'}`}>
+                {filters.dealership === 'all' && <Check className="w-3 h-3" />}
+              </div>
+              <input 
+                type="radio" 
+                name="dealership" 
+                className="hidden" 
+                checked={filters.dealership === 'all'} 
+                onChange={() => setFilters({ ...filters, dealership: 'all' })}
+              />
+              <span className={`text-sm font-medium transition ${filters.dealership === 'all' ? 'text-primary' : 'text-slate-600 group-hover:text-primary'}`}>All Dealerships</span>
+            </label>
+            {DEALERSHIPS.map(dealer => (
+               <label key={dealer} className="flex items-center gap-3 cursor-pointer group">
+                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${filters.dealership === dealer ? 'bg-primary border-primary text-white' : 'border-slate-300 bg-white'}`}>
+                  {filters.dealership === dealer && <Check className="w-3 h-3" />}
+                </div>
+                <input 
+                  type="radio" 
+                  name="dealership" 
+                  className="hidden" 
+                  checked={filters.dealership === dealer} 
+                  onChange={() => handleDealershipChange(dealer)}
+                />
+                <span className={`text-sm font-medium transition ${filters.dealership === dealer ? 'text-primary' : 'text-slate-600 group-hover:text-primary'}`}>{dealer}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
         {/* Location Filter */}
         <div className="mb-8">
           <p className="text-xs font-bold text-slate-400 uppercase mb-3 flex items-center gap-2">
-            <MapPin className="w-3 h-3" /> Location
+            <MapPin className="w-3 h-3" /> City
           </p>
           <div className="space-y-2">
             <label className="flex items-center gap-3 cursor-pointer group">
@@ -51,7 +89,7 @@ export function InventorySidebar({ filters, setFilters }: InventorySidebarProps)
                 checked={filters.location === 'all'} 
                 onChange={() => setFilters({ ...filters, location: 'all' })}
               />
-              <span className={`text-sm font-medium transition ${filters.location === 'all' ? 'text-primary' : 'text-slate-600 group-hover:text-primary'}`}>All Locations</span>
+              <span className={`text-sm font-medium transition ${filters.location === 'all' ? 'text-primary' : 'text-slate-600 group-hover:text-primary'}`}>All Cities</span>
             </label>
             {LOCATIONS.map(loc => (
                <label key={loc} className="flex items-center gap-3 cursor-pointer group">

@@ -1,4 +1,5 @@
-import { Car } from "@/lib/types";
+import { useState } from "react";
+import { Car, FINANCE_TERMS, calculateMonthlyPayment, type FinanceTerm } from "@/lib/types";
 import { MapPin, Flame, Info } from "lucide-react";
 import { Link } from "wouter";
 
@@ -7,8 +8,8 @@ interface VehicleCardProps {
 }
 
 export function VehicleCard({ car }: VehicleCardProps) {
-  // Formula provided: (price * 1.05) / 84 * 1.07
-  const monthlyPayment = Math.floor((car.price * 1.05) / 84 * 1.07);
+  const [selectedTerm, setSelectedTerm] = useState<FinanceTerm>(84);
+  const monthlyPayment = calculateMonthlyPayment(car.price, selectedTerm);
 
   return (
     <Link href={`/vehicle/${car.id}`}>
@@ -22,8 +23,16 @@ export function VehicleCard({ car }: VehicleCardProps) {
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-80"></div>
           
-          {/* Badges */}
-          <div className="absolute top-3 left-3 flex flex-wrap gap-1">
+          {/* Location Badge - Top Left */}
+          <div className="absolute top-3 left-3">
+            <span className="bg-primary text-white text-[10px] font-bold px-3 py-1.5 rounded-full shadow-lg flex items-center gap-1">
+              <MapPin className="w-3 h-3" />
+              {car.dealership}
+            </span>
+          </div>
+
+          {/* Feature Badges - Top Right */}
+          <div className="absolute top-3 right-3 flex flex-wrap gap-1 justify-end max-w-[60%]">
             {car.badges.map((badge, i) => (
               <span key={i} className="bg-white/90 backdrop-blur-sm text-[10px] font-bold px-2 py-1 rounded text-primary shadow-sm flex items-center gap-1">
                 <Flame className="w-3 h-3 text-orange-500" />
@@ -33,14 +42,33 @@ export function VehicleCard({ car }: VehicleCardProps) {
           </div>
 
           {/* Price Overlay */}
-          <div className="absolute bottom-0 w-full p-4 text-white flex justify-between items-end">
-            <div>
-              <p className="text-2xl font-black">${monthlyPayment}<span className="text-xs font-normal opacity-70">/mo</span></p>
-              <p className="text-xs font-bold text-secondary">Est. Finance</p>
+          <div className="absolute bottom-0 w-full p-4 text-white">
+            <div className="flex justify-between items-end mb-2">
+              <div>
+                <p className="text-2xl font-black">${monthlyPayment}<span className="text-xs font-normal opacity-70">/mo</span></p>
+                <p className="text-xs font-bold text-secondary">{selectedTerm} months @ 6.99% APR</p>
+              </div>
+              <div className="text-right">
+                <p className="text-lg font-bold">${car.price.toLocaleString()}</p>
+                <p className="text-[10px] opacity-70">Cash Price</p>
+              </div>
             </div>
-            <div className="text-right">
-              <p className="text-lg font-bold">${car.price.toLocaleString()}</p>
-              <p className="text-[10px] opacity-70">Cash Price</p>
+            
+            {/* Term Selector */}
+            <div className="flex gap-1" onClick={(e) => e.preventDefault()}>
+              {FINANCE_TERMS.map(term => (
+                <button
+                  key={term}
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelectedTerm(term); }}
+                  className={`flex-1 py-1 rounded text-[10px] font-bold transition ${
+                    selectedTerm === term 
+                      ? 'bg-secondary text-white' 
+                      : 'bg-white/20 text-white/70 hover:bg-white/30'
+                  }`}
+                >
+                  {term}mo
+                </button>
+              ))}
             </div>
           </div>
         </div>
@@ -56,17 +84,15 @@ export function VehicleCard({ car }: VehicleCardProps) {
 
           <div className="mt-auto pt-3 border-t border-slate-100 flex justify-between items-center text-xs text-slate-500 font-medium">
             <div className="flex items-center gap-1">
-              <MapPin className="w-3 h-3 text-secondary" />
-              {car.location}
-            </div>
-            <div className="flex items-center gap-1">
               <Info className="w-3 h-3" />
               {car.odometer.toLocaleString()} km
             </div>
-            <div className="flex items-center gap-1 text-orange-500">
-              <Flame className="w-3 h-3" />
-              {car.views} views
-            </div>
+            {car.views !== undefined && (
+              <div className="flex items-center gap-1 text-orange-500">
+                <Flame className="w-3 h-3" />
+                {car.views} views
+              </div>
+            )}
           </div>
           
           <button className="w-full mt-4 bg-primary text-white py-2 rounded-lg text-sm font-bold hover:bg-blue-900 transition">

@@ -15,6 +15,7 @@ export const vehicles = pgTable("vehicles", {
   image: text("image").notNull(),
   badges: text("badges").array().notNull(),
   location: text("location").notNull(), // Vancouver, Burnaby, Richmond
+  dealership: text("dealership").notNull(), // Boundary Hyundai Vancouver, Olympic Hyundai Vancouver, Kia Vancouver
   description: text("description").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
