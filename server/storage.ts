@@ -16,7 +16,7 @@ import {
 } from "@shared/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
 
-const connectionString = process.env.DATABASE_URL!;
+const connectionString = process.env.DATABASE_URL || "postgresql://runner@/workspace?host=/tmp";
 const queryClient = neon(connectionString);
 export const db = drizzle(queryClient);
 
