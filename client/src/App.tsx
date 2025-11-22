@@ -7,12 +7,14 @@ import { PaymentProvider } from "@/contexts/PaymentContext";
 import NotFound from "@/pages/not-found";
 import Inventory from "@/pages/Inventory";
 import VehicleDetail from "@/pages/VehicleDetail";
+import EmbedWidget from "@/pages/EmbedWidget";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Inventory} />
       <Route path="/vehicle/:id" component={VehicleDetail} />
+      <Route path="/embed" component={EmbedWidget} />
       <Route component={NotFound} />
     </Switch>
   );
