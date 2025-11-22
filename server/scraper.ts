@@ -1,5 +1,6 @@
 import puppeteer from 'puppeteer';
 import { execSync } from 'child_process';
+import { sql } from 'drizzle-orm';
 import { db } from './db';
 import { vehicles } from '@shared/schema';
 
@@ -280,19 +281,29 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
       const v = vehicles[i];
       console.log(`[${i + 1}/${vehicles.length}] Processing ${v.year} ${v.make} ${v.model}...`);
       
+      // Create a new page for each vehicle to avoid detached frame issues
+      let detailPage = page;
+      if (i > 0) {
+        try {
+          detailPage = await browser.newPage();
+        } catch (e) {
+          console.log('  Could not create new page, reusing existing');
+        }
+      }
+      
       try {
         // Navigate to detail page
-        await page.goto(v.detailUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+        await detailPage.goto(v.detailUrl, { waitUntil: 'networkidle2', timeout: 30000 });
         
-        // Wait for the gallery and spec data to load
+        // Wait for the gallery and spec data to load (short timeout)
         try {
-          await page.waitForSelector('[data-gallery]', { timeout: 10000 });
+          await detailPage.waitForSelector('[data-gallery]', { timeout: 2000 });
         } catch (e) {
-          console.log('  No data-gallery found, will use fallback');
+          // Silently use fallback extraction
         }
         
         // Extract detailed information
-        const detailData = await page.evaluate(() => {
+        const detailData = await detailPage.evaluate(() => {
           // Extract all images from data-gallery JSON
           const images: string[] = [];
           const galleryEl = document.querySelector('[data-gallery]');
@@ -424,6 +435,15 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
           dealership: v.dealership,
           description: `${v.year} ${v.make} ${v.model} ${v.trim}`.trim()
         });
+      } finally {
+        // Close the detail page if it's not the main page
+        if (i > 0 && detailPage !== page) {
+          try {
+            await detailPage.close();
+          } catch (e) {
+            // Ignore close errors
+          }
+        }
       }
     }
     
@@ -444,8 +464,8 @@ export async function scrapeAllDealerships(): Promise<number> {
     if (scrapedVehicles.length > 0) {
       console.log(`Scraped ${scrapedVehicles.length} vehicles. Saving to database...`);
       
-      // Clear existing inventory
-      await db.delete(vehicles);
+      // Clear existing inventory (delete views first to avoid foreign key constraint)
+      await db.execute(sql`TRUNCATE TABLE vehicle_views, vehicles RESTART IDENTITY CASCADE`);
       
       // Insert new inventory
       await db.insert(vehicles).values(scrapedVehicles);
