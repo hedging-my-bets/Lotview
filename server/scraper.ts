@@ -1,7 +1,7 @@
-import * as cheerio from 'cheerio';
+import puppeteer from 'puppeteer';
+import { execSync } from 'child_process';
 import { db } from './db';
 import { vehicles } from '@shared/schema';
-import { sql } from 'drizzle-orm';
 
 interface ScrapedVehicle {
   year: number;
@@ -18,30 +18,18 @@ interface ScrapedVehicle {
   description: string;
 }
 
-const DEALERSHIPS = {
-  olympicHyundai: {
-    name: 'Olympic Hyundai Vancouver',
-    location: 'Vancouver',
-    url: 'https://www.olympichyundai.com/inventory',
-  },
-  boundaryHyundai: {
-    name: 'Boundary Hyundai Vancouver',
-    location: 'Burnaby',
-    url: 'https://www.boundaryhyundai.com/inventory',
-  },
-  kiaVancouver: {
-    name: 'Kia Vancouver',
-    location: 'Vancouver',
-    url: 'https://www.kiavancouver.com/inventory',
-  }
-};
+const INVENTORY_URL = 'https://www.olympicautogroup.ca/vehicles/used/?st=year,desc&view=grid&sc=used&fn=Boundary%20Hyundai,Olympic%20Hyundai%20Vancouver,Kia%20Vancouver';
 
 const BADGE_KEYWORDS = {
   oneOwner: ['one owner', '1 owner', 'single owner'],
   noAccidents: ['no accidents', 'accident free', 'clean history', 'accident-free'],
   cleanTitle: ['clean title', 'clear title'],
   certifiedPreOwned: ['certified', 'cpo', 'certified pre-owned'],
-  lowKm: ['low km', 'low kilometers', 'low mileage'],
+  lowKm: ['low km', 'low kilometers', 'low mileage', 'low km\'s'],
+  managerSpecial: ['manager special', 'manager\'s special'],
+  newArrival: ['new arrival', 'just arrived'],
+  fuelEfficient: ['fuel efficient', 'great fuel economy'],
+  fullyLoaded: ['fully loaded', 'loaded'],
 };
 
 function detectBadges(text: string): string[] {
@@ -63,107 +51,276 @@ function detectBadges(text: string): string[] {
   if (BADGE_KEYWORDS.lowKm.some(keyword => lowerText.includes(keyword))) {
     badges.push('Low Kilometers');
   }
+  if (BADGE_KEYWORDS.managerSpecial.some(keyword => lowerText.includes(keyword))) {
+    badges.push('Manager Special');
+  }
+  if (BADGE_KEYWORDS.newArrival.some(keyword => lowerText.includes(keyword))) {
+    badges.push('New Arrival');
+  }
+  if (BADGE_KEYWORDS.fuelEfficient.some(keyword => lowerText.includes(keyword))) {
+    badges.push('Fuel Efficient');
+  }
+  if (BADGE_KEYWORDS.fullyLoaded.some(keyword => lowerText.includes(keyword))) {
+    badges.push('Fully Loaded');
+  }
 
   return badges;
 }
 
-async function fetchHTML(url: string): Promise<string> {
+function determineBodyType(bodyStyle: string): string {
+  const lowerBody = bodyStyle.toLowerCase();
+  
+  if (lowerBody.includes('sedan')) return 'Sedan';
+  if (lowerBody.includes('suv')) return 'SUV';
+  if (lowerBody.includes('truck') || lowerBody.includes('crew cab')) return 'Truck';
+  if (lowerBody.includes('hatchback')) return 'Hatchback';
+  if (lowerBody.includes('coupe') || lowerBody.includes('convertible')) return 'Coupe';
+  if (lowerBody.includes('wagon')) return 'Wagon';
+  if (lowerBody.includes('minivan') || lowerBody.includes('van')) return 'Minivan';
+  
+  return 'SUV'; // Default
+}
+
+async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
+  console.log('Launching browser...');
+  
+  // Find chromium executable
+  let chromiumPath = '';
   try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-      }
+    chromiumPath = execSync('which chromium').toString().trim();
+  } catch {
+    chromiumPath = '/nix/store/zi4f80l169xlmivz8vja8wlphq74qqk0-chromium-125.0.6422.141/bin/chromium';
+  }
+  
+  console.log(`Using Chromium at: ${chromiumPath}`);
+  
+  const browser = await puppeteer.launch({
+    headless: true,
+    executablePath: chromiumPath,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--no-zygote',
+      '--disable-gpu',
+      '--disable-software-rasterizer'
+    ]
+  });
+  
+  try {
+    const page = await browser.newPage();
+    
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    
+    console.log('Navigating to inventory page...');
+    await page.goto(INVENTORY_URL, {
+      waitUntil: 'networkidle2',
+      timeout: 60000
     });
-    return await response.text();
-  } catch (error) {
-    console.error(`Failed to fetch ${url}:`, error);
-    throw error;
-  }
-}
-
-function determineBodyType(modelName: string, description: string): string {
-  const lowerModel = modelName.toLowerCase();
-  const lowerDesc = description.toLowerCase();
-  const combined = lowerModel + ' ' + lowerDesc;
-
-  if (combined.includes('truck') || combined.includes('f-150') || combined.includes('silverado')) {
-    return 'Truck';
-  }
-  if (combined.includes('sedan') || combined.includes('elantra') || combined.includes('accord') || combined.includes('civic')) {
-    return 'Sedan';
-  }
-  if (combined.includes('coupe')) {
-    return 'Coupe';
-  }
-  if (combined.includes('hatchback')) {
-    return 'Hatchback';
-  }
-  return 'SUV'; // Default to SUV for most models
-}
-
-async function scrapeDealership(dealershipKey: string): Promise<ScrapedVehicle[]> {
-  const dealership = DEALERSHIPS[dealershipKey as keyof typeof DEALERSHIPS];
-  console.log(`Scraping ${dealership.name}...`);
-
-  try {
-    const html = await fetchHTML(dealership.url);
-    const $ = cheerio.load(html);
-    const scrapedVehicles: ScrapedVehicle[] = [];
-
-    // This is a generic scraper - in production, you'd need to customize selectors per site
-    // For now, we'll return empty array as we need the actual site structure
-    console.log(`Would scrape from ${dealership.url}`);
-    console.log(`Note: This requires site-specific selectors based on actual dealership websites`);
-
-    // Example structure (would need to be customized):
-    // $('.vehicle-card').each((i, elem) => {
-    //   const year = parseInt($(elem).find('.year').text());
-    //   const make = $(elem).find('.make').text();
-    //   const model = $(elem).find('.model').text();
-    //   const trim = $(elem).find('.trim').text();
-    //   const price = parseInt($(elem).find('.price').text().replace(/[^0-9]/g, ''));
-    //   const odometer = parseInt($(elem).find('.odometer').text().replace(/[^0-9]/g, ''));
-    //   const image = $(elem).find('img').attr('src') || '';
-    //   const description = $(elem).find('.description').text();
-    //   const badges = detectBadges(description);
-    //   const type = determineBodyType(model, description);
-    //
-    //   scrapedVehicles.push({
-    //     year, make, model, trim, type, price, odometer, image,
-    //     badges, location: dealership.location, dealership: dealership.name, description
-    //   });
-    // });
-
+    
+    console.log('Waiting for vehicle listings to load...');
+    // Wait for vehicle cards to appear
+    await page.waitForSelector('a[href*="/vehicles/2"]', { timeout: 30000 });
+    
+    console.log('Scrolling to load all vehicles...');
+    // Scroll down multiple times to trigger lazy loading
+    let previousCount = 0;
+    let currentCount = 0;
+    let scrollAttempts = 0;
+    const maxScrollAttempts = 30;
+    
+    do {
+      // Get current count of vehicles
+      previousCount = currentCount;
+      currentCount = await page.evaluate(() => {
+        return document.querySelectorAll('a[href*="/vehicles/2"]').length;
+      });
+      
+      // Scroll to bottom
+      await page.evaluate(() => {
+        window.scrollTo(0, document.body.scrollHeight);
+      });
+      
+      // Wait for new content to load
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      scrollAttempts++;
+      console.log(`Scroll ${scrollAttempts}: Found ${currentCount} vehicle links...`);
+      
+    } while (currentCount > previousCount && scrollAttempts < maxScrollAttempts);
+    
+    console.log(`Finished scrolling. Found ${currentCount} total vehicle links.`);
+    
+    // Scroll back to top
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    console.log('Extracting vehicle data...');
+    
+    const vehicles = await page.evaluate(() => {
+      const vehicleData: any[] = [];
+      
+      // Find all links that contain vehicle detail pages
+      const links = Array.from(document.querySelectorAll('a[href*="/vehicles/2"]'));
+      const processedUrls = new Set<string>();
+      
+      links.forEach(link => {
+        const href = link.getAttribute('href');
+        if (!href) return;
+        
+        // Filter for actual vehicle detail pages (year/make/model pattern)
+        const match = href.match(/\/vehicles\/(\d{4})\/([a-z-]+)\/([a-z0-9-]+)\//);
+        if (!match) return;
+        
+        // Skip duplicates
+        if (processedUrls.has(href)) return;
+        processedUrls.add(href);
+        
+        const [, yearStr, makeSlug, modelSlug] = match;
+        
+        // Get the containing card/element
+        const card = link.closest('.vehicle-card, .vehicle-item, .product-item, article, .item, .listing') || link;
+        
+        const cardText = card.textContent || '';
+        const heading = (card.querySelector('h1, h2, h3, h4, h5, .title, .heading') as HTMLElement)?.textContent || '';
+        
+        // Extract year, make, model from URL
+        const year = parseInt(yearStr);
+        const make = makeSlug.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        const model = modelSlug.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        
+        // Extract trim from heading
+        let trim = 'Base';
+        const headingParts = heading.split('|')[0].trim().split(' ');
+        if (headingParts.length > 3) {
+          trim = headingParts.slice(3).join(' ').trim();
+        }
+        if (!trim || trim.length === 0) trim = 'Base';
+        
+        // Determine dealership
+        let dealership = 'Olympic Hyundai Vancouver';
+        let location = 'Vancouver';
+        if (cardText.includes('Boundary Hyundai')) {
+          dealership = 'Boundary Hyundai Vancouver';
+          location = 'Burnaby';
+        } else if (cardText.includes('Kia Vancouver')) {
+          dealership = 'Kia Vancouver';
+          location = 'Vancouver';
+        } else if (cardText.includes('Olympic Hyundai Vancouver')) {
+          dealership = 'Olympic Hyundai Vancouver';
+          location = 'Vancouver';
+        }
+        
+        // Extract price
+        let price = 0;
+        const priceElem = card.querySelector('.price, .dealer-price, [class*="price"]');
+        if (priceElem) {
+          const priceText = priceElem.textContent || '';
+          const priceMatch = priceText.match(/\$([0-9,]+)/);
+          if (priceMatch) {
+            price = parseInt(priceMatch[1].replace(/,/g, ''));
+          }
+        }
+        
+        // Extract kilometers
+        let odometer = 0;
+        const kmMatch = cardText.match(/(\d+[,\d]*)\s*km/i);
+        if (kmMatch) {
+          odometer = parseInt(kmMatch[1].replace(/,/g, ''));
+        }
+        
+        // Extract body style
+        let bodyStyle = 'SUV';
+        const bodyStyleMatch = cardText.match(/Body Style:\s*([^\n]+)/i);
+        if (bodyStyleMatch) {
+          bodyStyle = bodyStyleMatch[1].trim();
+        }
+        
+        // Extract image
+        const img = card.querySelector('img');
+        let image = 'https://via.placeholder.com/400x300?text=No+Image';
+        if (img) {
+          image = img.src || img.getAttribute('data-src') || img.getAttribute('data-lazy-src') || image;
+        }
+        
+        vehicleData.push({
+          year,
+          make,
+          model,
+          trim,
+          bodyStyle,
+          price,
+          odometer,
+          image,
+          location,
+          dealership,
+          cardText: cardText.substring(0, 500), // For badge detection
+          heading
+        });
+      });
+      
+      return vehicleData;
+    });
+    
+    console.log(`Extracted ${vehicles.length} vehicles from page`);
+    
+    // Process the data
+    const scrapedVehicles: ScrapedVehicle[] = vehicles.map((v: any) => {
+      const badges = detectBadges(v.cardText + ' ' + v.heading);
+      const type = determineBodyType(v.bodyStyle);
+      const description = `${v.year} ${v.make} ${v.model} ${v.trim}`.trim();
+      
+      return {
+        year: v.year,
+        make: v.make,
+        model: v.model,
+        trim: v.trim,
+        type,
+        price: v.price,
+        odometer: v.odometer,
+        image: v.image,
+        badges,
+        location: v.location,
+        dealership: v.dealership,
+        description
+      };
+    });
+    
     return scrapedVehicles;
-  } catch (error) {
-    console.error(`Error scraping ${dealership.name}:`, error);
-    return [];
+    
+  } finally {
+    await browser.close();
+    console.log('Browser closed');
   }
 }
 
 export async function scrapeAllDealerships(): Promise<number> {
-  console.log('Starting dealership inventory scrape...');
+  console.log('Starting Olympic Auto Group inventory scrape...');
   
-  const allVehicles: ScrapedVehicle[] = [];
-  
-  for (const key of Object.keys(DEALERSHIPS)) {
-    const vehicles = await scrapeDealership(key);
-    allVehicles.push(...vehicles);
-  }
-
-  if (allVehicles.length > 0) {
-    // Clear existing inventory
-    await db.delete(vehicles);
+  try {
+    const scrapedVehicles = await scrapeInventoryPage();
     
-    // Insert new inventory
-    await db.insert(vehicles).values(allVehicles);
+    if (scrapedVehicles.length > 0) {
+      console.log(`Scraped ${scrapedVehicles.length} vehicles. Saving to database...`);
+      
+      // Clear existing inventory
+      await db.delete(vehicles);
+      
+      // Insert new inventory
+      await db.insert(vehicles).values(scrapedVehicles);
+      
+      console.log(`✓ Successfully scraped and saved ${scrapedVehicles.length} vehicles`);
+    } else {
+      console.log('⚠ No vehicles scraped');
+    }
     
-    console.log(`✓ Scraped and saved ${allVehicles.length} vehicles`);
-  } else {
-    console.log('⚠ No vehicles scraped - scraper needs site-specific configuration');
+    return scrapedVehicles.length;
+  } catch (error) {
+    console.error('✗ Scraping failed:', error);
+    throw error;
   }
-
-  return allVehicles.length;
 }
 
 export async function testBadgeDetection() {
@@ -171,7 +328,8 @@ export async function testBadgeDetection() {
     "One owner vehicle with clean history. No accidents reported.",
     "Certified pre-owned with low kilometers. Accident free!",
     "Clean title, single owner, excellent condition",
-    "Great price on this used vehicle"
+    "Manager Special | Low Km's | New Arrival",
+    "Great fuel economy on this used vehicle"
   ];
 
   console.log('\n=== Badge Detection Test ===');

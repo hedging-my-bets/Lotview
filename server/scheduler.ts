@@ -9,8 +9,8 @@ export function startInventoryScheduler() {
     return;
   }
 
-  // Run scraper every 24 hours at 2:00 AM
-  cron.schedule('0 2 * * *', async () => {
+  // Run scraper every 24 hours at midnight
+  cron.schedule('0 0 * * *', async () => {
     console.log('🕐 Running scheduled inventory sync...');
     try {
       const count = await scrapeAllDealerships();
@@ -21,7 +21,7 @@ export function startInventoryScheduler() {
   });
 
   schedulerInitialized = true;
-  console.log('✓ Inventory scheduler started (runs daily at 2:00 AM)');
+  console.log('✓ Inventory scheduler started (runs daily at midnight)');
 }
 
 // Manual trigger function for testing
