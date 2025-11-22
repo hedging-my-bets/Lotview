@@ -1,5 +1,4 @@
-import { drizzle } from "drizzle-orm/neon-http";
-import { neon } from "@neondatabase/serverless";
+import { db } from "./db";
 import { vehicles } from "@shared/schema";
 
 const MOCK_VEHICLES = [
@@ -118,17 +117,15 @@ const MOCK_VEHICLES = [
 ];
 
 async function seed() {
-  const connectionString = process.env.DATABASE_URL!;
-  const queryClient = neon(connectionString);
-  const db = drizzle(queryClient);
-
   console.log("Seeding database with inventory...");
   
-  for (const vehicle of MOCK_VEHICLES) {
-    await db.insert(vehicles).values(vehicle);
-  }
+  await db.insert(vehicles).values(MOCK_VEHICLES);
 
   console.log(`✓ Seeded ${MOCK_VEHICLES.length} vehicles`);
+  process.exit(0);
 }
 
-seed().catch(console.error);
+seed().catch((error) => {
+  console.error("Error seeding database:", error);
+  process.exit(1);
+});
