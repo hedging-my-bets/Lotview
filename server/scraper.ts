@@ -1,5 +1,5 @@
 import * as cheerio from 'cheerio';
-import { db } from './storage';
+import { db } from './db';
 import { vehicles } from '@shared/schema';
 import { sql } from 'drizzle-orm';
 
