@@ -1,30 +1,41 @@
 import { useState, useEffect } from "react";
 import { useRoute, useLocation } from "wouter";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Navbar } from "@/components/Navbar";
 import { ChatBot } from "@/components/ChatBot";
-import { MOCK_INVENTORY } from "@/lib/mockData";
+import { getVehicleById, trackVehicleView } from "@/lib/api";
 import { ArrowLeft, Calendar, CheckCircle2, MapPin, Gauge, Flame, Share2, Heart } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Loader2 } from "lucide-react";
 
 export default function VehicleDetail() {
   const [match, params] = useRoute("/vehicle/:id");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [viewCount, setViewCount] = useState(0);
+  const [sessionId] = useState(() => `session-${Date.now()}-${Math.random()}`);
 
-  const car = MOCK_INVENTORY.find(c => c.id === Number(params?.id));
+  const vehicleId = Number(params?.id);
+
+  const { data: car, isLoading } = useQuery({
+    queryKey: ["vehicle", vehicleId],
+    queryFn: () => getVehicleById(vehicleId),
+    enabled: !!vehicleId,
+  });
+
+  const trackViewMutation = useMutation({
+    mutationFn: () => trackVehicleView(vehicleId, sessionId),
+  });
 
   useEffect(() => {
     if (car) {
-      // Simulate view tracking
-      console.log(`Tracked view for vehicle ${car.id} for remarketing.`);
-      setViewCount(car.views + Math.floor(Math.random() * 10));
+      // Track view for remarketing after 2 seconds
+      const timer = setTimeout(() => {
+        trackViewMutation.mutate();
+        console.log(`Tracked view for vehicle ${car.id} for remarketing.`);
+      }, 2000);
+      return () => clearTimeout(timer);
     }
   }, [car]);
-
-  if (!car) return <div>Vehicle not found</div>;
-
-  const monthlyPayment = Math.floor((car.price * 1.05) / 84 * 1.07);
 
   const handleAction = (action: string) => {
     toast({
@@ -32,6 +43,29 @@ export default function VehicleDetail() {
       description: `We've received your request to ${action}. A representative will contact you shortly.`,
     });
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!car) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-slate-900 mb-4">Vehicle not found</h1>
+          <button onClick={() => setLocation("/")} className="text-primary hover:underline">
+            Back to Inventory
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const monthlyPayment = Math.floor((car.price * 1.05) / 84 * 1.07);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -108,8 +142,8 @@ export default function VehicleDetail() {
                  <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-orange-400 shadow-sm"><Flame className="w-5 h-5" /></div>
                   <div>
-                    <p className="text-xs text-slate-400 font-bold uppercase">Interest</p>
-                    <p className="font-bold text-slate-700">{viewCount} people viewing</p>
+                    <p className="text-xs text-slate-400 font-bold uppercase">Interest (24h)</p>
+                    <p className="font-bold text-slate-700">{car.views} views</p>
                   </div>
                 </div>
               </div>

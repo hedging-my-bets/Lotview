@@ -1,22 +1,54 @@
 import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Navbar } from "@/components/Navbar";
-import { Facebook, Layout, Video, Plus, Check, Copy } from "lucide-react";
+import { Facebook, Layout, Video, Plus, Check, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { MOCK_INVENTORY } from "@/lib/mockData";
+import { getFacebookPages, createFacebookPage, getVehicles } from "@/lib/api";
 
 export default function SalesDashboard() {
   const { toast } = useToast();
-  const [connectedPages, setConnectedPages] = useState<string[]>(["Olympic Hyundai Main"]);
+  const queryClient = useQueryClient();
   const [selectedTemplate, setSelectedTemplate] = useState("modern");
   
+  const { data: connectedPages = [], isLoading: pagesLoading } = useQuery({
+    queryKey: ["facebook-pages"],
+    queryFn: getFacebookPages,
+  });
+
+  const { data: vehicles = [] } = useQuery({
+    queryKey: ["vehicles"],
+    queryFn: getVehicles,
+  });
+
+  const createPageMutation = useMutation({
+    mutationFn: (pageName: string) => {
+      const pageId = `page-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+      return createFacebookPage(pageName, pageId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["facebook-pages"] });
+      toast({ title: "Page Connected", description: "Successfully connected new page" });
+    },
+  });
+  
   const handleConnect = () => {
-    const pages = ["Olympic Hyundai North", "Olympic Luxury", "Vancouver Trucks"];
-    const next = pages.find(p => !connectedPages.includes(p));
-    if (next) {
-      setConnectedPages([...connectedPages, next]);
-      toast({ title: "Page Connected", description: `Successfully connected ${next}` });
-    } else {
+    if (connectedPages.length >= 4) {
       toast({ title: "Limit Reached", description: "You can only connect up to 4 pages.", variant: "destructive" });
+      return;
+    }
+
+    const availablePages = [
+      "Olympic Hyundai North",
+      "Olympic Luxury",
+      "Vancouver Trucks",
+      "Burnaby Auto Sales"
+    ];
+    
+    const existingNames = connectedPages.map(p => p.pageName);
+    const nextPage = availablePages.find(p => !existingNames.includes(p));
+    
+    if (nextPage) {
+      createPageMutation.mutate(nextPage);
     }
   };
 
@@ -43,22 +75,33 @@ export default function SalesDashboard() {
             <h2 className="font-bold text-lg flex items-center gap-2">
               <Facebook className="w-5 h-5 text-blue-600" /> Connected Pages
             </h2>
-            <div className="space-y-3">
-              {connectedPages.map(page => (
-                <div key={page} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">f</div>
-                    <span className="font-medium text-sm">{page}</span>
+            {pagesLoading ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {connectedPages.map(page => (
+                  <div key={page.id} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">f</div>
+                      <span className="font-medium text-sm">{page.pageName}</span>
+                    </div>
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                   </div>
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                </div>
-              ))}
-              {connectedPages.length < 4 && (
-                <button onClick={handleConnect} className="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 font-bold text-sm hover:border-primary hover:text-primary transition flex items-center justify-center gap-2">
-                  <Plus className="w-4 h-4" /> Connect Page
-                </button>
-              )}
-            </div>
+                ))}
+                {connectedPages.length < 4 && (
+                  <button 
+                    onClick={handleConnect} 
+                    disabled={createPageMutation.isPending}
+                    className="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 font-bold text-sm hover:border-primary hover:text-primary transition flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {createPageMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                    {createPageMutation.isPending ? "Connecting..." : "Connect Page"}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Content Automation */}
@@ -90,7 +133,7 @@ export default function SalesDashboard() {
               <div>
                  <label className="text-xs font-bold text-slate-400 uppercase mb-3 block">Priority Inventory</label>
                  <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
-                    {MOCK_INVENTORY.slice(0, 4).map(car => (
+                    {vehicles.slice(0, 4).map((car, index) => (
                       <div key={car.id} className="flex items-center gap-3 p-2 bg-white rounded-lg border border-slate-100">
                         <img src={car.image} className="w-12 h-12 rounded-lg object-cover" />
                         <div className="flex-1 min-w-0">
@@ -98,7 +141,7 @@ export default function SalesDashboard() {
                           <p className="text-xs text-slate-500">${car.price.toLocaleString()}</p>
                         </div>
                         <div className="flex gap-1">
-                          <div className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">1</div>
+                          <div className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">{index + 1}</div>
                         </div>
                       </div>
                     ))}

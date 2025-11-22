@@ -1,11 +1,12 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Navbar } from "@/components/Navbar";
 import { InventorySidebar } from "@/components/InventorySidebar";
 import { VehicleCard } from "@/components/VehicleCard";
 import { ChatBot } from "@/components/ChatBot";
-import { MOCK_INVENTORY } from "@/lib/mockData";
+import { getVehicles } from "@/lib/api";
 import { FilterState } from "@/lib/types";
-import { Radio, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Inventory() {
@@ -16,9 +17,13 @@ export default function Inventory() {
     location: 'all',
     search: ''
   });
-  const [isUpdating, setIsUpdating] = useState(false);
 
-  const filteredInventory = MOCK_INVENTORY.filter(car => {
+  const { data: vehicles = [], isLoading, refetch, isFetching } = useQuery({
+    queryKey: ["vehicles"],
+    queryFn: getVehicles,
+  });
+
+  const filteredInventory = vehicles.filter(car => {
     const matchesType = filters.type === 'all' || car.type === filters.type;
     const matchesPrice = car.price <= filters.priceMax;
     const matchesLocation = filters.location === 'all' || car.location === filters.location;
@@ -26,12 +31,10 @@ export default function Inventory() {
   });
 
   const handleRefresh = () => {
-    setIsUpdating(true);
     toast({ title: "Checking for updates...", description: "Syncing with dealer networks." });
-    setTimeout(() => {
-      setIsUpdating(false);
+    refetch().then(() => {
       toast({ title: "Inventory Updated", description: "Inventory is up to date." });
-    }, 2000);
+    });
   };
 
   return (
@@ -49,14 +52,19 @@ export default function Inventory() {
               </h2>
               <button 
                 onClick={handleRefresh}
-                className="text-xs font-bold text-green-600 bg-green-100 px-3 py-1 rounded-full hover:bg-green-200 transition flex items-center gap-2"
+                disabled={isFetching}
+                className="text-xs font-bold text-green-600 bg-green-100 px-3 py-1 rounded-full hover:bg-green-200 transition flex items-center gap-2 disabled:opacity-50"
               >
-                {isUpdating ? <Loader2 className="w-3 h-3 animate-spin" /> : <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span></span>}
-                {isUpdating ? "Updating..." : "Live Updates"}
+                {isFetching ? <Loader2 className="w-3 h-3 animate-spin" /> : <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span></span>}
+                {isFetching ? "Updating..." : "Live Updates"}
               </button>
             </div>
 
-            {filteredInventory.length === 0 ? (
+            {isLoading ? (
+              <div className="flex justify-center items-center py-20">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              </div>
+            ) : filteredInventory.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-slate-400">
                 <p>No vehicles match your criteria.</p>
                 <button onClick={() => setFilters({ type: 'all', priceMax: 100000, location: 'all', search: '' })} className="text-primary font-bold mt-2 hover:underline">Clear Filters</button>

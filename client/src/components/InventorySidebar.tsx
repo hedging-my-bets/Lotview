@@ -1,6 +1,8 @@
 import { FilterState } from "@/lib/types";
-import { LOCATIONS, BODY_STYLES } from "@/lib/mockData";
 import { SlidersHorizontal, MapPin, CarFront, DollarSign, Check } from "lucide-react";
+
+const LOCATIONS = ["Vancouver", "Burnaby", "Richmond"];
+const BODY_STYLES = ["SUV", "Truck", "Sedan", "Coupe", "Hatchback"];
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
 
