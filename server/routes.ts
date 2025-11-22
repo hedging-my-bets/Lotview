@@ -10,11 +10,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // ===== VEHICLE ROUTES =====
   
-  // Get all vehicles
+  // Get all vehicles with 24h view counts
   app.get("/api/vehicles", async (req, res) => {
     try {
       const vehicles = await storage.getVehicles();
-      res.json(vehicles);
+      const viewsMap = await storage.getAllVehicleViews(24);
+      
+      // Add view counts to each vehicle
+      const vehiclesWithViews = vehicles.map(vehicle => ({
+        ...vehicle,
+        views: viewsMap.get(vehicle.id) || 0
+      }));
+      
+      res.json(vehiclesWithViews);
     } catch (error) {
       console.error("Error fetching vehicles:", error);
       res.status(500).json({ error: "Failed to fetch vehicles" });

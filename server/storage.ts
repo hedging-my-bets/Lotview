@@ -26,6 +26,7 @@ export interface IStorage {
   // View tracking
   trackVehicleView(view: InsertVehicleView): Promise<VehicleView>;
   getVehicleViews(vehicleId: number, hours?: number): Promise<number>;
+  getAllVehicleViews(hours?: number): Promise<Map<number, number>>;
   
   // Facebook pages
   getFacebookPages(): Promise<FacebookPage[]>;
@@ -81,6 +82,24 @@ export class DatabaseStorage implements IStorage {
         )
       );
     return Number(result[0]?.count || 0);
+  }
+  
+  async getAllVehicleViews(hours: number = 24): Promise<Map<number, number>> {
+    const cutoffTime = new Date(Date.now() - hours * 60 * 60 * 1000);
+    const result = await db
+      .select({
+        vehicleId: vehicleViews.vehicleId,
+        count: sql<number>`count(*)`
+      })
+      .from(vehicleViews)
+      .where(sql`${vehicleViews.viewedAt} >= ${cutoffTime}`)
+      .groupBy(vehicleViews.vehicleId);
+    
+    const viewsMap = new Map<number, number>();
+    result.forEach(row => {
+      viewsMap.set(row.vehicleId, Number(row.count));
+    });
+    return viewsMap;
   }
 
   // Facebook pages

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Car, FINANCE_TERMS, calculateMonthlyPayment, type FinanceTerm } from "@/lib/types";
 import { MapPin, Flame, Info, ChevronLeft, ChevronRight } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { usePayment } from "@/contexts/PaymentContext";
 
 interface VehicleCardProps {
@@ -10,6 +10,7 @@ interface VehicleCardProps {
 
 export function VehicleCard({ car }: VehicleCardProps) {
   const { downPayment, apr } = usePayment();
+  const [, setLocation] = useLocation();
   const [selectedTerm, setSelectedTerm] = useState<FinanceTerm>(84);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const monthlyPayment = calculateMonthlyPayment(car.price, selectedTerm, downPayment, apr);
@@ -81,6 +82,11 @@ export function VehicleCard({ car }: VehicleCardProps) {
 
           {/* Feature Badges - Top Right */}
           <div className="absolute top-3 right-3 flex flex-wrap gap-1 justify-end max-w-[60%]">
+            {car.dealRating && (
+              <span className="bg-green-500 text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg">
+                {car.dealRating}
+              </span>
+            )}
             {car.badges.map((badge, i) => (
               <span key={i} className="bg-white/90 backdrop-blur-sm text-[10px] font-bold px-2 py-1 rounded text-primary shadow-sm flex items-center gap-1">
                 <Flame className="w-3 h-3 text-orange-500" />
@@ -135,17 +141,39 @@ export function VehicleCard({ car }: VehicleCardProps) {
               <Info className="w-3 h-3" />
               {car.odometer.toLocaleString()} km
             </div>
-            {car.views !== undefined && (
+            {car.views !== undefined && car.views > 0 && (
               <div className="flex items-center gap-1 text-orange-500">
                 <Flame className="w-3 h-3" />
-                {car.views} views
+                {car.views} views (24h)
               </div>
             )}
           </div>
           
-          <button className="w-full mt-4 bg-primary text-white py-2 rounded-lg text-sm font-bold hover:bg-blue-900 transition">
-            Check Availability
-          </button>
+          {/* Dual CTA Buttons */}
+          <div className="grid grid-cols-2 gap-2 mt-4">
+            <button 
+              onClick={(e) => { 
+                e.preventDefault(); 
+                e.stopPropagation(); 
+                setLocation(`/vehicle/${car.id}?action=test-drive`);
+              }}
+              className="bg-primary text-white py-2 rounded-lg text-xs font-bold hover:bg-blue-900 transition"
+              data-testid={`button-test-drive-${car.id}`}
+            >
+              Book Test Drive
+            </button>
+            <button 
+              onClick={(e) => { 
+                e.preventDefault(); 
+                e.stopPropagation(); 
+                setLocation(`/vehicle/${car.id}?action=reserve`);
+              }}
+              className="bg-secondary text-white py-2 rounded-lg text-xs font-bold hover:bg-cyan-600 transition"
+              data-testid={`button-reserve-${car.id}`}
+            >
+              Reserve Vehicle
+            </button>
+          </div>
         </div>
       </div>
     </Link>
