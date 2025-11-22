@@ -4,6 +4,7 @@ import { Navbar } from "@/components/Navbar";
 import { InventorySidebar } from "@/components/InventorySidebar";
 import { VehicleCard } from "@/components/VehicleCard";
 import { ChatBot } from "@/components/ChatBot";
+import { StickyPaymentBar } from "@/components/StickyPaymentBar";
 import { getVehicles } from "@/lib/api";
 import { FilterState } from "@/lib/types";
 import { Loader2, LogIn } from "lucide-react";
@@ -46,6 +47,7 @@ export default function Inventory() {
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar />
+      <StickyPaymentBar />
       
       <div className="pt-28 pb-20 px-4 max-w-7xl mx-auto">
         <div className="flex flex-col lg:flex-row gap-8">

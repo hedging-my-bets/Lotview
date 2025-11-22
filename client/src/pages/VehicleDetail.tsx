@@ -85,7 +85,7 @@ export default function VehicleDetail() {
           {/* Left Column: Images */}
           <div className="space-y-4">
             <div className="aspect-[4/3] rounded-2xl overflow-hidden shadow-lg relative group">
-              <img src={car.image} alt={car.model} className="w-full h-full object-cover" />
+              <img src={car.images[0] || '/placeholder-car.jpg'} alt={car.model} className="w-full h-full object-cover" />
               
               {/* Dealership Badge */}
               <div className="absolute top-4 left-4">
@@ -105,9 +105,9 @@ export default function VehicleDetail() {
               </div>
             </div>
             <div className="grid grid-cols-3 gap-4">
-              {[1,2,3].map(i => (
+              {car.images.slice(1, 4).map((img, i) => (
                 <div key={i} className="aspect-[4/3] rounded-xl overflow-hidden shadow-sm opacity-70 hover:opacity-100 cursor-pointer transition">
-                   <img src={car.image} alt="Gallery" className="w-full h-full object-cover" />
+                   <img src={img} alt={`Gallery ${i + 1}`} className="w-full h-full object-cover" />
                 </div>
               ))}
             </div>
