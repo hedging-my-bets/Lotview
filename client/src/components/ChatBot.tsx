@@ -4,25 +4,50 @@ import { X, MessageSquare } from "lucide-react";
 
 interface ChatBotProps {
   vehicleName?: string;
+  action?: string | null;
 }
 
-export function ChatBot({ vehicleName }: ChatBotProps) {
+export function ChatBot({ vehicleName, action }: ChatBotProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [hasOpened, setHasOpened] = useState(false);
 
+  // Open immediately if action is provided
   useEffect(() => {
-    if (vehicleName && !hasOpened) {
+    if (action && !hasOpened) {
+      setIsOpen(true);
+      setHasOpened(true);
+    }
+  }, [action, hasOpened]);
+
+  // Auto-open after 10 seconds if no action
+  useEffect(() => {
+    if (vehicleName && !hasOpened && !action) {
       const timer = setTimeout(() => {
         setIsOpen(true);
         setHasOpened(true);
       }, 10000); // 10 seconds
       return () => clearTimeout(timer);
     }
-  }, [vehicleName, hasOpened]);
+  }, [vehicleName, hasOpened, action]);
 
-  const message = vehicleName 
-    ? `Hi there! I see you're looking at the ${vehicleName}. It's a great choice! Would you like to see the CarFax report or schedule a test drive?`
-    : "Welcome to Olympic Auto Group! Can I help you find your dream car today?";
+  // Generate message based on action
+  const getMessage = () => {
+    if (!vehicleName) {
+      return "Welcome to Olympic Auto Group! Can I help you find your dream car today?";
+    }
+
+    if (action === 'test-drive') {
+      return `Perfect! You want to book a test drive for the ${vehicleName}. I can help you schedule that right away. What day works best for you this week?`;
+    }
+    
+    if (action === 'reserve') {
+      return `Great choice! You're interested in reserving the ${vehicleName}. To secure this vehicle, I'll need a few quick details. Would you like to proceed with a $500 refundable deposit?`;
+    }
+
+    return `Hi there! I see you're looking at the ${vehicleName}. It's a great choice! Would you like to see the CarFax report or schedule a test drive?`;
+  };
+
+  const message = getMessage();
 
   return (
     <div className="fixed bottom-24 right-4 md:right-8 z-40 w-80 pointer-events-none">

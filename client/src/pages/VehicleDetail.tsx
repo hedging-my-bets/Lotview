@@ -5,18 +5,24 @@ import { Navbar } from "@/components/Navbar";
 import { ChatBot } from "@/components/ChatBot";
 import { getVehicleById, trackVehicleView } from "@/lib/api";
 import { FINANCE_TERMS, calculateMonthlyPayment, type FinanceTerm } from "@/lib/types";
-import { ArrowLeft, Calendar, CheckCircle2, MapPin, Gauge, Flame, Share2, Heart } from "lucide-react";
+import { ArrowLeft, Calendar, CheckCircle2, MapPin, Gauge, Flame, Share2, Heart, ChevronLeft, ChevronRight, DollarSign, Car } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import { usePayment } from "@/contexts/PaymentContext";
 
 export default function VehicleDetail() {
   const [match, params] = useRoute("/vehicle/:id");
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { toast } = useToast();
+  const { downPayment, apr } = usePayment();
   const [sessionId] = useState(() => `session-${Date.now()}-${Math.random()}`);
   const [selectedTerm, setSelectedTerm] = useState<FinanceTerm>(84);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   const vehicleId = Number(params?.id);
+  
+  // Read action from query parameter - reactive to location changes
+  const action = new URLSearchParams(location.split('?')[1]).get('action');
 
   const { data: car, isLoading } = useQuery({
     queryKey: ["vehicle", vehicleId],
@@ -67,7 +73,19 @@ export default function VehicleDetail() {
     );
   }
 
-  const monthlyPayment = calculateMonthlyPayment(car.price, selectedTerm);
+  const monthlyPayment = calculateMonthlyPayment(car.price, selectedTerm, downPayment, apr);
+
+  const nextImage = () => {
+    if (car && car.images.length > 0) {
+      setCurrentImageIndex((prev) => (prev + 1) % car.images.length);
+    }
+  };
+
+  const prevImage = () => {
+    if (car && car.images.length > 0) {
+      setCurrentImageIndex((prev) => (prev - 1 + car.images.length) % car.images.length);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -82,10 +100,15 @@ export default function VehicleDetail() {
         </button>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Left Column: Images */}
+          {/* Left Column: Full Carousel */}
           <div className="space-y-4">
+            {/* Main Carousel */}
             <div className="aspect-[4/3] rounded-2xl overflow-hidden shadow-lg relative group">
-              <img src={car.images[0] || '/placeholder-car.jpg'} alt={car.model} className="w-full h-full object-cover" />
+              <img 
+                src={car.images[currentImageIndex] || '/placeholder-car.jpg'} 
+                alt={`${car.model} - Image ${currentImageIndex + 1}`} 
+                className="w-full h-full object-cover transition-all duration-300" 
+              />
               
               {/* Dealership Badge */}
               <div className="absolute top-4 left-4">
@@ -95,6 +118,15 @@ export default function VehicleDetail() {
                 </span>
               </div>
 
+              {/* CarGurus Deal Rating Badge */}
+              {car.dealRating && (
+                <div className="absolute top-4 left-4 mt-12">
+                  <span className="bg-green-500 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-lg">
+                    {car.dealRating}
+                  </span>
+                </div>
+              )}
+
               <div className="absolute top-4 right-4 flex gap-2">
                 <button className="p-2 bg-white/90 backdrop-blur rounded-full text-slate-600 hover:text-red-500 transition shadow-sm">
                   <Heart className="w-5 h-5" />
@@ -103,12 +135,57 @@ export default function VehicleDetail() {
                   <Share2 className="w-5 h-5" />
                 </button>
               </div>
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              {car.images.slice(1, 4).map((img, i) => (
-                <div key={i} className="aspect-[4/3] rounded-xl overflow-hidden shadow-sm opacity-70 hover:opacity-100 cursor-pointer transition">
-                   <img src={img} alt={`Gallery ${i + 1}`} className="w-full h-full object-cover" />
+
+              {/* Carousel Navigation */}
+              {car.images.length > 1 && (
+                <>
+                  <button
+                    onClick={prevImage}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-slate-900 opacity-0 group-hover:opacity-100 transition shadow-lg hover:scale-110"
+                    data-testid="button-prev-image"
+                  >
+                    <ChevronLeft className="w-6 h-6" />
+                  </button>
+                  <button
+                    onClick={nextImage}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-slate-900 opacity-0 group-hover:opacity-100 transition shadow-lg hover:scale-110"
+                    data-testid="button-next-image"
+                  >
+                    <ChevronRight className="w-6 h-6" />
+                  </button>
+                </>
+              )}
+
+              {/* Image Indicators */}
+              {car.images.length > 1 && (
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5">
+                  {car.images.map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setCurrentImageIndex(i)}
+                      className={`h-1.5 rounded-full transition-all ${
+                        i === currentImageIndex ? 'w-6 bg-white' : 'w-1.5 bg-white/50'
+                      }`}
+                      data-testid={`indicator-image-${i}`}
+                    />
+                  ))}
                 </div>
+              )}
+            </div>
+
+            {/* Thumbnail Grid */}
+            <div className="grid grid-cols-5 gap-2">
+              {car.images.slice(0, 5).map((img, i) => (
+                <button
+                  key={i}
+                  onClick={() => setCurrentImageIndex(i)}
+                  className={`aspect-[4/3] rounded-lg overflow-hidden shadow-sm cursor-pointer transition-all ${
+                    i === currentImageIndex ? 'ring-2 ring-primary opacity-100' : 'opacity-60 hover:opacity-100'
+                  }`}
+                  data-testid={`thumbnail-${i}`}
+                >
+                  <img src={img} alt={`Thumbnail ${i + 1}`} className="w-full h-full object-cover" />
+                </button>
               ))}
             </div>
           </div>
@@ -165,7 +242,9 @@ export default function VehicleDetail() {
                   <p className="font-bold text-slate-900">Estimated Finance</p>
                   <p className="text-2xl font-black text-primary">${monthlyPayment}<span className="text-sm text-slate-500 font-medium">/mo</span></p>
                 </div>
-                <p className="text-xs text-slate-500 mb-4">Based on 6.99% APR. $0 down. Taxes and fees extra.</p>
+                <p className="text-xs text-slate-500 mb-4">
+                  Based on {apr}% APR, ${downPayment.toLocaleString()} down. Taxes and fees extra.
+                </p>
                 
                 {/* Term Selector */}
                 <div className="space-y-2">
@@ -188,12 +267,39 @@ export default function VehicleDetail() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <button onClick={() => handleAction("Get Pre-Approved")} className="btn-primary w-full bg-secondary hover:bg-secondary/90 text-white py-4 rounded-xl font-bold text-lg shadow-lg shadow-cyan-500/20 transition flex items-center justify-center gap-2">
+              {/* Primary CTAs */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <button 
+                  onClick={() => handleAction("Get Pre-Approved")} 
+                  className="w-full bg-secondary hover:bg-secondary/90 text-white py-4 rounded-xl font-bold text-base shadow-lg shadow-cyan-500/20 transition flex items-center justify-center gap-2"
+                  data-testid="button-get-approved"
+                >
                   <CheckCircle2 className="w-5 h-5" /> Get Pre-Approved
                 </button>
-                <button onClick={() => handleAction("Book Test Drive")} className="btn-secondary w-full bg-white border-2 border-slate-200 hover:border-primary text-slate-700 hover:text-primary py-4 rounded-xl font-bold text-lg transition flex items-center justify-center gap-2">
+                <button 
+                  onClick={() => handleAction("Book Test Drive")} 
+                  className="w-full bg-primary hover:bg-blue-900 text-white py-4 rounded-xl font-bold text-base shadow-lg transition flex items-center justify-center gap-2"
+                  data-testid="button-book-test-drive"
+                >
                   <Calendar className="w-5 h-5" /> Book Test Drive
+                </button>
+              </div>
+
+              {/* Secondary CTAs */}
+              <div className="grid grid-cols-2 gap-3">
+                <button 
+                  onClick={() => handleAction("Value Your Trade-in")} 
+                  className="w-full bg-white border-2 border-slate-200 hover:border-primary text-slate-700 hover:text-primary py-3 rounded-lg font-bold text-sm transition flex items-center justify-center gap-2"
+                  data-testid="button-value-trade"
+                >
+                  <DollarSign className="w-4 h-4" /> Value Trade-in
+                </button>
+                <button 
+                  onClick={() => handleAction("Reserve Vehicle")} 
+                  className="w-full bg-white border-2 border-slate-200 hover:border-secondary text-slate-700 hover:text-secondary py-3 rounded-lg font-bold text-sm transition flex items-center justify-center gap-2"
+                  data-testid="button-reserve-vehicle"
+                >
+                  <Car className="w-4 h-4" /> Reserve Now
                 </button>
               </div>
             </div>
@@ -206,7 +312,7 @@ export default function VehicleDetail() {
         </div>
       </div>
 
-      <ChatBot vehicleName={`${car.year} ${car.make} ${car.model}`} />
+      <ChatBot vehicleName={`${car.year} ${car.make} ${car.model}`} action={action} />
     </div>
   );
 }
