@@ -5,6 +5,7 @@ import path from "node:path";
 import express, { type Express, type Request } from "express";
 
 import runApp from "./app";
+import { startInventoryScheduler } from "./scheduler";
 
 export async function serveStatic(app: Express, server: Server) {
   const distPath = path.resolve(import.meta.dirname, "public");
@@ -24,5 +25,8 @@ export async function serveStatic(app: Express, server: Server) {
 }
 
 (async () => {
+  // Start the inventory scheduler
+  startInventoryScheduler();
+  
   await runApp(serveStatic);
 })();

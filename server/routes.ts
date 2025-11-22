@@ -3,6 +3,8 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertVehicleSchema, insertVehicleViewSchema, insertFacebookPageSchema } from "@shared/schema";
 import { fromZodError } from "zod-validation-error";
+import { triggerManualSync } from "./scheduler";
+import { testBadgeDetection } from "./scraper";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
@@ -96,7 +98,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/vehicles/:id/view", async (req, res) => {
     try {
       const vehicleId = parseInt(req.params.id);
-      const sessionId = req.body.sessionId || req.sessionID || `session-${Date.now()}`;
+      const sessionId = req.body.sessionId || `session-${Date.now()}`;
 
       const view = await storage.trackVehicleView({
         vehicleId,
@@ -197,6 +199,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error setting priorities:", error);
       res.status(500).json({ error: "Failed to set priorities" });
+    }
+  });
+
+  // ===== SCRAPER ROUTES =====
+  
+  // Manual trigger for inventory sync
+  app.post("/api/scraper/sync", async (req, res) => {
+    try {
+      const result = await triggerManualSync();
+      res.json(result);
+    } catch (error) {
+      console.error("Error triggering sync:", error);
+      res.status(500).json({ error: "Failed to trigger sync" });
+    }
+  });
+
+  // Test badge detection
+  app.get("/api/scraper/test-badges", async (req, res) => {
+    try {
+      await testBadgeDetection();
+      res.json({ message: "Check console for badge detection test results" });
+    } catch (error) {
+      console.error("Error testing badges:", error);
+      res.status(500).json({ error: "Failed to test badges" });
     }
   });
 

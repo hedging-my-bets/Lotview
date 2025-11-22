@@ -18,7 +18,7 @@ import { eq, desc, sql, and } from "drizzle-orm";
 
 const connectionString = process.env.DATABASE_URL!;
 const queryClient = neon(connectionString);
-const db = drizzle(queryClient);
+export const db = drizzle(queryClient);
 
 export interface IStorage {
   // Vehicle operations
