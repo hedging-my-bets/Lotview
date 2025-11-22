@@ -12,11 +12,13 @@ export const vehicles = pgTable("vehicles", {
   type: text("type").notNull(), // SUV, Truck, Sedan, etc.
   price: integer("price").notNull(),
   odometer: integer("odometer").notNull(),
-  image: text("image").notNull(),
+  images: text("images").array().notNull(), // Multiple images from detail page
   badges: text("badges").array().notNull(),
-  location: text("location").notNull(), // Vancouver, Burnaby, Richmond
+  location: text("location").notNull(), // Vancouver, Burnaby
   dealership: text("dealership").notNull(), // Boundary Hyundai Vancouver, Olympic Hyundai Vancouver, Kia Vancouver
   description: text("description").notNull(),
+  vin: text("vin"), // VIN number
+  stockNumber: text("stock_number"), // Stock # from dealership
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

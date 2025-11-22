@@ -11,11 +11,13 @@ interface ScrapedVehicle {
   type: string;
   price: number;
   odometer: number;
-  image: string;
+  images: string[];
   badges: string[];
   location: string;
   dealership: string;
   description: string;
+  vin?: string;
+  stockNumber?: string;
 }
 
 const INVENTORY_URL = 'https://www.olympicautogroup.ca/vehicles/used/?st=year,desc&view=grid&sc=used&fn=Boundary%20Hyundai,Olympic%20Hyundai%20Vancouver,Kia%20Vancouver';
@@ -238,12 +240,15 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
           bodyStyle = bodyStyleMatch[1].trim();
         }
         
-        // Extract image
+        // Extract primary image
         const img = card.querySelector('img');
-        let image = 'https://via.placeholder.com/400x300?text=No+Image';
+        let primaryImage = 'https://via.placeholder.com/400x300?text=No+Image';
         if (img) {
-          image = img.src || img.getAttribute('data-src') || img.getAttribute('data-lazy-src') || image;
+          primaryImage = img.src || img.getAttribute('data-src') || img.getAttribute('data-lazy-src') || primaryImage;
         }
+        
+        // Get the detail page URL
+        const detailUrl = href.startsWith('http') ? href : `https://www.olympicautogroup.ca${href}`;
         
         vehicleData.push({
           year,
@@ -253,7 +258,8 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
           bodyStyle,
           price,
           odometer,
-          image,
+          primaryImage,
+          detailUrl,
           location,
           dealership,
           cardText: cardText.substring(0, 500), // For badge detection
@@ -265,28 +271,161 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
     });
     
     console.log(`Extracted ${vehicles.length} vehicles from page`);
+    console.log('Fetching detailed information for each vehicle...');
     
-    // Process the data
-    const scrapedVehicles: ScrapedVehicle[] = vehicles.map((v: any) => {
-      const badges = detectBadges(v.cardText + ' ' + v.heading);
-      const type = determineBodyType(v.bodyStyle);
-      const description = `${v.year} ${v.make} ${v.model} ${v.trim}`.trim();
+    // Process each vehicle and fetch detail page
+    const scrapedVehicles: ScrapedVehicle[] = [];
+    
+    for (let i = 0; i < vehicles.length; i++) {
+      const v = vehicles[i];
+      console.log(`[${i + 1}/${vehicles.length}] Processing ${v.year} ${v.make} ${v.model}...`);
       
-      return {
-        year: v.year,
-        make: v.make,
-        model: v.model,
-        trim: v.trim,
-        type,
-        price: v.price,
-        odometer: v.odometer,
-        image: v.image,
-        badges,
-        location: v.location,
-        dealership: v.dealership,
-        description
-      };
-    });
+      try {
+        // Navigate to detail page
+        await page.goto(v.detailUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+        
+        // Wait for the gallery and spec data to load
+        try {
+          await page.waitForSelector('[data-gallery]', { timeout: 10000 });
+        } catch (e) {
+          console.log('  No data-gallery found, will use fallback');
+        }
+        
+        // Extract detailed information
+        const detailData = await page.evaluate(() => {
+          // Extract all images from data-gallery JSON
+          const images: string[] = [];
+          const galleryEl = document.querySelector('[data-gallery]');
+          if (galleryEl) {
+            try {
+              const galleryData = JSON.parse(galleryEl.getAttribute('data-gallery') || '[]');
+              if (Array.isArray(galleryData)) {
+                galleryData.forEach((item: any) => {
+                  if (item.url || item.src) {
+                    const url = item.url || item.src;
+                    // Get high-res version
+                    const highResUrl = url.replace('-420x315', '-1024x786').replace('-300x225', '-1024x786');
+                    if (highResUrl && !images.includes(highResUrl)) {
+                      images.push(highResUrl);
+                    }
+                  }
+                });
+              }
+            } catch (e) {
+              console.error('Error parsing gallery JSON:', e);
+            }
+          }
+          
+          // Fallback to img tags if no gallery data
+          if (images.length === 0) {
+            const imgElements = document.querySelectorAll('img');
+            imgElements.forEach(img => {
+              const src = img.src || img.getAttribute('data-src') || '';
+              if (src.includes('photomanager') || src.includes('autotrader') || src.includes('photos')) {
+                const highResSrc = src.replace('-420x315', '-1024x786').replace('-300x225', '-1024x786');
+                if (highResSrc && !images.includes(highResSrc)) {
+                  images.push(highResSrc);
+                }
+              }
+            });
+          }
+          
+          // Extract description from h1
+          const h1 = document.querySelector('h1');
+          let description = h1?.textContent?.trim() || '';
+          
+          // Extract VIN from data-field attribute
+          let vin = '';
+          const vinEl = document.querySelector('[data-field="vin"]');
+          if (vinEl) {
+            vin = vinEl.textContent?.trim() || vinEl.getAttribute('data-value') || '';
+          }
+          // Fallback to regex if not found
+          if (!vin) {
+            const vinMatch = document.body.textContent?.match(/VIN[:\s]+([A-HJ-NPR-Z0-9]{17})/i);
+            if (vinMatch) vin = vinMatch[1];
+          }
+          
+          // Extract Stock # from data-field attribute
+          let stockNumber = '';
+          const stockEl = document.querySelector('[data-field="stock"]') || 
+                          document.querySelector('[data-field="stockNumber"]');
+          if (stockEl) {
+            stockNumber = stockEl.textContent?.trim() || stockEl.getAttribute('data-value') || '';
+          }
+          // Fallback to regex if not found
+          if (!stockNumber) {
+            const stockMatch = document.body.textContent?.match(/Stock\s*#?[:\s]+([A-Z0-9]+)/i);
+            if (stockMatch) stockNumber = stockMatch[1];
+          }
+          
+          // Extract body style from specs
+          let bodyStyle = '';
+          const bodyStyleElem = Array.from(document.querySelectorAll('li')).find(li => 
+            li.textContent?.includes('Body Style:')
+          );
+          if (bodyStyleElem) {
+            bodyStyle = bodyStyleElem.textContent.replace('Body Style:', '').trim();
+          }
+          
+          return {
+            images: images.slice(0, 10), // Limit to 10 images
+            description,
+            vin,
+            stockNumber,
+            bodyStyle
+          };
+        });
+        
+        const badges = detectBadges(v.cardText + ' ' + v.heading);
+        const type = determineBodyType(detailData.bodyStyle || v.bodyStyle);
+        const finalDescription = detailData.description || `${v.year} ${v.make} ${v.model} ${v.trim}`.trim();
+        
+        // Use detail images if available, otherwise fall back to primary image
+        const finalImages = detailData.images.length > 0 ? detailData.images : [v.primaryImage];
+        
+        scrapedVehicles.push({
+          year: v.year,
+          make: v.make,
+          model: v.model,
+          trim: v.trim,
+          type,
+          price: v.price,
+          odometer: v.odometer,
+          images: finalImages,
+          badges,
+          location: v.location,
+          dealership: v.dealership,
+          description: finalDescription,
+          vin: detailData.vin || undefined,
+          stockNumber: detailData.stockNumber || undefined
+        });
+        
+        // Small delay between requests
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+      } catch (error) {
+        console.error(`  Error fetching details for ${v.year} ${v.make} ${v.model}:`, error);
+        // Fallback to basic data
+        const badges = detectBadges(v.cardText + ' ' + v.heading);
+        const type = determineBodyType(v.bodyStyle);
+        
+        scrapedVehicles.push({
+          year: v.year,
+          make: v.make,
+          model: v.model,
+          trim: v.trim,
+          type,
+          price: v.price,
+          odometer: v.odometer,
+          images: [v.primaryImage],
+          badges,
+          location: v.location,
+          dealership: v.dealership,
+          description: `${v.year} ${v.make} ${v.model} ${v.trim}`.trim()
+        });
+      }
+    }
     
     return scrapedVehicles;
     
@@ -339,3 +478,4 @@ export async function testBadgeDetection() {
     console.log(`Detected badges: ${badges.join(', ') || 'None'}`);
   });
 }
+
