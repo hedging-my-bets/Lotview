@@ -3,13 +3,24 @@ import { AnimatePresence, motion } from "framer-motion";
 import { X, MessageSquare, Send, Loader2 } from "lucide-react";
 import { sendChatMessage, type ChatMessage } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { trackCTAClick, trackChatMessage, trackChatOpen } from "@/lib/tracking";
 
 interface ChatBotProps {
   vehicleName?: string;
   action?: string | null;
+  vehicle?: {
+    id: number;
+    make: string;
+    model: string;
+    year: number;
+    price: number;
+    vin?: string | null;
+    dealership: string;
+    type: string;
+  };
 }
 
-export function ChatBot({ vehicleName, action }: ChatBotProps) {
+export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [hasOpened, setHasOpened] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -40,6 +51,7 @@ export function ChatBot({ vehicleName, action }: ChatBotProps) {
     if (action && !hasOpened) {
       setIsOpen(true);
       setHasOpened(true);
+      trackChatOpen(vehicle, 'cta'); // Track chat opened from CTA
     }
   }, [action, hasOpened]);
 
@@ -49,6 +61,7 @@ export function ChatBot({ vehicleName, action }: ChatBotProps) {
       const timer = setTimeout(() => {
         setIsOpen(true);
         setHasOpened(true);
+        trackChatOpen(vehicle, 'auto'); // Track auto-opened chat
       }, 10000); // 10 seconds
       return () => clearTimeout(timer);
     }
@@ -104,6 +117,9 @@ export function ChatBot({ vehicleName, action }: ChatBotProps) {
       );
 
       setMessages(prev => [...prev, { role: "assistant", content: response }]);
+      
+      // Track chat message sent with vehicle context
+      trackChatMessage(vehicle, messages.length + 1);
     } catch (error) {
       console.error("Chat error:", error);
       toast({
@@ -203,7 +219,10 @@ export function ChatBot({ vehicleName, action }: ChatBotProps) {
         <motion.button
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
-          onClick={() => setIsOpen(true)}
+          onClick={() => {
+            setIsOpen(true);
+            trackChatOpen(vehicle, 'manual'); // Track manual chat open
+          }}
           className="pointer-events-auto absolute bottom-0 right-0 w-14 h-14 bg-primary rounded-full shadow-lg flex items-center justify-center text-white hover:bg-primary/90 transition-colors"
           data-testid="button-open-chat"
         >

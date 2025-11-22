@@ -9,6 +9,7 @@ import { ArrowLeft, Calendar, CheckCircle2, MapPin, Gauge, Flame, Share2, Heart,
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { usePayment } from "@/contexts/PaymentContext";
+import { trackVehicleView as trackGTMVehicleView, trackCTAClick, trackPaymentCalculation } from "@/lib/tracking";
 
 export default function VehicleDetail() {
   const [match, params] = useRoute("/vehicle/:id");
@@ -39,16 +40,32 @@ export default function VehicleDetail() {
       // Track view for remarketing after 2 seconds
       const timer = setTimeout(() => {
         trackViewMutation.mutate();
+        trackGTMVehicleView(car); // GTM tracking
         console.log(`Tracked view for vehicle ${car.id} for remarketing.`);
       }, 2000);
       return () => clearTimeout(timer);
     }
   }, [car]);
 
-  const handleAction = (action: string) => {
+  const handleAction = (actionType: string) => {
+    if (!car) return;
+    
+    // Map action text to tracking type
+    const ctaMap: Record<string, any> = {
+      'Get Pre-Approved': 'get_approved',
+      'Book Test Drive': 'test_drive',
+      'Value Your Trade-in': 'value_trade',
+      'Reserve Vehicle': 'reserve',
+    };
+    
+    const ctaType = ctaMap[actionType];
+    if (ctaType) {
+      trackCTAClick(ctaType, car);
+    }
+    
     toast({
       title: "Request Sent",
-      description: `We've received your request to ${action}. A representative will contact you shortly.`,
+      description: `We've received your request to ${actionType}. A representative will contact you shortly.`,
     });
   };
 
@@ -312,7 +329,20 @@ export default function VehicleDetail() {
         </div>
       </div>
 
-      <ChatBot vehicleName={`${car.year} ${car.make} ${car.model}`} action={action} />
+      <ChatBot 
+        vehicleName={`${car.year} ${car.make} ${car.model}`} 
+        action={action}
+        vehicle={{
+          id: car.id,
+          make: car.make,
+          model: car.model,
+          year: car.year,
+          price: car.price,
+          vin: car.vin,
+          dealership: car.dealership,
+          type: car.type
+        }}
+      />
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { Car, FINANCE_TERMS, calculateMonthlyPayment, type FinanceTerm } from "@
 import { MapPin, Flame, Info, ChevronLeft, ChevronRight } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { usePayment } from "@/contexts/PaymentContext";
+import { trackCTAClick } from "@/lib/tracking";
 
 interface VehicleCardProps {
   car: Car;
@@ -155,6 +156,7 @@ export function VehicleCard({ car }: VehicleCardProps) {
               onClick={(e) => { 
                 e.preventDefault(); 
                 e.stopPropagation(); 
+                trackCTAClick('test_drive', car);
                 setLocation(`/vehicle/${car.id}?action=test-drive`);
               }}
               className="bg-primary text-white py-2 rounded-lg text-xs font-bold hover:bg-blue-900 transition"
@@ -166,6 +168,7 @@ export function VehicleCard({ car }: VehicleCardProps) {
               onClick={(e) => { 
                 e.preventDefault(); 
                 e.stopPropagation(); 
+                trackCTAClick('reserve', car);
                 setLocation(`/vehicle/${car.id}?action=reserve`);
               }}
               className="bg-secondary text-white py-2 rounded-lg text-xs font-bold hover:bg-cyan-600 transition"
