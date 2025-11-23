@@ -83,3 +83,39 @@ export const insertPagePriorityVehicleSchema = createInsertSchema(pagePriorityVe
 
 export type InsertPagePriorityVehicle = z.infer<typeof insertPagePriorityVehicleSchema>;
 export type PagePriorityVehicle = typeof pagePriorityVehicles.$inferSelect;
+
+// GoHighLevel configuration
+export const ghlConfig = pgTable("ghl_config", {
+  id: serial("id").primaryKey(),
+  apiKey: text("api_key").notNull(), // GHL API access token
+  locationId: text("location_id").notNull(), // GHL location ID
+  isActive: boolean("is_active").notNull().default(true),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertGhlConfigSchema = createInsertSchema(ghlConfig).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type InsertGhlConfig = z.infer<typeof insertGhlConfigSchema>;
+export type GhlConfig = typeof ghlConfig.$inferSelect;
+
+// AI prompt templates for vehicle descriptions
+export const aiPromptTemplates = pgTable("ai_prompt_templates", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(), // e.g., "Vehicle Description", "Short Description"
+  promptText: text("prompt_text").notNull(), // The actual ChatGPT prompt
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertAiPromptTemplateSchema = createInsertSchema(aiPromptTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertAiPromptTemplate = z.infer<typeof insertAiPromptTemplateSchema>;
+export type AiPromptTemplate = typeof aiPromptTemplates.$inferSelect;

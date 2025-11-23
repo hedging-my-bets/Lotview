@@ -301,6 +301,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== GOHIGHLEVEL CTA ROUTES =====
+  
+  // Handle CTA action (send lead to GoHighLevel)
+  app.post("/api/cta/send", async (req, res) => {
+    try {
+      const { vehicleInfo, ctaType, contactInfo } = req.body;
+
+      if (!vehicleInfo || !ctaType) {
+        return res.status(400).json({ error: "vehicleInfo and ctaType are required" });
+      }
+
+      const validCTATypes = ['test-drive', 'reserve', 'get-approved', 'value-trade'];
+      if (!validCTATypes.includes(ctaType)) {
+        return res.status(400).json({ error: "Invalid CTA type" });
+      }
+
+      const { GHLClient } = await import("./ghl-client");
+      const client = await GHLClient.getInstance();
+
+      if (!client) {
+        return res.status(503).json({ 
+          error: "GoHighLevel integration not configured. Please configure in admin panel." 
+        });
+      }
+
+      const result = await client.handleCTAAction(vehicleInfo, ctaType, contactInfo);
+
+      if (!result.success) {
+        return res.status(500).json({ 
+          error: result.error || "Failed to send lead to GoHighLevel" 
+        });
+      }
+
+      res.json(result);
+    } catch (error) {
+      console.error("Error handling CTA action:", error);
+      res.status(500).json({ error: "Failed to process CTA action" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

@@ -3,7 +3,7 @@ import { useRoute, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Navbar } from "@/components/Navbar";
 import { ChatBot } from "@/components/ChatBot";
-import { getVehicleById, trackVehicleView } from "@/lib/api";
+import { getVehicleById, trackVehicleView, sendCTAToGHL } from "@/lib/api";
 import { FINANCE_TERMS, calculateMonthlyPayment, type FinanceTerm } from "@/lib/types";
 import { ArrowLeft, Calendar, CheckCircle2, MapPin, Gauge, Flame, Share2, Heart, ChevronLeft, ChevronRight, DollarSign, Car } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -49,34 +49,64 @@ export default function VehicleDetail() {
     }
   }, [car]);
 
-  const handleAction = (actionType: string) => {
+  const handleAction = async (actionType: string) => {
     if (!car) return;
     
-    // Map action text to tracking type and URL action param
-    const ctaMap: Record<string, { trackingType: string; action: string }> = {
+    // Map action text to tracking type and GHL action
+    const ctaMap: Record<string, { trackingType: string; ghlAction: 'test-drive' | 'reserve' | 'get-approved' | 'value-trade' }> = {
       'Get Pre-Approved': {
         trackingType: 'get_approved',
-        action: 'get-approved'
+        ghlAction: 'get-approved'
       },
       'Book Test Drive': {
         trackingType: 'test_drive',
-        action: 'test-drive'
+        ghlAction: 'test-drive'
       },
       'Value Your Trade-in': {
         trackingType: 'value_trade',
-        action: 'value-trade'
+        ghlAction: 'value-trade'
       },
       'Reserve Vehicle': {
         trackingType: 'reserve',
-        action: 'reserve'
+        ghlAction: 'reserve'
       },
     };
     
     const ctaData = ctaMap[actionType];
     if (ctaData) {
+      // Track CTA click in GTM
       trackCTAClick(ctaData.trackingType as any, car);
-      // Update URL with action parameter to trigger chat
-      setLocation(`/vehicle/${car.id}?action=${ctaData.action}`);
+      
+      // Send lead to GoHighLevel
+      toast({
+        title: "Sending your request...",
+        description: "We're processing your request.",
+      });
+
+      try {
+        const vehicleInfo = {
+          year: car.year,
+          make: car.make,
+          model: car.model,
+          price: car.price,
+          vin: car.vin,
+          dealership: car.dealership,
+        };
+
+        await sendCTAToGHL(vehicleInfo, ctaData.ghlAction);
+        
+        toast({
+          title: "Request sent!",
+          description: "A sales representative will contact you shortly.",
+        });
+      } catch (error) {
+        console.error("Error sending CTA to GHL:", error);
+        toast({
+          title: "Request received",
+          description: "We'll get back to you as soon as possible.",
+          variant: "default",
+        });
+      }
     }
   };
 

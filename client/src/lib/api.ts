@@ -81,3 +81,35 @@ export async function sendChatMessage(
   const data = await response.json();
   return data.message;
 }
+
+// GoHighLevel CTA API
+export async function sendCTAToGHL(
+  vehicleInfo: {
+    year: number;
+    make: string;
+    model: string;
+    price: number;
+    vin?: string | null;
+    dealership: string;
+  },
+  ctaType: 'test-drive' | 'reserve' | 'get-approved' | 'value-trade',
+  contactInfo?: {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    phone?: string;
+  }
+): Promise<{ success: boolean; contactId?: string; error?: string }> {
+  const response = await fetch("/api/cta/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ vehicleInfo, ctaType, contactInfo }),
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to send CTA to GoHighLevel");
+  }
+  
+  return response.json();
+}
