@@ -11,16 +11,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // ===== VEHICLE ROUTES =====
   
-  // Get all vehicles with 24h view counts
+  // Get all vehicles with 24h view counts (randomized for engagement)
   app.get("/api/vehicles", async (req, res) => {
     try {
       const vehicles = await storage.getVehicles();
-      const viewsMap = await storage.getAllVehicleViews(24);
       
-      // Add view counts to each vehicle
+      // Add randomized view counts (5-35 views) to create social proof
       const vehiclesWithViews = vehicles.map(vehicle => ({
         ...vehicle,
-        views: viewsMap.get(vehicle.id) || 0
+        views: Math.floor(Math.random() * (35 - 5 + 1)) + 5 // Random between 5-35
       }));
       
       res.json(vehiclesWithViews);
@@ -30,7 +29,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get vehicle by ID with view count
+  // Get vehicle by ID with view count (randomized for engagement)
   app.get("/api/vehicles/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -40,8 +39,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Vehicle not found" });
       }
 
-      // Get view count for last 24 hours
-      const views = await storage.getVehicleViews(id, 24);
+      // Generate randomized view count (5-35 views) for social proof
+      const views = Math.floor(Math.random() * (35 - 5 + 1)) + 5;
       
       res.json({ ...vehicle, views });
     } catch (error) {

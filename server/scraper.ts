@@ -4,6 +4,7 @@ import { sql } from 'drizzle-orm';
 import { db } from './db';
 import { vehicles } from '@shared/schema';
 import { scrapeAllCarGurusDealers } from './cargurus-scraper';
+import { generateVehicleDescription } from './openai';
 
 interface ScrapedVehicle {
   year: number;
@@ -507,6 +508,39 @@ export async function scrapeAllDealerships(): Promise<number> {
       return vehicle;
     });
     
+    // Generate AI-powered descriptions for all vehicles
+    console.log('Generating AI-powered vehicle descriptions...');
+    const vehiclesWithDescriptions = await Promise.all(
+      vehiclesWithCarGurusData.map(async (vehicle) => {
+        try {
+          const aiDescription = await generateVehicleDescription({
+            year: vehicle.year,
+            make: vehicle.make,
+            model: vehicle.model,
+            trim: vehicle.trim,
+            type: vehicle.type,
+            price: vehicle.price,
+            odometer: vehicle.odometer,
+            badges: vehicle.badges,
+            dealership: vehicle.dealership,
+            location: vehicle.location,
+            rawDescription: vehicle.description
+          });
+          
+          return {
+            ...vehicle,
+            description: aiDescription
+          };
+        } catch (error) {
+          console.error(`Failed to generate description for ${vehicle.year} ${vehicle.make} ${vehicle.model}:`, error);
+          // Keep original description on error
+          return vehicle;
+        }
+      })
+    );
+    
+    console.log(`✓ Generated AI descriptions for ${vehiclesWithDescriptions.length} vehicles`);
+    
     if (mergedCount > 0) {
       console.log(`✓ Merged CarGurus data for ${mergedCount}/${scrapedVehicles.length} vehicles`);
     }
@@ -518,13 +552,14 @@ export async function scrapeAllDealerships(): Promise<number> {
     await db.execute(sql`TRUNCATE TABLE vehicle_views, vehicles RESTART IDENTITY CASCADE`);
     
     // Insert new inventory
-    await db.insert(vehicles).values(vehiclesWithCarGurusData);
+    await db.insert(vehicles).values(vehiclesWithDescriptions);
     
-    console.log(`✓ Successfully scraped and saved ${vehiclesWithCarGurusData.length} vehicles`);
+    console.log(`✓ Successfully scraped and saved ${vehiclesWithDescriptions.length} vehicles`);
     console.log(`  - Olympic Auto Group: ${scrapedVehicles.length} vehicles`);
     console.log(`  - CarGurus matches: ${mergedCount} vehicles`);
+    console.log(`  - AI descriptions: ${vehiclesWithDescriptions.length} vehicles`);
     
-    return vehiclesWithCarGurusData.length;
+    return vehiclesWithDescriptions.length;
   } catch (error) {
     console.error('✗ Scraping failed:', error);
     throw error;

@@ -1,66 +1,110 @@
 import { usePayment, type CreditScore } from '@/contexts/PaymentContext';
 import { DollarSign, TrendingUp } from 'lucide-react';
+import { useState, useEffect } from 'react';
 
-const CREDIT_SCORE_OPTIONS: { value: CreditScore; label: string; description: string }[] = [
-  { value: 'excellent', label: 'Excellent', description: '720+' },
-  { value: 'good', label: 'Good', description: '680-719' },
-  { value: 'fair', label: 'Fair', description: '620-679' },
-  { value: 'poor', label: 'Poor', description: '<620' },
-];
+function getCreditScoreFromValue(score: number): CreditScore {
+  if (score >= 720) return 'excellent';
+  if (score >= 680) return 'good';
+  if (score >= 620) return 'fair';
+  return 'poor';
+}
+
+function getCreditLabel(score: number): string {
+  if (score >= 720) return 'Excellent';
+  if (score >= 680) return 'Good';
+  if (score >= 620) return 'Fair';
+  return 'Poor';
+}
+
+function getInitialScoreValue(category: CreditScore): number {
+  switch (category) {
+    case 'excellent': return 720;
+    case 'good': return 680;
+    case 'fair': return 620;
+    case 'poor': return 500;
+  }
+}
 
 export function StickyPaymentBar() {
   const { creditScore, setCreditScore, downPayment, setDownPayment, apr } = usePayment();
+  const [creditScoreValue, setCreditScoreValue] = useState(() => getInitialScoreValue(creditScore));
+
+  // Sync slider value with context on credit score category change
+  useEffect(() => {
+    const currentCategory = getCreditScoreFromValue(creditScoreValue);
+    if (currentCategory !== creditScore) {
+      setCreditScoreValue(getInitialScoreValue(creditScore));
+    }
+  }, [creditScore]);
+
+  const handleCreditScoreChange = (value: number) => {
+    setCreditScoreValue(value);
+    const category = getCreditScoreFromValue(value);
+    setCreditScore(category);
+  };
 
   return (
     <div className="sticky top-16 z-40 bg-gradient-to-r from-primary to-blue-700 text-white shadow-lg border-b border-blue-800">
       <div className="max-w-7xl mx-auto px-4 py-3">
-        <div className="flex flex-col md:flex-row items-center gap-4 md:gap-8">
+        <div className="flex flex-col md:flex-row items-center gap-4 md:gap-6">
           <div className="flex items-center gap-2">
             <TrendingUp className="w-5 h-5" />
             <span className="font-bold text-sm">Payment Calculator</span>
           </div>
 
-          {/* Credit Score Selector */}
-          <div className="flex items-center gap-3 flex-1">
-            <label className="text-xs font-medium whitespace-nowrap" htmlFor="credit-score">
-              Credit Score:
-            </label>
-            <select
+          {/* Credit Score Slider */}
+          <div className="flex-1 min-w-[200px]">
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-xs font-medium" htmlFor="credit-score">
+                Credit Score: {creditScoreValue}
+              </label>
+              <span className="text-xs font-bold bg-white/20 px-2 py-1 rounded">
+                {getCreditLabel(creditScoreValue)}
+              </span>
+            </div>
+            <input
               id="credit-score"
-              value={creditScore}
-              onChange={(e) => setCreditScore(e.target.value as CreditScore)}
-              className="bg-white/20 backdrop-blur border border-white/30 rounded-lg px-3 py-2 text-white text-sm font-bold focus:outline-none focus:ring-2 focus:ring-white/50 cursor-pointer min-w-[140px]"
-              data-testid="select-credit-score"
-            >
-              {CREDIT_SCORE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value} className="text-slate-900">
-                  {option.label} ({option.description})
-                </option>
-              ))}
-            </select>
-            <span className="text-xs font-medium bg-white/20 px-3 py-2 rounded-lg">
-              APR: {apr}%
-            </span>
+              type="range"
+              min="300"
+              max="850"
+              step="10"
+              value={creditScoreValue}
+              onChange={(e) => handleCreditScoreChange(parseInt(e.target.value))}
+              className="w-full h-2 bg-white/20 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-lg [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:shadow-lg"
+              data-testid="slider-credit-score"
+            />
+            <div className="flex justify-between text-xs opacity-60 mt-0.5">
+              <span>300</span>
+              <span>APR: {apr}%</span>
+              <span>850</span>
+            </div>
           </div>
 
-          {/* Down Payment Input */}
-          <div className="flex items-center gap-3">
-            <label className="text-xs font-medium whitespace-nowrap" htmlFor="down-payment">
-              Down Payment:
-            </label>
-            <div className="relative">
-              <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/70" />
-              <input
-                id="down-payment"
-                type="number"
-                min="0"
-                step="500"
-                value={downPayment}
-                onChange={(e) => setDownPayment(Math.max(0, parseInt(e.target.value) || 0))}
-                className="bg-white/20 backdrop-blur border border-white/30 rounded-lg pl-9 pr-3 py-2 text-white text-sm font-bold focus:outline-none focus:ring-2 focus:ring-white/50 w-32"
-                placeholder="0"
-                data-testid="input-down-payment"
-              />
+          {/* Down Payment Slider */}
+          <div className="min-w-[200px]">
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-xs font-medium" htmlFor="down-payment">
+                Down Payment
+              </label>
+              <span className="text-xs font-bold bg-white/20 px-2 py-1 rounded flex items-center gap-1">
+                <DollarSign className="w-3 h-3" />
+                {downPayment.toLocaleString()}
+              </span>
+            </div>
+            <input
+              id="down-payment"
+              type="range"
+              min="0"
+              max="50000"
+              step="500"
+              value={downPayment}
+              onChange={(e) => setDownPayment(parseInt(e.target.value))}
+              className="w-full h-2 bg-white/20 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-secondary [&::-webkit-slider-thumb]:shadow-lg [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-secondary [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:shadow-lg"
+              data-testid="slider-down-payment"
+            />
+            <div className="flex justify-between text-xs opacity-60 mt-0.5">
+              <span>$0</span>
+              <span>$50K</span>
             </div>
           </div>
 

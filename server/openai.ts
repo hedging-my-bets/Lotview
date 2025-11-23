@@ -59,3 +59,77 @@ export function getInitialChatMessage(action: string | null, vehicleName: string
       return `Hi there! I see you're looking at the ${vehicleName}. It's a great choice! Would you like to see the CarFax report or schedule a test drive?`;
   }
 }
+
+interface VehicleData {
+  year: number;
+  make: string;
+  model: string;
+  trim: string;
+  type: string;
+  price: number;
+  odometer: number;
+  badges: string[];
+  dealership: string;
+  location: string;
+  rawDescription?: string;
+}
+
+export async function generateVehicleDescription(vehicle: VehicleData): Promise<string> {
+  try {
+    const badgesText = vehicle.badges.length > 0 ? vehicle.badges.join(', ') : 'none';
+    
+    const prompt = `Create a compelling, professional vehicle description for a Canadian automotive dealership (Olympic Auto Group in Vancouver, BC).
+
+Vehicle Details:
+- ${vehicle.year} ${vehicle.make} ${vehicle.model} ${vehicle.trim}
+- Type: ${vehicle.type}
+- Price: $${vehicle.price.toLocaleString()} CAD
+- Odometer: ${vehicle.odometer.toLocaleString()} km
+- Badges/Features: ${badgesText}
+- Location: ${vehicle.dealership}, ${vehicle.location}
+${vehicle.rawDescription ? `\nOriginal listing info: ${vehicle.rawDescription}` : ''}
+
+Requirements:
+- Write 2-3 compelling paragraphs (150-200 words total)
+- Highlight key features, benefits, and value proposition
+- Use Canadian automotive market language and terminology
+- Emphasize quality, reliability, and value
+- Include emotional appeal and lifestyle benefits
+- Mention financing availability and dealership reputation
+- Use professional, enthusiastic tone
+- Focus on what makes THIS vehicle special
+- DO NOT use placeholder text or generic templates
+- DO NOT mention things not in the vehicle details
+
+Write the description now:`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-5",
+      messages: [
+        {
+          role: "system",
+          content: "You are an expert automotive copywriter specializing in Canadian car dealership marketing. Write compelling, specific vehicle descriptions that sell vehicles."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      max_completion_tokens: 400,
+      temperature: 0.8,
+    });
+
+    const description = response.choices[0]?.message?.content?.trim();
+    
+    if (!description || description.length < 50) {
+      // Fallback to basic description
+      return `This ${vehicle.year} ${vehicle.make} ${vehicle.model} ${vehicle.trim} is an exceptional ${vehicle.type.toLowerCase()} available at ${vehicle.dealership}. With ${vehicle.odometer.toLocaleString()} km on the odometer and priced at $${vehicle.price.toLocaleString()}, it represents outstanding value in today's market. ${vehicle.badges.length > 0 ? `Features include: ${vehicle.badges.join(', ')}.` : ''} Visit us in ${vehicle.location} to experience this vehicle firsthand and explore our flexible financing options.`;
+    }
+    
+    return description;
+  } catch (error) {
+    console.error("Error generating vehicle description:", error);
+    // Fallback description
+    return `This ${vehicle.year} ${vehicle.make} ${vehicle.model} ${vehicle.trim} is an exceptional ${vehicle.type.toLowerCase()} available at ${vehicle.dealership}. With ${vehicle.odometer.toLocaleString()} km on the odometer and priced at $${vehicle.price.toLocaleString()}, it represents outstanding value in today's market. ${vehicle.badges.length > 0 ? `Features include: ${vehicle.badges.join(', ')}.` : ''} Visit us in ${vehicle.location} to experience this vehicle firsthand and explore our flexible financing options.`;
+  }
+}
