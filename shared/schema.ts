@@ -102,6 +102,23 @@ export const insertGhlConfigSchema = createInsertSchema(ghlConfig).omit({
 export type InsertGhlConfig = z.infer<typeof insertGhlConfigSchema>;
 export type GhlConfig = typeof ghlConfig.$inferSelect;
 
+// GHL Webhook configuration for SMS handoff
+export const ghlWebhookConfig = pgTable("ghl_webhook_config", {
+  id: serial("id").primaryKey(),
+  webhookUrl: text("webhook_url").notNull(), // GHL inbound webhook URL
+  webhookName: text("webhook_name").notNull(), // Descriptive name
+  isActive: boolean("is_active").notNull().default(true),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertGhlWebhookConfigSchema = createInsertSchema(ghlWebhookConfig).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type InsertGhlWebhookConfig = z.infer<typeof insertGhlWebhookConfigSchema>;
+export type GhlWebhookConfig = typeof ghlWebhookConfig.$inferSelect;
+
 // AI prompt templates for vehicle descriptions
 export const aiPromptTemplates = pgTable("ai_prompt_templates", {
   id: serial("id").primaryKey(),
@@ -129,6 +146,10 @@ export const chatConversations = pgTable("chat_conversations", {
   vehicleName: text("vehicle_name"), // e.g., "2024 Toyota Camry"
   messages: text("messages").notNull(), // JSON string of message array
   sessionId: text("session_id").notNull(),
+  handoffRequested: boolean("handoff_requested").notNull().default(false), // User requested SMS handoff
+  handoffPhone: text("handoff_phone"), // Phone number for SMS handoff
+  handoffSent: boolean("handoff_sent").notNull().default(false), // Successfully sent to GHL
+  handoffSentAt: timestamp("handoff_sent_at"), // When handoff was sent
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
