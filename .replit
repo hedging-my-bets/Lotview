@@ -9,7 +9,6 @@ packages = ["chromium", "xorg.libxcb", "xorg.libX11", "glib", "nss", "nspr", "at
 [deployment]
 deploymentTarget = "autoscale"
 build = ["npm", "run", "build"]
-publicDir = "dist/public"
 run = ["npm", "run", "start"]
 
 [[ports]]
@@ -24,10 +23,6 @@ exposeLocalhost = true
 [[ports]]
 localPort = 36059
 externalPort = 3000
-
-[[ports]]
-localPort = 42523
-externalPort = 3002
 
 [env]
 PORT = "5000"
