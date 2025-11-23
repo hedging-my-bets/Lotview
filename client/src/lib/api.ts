@@ -88,13 +88,14 @@ export async function saveConversation(
   sessionId: string,
   vehicleId?: number,
   vehicleName?: string
-): Promise<void> {
+): Promise<{ id: number } | undefined> {
   const response = await fetch("/api/conversations", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ category, messages, sessionId, vehicleId, vehicleName }),
   });
   if (!response.ok) throw new Error("Failed to save conversation");
+  return response.json();
 }
 
 // GoHighLevel CTA API

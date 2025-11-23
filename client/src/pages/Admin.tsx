@@ -113,18 +113,22 @@ export default function Admin() {
           </div>
 
           <Tabs defaultValue="conversations" className="w-full">
-            <TabsList className="grid w-full grid-cols-3 mb-8">
+            <TabsList className="grid w-full grid-cols-4 mb-8">
               <TabsTrigger value="conversations" className="flex items-center gap-2" data-testid="tab-conversations">
                 <MessageSquare className="w-4 h-4" />
                 <span className="hidden sm:inline">Conversations</span>
               </TabsTrigger>
               <TabsTrigger value="prompts" className="flex items-center gap-2" data-testid="tab-prompts">
                 <Settings className="w-4 h-4" />
-                <span className="hidden sm:inline">Prompt Settings</span>
+                <span className="hidden sm:inline">Prompts</span>
               </TabsTrigger>
               <TabsTrigger value="insights" className="flex items-center gap-2" data-testid="tab-insights">
                 <Sparkles className="w-4 h-4" />
                 <span className="hidden sm:inline">AI Insights</span>
+              </TabsTrigger>
+              <TabsTrigger value="sms-config" className="flex items-center gap-2" data-testid="tab-sms-config">
+                <MessageSquare className="w-4 h-4" />
+                <span className="hidden sm:inline">SMS Config</span>
               </TabsTrigger>
             </TabsList>
 
@@ -138,6 +142,10 @@ export default function Admin() {
 
             <TabsContent value="insights">
               <InsightsTab />
+            </TabsContent>
+
+            <TabsContent value="sms-config">
+              <SMSConfigTab />
             </TabsContent>
           </Tabs>
         </div>
@@ -731,3 +739,173 @@ function InsightsTab() {
     </div>
   );
 }
+
+
+function SMSConfigTab() {
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookName, setWebhookName] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    fetchWebhookConfig();
+  }, []);
+
+  const fetchWebhookConfig = async () => {
+    try {
+      setIsLoading(true);
+      const token = sessionStorage.getItem("admin_token");
+      const response = await fetch("/api/admin/ghl-webhook-config", {
+        headers: {
+          "x-admin-token": token || "",
+        },
+      });
+      if (!response.ok) throw new Error("Failed to fetch webhook config");
+      const data = await response.json();
+      
+      if (data) {
+        setWebhookUrl(data.webhookUrl || "");
+        setWebhookName(data.webhookName || "");
+      }
+    } catch (error) {
+      console.error("Error fetching webhook config:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!webhookUrl || !webhookName) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      const token = sessionStorage.getItem("admin_token");
+      const response = await fetch("/api/admin/ghl-webhook-config", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "x-admin-token": token || "",
+        },
+        body: JSON.stringify({
+          webhookUrl,
+          webhookName,
+        }),
+      });
+
+      if (!response.ok) throw new Error("Failed to save webhook config");
+
+      toast({
+        title: "Success",
+        description: "GHL webhook configuration saved successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to save webhook configuration",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center">
+          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-slate-500">Loading configuration...</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>SMS Handoff Configuration</CardTitle>
+        <CardDescription>
+          Configure GoHighLevel webhook to enable SMS handoff for chatbot conversations
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <h4 className="font-semibold text-blue-900 mb-2">How SMS Handoff Works</h4>
+          <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+            <li>Customer chats with AI bot on your website</li>
+            <li>Bot offers to continue conversation via text message</li>
+            <li>Customer provides their phone number</li>
+            <li>Conversation summary is sent to GHL webhook</li>
+            <li>GHL chatbot continues the conversation via SMS</li>
+          </ol>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              Webhook Name
+            </label>
+            <Input
+              type="text"
+              placeholder="e.g., SMS Handoff - Olympic Auto"
+              value={webhookName}
+              onChange={(e) => setWebhookName(e.target.value)}
+              data-testid="input-webhook-name"
+            />
+            <p className="text-xs text-slate-500 mt-1">
+              Descriptive name for this webhook configuration
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              GoHighLevel Inbound Webhook URL
+            </label>
+            <Input
+              type="url"
+              placeholder="https://services.leadconnectorhq.com/hooks/..."
+              value={webhookUrl}
+              onChange={(e) => setWebhookUrl(e.target.value)}
+              data-testid="input-webhook-url"
+            />
+            <p className="text-xs text-slate-500 mt-1">
+              Create an inbound webhook in GHL and paste the URL here
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+          <h4 className="font-semibold text-slate-700 mb-2">Webhook Payload Format</h4>
+          <pre className="text-xs bg-white p-3 rounded border overflow-x-auto">
+{`{
+  "phone": "(555) 123-4567",
+  "conversationSummary": "Bot: Hi!\\n\\nCustomer: I want info...",
+  "category": "test-drive",
+  "vehicleInfo": { ... },
+  "timestamp": "2025-01-15T12:00:00Z",
+  "source": "olympic-auto-website"
+}`}
+          </pre>
+        </div>
+
+        <Button
+          onClick={handleSave}
+          disabled={isSaving || !webhookUrl || !webhookName}
+          className="w-full"
+          data-testid="button-save-webhook-config"
+        >
+          {isSaving ? "Saving..." : "Save Configuration"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+

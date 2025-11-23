@@ -572,7 +572,7 @@ Format your response in clear sections with actionable recommendations.`;
 
   // ===== SMS HANDOFF ROUTES =====
   
-  // Request SMS handoff (send conversation to GHL webhook)
+  // Request SMS handoff (send conversation to GHL webhook) - PUBLIC (user initiates)
   app.post("/api/chat/handoff", async (req, res) => {
     try {
       const { conversationId, phoneNumber, messages, vehicleInfo, category } = req.body;
