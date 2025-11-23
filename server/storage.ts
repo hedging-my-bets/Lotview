@@ -6,6 +6,9 @@ import {
   pagePriorityVehicles,
   ghlConfig,
   aiPromptTemplates,
+  chatConversations,
+  chatPrompts,
+  adminConfig,
   type Vehicle, 
   type InsertVehicle,
   type VehicleView,
@@ -17,7 +20,13 @@ import {
   type GhlConfig,
   type InsertGhlConfig,
   type AiPromptTemplate,
-  type InsertAiPromptTemplate
+  type InsertAiPromptTemplate,
+  type ChatConversation,
+  type InsertChatConversation,
+  type ChatPrompt,
+  type InsertChatPrompt,
+  type AdminConfig,
+  type InsertAdminConfig
 } from "@shared/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
 
@@ -48,6 +57,21 @@ export interface IStorage {
   
   // AI prompt templates
   saveAIPromptTemplate(template: InsertAiPromptTemplate): Promise<AiPromptTemplate>;
+  
+  // Chat conversations
+  saveChatConversation(conversation: InsertChatConversation): Promise<ChatConversation>;
+  getAllConversations(category?: string): Promise<ChatConversation[]>;
+  getConversationById(id: number): Promise<ChatConversation | undefined>;
+  
+  // Chat prompts
+  getChatPrompts(): Promise<ChatPrompt[]>;
+  getChatPromptByScenario(scenario: string): Promise<ChatPrompt | undefined>;
+  saveChatPrompt(prompt: InsertChatPrompt): Promise<ChatPrompt>;
+  updateChatPrompt(scenario: string, prompt: Partial<InsertChatPrompt>): Promise<ChatPrompt | undefined>;
+  
+  // Admin
+  getAdminConfig(): Promise<AdminConfig | undefined>;
+  setAdminPassword(passwordHash: string): Promise<AdminConfig>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -169,6 +193,58 @@ export class DatabaseStorage implements IStorage {
     
     // Insert new template
     const result = await db.insert(aiPromptTemplates).values(template).returning();
+    return result[0];
+  }
+
+  // Chat conversations
+  async saveChatConversation(conversation: InsertChatConversation): Promise<ChatConversation> {
+    const result = await db.insert(chatConversations).values(conversation).returning();
+    return result[0];
+  }
+
+  async getAllConversations(category?: string): Promise<ChatConversation[]> {
+    if (category) {
+      return await db.select().from(chatConversations).where(eq(chatConversations.category, category)).orderBy(desc(chatConversations.createdAt));
+    }
+    return await db.select().from(chatConversations).orderBy(desc(chatConversations.createdAt));
+  }
+
+  async getConversationById(id: number): Promise<ChatConversation | undefined> {
+    const result = await db.select().from(chatConversations).where(eq(chatConversations.id, id)).limit(1);
+    return result[0];
+  }
+
+  // Chat prompts
+  async getChatPrompts(): Promise<ChatPrompt[]> {
+    return await db.select().from(chatPrompts).where(eq(chatPrompts.isActive, true));
+  }
+
+  async getChatPromptByScenario(scenario: string): Promise<ChatPrompt | undefined> {
+    const result = await db.select().from(chatPrompts).where(eq(chatPrompts.scenario, scenario)).limit(1);
+    return result[0];
+  }
+
+  async saveChatPrompt(prompt: InsertChatPrompt): Promise<ChatPrompt> {
+    const result = await db.insert(chatPrompts).values(prompt).returning();
+    return result[0];
+  }
+
+  async updateChatPrompt(scenario: string, prompt: Partial<InsertChatPrompt>): Promise<ChatPrompt | undefined> {
+    const result = await db.update(chatPrompts).set(prompt).where(eq(chatPrompts.scenario, scenario)).returning();
+    return result[0];
+  }
+
+  // Admin
+  async getAdminConfig(): Promise<AdminConfig | undefined> {
+    const result = await db.select().from(adminConfig).limit(1);
+    return result[0];
+  }
+
+  async setAdminPassword(passwordHash: string): Promise<AdminConfig> {
+    // Delete any existing config
+    await db.delete(adminConfig);
+    // Insert new config
+    const result = await db.insert(adminConfig).values({ passwordHash }).returning();
     return result[0];
   }
 }

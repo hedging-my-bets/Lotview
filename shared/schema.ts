@@ -120,3 +120,55 @@ export const insertAiPromptTemplateSchema = createInsertSchema(aiPromptTemplates
 
 export type InsertAiPromptTemplate = z.infer<typeof insertAiPromptTemplateSchema>;
 export type AiPromptTemplate = typeof aiPromptTemplates.$inferSelect;
+
+// Chat conversations for analytics and training
+export const chatConversations = pgTable("chat_conversations", {
+  id: serial("id").primaryKey(),
+  category: text("category").notNull(), // 'test-drive', 'get-approved', 'value-trade', 'reserve', 'general'
+  vehicleId: integer("vehicle_id").references(() => vehicles.id),
+  vehicleName: text("vehicle_name"), // e.g., "2024 Toyota Camry"
+  messages: text("messages").notNull(), // JSON string of message array
+  sessionId: text("session_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertChatConversationSchema = createInsertSchema(chatConversations).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertChatConversation = z.infer<typeof insertChatConversationSchema>;
+export type ChatConversation = typeof chatConversations.$inferSelect;
+
+// Chat prompts for different scenarios
+export const chatPrompts = pgTable("chat_prompts", {
+  id: serial("id").primaryKey(),
+  scenario: text("scenario").notNull().unique(), // 'test-drive', 'get-approved', 'value-trade', 'reserve', 'general'
+  systemPrompt: text("system_prompt").notNull(), // The system/instruction prompt for ChatGPT
+  greeting: text("greeting").notNull(), // Initial greeting message
+  isActive: boolean("is_active").notNull().default(true),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertChatPromptSchema = createInsertSchema(chatPrompts).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type InsertChatPrompt = z.infer<typeof insertChatPromptSchema>;
+export type ChatPrompt = typeof chatPrompts.$inferSelect;
+
+// Admin configuration
+export const adminConfig = pgTable("admin_config", {
+  id: serial("id").primaryKey(),
+  passwordHash: text("password_hash").notNull(), // Hashed master password
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertAdminConfigSchema = createInsertSchema(adminConfig).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type InsertAdminConfig = z.infer<typeof insertAdminConfigSchema>;
+export type AdminConfig = typeof adminConfig.$inferSelect;
