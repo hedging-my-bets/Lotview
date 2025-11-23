@@ -7,11 +7,13 @@ import { ChatBot } from "@/components/ChatBot";
 import { StickyPaymentBar } from "@/components/StickyPaymentBar";
 import { getVehicles } from "@/lib/api";
 import { FilterState } from "@/lib/types";
-import { Loader2, LogIn } from "lucide-react";
+import { Loader2, LogIn, SlidersHorizontal } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 export default function Inventory() {
   const { toast } = useToast();
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [filters, setFilters] = useState<FilterState>({
     type: 'all',
     priceMax: 100000,
@@ -49,9 +51,12 @@ export default function Inventory() {
       <Navbar />
       <StickyPaymentBar />
       
-      <div className="pt-28 pb-20 px-4 max-w-7xl mx-auto">
+      <div className="pt-28 pb-24 md:pb-20 px-4 max-w-7xl mx-auto">
         <div className="flex flex-col lg:flex-row gap-8">
-          <InventorySidebar filters={filters} setFilters={setFilters} />
+          {/* Desktop Sidebar - Hidden on Mobile */}
+          <div className="hidden lg:block">
+            <InventorySidebar filters={filters} setFilters={setFilters} />
+          </div>
           
           <main className="flex-1">
             <div className="mb-6 flex justify-between items-end">
@@ -96,6 +101,31 @@ export default function Inventory() {
             <LogIn className="w-4 h-4" />
             Sales Team Login
           </button>
+        </div>
+      </div>
+
+      {/* Mobile Filter Button - Sticky Bottom Bar */}
+      <div className="lg:hidden fixed bottom-16 md:bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 shadow-lg">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex gap-3">
+          <Sheet open={isFilterOpen} onOpenChange={setIsFilterOpen}>
+            <SheetTrigger asChild>
+              <button
+                className="flex-1 bg-primary text-white py-3 rounded-lg font-bold text-sm hover:bg-blue-900 transition flex items-center justify-center gap-2"
+                data-testid="button-filters-mobile"
+              >
+                <SlidersHorizontal className="w-4 h-4" />
+                Filters {filters.dealership !== 'all' || filters.location !== 'all' || filters.type !== 'all' || filters.priceMax !== 100000 ? '(Active)' : ''}
+              </button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-[300px] overflow-y-auto p-0">
+              <SheetHeader className="p-6 pb-4 border-b">
+                <SheetTitle>Filter Vehicles</SheetTitle>
+              </SheetHeader>
+              <div className="p-6">
+                <InventorySidebar filters={filters} setFilters={setFilters} />
+              </div>
+            </SheetContent>
+          </Sheet>
         </div>
       </div>
 

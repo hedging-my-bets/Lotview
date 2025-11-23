@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { X, MessageSquare, Send, Loader2 } from "lucide-react";
 import { sendChatMessage, type ChatMessage } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { useChat } from "@/contexts/ChatContext";
 import { trackCTAClick, trackChatMessage, trackChatOpen } from "@/lib/tracking";
 
 interface ChatBotProps {
@@ -21,13 +22,51 @@ interface ChatBotProps {
 }
 
 export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
+  const chatContext = useChat();
   const [isOpen, setIsOpen] = useState(false);
   const [hasOpened, setHasOpened] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const ctaAutoSentRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { toast } = useToast();
+  const { toast} = useToast();
+
+  // Sync with ChatContext
+  useEffect(() => {
+    if (chatContext.isOpen && !isOpen) {
+      setIsOpen(true);
+      setHasOpened(true);
+    }
+  }, [chatContext.isOpen]);
+
+  // Handle initial message from ChatContext
+  useEffect(() => {
+    if (chatContext.initialMessage && isOpen && messages.length > 0) {
+      const initialMsg = chatContext.initialMessage;
+      chatContext.clearInitialMessage();
+      
+      // Add as user message and trigger AI response
+      const userMessage: ChatMessage = { role: "user", content: initialMsg };
+      const conversationWithUser = [...messages, userMessage];
+      setMessages(conversationWithUser);
+      setIsLoading(true);
+
+      // Send full conversation including assistant greeting for context
+      sendChatMessage(conversationWithUser, vehicleName || "").then(response => {
+        setMessages(prev => {
+          const updated = [...prev, { role: "assistant" as const, content: response }];
+          trackChatMessage(vehicle, updated.length);
+          return updated;
+        });
+      }).catch(error => {
+        console.error("Chat error:", error);
+        toast({ title: "Error", description: "Failed to send message.", variant: "destructive" });
+      }).finally(() => {
+        setIsLoading(false);
+      });
+    }
+  }, [chatContext.initialMessage, isOpen, messages.length]);
 
   // Scroll to bottom of messages
   const scrollToBottom = () => {
@@ -55,6 +94,47 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
     }
   }, [action, hasOpened]);
 
+  // Auto-send CTA message after greeting is ready
+  useEffect(() => {
+    if (action && isOpen && messages.length === 1 && !ctaAutoSentRef.current && !isLoading && vehicleName) {
+      const ctaMessages: Record<string, string> = {
+        'test-drive': `I'd like to book a test drive for the ${vehicleName}.`,
+        'reserve': `I'd like to reserve the ${vehicleName}.`,
+        'get-approved': `I'd like to get pre-approved for financing on the ${vehicleName}.`,
+        'value-trade': `I'd like to get a trade-in value for my vehicle toward the ${vehicleName}.`
+      };
+      
+      const message = ctaMessages[action];
+      if (message) {
+        ctaAutoSentRef.current = true;
+        setIsLoading(true);
+        
+        const userMessage: ChatMessage = { role: "user", content: message };
+        
+        // Use functional setState to ensure we have the latest messages
+        setMessages(currentMessages => {
+          const fullConversation = [...currentMessages, userMessage];
+          
+          // Send full conversation to backend from within setState
+          sendChatMessage(fullConversation, vehicleName).then(response => {
+            setMessages(prevMessages => {
+              const updated = [...prevMessages, { role: "assistant" as const, content: response }];
+              trackChatMessage(vehicle, updated.length);
+              return updated;
+            });
+          }).catch(error => {
+            console.error("Chat error:", error);
+            toast({ title: "Error", description: "Failed to send message.", variant: "destructive" });
+          }).finally(() => {
+            setIsLoading(false);
+          });
+          
+          return fullConversation;
+        });
+      }
+    }
+  }, [action, isOpen, messages.length, isLoading, vehicleName]);
+
   // Auto-open after 10 seconds if no action
   useEffect(() => {
     if (vehicleName && !hasOpened && !action) {
@@ -81,6 +161,14 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
       return `Great choice! You're interested in reserving the ${vehicleName}. To secure this vehicle, I'll need a few quick details. Would you like to proceed with a $500 refundable deposit?`;
     }
 
+    if (action === 'get-approved') {
+      return `Excellent! Let's get you pre-approved for financing on the ${vehicleName}. This usually takes just a few minutes. May I start by getting your full name and email address?`;
+    }
+
+    if (action === 'value-trade') {
+      return `I'd be happy to help you value your trade-in toward the ${vehicleName}. To give you an accurate estimate, could you tell me the year, make, and model of your current vehicle?`;
+    }
+
     return `Hi there! I see you're looking at the ${vehicleName}. It's a great choice! Would you like to see the CarFax report or schedule a test drive?`;
   };
 
@@ -105,6 +193,10 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
         contextPrefix = "The customer clicked 'Book Test Drive' and wants to schedule a test drive. ";
       } else if (action === 'reserve') {
         contextPrefix = "The customer clicked 'Reserve Vehicle' and wants to reserve this vehicle. ";
+      } else if (action === 'get-approved') {
+        contextPrefix = "The customer clicked 'Get Pre-Approved' and wants to get pre-approved for financing. ";
+      } else if (action === 'value-trade') {
+        contextPrefix = "The customer clicked 'Value Trade-in' and wants to get a trade-in value. ";
       }
 
       const vehicleContextWithAction = vehicleName 
@@ -116,10 +208,12 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
         vehicleContextWithAction
       );
 
-      setMessages(prev => [...prev, { role: "assistant", content: response }]);
-      
-      // Track chat message sent with vehicle context
-      trackChatMessage(vehicle, messages.length + 1);
+      setMessages(prev => {
+        const updated = [...prev, { role: "assistant" as const, content: response }];
+        // Track with correct message count after adding assistant response
+        trackChatMessage(vehicle, updated.length);
+        return updated;
+      });
     } catch (error) {
       console.error("Chat error:", error);
       toast({
@@ -155,7 +249,7 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
                 <p className="text-white font-bold text-sm">Sales Consultant</p>
                 <p className="text-blue-200 text-xs">Active Now</p>
               </div>
-              <button onClick={() => setIsOpen(false)} className="ml-auto text-white/50 hover:text-white transition">
+              <button onClick={() => { setIsOpen(false); chatContext.closeChat(); }} className="ml-auto text-white/50 hover:text-white transition">
                 <X className="w-4 h-4" />
               </button>
             </div>

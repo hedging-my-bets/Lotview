@@ -9,6 +9,7 @@ import { ArrowLeft, Calendar, CheckCircle2, MapPin, Gauge, Flame, Share2, Heart,
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { usePayment } from "@/contexts/PaymentContext";
+import { useChat } from "@/contexts/ChatContext";
 import { trackVehicleView as trackGTMVehicleView, trackCTAClick, trackPaymentCalculation } from "@/lib/tracking";
 
 export default function VehicleDetail() {
@@ -16,6 +17,7 @@ export default function VehicleDetail() {
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
   const { downPayment, apr } = usePayment();
+  const { openChat } = useChat();
   const [sessionId] = useState(() => `session-${Date.now()}-${Math.random()}`);
   const [selectedTerm, setSelectedTerm] = useState<FinanceTerm>(84);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -50,23 +52,32 @@ export default function VehicleDetail() {
   const handleAction = (actionType: string) => {
     if (!car) return;
     
-    // Map action text to tracking type
-    const ctaMap: Record<string, any> = {
-      'Get Pre-Approved': 'get_approved',
-      'Book Test Drive': 'test_drive',
-      'Value Your Trade-in': 'value_trade',
-      'Reserve Vehicle': 'reserve',
+    // Map action text to tracking type and URL action param
+    const ctaMap: Record<string, { trackingType: string; action: string }> = {
+      'Get Pre-Approved': {
+        trackingType: 'get_approved',
+        action: 'get-approved'
+      },
+      'Book Test Drive': {
+        trackingType: 'test_drive',
+        action: 'test-drive'
+      },
+      'Value Your Trade-in': {
+        trackingType: 'value_trade',
+        action: 'value-trade'
+      },
+      'Reserve Vehicle': {
+        trackingType: 'reserve',
+        action: 'reserve'
+      },
     };
     
-    const ctaType = ctaMap[actionType];
-    if (ctaType) {
-      trackCTAClick(ctaType, car);
+    const ctaData = ctaMap[actionType];
+    if (ctaData) {
+      trackCTAClick(ctaData.trackingType as any, car);
+      // Update URL with action parameter to trigger chat
+      setLocation(`/vehicle/${car.id}?action=${ctaData.action}`);
     }
-    
-    toast({
-      title: "Request Sent",
-      description: `We've received your request to ${actionType}. A representative will contact you shortly.`,
-    });
   };
 
   if (isLoading) {
