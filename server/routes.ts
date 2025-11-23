@@ -570,10 +570,85 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
 
+  // ===== SMS HANDOFF ROUTES =====
+  
+  // Request SMS handoff (send conversation to GHL webhook)
+  app.post("/api/chat/handoff", async (req, res) => {
+    try {
+      const { conversationId, phoneNumber, messages, vehicleInfo, category } = req.body;
+
+      if (!conversationId || !phoneNumber || !messages) {
+        return res.status(400).json({ error: "conversationId, phoneNumber, and messages are required" });
+      }
+
+      // Get active webhook config
+      const webhookConfig = await storage.getActiveGHLWebhookConfig();
+
+      if (!webhookConfig) {
+        return res.status(503).json({ 
+          error: "SMS handoff not configured. Please configure GHL webhook in admin panel." 
+        });
+      }
+
+      // Format conversation summary for GHL
+      const conversationSummary = messages.map((m: any) => 
+        `${m.role === 'assistant' ? 'Bot' : 'Customer'}: ${m.content}`
+      ).join('\n\n');
+
+      const payload = {
+        phone: phoneNumber,
+        conversationSummary,
+        category: category || 'general',
+        vehicleInfo: vehicleInfo || null,
+        timestamp: new Date().toISOString(),
+        source: 'olympic-auto-website'
+      };
+
+      // Send to GHL webhook
+      const response = await fetch(webhookConfig.webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Webhook failed with status ${response.status}`);
+      }
+
+      // Update conversation with handoff status
+      await storage.updateConversationHandoff(conversationId, {
+        handoffRequested: true,
+        handoffPhone: phoneNumber,
+        handoffSent: true,
+        handoffSentAt: new Date(),
+      });
+
+      res.json({ 
+        success: true, 
+        message: "Conversation handed off to SMS. You'll receive a text shortly!" 
+      });
+    } catch (error) {
+      console.error("Error handling SMS handoff:", error);
+      
+      // Update conversation with failed handoff attempt
+      if (req.body.conversationId) {
+        await storage.updateConversationHandoff(req.body.conversationId, {
+          handoffRequested: true,
+          handoffPhone: req.body.phoneNumber,
+          handoffSent: false,
+        });
+      }
+      
+      res.status(500).json({ error: "Failed to handoff conversation to SMS" });
+    }
+  });
+
   // ===== ADMIN ROUTES =====
   
   // Save GHL configuration
-  app.post("/api/admin/ghl-config", async (req, res) => {
+  app.post("/api/admin/ghl-config", adminAuthMiddleware, async (req, res) => {
     try {
       const { apiKey, locationId } = req.body;
 
@@ -586,6 +661,38 @@ Format your response in clear sections with actionable recommendations.`;
     } catch (error) {
       console.error("Error saving GHL config:", error);
       res.status(500).json({ error: "Failed to save GHL configuration" });
+    }
+  });
+
+  // Save GHL Webhook configuration
+  app.post("/api/admin/ghl-webhook-config", adminAuthMiddleware, async (req, res) => {
+    try {
+      const { webhookUrl, webhookName } = req.body;
+
+      if (!webhookUrl || !webhookName) {
+        return res.status(400).json({ error: "webhookUrl and webhookName are required" });
+      }
+
+      const config = await storage.saveGHLWebhookConfig({ 
+        webhookUrl, 
+        webhookName, 
+        isActive: true 
+      });
+      res.json(config);
+    } catch (error) {
+      console.error("Error saving GHL webhook config:", error);
+      res.status(500).json({ error: "Failed to save GHL webhook configuration" });
+    }
+  });
+
+  // Get GHL Webhook configuration
+  app.get("/api/admin/ghl-webhook-config", adminAuthMiddleware, async (req, res) => {
+    try {
+      const config = await storage.getActiveGHLWebhookConfig();
+      res.json(config || null);
+    } catch (error) {
+      console.error("Error fetching GHL webhook config:", error);
+      res.status(500).json({ error: "Failed to fetch GHL webhook configuration" });
     }
   });
 
