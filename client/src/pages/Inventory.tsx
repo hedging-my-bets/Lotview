@@ -3,7 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Navbar } from "@/components/Navbar";
 import { InventorySidebar } from "@/components/InventorySidebar";
 import { VehicleCard } from "@/components/VehicleCard";
-import { ChatBot } from "@/components/ChatBot";
 import { StickyPaymentBar } from "@/components/StickyPaymentBar";
 import { getVehicles } from "@/lib/api";
 import { FilterState } from "@/lib/types";
@@ -128,8 +127,6 @@ export default function Inventory() {
           </Sheet>
         </div>
       </div>
-
-      <ChatBot />
     </div>
   );
 }

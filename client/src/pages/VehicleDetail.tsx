@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Navbar } from "@/components/Navbar";
-import { ChatBot } from "@/components/ChatBot";
 import { getVehicleById, trackVehicleView, sendCTAToGHL } from "@/lib/api";
 import { FINANCE_TERMS, calculateMonthlyPayment, type FinanceTerm } from "@/lib/types";
 import { ArrowLeft, Calendar, CheckCircle2, MapPin, Gauge, Flame, Share2, Heart, ChevronLeft, ChevronRight, DollarSign, Car } from "lucide-react";
@@ -393,21 +392,6 @@ export default function VehicleDetail() {
           </div>
         </div>
       </div>
-
-      <ChatBot 
-        vehicleName={`${car.year} ${car.make} ${car.model}`} 
-        action={action}
-        vehicle={{
-          id: car.id,
-          make: car.make,
-          model: car.model,
-          year: car.year,
-          price: car.price,
-          vin: car.vin,
-          dealership: car.dealership,
-          type: car.type
-        }}
-      />
     </div>
   );
 }
