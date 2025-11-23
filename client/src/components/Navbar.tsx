@@ -28,7 +28,7 @@ export function Navbar() {
         </Link>
 
         {/* Desktop Actions */}
-        <div className="hidden md:flex gap-3">
+        <div className="hidden md:flex gap-3 items-center">
           <button 
             onClick={() => openChat()}
             className="bg-white border-2 border-primary text-primary px-4 py-2 rounded-lg text-sm font-bold hover:bg-primary hover:text-white transition flex items-center gap-2"
@@ -45,6 +45,28 @@ export function Navbar() {
             <Phone className="w-4 h-4" />
             Contact Sales
           </a>
+          <Sheet>
+            <SheetTrigger asChild>
+              <button
+                className="w-9 h-9 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center hover:bg-slate-200 transition"
+                data-testid="button-menu-desktop"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-[280px] p-6">
+              <div className="flex flex-col gap-4 mt-8">
+                <Link href="/admin">
+                  <button
+                    className="w-full bg-slate-800 text-white py-3 rounded-lg text-sm font-bold hover:bg-slate-700 transition"
+                    data-testid="link-admin-menu"
+                  >
+                    Admin Dashboard
+                  </button>
+                </Link>
+              </div>
+            </SheetContent>
+          </Sheet>
         </div>
 
         {/* Mobile Actions */}
@@ -83,6 +105,15 @@ export function Navbar() {
                     data-testid="link-inventory-menu"
                   >
                     View Inventory
+                  </button>
+                </Link>
+                <Link href="/admin">
+                  <button
+                    className="w-full bg-slate-800 text-white py-3 rounded-lg text-sm font-bold hover:bg-slate-700 transition"
+                    onClick={() => setIsMenuOpen(false)}
+                    data-testid="link-admin-menu-mobile"
+                  >
+                    Admin Dashboard
                   </button>
                 </Link>
               </div>

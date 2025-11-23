@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { X, MessageSquare, Send, Loader2 } from "lucide-react";
-import { sendChatMessage, type ChatMessage } from "@/lib/api";
+import { sendChatMessage, saveConversation, type ChatMessage } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useChat } from "@/contexts/ChatContext";
-import { trackCTAClick, trackChatMessage, trackChatOpen } from "@/lib/tracking";
+import { trackCTAClick, trackChatMessage, trackChatOpen, getSessionId } from "@/lib/tracking";
 
 interface ChatBotProps {
   vehicleName?: string;
@@ -31,6 +31,30 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
   const ctaAutoSentRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast} = useToast();
+
+  // Handle closing chat and saving conversation
+  const handleCloseChat = async () => {
+    // Save conversation if there are user messages (more than just the initial greeting)
+    if (messages.length > 1 && messages.some(msg => msg.role === 'user')) {
+      try {
+        const category = action || 'general'; // Use CTA action as category or 'general'
+        const sessionId = getSessionId();
+        await saveConversation(
+          category,
+          messages,
+          sessionId,
+          vehicle?.id,
+          vehicleName
+        );
+      } catch (error) {
+        console.error("Failed to save conversation:", error);
+        // Don't block closing the chat if save fails
+      }
+    }
+    
+    setIsOpen(false);
+    chatContext.closeChat();
+  };
 
   // Sync with ChatContext
   useEffect(() => {
@@ -249,7 +273,7 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
                 <p className="text-white font-bold text-sm">Sales Consultant</p>
                 <p className="text-blue-200 text-xs">Active Now</p>
               </div>
-              <button onClick={() => { setIsOpen(false); chatContext.closeChat(); }} className="ml-auto text-white/50 hover:text-white transition">
+              <button onClick={handleCloseChat} className="ml-auto text-white/50 hover:text-white transition" data-testid="button-close-chat">
                 <X className="w-4 h-4" />
               </button>
             </div>

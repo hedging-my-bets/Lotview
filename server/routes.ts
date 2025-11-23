@@ -7,7 +7,40 @@ import { triggerManualSync } from "./scheduler";
 import { testBadgeDetection } from "./scraper";
 import { generateChatResponse, type ChatMessage } from "./openai";
 
+// Simple admin authentication middleware
+// NOTE: This is a basic demo implementation. For production, use proper session management with bcrypt.
+const adminAuthMiddleware = (req: any, res: any, next: any) => {
+  const adminToken = req.headers['x-admin-token'];
+  
+  // Simple token check - in production, use proper session management
+  if (adminToken === 'admin123') {
+    next();
+  } else {
+    res.status(401).json({ error: 'Unauthorized - Admin access required' });
+  }
+};
+
 export async function registerRoutes(app: Express): Promise<Server> {
+  
+  // ===== ADMIN AUTH ROUTES =====
+  
+  // Admin login endpoint
+  app.post("/api/admin/login", async (req, res) => {
+    try {
+      const { password } = req.body;
+      
+      // Simple password check - in production, use bcrypt and proper session management
+      if (password === "admin123") {
+        // Return token - in production, use JWT or session tokens
+        res.json({ token: "admin123", success: true });
+      } else {
+        res.status(401).json({ error: "Invalid password", success: false });
+      }
+    } catch (error) {
+      console.error("Error during admin login:", error);
+      res.status(500).json({ error: "Login failed" });
+    }
+  });
   
   // ===== VEHICLE ROUTES =====
   
@@ -298,6 +331,202 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error generating chat response:", error);
       res.status(500).json({ error: "Failed to generate chat response" });
+    }
+  });
+
+  // Save conversation (public - conversations are saved automatically)
+  app.post("/api/conversations", async (req, res) => {
+    try {
+      const { category, vehicleId, vehicleName, messages, sessionId } = req.body;
+
+      if (!category || !messages || !sessionId) {
+        return res.status(400).json({ error: "category, messages, and sessionId are required" });
+      }
+
+      const conversation = await storage.saveChatConversation({
+        category,
+        vehicleId: vehicleId || null,
+        vehicleName: vehicleName || null,
+        messages: JSON.stringify(messages),
+        sessionId
+      });
+
+      res.json(conversation);
+    } catch (error) {
+      console.error("Error saving conversation:", error);
+      res.status(500).json({ error: "Failed to save conversation" });
+    }
+  });
+
+  // Get all conversations (with optional category filter) - ADMIN ONLY
+  app.get("/api/conversations", adminAuthMiddleware, async (req, res) => {
+    try {
+      const category = req.query.category as string | undefined;
+      const conversations = await storage.getAllConversations(category);
+      
+      // Parse messages JSON for each conversation
+      const parsed = conversations.map(conv => ({
+        ...conv,
+        messages: JSON.parse(conv.messages)
+      }));
+      
+      res.json(parsed);
+    } catch (error) {
+      console.error("Error fetching conversations:", error);
+      res.status(500).json({ error: "Failed to fetch conversations" });
+    }
+  });
+
+  // Get conversation by ID - ADMIN ONLY
+  app.get("/api/conversations/:id", adminAuthMiddleware, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const conversation = await storage.getConversationById(id);
+
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+
+      res.json({
+        ...conversation,
+        messages: JSON.parse(conversation.messages)
+      });
+    } catch (error) {
+      console.error("Error fetching conversation:", error);
+      res.status(500).json({ error: "Failed to fetch conversation" });
+    }
+  });
+
+  // ===== CHAT PROMPT ROUTES =====
+
+  // Get all chat prompts - ADMIN ONLY
+  app.get("/api/chat-prompts", adminAuthMiddleware, async (req, res) => {
+    try {
+      const prompts = await storage.getChatPrompts();
+      res.json(prompts);
+    } catch (error) {
+      console.error("Error fetching chat prompts:", error);
+      res.status(500).json({ error: "Failed to fetch chat prompts" });
+    }
+  });
+
+  // Get chat prompt by scenario - ADMIN ONLY
+  app.get("/api/chat-prompts/:scenario", adminAuthMiddleware, async (req, res) => {
+    try {
+      const scenario = req.params.scenario;
+      const prompt = await storage.getChatPromptByScenario(scenario);
+
+      if (!prompt) {
+        return res.status(404).json({ error: "Prompt not found for this scenario" });
+      }
+
+      res.json(prompt);
+    } catch (error) {
+      console.error("Error fetching chat prompt:", error);
+      res.status(500).json({ error: "Failed to fetch chat prompt" });
+    }
+  });
+
+  // Create or update chat prompt - ADMIN ONLY
+  app.post("/api/chat-prompts", adminAuthMiddleware, async (req, res) => {
+    try {
+      const { scenario, systemPrompt, greeting } = req.body;
+
+      if (!scenario || !systemPrompt || !greeting) {
+        return res.status(400).json({ error: "scenario, systemPrompt, and greeting are required" });
+      }
+
+      // Check if prompt exists for this scenario
+      const existing = await storage.getChatPromptByScenario(scenario);
+
+      if (existing) {
+        // Update existing
+        const updated = await storage.updateChatPrompt(scenario, {
+          systemPrompt,
+          greeting,
+          isActive: true,
+        });
+        res.json(updated);
+      } else {
+        // Create new
+        const prompt = await storage.saveChatPrompt({
+          scenario,
+          systemPrompt,
+          greeting,
+          isActive: true,
+        });
+        res.json(prompt);
+      }
+    } catch (error) {
+      console.error("Error saving chat prompt:", error);
+      res.status(500).json({ error: "Failed to save chat prompt" });
+    }
+  });
+
+  // Generate AI insights for conversations - ADMIN ONLY
+  app.post("/api/chat-insights", adminAuthMiddleware, async (req, res) => {
+    try {
+      const { scenario } = req.body;
+
+      if (!scenario) {
+        return res.status(400).json({ error: "scenario is required" });
+      }
+
+      // Get conversations for this scenario
+      const conversations = await storage.getAllConversations(scenario);
+
+      if (conversations.length === 0) {
+        return res.json({
+          insights: "No conversations found for this scenario yet. Start collecting conversations to generate insights."
+        });
+      }
+
+      // Get current prompt for context
+      const currentPrompt = await storage.getChatPromptByScenario(scenario);
+
+      // Prepare conversation data for analysis
+      const conversationSummaries = conversations.slice(0, 20).map(conv => {
+        const messages = JSON.parse(conv.messages);
+        return {
+          vehicleName: conv.vehicleName,
+          messageCount: messages.length,
+          messages: messages.map((m: any) => `${m.role}: ${m.content}`).join('\n')
+        };
+      });
+
+      // Generate insights using OpenAI
+      const analysisPrompt = `You are analyzing customer conversations for a car dealership's chatbot in the "${scenario}" scenario.
+
+Current System Prompt: ${currentPrompt?.systemPrompt || 'Not set'}
+Current Greeting: ${currentPrompt?.greeting || 'Not set'}
+
+Here are ${conversationSummaries.length} recent conversations:
+
+${conversationSummaries.map((conv, idx) => `
+Conversation ${idx + 1} (${conv.vehicleName || 'General'}):
+${conv.messages}
+---
+`).join('\n')}
+
+Based on these conversations, provide:
+1. Key patterns you notice in customer questions and concerns
+2. Areas where the current prompts are working well
+3. Specific improvements to the system prompt
+4. Specific improvements to the greeting message
+5. Common objections or friction points
+6. Recommended follow-up questions the bot should ask
+
+Format your response in clear sections with actionable recommendations.`;
+
+      const response = await generateChatResponse(
+        [{ role: 'user', content: analysisPrompt }],
+        ''
+      );
+
+      res.json({ insights: response, conversationCount: conversations.length });
+    } catch (error) {
+      console.error("Error generating insights:", error);
+      res.status(500).json({ error: "Failed to generate insights" });
     }
   });
 

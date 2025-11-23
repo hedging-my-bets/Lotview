@@ -82,6 +82,21 @@ export async function sendChatMessage(
   return data.message;
 }
 
+export async function saveConversation(
+  category: string,
+  messages: ChatMessage[],
+  sessionId: string,
+  vehicleId?: number,
+  vehicleName?: string
+): Promise<void> {
+  const response = await fetch("/api/conversations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ category, messages, sessionId, vehicleId, vehicleName }),
+  });
+  if (!response.ok) throw new Error("Failed to save conversation");
+}
+
 // GoHighLevel CTA API
 export async function sendCTAToGHL(
   vehicleInfo: {

@@ -11,6 +11,20 @@ if (typeof window !== 'undefined') {
   window.dataLayer = window.dataLayer || [];
 }
 
+/**
+ * Get or create session ID for tracking
+ */
+export function getSessionId(): string {
+  if (typeof window === 'undefined') return '';
+  
+  let sessionId = localStorage.getItem('session_id');
+  if (!sessionId) {
+    sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    localStorage.setItem('session_id', sessionId);
+  }
+  return sessionId;
+}
+
 interface VehicleData {
   id: number;
   vin?: string | null;
