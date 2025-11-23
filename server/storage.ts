@@ -5,6 +5,7 @@ import {
   facebookPages,
   pagePriorityVehicles,
   ghlConfig,
+  ghlWebhookConfig,
   aiPromptTemplates,
   chatConversations,
   chatPrompts,
@@ -19,6 +20,8 @@ import {
   type InsertPagePriorityVehicle,
   type GhlConfig,
   type InsertGhlConfig,
+  type GhlWebhookConfig,
+  type InsertGhlWebhookConfig,
   type AiPromptTemplate,
   type InsertAiPromptTemplate,
   type ChatConversation,
@@ -55,6 +58,10 @@ export interface IStorage {
   // GoHighLevel config
   saveGHLConfig(config: InsertGhlConfig): Promise<GhlConfig>;
   
+  // GHL Webhook config
+  saveGHLWebhookConfig(config: InsertGhlWebhookConfig): Promise<GhlWebhookConfig>;
+  getActiveGHLWebhookConfig(): Promise<GhlWebhookConfig | undefined>;
+  
   // AI prompt templates
   saveAIPromptTemplate(template: InsertAiPromptTemplate): Promise<AiPromptTemplate>;
   
@@ -62,6 +69,7 @@ export interface IStorage {
   saveChatConversation(conversation: InsertChatConversation): Promise<ChatConversation>;
   getAllConversations(category?: string): Promise<ChatConversation[]>;
   getConversationById(id: number): Promise<ChatConversation | undefined>;
+  updateConversationHandoff(id: number, data: { handoffRequested?: boolean; handoffPhone?: string; handoffSent?: boolean; handoffSentAt?: Date }): Promise<ChatConversation | undefined>;
   
   // Chat prompts
   getChatPrompts(): Promise<ChatPrompt[]>;
@@ -184,6 +192,21 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
+  // GHL Webhook config
+  async saveGHLWebhookConfig(config: InsertGhlWebhookConfig): Promise<GhlWebhookConfig> {
+    // Deactivate all existing webhook configs
+    await db.update(ghlWebhookConfig).set({ isActive: false });
+    
+    // Insert new active config
+    const result = await db.insert(ghlWebhookConfig).values(config).returning();
+    return result[0];
+  }
+
+  async getActiveGHLWebhookConfig(): Promise<GhlWebhookConfig | undefined> {
+    const result = await db.select().from(ghlWebhookConfig).where(eq(ghlWebhookConfig.isActive, true)).limit(1);
+    return result[0];
+  }
+
   // AI prompt templates
   async saveAIPromptTemplate(template: InsertAiPromptTemplate): Promise<AiPromptTemplate> {
     // Deactivate all existing templates if this one is active
@@ -211,6 +234,11 @@ export class DatabaseStorage implements IStorage {
 
   async getConversationById(id: number): Promise<ChatConversation | undefined> {
     const result = await db.select().from(chatConversations).where(eq(chatConversations.id, id)).limit(1);
+    return result[0];
+  }
+
+  async updateConversationHandoff(id: number, data: { handoffRequested?: boolean; handoffPhone?: string; handoffSent?: boolean; handoffSentAt?: Date }): Promise<ChatConversation | undefined> {
+    const result = await db.update(chatConversations).set(data).where(eq(chatConversations.id, id)).returning();
     return result[0];
   }
 
