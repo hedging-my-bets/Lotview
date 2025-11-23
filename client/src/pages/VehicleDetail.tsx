@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Navbar } from "@/components/Navbar";
-import { getVehicleById, trackVehicleView, sendCTAToGHL } from "@/lib/api";
+import { ChatBot } from "@/components/ChatBot";
+import { getVehicleById, trackVehicleView } from "@/lib/api";
 import { FINANCE_TERMS, calculateMonthlyPayment, type FinanceTerm } from "@/lib/types";
 import { ArrowLeft, Calendar, CheckCircle2, MapPin, Gauge, Flame, Share2, Heart, ChevronLeft, ChevronRight, DollarSign, Car } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -48,26 +49,26 @@ export default function VehicleDetail() {
     }
   }, [car]);
 
-  const handleAction = async (actionType: string) => {
+  const handleAction = (actionType: string) => {
     if (!car) return;
     
-    // Map action text to tracking type and GHL action
-    const ctaMap: Record<string, { trackingType: string; ghlAction: 'test-drive' | 'reserve' | 'get-approved' | 'value-trade' }> = {
+    // Map action text to tracking type and chat message
+    const ctaMap: Record<string, { trackingType: string; message: string }> = {
       'Get Pre-Approved': {
         trackingType: 'get_approved',
-        ghlAction: 'get-approved'
+        message: `I'd like to get pre-approved for financing on the ${car.year} ${car.make} ${car.model}.`
       },
       'Book Test Drive': {
         trackingType: 'test_drive',
-        ghlAction: 'test-drive'
+        message: `I'd like to book a test drive for the ${car.year} ${car.make} ${car.model}.`
       },
       'Value Your Trade-in': {
         trackingType: 'value_trade',
-        ghlAction: 'value-trade'
+        message: `I'd like to get a trade-in value for my vehicle toward the ${car.year} ${car.make} ${car.model}.`
       },
       'Reserve Vehicle': {
         trackingType: 'reserve',
-        ghlAction: 'reserve'
+        message: `I'd like to reserve the ${car.year} ${car.make} ${car.model}.`
       },
     };
     
@@ -76,36 +77,8 @@ export default function VehicleDetail() {
       // Track CTA click in GTM
       trackCTAClick(ctaData.trackingType as any, car);
       
-      // Send lead to GoHighLevel
-      toast({
-        title: "Sending your request...",
-        description: "We're processing your request.",
-      });
-
-      try {
-        const vehicleInfo = {
-          year: car.year,
-          make: car.make,
-          model: car.model,
-          price: car.price,
-          vin: car.vin,
-          dealership: car.dealership,
-        };
-
-        await sendCTAToGHL(vehicleInfo, ctaData.ghlAction);
-        
-        toast({
-          title: "Request sent!",
-          description: "A sales representative will contact you shortly.",
-        });
-      } catch (error) {
-        console.error("Error sending CTA to GHL:", error);
-        toast({
-          title: "Request received",
-          description: "We'll get back to you as soon as possible.",
-          variant: "default",
-        });
-      }
+      // Open chat widget with pre-filled message
+      openChat(ctaData.message);
     }
   };
 
@@ -392,6 +365,21 @@ export default function VehicleDetail() {
           </div>
         </div>
       </div>
+
+      <ChatBot 
+        vehicleName={`${car.year} ${car.make} ${car.model}`} 
+        action={action}
+        vehicle={{
+          id: car.id,
+          make: car.make,
+          model: car.model,
+          year: car.year,
+          price: car.price,
+          vin: car.vin,
+          dealership: car.dealership,
+          type: car.type
+        }}
+      />
     </div>
   );
 }
