@@ -28,6 +28,9 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [conversationId, setConversationId] = useState<number | null>(null);
+  const [handoffRequested, setHandoffRequested] = useState(false);
+  const [awaitingPhone, setAwaitingPhone] = useState(false);
   const ctaAutoSentRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast} = useToast();
@@ -39,13 +42,18 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
       try {
         const category = action || 'general'; // Use CTA action as category or 'general'
         const sessionId = getSessionId();
-        await saveConversation(
+        const savedConv = await saveConversation(
           category,
           messages,
           sessionId,
           vehicle?.id,
           vehicleName
         );
+        
+        // Store conversation ID for potential handoff
+        if (savedConv?.id) {
+          setConversationId(savedConv.id);
+        }
       } catch (error) {
         console.error("Failed to save conversation:", error);
         // Don't block closing the chat if save fails
@@ -196,6 +204,81 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
     return `Hi there! I see you're looking at the ${vehicleName}. It's a great choice! Would you like to see the CarFax report or schedule a test drive?`;
   };
 
+  // Handle SMS handoff
+  const handleSMSHandoff = async (phoneNumber: string) => {
+    if (!conversationId) {
+      // Save conversation first to get ID
+      try {
+        const category = action || 'general';
+        const sessionId = getSessionId();
+        const savedConv = await saveConversation(
+          category,
+          messages,
+          sessionId,
+          vehicle?.id,
+          vehicleName
+        );
+        
+        if (savedConv?.id) {
+          setConversationId(savedConv.id);
+          await sendHandoffRequest(savedConv.id, phoneNumber);
+        }
+      } catch (error) {
+        console.error("Failed to save conversation for handoff:", error);
+        toast({
+          title: "Error",
+          description: "Failed to initiate SMS handoff. Please try again.",
+          variant: "destructive"
+        });
+      }
+    } else {
+      await sendHandoffRequest(conversationId, phoneNumber);
+    }
+  };
+
+  const sendHandoffRequest = async (convId: number, phoneNumber: string) => {
+    try {
+      setIsLoading(true);
+      const response = await fetch("/api/chat/handoff", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversationId: convId,
+          phoneNumber,
+          messages,
+          vehicleInfo: vehicle,
+          category: action || 'general'
+        }),
+      });
+
+      if (!response.ok) throw new Error("Handoff failed");
+
+      const data = await response.json();
+      
+      setMessages(prev => [...prev, { 
+        role: "assistant" as const, 
+        content: data.message || "Great! You'll receive a text message shortly to continue this conversation via SMS. Our team will be in touch!" 
+      }]);
+      
+      setHandoffRequested(true);
+      
+      toast({
+        title: "Success",
+        description: "Conversation handed off to SMS!",
+      });
+    } catch (error) {
+      console.error("SMS handoff error:", error);
+      toast({
+        title: "Error",
+        description: "Failed to handoff to SMS. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+      setAwaitingPhone(false);
+    }
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -206,11 +289,34 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
       content: inputValue.trim()
     };
 
+    // Check if we're awaiting phone number for handoff
+    if (awaitingPhone) {
+      const phoneRegex = /\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/;
+      if (phoneRegex.test(inputValue.trim())) {
+        setMessages(prev => [...prev, userMessage]);
+        setInputValue("");
+        await handleSMSHandoff(inputValue.trim());
+        return;
+      } else {
+        setMessages(prev => [...prev, userMessage, {
+          role: "assistant" as const,
+          content: "I need a valid phone number to send you a text. Please provide your phone number in the format: (555) 123-4567"
+        }]);
+        setInputValue("");
+        return;
+      }
+    }
+
     setMessages(prev => [...prev, userMessage]);
     setInputValue("");
     setIsLoading(true);
 
     try {
+      // Check if user is requesting text/sms communication
+      const lowerMessage = userMessage.content.toLowerCase();
+      const wantsText = lowerMessage.includes('text') || lowerMessage.includes('sms') || 
+                        lowerMessage.includes('message me') || lowerMessage.includes('text me');
+      
       // Build context message that includes CTA action if present
       let contextPrefix = "";
       if (action === 'test-drive') {
@@ -238,6 +344,25 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
         trackChatMessage(vehicle, updated.length);
         return updated;
       });
+
+      // After a few messages, offer SMS handoff if not already requested
+      if (messages.length >= 4 && !handoffRequested && !wantsText) {
+        setTimeout(() => {
+          setMessages(prev => [...prev, {
+            role: "assistant" as const,
+            content: "Would you prefer to continue this conversation via text message? I can send you a text so we can chat that way instead!"
+          }]);
+        }, 2000);
+      } else if (wantsText && !handoffRequested) {
+        // User wants SMS - ask for phone number
+        setTimeout(() => {
+          setMessages(prev => [...prev, {
+            role: "assistant" as const,
+            content: "Perfect! I'd be happy to continue via text. What's the best phone number to reach you at?"
+          }]);
+          setAwaitingPhone(true);
+        }, 1000);
+      }
     } catch (error) {
       console.error("Chat error:", error);
       toast({
