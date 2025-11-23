@@ -13,7 +13,7 @@ function getCreditLabel(score: number): string {
   if (score >= 720) return 'Excellent';
   if (score >= 680) return 'Good';
   if (score >= 620) return 'Fair';
-  return 'Poor';
+  return '<600 Poor';
 }
 
 function getInitialScoreValue(category: CreditScore): number {
@@ -21,7 +21,7 @@ function getInitialScoreValue(category: CreditScore): number {
     case 'excellent': return 720;
     case 'good': return 680;
     case 'fair': return 620;
-    case 'poor': return 500;
+    case 'poor': return 600;
   }
 }
 
@@ -65,7 +65,7 @@ export function StickyPaymentBar() {
             <input
               id="credit-score"
               type="range"
-              min="300"
+              min="600"
               max="850"
               step="10"
               value={creditScoreValue}
@@ -74,7 +74,7 @@ export function StickyPaymentBar() {
               data-testid="slider-credit-score"
             />
             <div className="flex justify-between text-xs opacity-60 mt-0.5">
-              <span>300</span>
+              <span>&lt;600</span>
               <span>APR: {apr}%</span>
               <span>850</span>
             </div>
