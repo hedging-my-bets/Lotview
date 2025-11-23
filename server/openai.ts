@@ -1,4 +1,7 @@
 import OpenAI from "openai";
+import { db } from "./db";
+import { aiPromptTemplates } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 // This is using Replit's AI Integrations service, which provides OpenAI-compatible API access without requiring your own OpenAI API key.
 const openai = new OpenAI({
@@ -72,22 +75,33 @@ interface VehicleData {
   dealership: string;
   location: string;
   rawDescription?: string;
+  fullPageContent?: string;
 }
 
-export async function generateVehicleDescription(vehicle: VehicleData): Promise<string> {
+async function getActivePromptTemplate(): Promise<string> {
   try {
-    const badgesText = vehicle.badges.length > 0 ? vehicle.badges.join(', ') : 'none';
+    const template = await db.query.aiPromptTemplates.findFirst({
+      where: eq(aiPromptTemplates.isActive, true),
+    });
     
-    const prompt = `Create a compelling, professional vehicle description for a Canadian automotive dealership (Olympic Auto Group in Vancouver, BC).
+    if (template) {
+      return template.promptText;
+    }
+  } catch (error) {
+    console.error("Error fetching prompt template:", error);
+  }
+  
+  // Default fallback prompt
+  return `Create a compelling, professional vehicle description for a Canadian automotive dealership (Olympic Auto Group in Vancouver, BC).
 
 Vehicle Details:
-- ${vehicle.year} ${vehicle.make} ${vehicle.model} ${vehicle.trim}
-- Type: ${vehicle.type}
-- Price: $${vehicle.price.toLocaleString()} CAD
-- Odometer: ${vehicle.odometer.toLocaleString()} km
-- Badges/Features: ${badgesText}
-- Location: ${vehicle.dealership}, ${vehicle.location}
-${vehicle.rawDescription ? `\nOriginal listing info: ${vehicle.rawDescription}` : ''}
+- {{YEAR}} {{MAKE}} {{MODEL}} {{TRIM}}
+- Type: {{TYPE}}
+- Price: ${{PRICE}} CAD
+- Odometer: {{ODOMETER}} km
+- Badges/Features: {{BADGES}}
+- Location: {{DEALERSHIP}}, {{LOCATION}}
+{{FULL_CONTENT}}
 
 Requirements:
 - Write 2-3 compelling paragraphs (150-200 words total)
@@ -102,6 +116,33 @@ Requirements:
 - DO NOT mention things not in the vehicle details
 
 Write the description now:`;
+}
+
+export async function generateVehicleDescription(vehicle: VehicleData): Promise<string> {
+  try {
+    const badgesText = vehicle.badges.length > 0 ? vehicle.badges.join(', ') : 'none';
+    const fullContentSection = vehicle.fullPageContent 
+      ? `\n\nAdditional information from listing:\n${vehicle.fullPageContent.slice(0, 3000)}`
+      : vehicle.rawDescription 
+      ? `\nOriginal listing info: ${vehicle.rawDescription}`
+      : '';
+    
+    // Get customizable prompt template
+    const promptTemplate = await getActivePromptTemplate();
+    
+    // Replace template variables
+    const prompt = promptTemplate
+      .replace(/\{\{YEAR\}\}/g, vehicle.year.toString())
+      .replace(/\{\{MAKE\}\}/g, vehicle.make)
+      .replace(/\{\{MODEL\}\}/g, vehicle.model)
+      .replace(/\{\{TRIM\}\}/g, vehicle.trim)
+      .replace(/\{\{TYPE\}\}/g, vehicle.type)
+      .replace(/\{\{PRICE\}\}/g, vehicle.price.toLocaleString())
+      .replace(/\{\{ODOMETER\}\}/g, vehicle.odometer.toLocaleString())
+      .replace(/\{\{BADGES\}\}/g, badgesText)
+      .replace(/\{\{DEALERSHIP\}\}/g, vehicle.dealership)
+      .replace(/\{\{LOCATION\}\}/g, vehicle.location)
+      .replace(/\{\{FULL_CONTENT\}\}/g, fullContentSection);
 
     const response = await openai.chat.completions.create({
       model: "gpt-5",

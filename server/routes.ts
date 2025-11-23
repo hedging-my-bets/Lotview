@@ -341,6 +341,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== ADMIN ROUTES =====
+  
+  // Save GHL configuration
+  app.post("/api/admin/ghl-config", async (req, res) => {
+    try {
+      const { apiKey, locationId } = req.body;
+
+      if (!apiKey || !locationId) {
+        return res.status(400).json({ error: "apiKey and locationId are required" });
+      }
+
+      const config = await storage.saveGHLConfig({ apiKey, locationId, isActive: true });
+      res.json(config);
+    } catch (error) {
+      console.error("Error saving GHL config:", error);
+      res.status(500).json({ error: "Failed to save GHL configuration" });
+    }
+  });
+
+  // Save AI prompt template
+  app.post("/api/admin/ai-prompt", async (req, res) => {
+    try {
+      const { name, promptText, isActive } = req.body;
+
+      if (!name || !promptText) {
+        return res.status(400).json({ error: "name and promptText are required" });
+      }
+
+      const template = await storage.saveAIPromptTemplate({ name, promptText, isActive });
+      res.json(template);
+    } catch (error) {
+      console.error("Error saving AI prompt:", error);
+      res.status(500).json({ error: "Failed to save AI prompt template" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

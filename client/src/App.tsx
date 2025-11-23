@@ -9,12 +9,14 @@ import NotFound from "@/pages/not-found";
 import Inventory from "@/pages/Inventory";
 import VehicleDetail from "@/pages/VehicleDetail";
 import EmbedWidget from "@/pages/EmbedWidget";
+import Admin from "@/pages/Admin";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Inventory} />
       <Route path="/vehicle/:id" component={VehicleDetail} />
+      <Route path="/admin" component={Admin} />
       <Route path="/embed" component={EmbedWidget} />
       <Route component={NotFound} />
     </Switch>

@@ -17,6 +17,7 @@ export const vehicles = pgTable("vehicles", {
   location: text("location").notNull(), // Vancouver, Burnaby
   dealership: text("dealership").notNull(), // Boundary Hyundai Vancouver, Olympic Hyundai Vancouver, Kia Vancouver
   description: text("description").notNull(),
+  fullPageContent: text("full_page_content"), // Full page content for AI description generation
   vin: text("vin"), // VIN number
   stockNumber: text("stock_number"), // Stock # from dealership
   cargurusPrice: integer("cargurus_price"), // Price on CarGurus (for comparison)

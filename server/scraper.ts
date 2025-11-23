@@ -19,6 +19,7 @@ interface ScrapedVehicle {
   location: string;
   dealership: string;
   description: string;
+  fullPageContent?: string;
   vin?: string;
   stockNumber?: string;
 }
@@ -347,6 +348,37 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
           const h1 = document.querySelector('h1');
           let description = h1?.textContent?.trim() || '';
           
+          // Extract full page content for AI description generation
+          let fullPageContent = '';
+          const contentSelectors = [
+            '.vehicle-description',
+            '.vehicle-details',
+            '.vehicle-specs',
+            '.vehicle-features',
+            '[data-field]',
+            '.specs-list',
+            '.features-list',
+            'article',
+            'main'
+          ];
+          
+          // Try to extract from common content containers
+          for (const selector of contentSelectors) {
+            const elements = document.querySelectorAll(selector);
+            elements.forEach(el => {
+              const text = el.textContent?.trim();
+              if (text && text.length > 20) {
+                fullPageContent += text + '\n\n';
+              }
+            });
+          }
+          
+          // If still no content, extract all meaningful text from body
+          if (fullPageContent.length < 100) {
+            const allText = document.body.innerText;
+            fullPageContent = allText.slice(0, 5000); // Limit to 5000 chars
+          }
+          
           // Extract VIN from data-field attribute
           let vin = '';
           const vinEl = document.querySelector('[data-field="vin"]');
@@ -377,13 +409,14 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
           const bodyStyleElem = Array.from(document.querySelectorAll('li')).find(li => 
             li.textContent?.includes('Body Style:')
           );
-          if (bodyStyleElem) {
+          if (bodyStyleElem && bodyStyleElem.textContent) {
             bodyStyle = bodyStyleElem.textContent.replace('Body Style:', '').trim();
           }
           
           return {
             images: images.slice(0, 10), // Limit to 10 images
             description,
+            fullPageContent,
             vin,
             stockNumber,
             bodyStyle
@@ -410,6 +443,7 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
           location: v.location,
           dealership: v.dealership,
           description: finalDescription,
+          fullPageContent: detailData.fullPageContent || undefined,
           vin: detailData.vin || undefined,
           stockNumber: detailData.stockNumber || undefined
         });
@@ -524,7 +558,8 @@ export async function scrapeAllDealerships(): Promise<number> {
             badges: vehicle.badges,
             dealership: vehicle.dealership,
             location: vehicle.location,
-            rawDescription: vehicle.description
+            rawDescription: vehicle.description,
+            fullPageContent: vehicle.fullPageContent
           });
           
           return {

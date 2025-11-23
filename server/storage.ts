@@ -4,6 +4,8 @@ import {
   vehicleViews, 
   facebookPages,
   pagePriorityVehicles,
+  ghlConfig,
+  aiPromptTemplates,
   type Vehicle, 
   type InsertVehicle,
   type VehicleView,
@@ -11,7 +13,11 @@ import {
   type FacebookPage,
   type InsertFacebookPage,
   type PagePriorityVehicle,
-  type InsertPagePriorityVehicle
+  type InsertPagePriorityVehicle,
+  type GhlConfig,
+  type InsertGhlConfig,
+  type AiPromptTemplate,
+  type InsertAiPromptTemplate
 } from "@shared/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
 
@@ -36,6 +42,12 @@ export interface IStorage {
   // Priority vehicles
   getPagePriorityVehicles(pageId: number): Promise<PagePriorityVehicle[]>;
   setPagePriorityVehicles(pageId: number, vehicleIds: number[]): Promise<void>;
+  
+  // GoHighLevel config
+  saveGHLConfig(config: InsertGhlConfig): Promise<GhlConfig>;
+  
+  // AI prompt templates
+  saveAIPromptTemplate(template: InsertAiPromptTemplate): Promise<AiPromptTemplate>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -136,6 +148,28 @@ export class DatabaseStorage implements IStorage {
         }))
       );
     }
+  }
+
+  // GoHighLevel config
+  async saveGHLConfig(config: InsertGhlConfig): Promise<GhlConfig> {
+    // Deactivate all existing configs
+    await db.update(ghlConfig).set({ isActive: false });
+    
+    // Insert new active config
+    const result = await db.insert(ghlConfig).values(config).returning();
+    return result[0];
+  }
+
+  // AI prompt templates
+  async saveAIPromptTemplate(template: InsertAiPromptTemplate): Promise<AiPromptTemplate> {
+    // Deactivate all existing templates if this one is active
+    if (template.isActive) {
+      await db.update(aiPromptTemplates).set({ isActive: false });
+    }
+    
+    // Insert new template
+    const result = await db.insert(aiPromptTemplates).values(template).returning();
+    return result[0];
   }
 }
 
