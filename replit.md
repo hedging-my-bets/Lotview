@@ -135,7 +135,8 @@ Preferred communication style: Simple, everyday language.
 **PBS DMS Integration (November 2025):**
 11. **pbs_config** - PBS Partner Hub API configuration
     - Partner ID, API credentials (username/password)
-    - PBS API URL and webhook settings
+    - PBS API URL and webhook settings (optional)
+    - Webhook secret for HMAC-SHA256 signature validation
     - Active status for connection control
     - Single configuration per system
 
@@ -145,6 +146,13 @@ Preferred communication style: Simple, everyday language.
     - Status tracking (pending/processed/failed)
     - Error message for failed events
     - Received/processed timestamps
+    
+**PBS Webhook Security (November 2025):**
+- HMAC-SHA256 signature validation using webhook secret
+- Timestamp validation (5-minute window) to prevent replay attacks
+- Timing-safe comparison to prevent timing attacks
+- Proper error responses (401 Unauthorized, 403 Forbidden)
+- Public endpoint at `/api/pbs/webhook` secured with signature verification
 
 **Legacy Tables (Deprecated):**
 13. **facebook_pages** - Legacy social media integration

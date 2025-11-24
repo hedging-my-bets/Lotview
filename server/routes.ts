@@ -1737,6 +1737,63 @@ Format your response in clear sections with actionable recommendations.`;
   // Webhook receiver endpoint (no auth - PBS will call this)
   app.post("/api/pbs/webhook", async (req, res) => {
     try {
+      // Get PBS config to validate webhook secret
+      const pbsConfig = await storage.getPbsConfig();
+      
+      // If webhook secret is configured, validate the signature
+      if (pbsConfig?.webhookSecret) {
+        const signature = req.headers['x-pbs-signature'] as string;
+        const timestamp = req.headers['x-pbs-timestamp'] as string;
+        
+        if (!signature || !timestamp) {
+          console.error("PBS webhook rejected: Missing signature or timestamp headers");
+          return res.status(401).json({ 
+            error: "Unauthorized", 
+            message: "Missing signature headers" 
+          });
+        }
+        
+        // Verify signature using HMAC-SHA256
+        const payload = timestamp + '.' + JSON.stringify(req.body);
+        const expectedSignature = crypto
+          .createHmac('sha256', pbsConfig.webhookSecret)
+          .update(payload)
+          .digest('hex');
+        
+        // Use timing-safe comparison to prevent timing attacks
+        // First check if lengths match (if not, signature is definitely invalid)
+        if (signature.length !== expectedSignature.length) {
+          console.error("PBS webhook rejected: Invalid signature length");
+          return res.status(403).json({ 
+            error: "Forbidden", 
+            message: "Invalid signature" 
+          });
+        }
+        
+        if (!crypto.timingSafeEqual(
+          Buffer.from(signature),
+          Buffer.from(expectedSignature)
+        )) {
+          console.error("PBS webhook rejected: Invalid signature");
+          return res.status(403).json({ 
+            error: "Forbidden", 
+            message: "Invalid signature" 
+          });
+        }
+        
+        // Verify timestamp is recent (within 5 minutes) to prevent replay attacks
+        const timestampAge = Date.now() - parseInt(timestamp);
+        const MAX_AGE = 5 * 60 * 1000; // 5 minutes in milliseconds
+        
+        if (timestampAge > MAX_AGE || timestampAge < 0) {
+          console.error("PBS webhook rejected: Timestamp too old or in future");
+          return res.status(403).json({ 
+            error: "Forbidden", 
+            message: "Timestamp outside valid window" 
+          });
+        }
+      }
+      
       const { event, id: eventId, data } = req.body;
       
       // Log the webhook event
