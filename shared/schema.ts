@@ -361,3 +361,46 @@ export const insertRemarketingVehicleSchema = createInsertSchema(remarketingVehi
 
 export type InsertRemarketingVehicle = z.infer<typeof insertRemarketingVehicleSchema>;
 export type RemarketingVehicle = typeof remarketingVehicles.$inferSelect;
+
+// PBS DMS Integration Configuration
+export const pbsConfig = pgTable("pbs_config", {
+  id: serial("id").primaryKey(),
+  partnerId: text("partner_id").notNull(), // PBS Partner ID
+  username: text("username").notNull(), // PBS API username
+  password: text("password").notNull(), // PBS API password (encrypted)
+  webhookUrl: text("webhook_url"), // Our endpoint URL for PBS to send webhooks
+  webhookSecret: text("webhook_secret"), // Secret for webhook signature verification
+  pbsApiUrl: text("pbs_api_url").notNull().default('https://partnerhub.pbsdealers.com'), // PBS API endpoint
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertPbsConfigSchema = createInsertSchema(pbsConfig).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertPbsConfig = z.infer<typeof insertPbsConfigSchema>;
+export type PbsConfig = typeof pbsConfig.$inferSelect;
+
+// PBS Webhook Events Log
+export const pbsWebhookEvents = pgTable("pbs_webhook_events", {
+  id: serial("id").primaryKey(),
+  eventType: text("event_type").notNull(), // e.g., 'customer.created', 'vehicle.updated', 'appointment.scheduled'
+  eventId: text("event_id").notNull(), // PBS event ID
+  payload: text("payload").notNull(), // JSON payload from PBS
+  status: text("status").notNull().default('pending'), // pending, processed, failed
+  errorMessage: text("error_message"), // If processing failed
+  processedAt: timestamp("processed_at"),
+  receivedAt: timestamp("received_at").defaultNow().notNull(),
+});
+
+export const insertPbsWebhookEventSchema = createInsertSchema(pbsWebhookEvents).omit({
+  id: true,
+  receivedAt: true,
+});
+
+export type InsertPbsWebhookEvent = z.infer<typeof insertPbsWebhookEventSchema>;
+export type PbsWebhookEvent = typeof pbsWebhookEvents.$inferSelect;

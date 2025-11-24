@@ -44,6 +44,8 @@ Preferred communication style: Simple, everyday language.
 - User management (master users only)
 - Financing rules management (credit score tiers, model year terms)
 - Facebook posting system (accounts, templates, queue, schedule)
+- Remarketing vehicle selection (CRUD operations with priority management)
+- PBS DMS integration (config management, webhook receiver, event monitoring)
 - Manual sync trigger endpoint for on-demand inventory updates
 
 **Security Architecture:**
@@ -121,8 +123,31 @@ Preferred communication style: Simple, everyday language.
    - Active status for schedule control
    - One schedule per salesperson
 
+**Remarketing System (November 2025):**
+10. **remarketing_vehicles** - Selected vehicles for remarketing campaigns
+    - Vehicle ID foreign key
+    - Budget priority (1-5 stars for ad spend allocation)
+    - Active status for soft delete functionality
+    - Created/updated timestamps
+    - 20-vehicle limit enforced at application layer
+    - Duplicate prevention for active records
+
+**PBS DMS Integration (November 2025):**
+11. **pbs_config** - PBS Partner Hub API configuration
+    - Partner ID, API credentials (username/password)
+    - PBS API URL and webhook settings
+    - Active status for connection control
+    - Single configuration per system
+
+12. **pbs_webhook_events** - Webhook event log from PBS
+    - Event type and ID for tracking
+    - Full JSON payload storage
+    - Status tracking (pending/processed/failed)
+    - Error message for failed events
+    - Received/processed timestamps
+
 **Legacy Tables (Deprecated):**
-10. **facebook_pages** - Legacy social media integration
+13. **facebook_pages** - Legacy social media integration
 11. **page_priority_vehicles** - Legacy featured vehicle management
 
 **Schema Management:**

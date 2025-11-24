@@ -1667,6 +1667,132 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
 
+  // ===== PBS DMS INTEGRATION ROUTES =====
+  
+  // Get PBS configuration
+  app.get("/api/pbs/config", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const config = await storage.getPbsConfig();
+      res.json(config || null);
+    } catch (error) {
+      console.error("Error fetching PBS config:", error);
+      res.status(500).json({ error: "Failed to fetch PBS configuration" });
+    }
+  });
+  
+  // Create or update PBS configuration
+  app.post("/api/pbs/config", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const { partnerId, username, password, webhookUrl, webhookSecret, pbsApiUrl } = req.body;
+      
+      if (!partnerId || !username || !password) {
+        return res.status(400).json({ error: "partnerId, username, and password are required" });
+      }
+      
+      // Check if config exists
+      const existing = await storage.getPbsConfig();
+      
+      let config;
+      if (existing) {
+        config = await storage.updatePbsConfig(existing.id, {
+          partnerId,
+          username,
+          password,
+          webhookUrl,
+          webhookSecret,
+          pbsApiUrl,
+          isActive: true
+        });
+      } else {
+        config = await storage.createPbsConfig({
+          partnerId,
+          username,
+          password,
+          webhookUrl,
+          webhookSecret,
+          pbsApiUrl,
+          isActive: true
+        });
+      }
+      
+      res.json(config);
+    } catch (error) {
+      console.error("Error saving PBS config:", error);
+      res.status(500).json({ error: "Failed to save PBS configuration" });
+    }
+  });
+  
+  // Delete PBS configuration
+  app.delete("/api/pbs/config/:id", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deletePbsConfig(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting PBS config:", error);
+      res.status(500).json({ error: "Failed to delete PBS configuration" });
+    }
+  });
+  
+  // Webhook receiver endpoint (no auth - PBS will call this)
+  app.post("/api/pbs/webhook", async (req, res) => {
+    try {
+      const { event, id: eventId, data } = req.body;
+      
+      // Log the webhook event
+      await storage.createPbsWebhookEvent({
+        eventType: event || 'unknown',
+        eventId: eventId || `event-${Date.now()}`,
+        payload: JSON.stringify(req.body),
+        status: 'pending'
+      });
+      
+      // Acknowledge receipt immediately
+      res.json({ success: true, message: "Webhook received" });
+      
+      // TODO: Process webhook asynchronously based on event type
+      // Future implementation: Handle different event types (customer.created, vehicle.updated, etc.)
+    } catch (error) {
+      console.error("Error processing PBS webhook:", error);
+      res.status(500).json({ error: "Failed to process webhook" });
+    }
+  });
+  
+  // Get PBS webhook events (for monitoring)
+  app.get("/api/pbs/webhook-events", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
+      const events = await storage.getPbsWebhookEvents(limit);
+      res.json(events);
+    } catch (error) {
+      console.error("Error fetching PBS webhook events:", error);
+      res.status(500).json({ error: "Failed to fetch webhook events" });
+    }
+  });
+  
+  // Update webhook event status (mark as processed/failed)
+  app.patch("/api/pbs/webhook-events/:id", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { status, errorMessage } = req.body;
+      
+      const event = await storage.updatePbsWebhookEvent(id, {
+        status,
+        errorMessage,
+        processedAt: status === 'processed' ? new Date() : undefined
+      });
+      
+      if (!event) {
+        return res.status(404).json({ error: "Webhook event not found" });
+      }
+      
+      res.json(event);
+    } catch (error) {
+      console.error("Error updating webhook event:", error);
+      res.status(500).json({ error: "Failed to update webhook event" });
+    }
+  });
+
   // ===== ADMIN ROUTES =====
   
   // Save GHL configuration

@@ -54,6 +54,30 @@ interface ModelYearTerm {
   updatedAt: string;
 }
 
+interface PbsConfig {
+  id: number;
+  partnerId: string;
+  username: string;
+  password: string;
+  webhookUrl?: string;
+  webhookSecret?: string;
+  pbsApiUrl: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface PbsWebhookEvent {
+  id: number;
+  eventType: string;
+  eventId: string;
+  payload: string;
+  status: string;
+  errorMessage?: string;
+  processedAt?: string;
+  receivedAt: string;
+}
+
 export default function Dashboard() {
   const [, setLocation] = useLocation();
   const [user, setUser] = useState<User | null>(null);
@@ -84,6 +108,19 @@ export default function Dashboard() {
   const [isAddVehicleDialogOpen, setIsAddVehicleDialogOpen] = useState(false);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
   const [budgetPriority, setBudgetPriority] = useState<number>(3);
+  
+  // PBS state
+  const [pbsConfig, setPbsConfig] = useState<PbsConfig | null>(null);
+  const [webhookEvents, setWebhookEvents] = useState<PbsWebhookEvent[]>([]);
+  const [isPbsDialogOpen, setIsPbsDialogOpen] = useState(false);
+  const [newPbsConfig, setNewPbsConfig] = useState({
+    partnerId: "",
+    username: "",
+    password: "",
+    webhookUrl: "",
+    webhookSecret: "",
+    pbsApiUrl: "https://partnerhub.pbsdealers.com",
+  });
   
   const [newCreditTier, setNewCreditTier] = useState({
     tierName: "",
@@ -130,6 +167,8 @@ export default function Dashboard() {
       await loadFinancingRules(token);
       await loadVehicles(token);
       await loadRemarketingVehicles(token);
+      await loadPbsConfig(token);
+      await loadWebhookEvents(token);
     } catch (error) {
       console.error("Auth check failed:", error);
       setLocation('/login');
@@ -298,6 +337,85 @@ export default function Dashboard() {
       }
     } catch (error) {
       console.error("Failed to load financing rules:", error);
+    }
+  };
+
+  const loadPbsConfig = async (token: string) => {
+    try {
+      const response = await fetch('/api/pbs/config', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setPbsConfig(data);
+        if (data) {
+          setNewPbsConfig({
+            partnerId: data.partnerId,
+            username: data.username,
+            password: data.password,
+            webhookUrl: data.webhookUrl || "",
+            webhookSecret: data.webhookSecret || "",
+            pbsApiUrl: data.pbsApiUrl,
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load PBS config:", error);
+    }
+  };
+
+  const loadWebhookEvents = async (token: string) => {
+    try {
+      const response = await fetch('/api/pbs/webhook-events?limit=50', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setWebhookEvents(data);
+      }
+    } catch (error) {
+      console.error("Failed to load webhook events:", error);
+    }
+  };
+
+  const handleSavePbsConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
+
+    try {
+      const response = await fetch('/api/pbs/config', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(newPbsConfig),
+      });
+
+      if (response.ok) {
+        toast({
+          title: "PBS Configuration Saved",
+          description: "DMS integration settings have been updated",
+        });
+        setIsPbsDialogOpen(false);
+        await loadPbsConfig(token);
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Error",
+          description: error.error || "Failed to save PBS configuration",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to save PBS configuration",
+        variant: "destructive",
+      });
     }
   };
 
@@ -1203,21 +1321,223 @@ export default function Dashboard() {
             </TabsContent>
 
             <TabsContent value="webhooks">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Webhook Configuration</CardTitle>
-                  <CardDescription>
-                    Configure PBS and other webhook integrations for lead capture
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="py-12 text-center">
-                  <Webhook className="w-12 h-12 mx-auto mb-4 text-slate-400" />
-                  <p className="text-slate-500 mb-4">Webhook management coming soon</p>
-                  <p className="text-sm text-slate-400">
-                    Connect PBS and external platforms for automated lead routing
-                  </p>
-                </CardContent>
-              </Card>
+              <div className="space-y-6">
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>PBS DMS Integration</CardTitle>
+                        <CardDescription>
+                          Configure PBS Partner Hub API credentials and webhook settings
+                        </CardDescription>
+                      </div>
+                      <Dialog open={isPbsDialogOpen} onOpenChange={setIsPbsDialogOpen}>
+                        <DialogTrigger asChild>
+                          <Button data-testid="button-configure-pbs">
+                            <Settings className="w-4 h-4 mr-2" />
+                            {pbsConfig ? 'Update' : 'Configure'} PBS
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-2xl">
+                          <DialogHeader>
+                            <DialogTitle>PBS DMS Configuration</DialogTitle>
+                            <DialogDescription>
+                              Enter your PBS Partner Hub credentials and webhook settings
+                            </DialogDescription>
+                          </DialogHeader>
+                          <form onSubmit={handleSavePbsConfig} className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <Label htmlFor="partnerId">Partner ID</Label>
+                                <Input
+                                  id="partnerId"
+                                  value={newPbsConfig.partnerId}
+                                  onChange={(e) => setNewPbsConfig({ ...newPbsConfig, partnerId: e.target.value })}
+                                  placeholder="Your PBS Partner ID"
+                                  required
+                                  data-testid="input-partner-id"
+                                />
+                              </div>
+                              <div>
+                                <Label htmlFor="username">API Username</Label>
+                                <Input
+                                  id="username"
+                                  value={newPbsConfig.username}
+                                  onChange={(e) => setNewPbsConfig({ ...newPbsConfig, username: e.target.value })}
+                                  placeholder="API username"
+                                  required
+                                  data-testid="input-username"
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <Label htmlFor="password">API Password</Label>
+                              <Input
+                                id="password"
+                                type="password"
+                                value={newPbsConfig.password}
+                                onChange={(e) => setNewPbsConfig({ ...newPbsConfig, password: e.target.value })}
+                                placeholder="API password"
+                                required
+                                data-testid="input-password"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="pbsApiUrl">PBS API URL</Label>
+                              <Input
+                                id="pbsApiUrl"
+                                value={newPbsConfig.pbsApiUrl}
+                                onChange={(e) => setNewPbsConfig({ ...newPbsConfig, pbsApiUrl: e.target.value })}
+                                placeholder="https://partnerhub.pbsdealers.com"
+                                required
+                                data-testid="input-api-url"
+                              />
+                            </div>
+                            <div className="border-t pt-4">
+                              <h4 className="font-medium mb-3">Webhook Configuration (Optional)</h4>
+                              <div className="space-y-3">
+                                <div>
+                                  <Label htmlFor="webhookUrl">Webhook URL</Label>
+                                  <Input
+                                    id="webhookUrl"
+                                    value={newPbsConfig.webhookUrl}
+                                    onChange={(e) => setNewPbsConfig({ ...newPbsConfig, webhookUrl: e.target.value })}
+                                    placeholder={`${window.location.origin}/api/pbs/webhook`}
+                                    data-testid="input-webhook-url"
+                                  />
+                                  <p className="text-xs text-slate-500 mt-1">
+                                    Register this URL in your PBS Partner Hub dashboard
+                                  </p>
+                                </div>
+                                <div>
+                                  <Label htmlFor="webhookSecret">Webhook Secret</Label>
+                                  <Input
+                                    id="webhookSecret"
+                                    type="password"
+                                    value={newPbsConfig.webhookSecret}
+                                    onChange={(e) => setNewPbsConfig({ ...newPbsConfig, webhookSecret: e.target.value })}
+                                    placeholder="Optional webhook verification secret"
+                                    data-testid="input-webhook-secret"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                            <Button type="submit" className="w-full" data-testid="button-save-pbs-config">
+                              Save Configuration
+                            </Button>
+                          </form>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {pbsConfig ? (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-lg">
+                          <div>
+                            <div className="text-sm font-medium text-slate-600">Partner ID</div>
+                            <div className="text-sm">{pbsConfig.partnerId}</div>
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-slate-600">Username</div>
+                            <div className="text-sm">{pbsConfig.username}</div>
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-slate-600">API URL</div>
+                            <div className="text-sm">{pbsConfig.pbsApiUrl}</div>
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-slate-600">Webhook URL</div>
+                            <div className="text-sm truncate">{pbsConfig.webhookUrl || 'Not configured'}</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-green-600">
+                          <div className="w-2 h-2 bg-green-600 rounded-full"></div>
+                          Configuration active
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-slate-500">
+                        <Webhook className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                        <p className="mb-2">No PBS configuration found</p>
+                        <p className="text-sm text-slate-400">Click Configure PBS to get started</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>Webhook Event Log</CardTitle>
+                        <CardDescription>
+                          Recent webhook events received from PBS ({webhookEvents.length} events)
+                        </CardDescription>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const token = localStorage.getItem('auth_token');
+                          if (token) loadWebhookEvents(token);
+                        }}
+                        data-testid="button-refresh-events"
+                      >
+                        Refresh
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {webhookEvents.length === 0 ? (
+                      <div className="text-center py-8 text-slate-500">
+                        <MessageSquare className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                        <p className="mb-2">No webhook events received yet</p>
+                        <p className="text-sm text-slate-400">
+                          Events will appear here when PBS sends webhooks
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-96 overflow-y-auto">
+                        {webhookEvents.map((event) => (
+                          <div
+                            key={event.id}
+                            className="p-3 border rounded-lg hover:bg-slate-50"
+                            data-testid={`webhook-event-${event.id}`}
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-sm">{event.eventType}</span>
+                                  <span
+                                    className={`px-2 py-0.5 text-xs rounded-full ${
+                                      event.status === 'processed'
+                                        ? 'bg-green-100 text-green-700'
+                                        : event.status === 'failed'
+                                        ? 'bg-red-100 text-red-700'
+                                        : 'bg-yellow-100 text-yellow-700'
+                                    }`}
+                                  >
+                                    {event.status}
+                                  </span>
+                                </div>
+                                <div className="text-xs text-slate-500 mt-1">
+                                  Event ID: {event.eventId} • Received: {new Date(event.receivedAt).toLocaleString()}
+                                </div>
+                                {event.errorMessage && (
+                                  <div className="text-xs text-red-600 mt-1">
+                                    Error: {event.errorMessage}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
             </TabsContent>
 
             <TabsContent value="conversations">

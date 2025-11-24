@@ -53,7 +53,13 @@ import {
   type PostingSchedule,
   type InsertPostingSchedule,
   type RemarketingVehicle,
-  type InsertRemarketingVehicle
+  type InsertRemarketingVehicle,
+  pbsConfig,
+  type PbsConfig,
+  type InsertPbsConfig,
+  pbsWebhookEvents,
+  type PbsWebhookEvent,
+  type InsertPbsWebhookEvent
 } from "@shared/schema";
 import { eq, desc, sql, and, gte, lte } from "drizzle-orm";
 
@@ -161,6 +167,18 @@ export interface IStorage {
   updateRemarketingVehicle(id: number, vehicle: Partial<InsertRemarketingVehicle>): Promise<RemarketingVehicle | undefined>;
   removeRemarketingVehicle(id: number): Promise<boolean>;
   getRemarketingVehicleCount(): Promise<number>;
+  
+  // PBS DMS Integration
+  getPbsConfig(): Promise<PbsConfig | undefined>;
+  createPbsConfig(config: InsertPbsConfig): Promise<PbsConfig>;
+  updatePbsConfig(id: number, config: Partial<InsertPbsConfig>): Promise<PbsConfig | undefined>;
+  deletePbsConfig(id: number): Promise<boolean>;
+  
+  // PBS Webhook Events
+  getPbsWebhookEvents(limit?: number): Promise<PbsWebhookEvent[]>;
+  getPbsWebhookEventById(id: number): Promise<PbsWebhookEvent | undefined>;
+  createPbsWebhookEvent(event: InsertPbsWebhookEvent): Promise<PbsWebhookEvent>;
+  updatePbsWebhookEvent(id: number, event: Partial<InsertPbsWebhookEvent>): Promise<PbsWebhookEvent | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -611,6 +629,67 @@ export class DatabaseStorage implements IStorage {
       .from(remarketingVehicles)
       .where(eq(remarketingVehicles.isActive, true));
     return Number(result[0]?.count || 0);
+  }
+
+  // PBS DMS Integration
+  async getPbsConfig(): Promise<PbsConfig | undefined> {
+    const result = await db
+      .select()
+      .from(pbsConfig)
+      .where(eq(pbsConfig.isActive, true))
+      .limit(1);
+    return result[0];
+  }
+
+  async createPbsConfig(config: InsertPbsConfig): Promise<PbsConfig> {
+    const result = await db.insert(pbsConfig).values(config).returning();
+    return result[0];
+  }
+
+  async updatePbsConfig(id: number, config: Partial<InsertPbsConfig>): Promise<PbsConfig | undefined> {
+    const result = await db
+      .update(pbsConfig)
+      .set({ ...config, updatedAt: new Date() })
+      .where(eq(pbsConfig.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async deletePbsConfig(id: number): Promise<boolean> {
+    const result = await db.delete(pbsConfig).where(eq(pbsConfig.id, id));
+    return true;
+  }
+
+  // PBS Webhook Events
+  async getPbsWebhookEvents(limit: number = 100): Promise<PbsWebhookEvent[]> {
+    return await db
+      .select()
+      .from(pbsWebhookEvents)
+      .orderBy(desc(pbsWebhookEvents.receivedAt))
+      .limit(limit);
+  }
+
+  async getPbsWebhookEventById(id: number): Promise<PbsWebhookEvent | undefined> {
+    const result = await db
+      .select()
+      .from(pbsWebhookEvents)
+      .where(eq(pbsWebhookEvents.id, id))
+      .limit(1);
+    return result[0];
+  }
+
+  async createPbsWebhookEvent(event: InsertPbsWebhookEvent): Promise<PbsWebhookEvent> {
+    const result = await db.insert(pbsWebhookEvents).values(event).returning();
+    return result[0];
+  }
+
+  async updatePbsWebhookEvent(id: number, event: Partial<InsertPbsWebhookEvent>): Promise<PbsWebhookEvent | undefined> {
+    const result = await db
+      .update(pbsWebhookEvents)
+      .set(event)
+      .where(eq(pbsWebhookEvents.id, id))
+      .returning();
+    return result[0];
   }
 }
 
