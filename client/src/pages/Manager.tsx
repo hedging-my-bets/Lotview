@@ -35,7 +35,7 @@ export default function Manager() {
 
   // Market pricing state
   const [pricingForm, setPricingForm] = useState({
-    year: "",
+    selectedYears: [] as number[],
     make: "",
     model: "",
     selectedTrims: [] as string[],
@@ -52,6 +52,7 @@ export default function Manager() {
   const [trims, setTrims] = useState<string[]>([]);
 
   // Popover states for autocomplete
+  const [yearOpen, setYearOpen] = useState(false);
   const [makeOpen, setMakeOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
   const [trimOpen, setTrimOpen] = useState(false);
@@ -271,9 +272,9 @@ export default function Manager() {
       const token = localStorage.getItem('auth_token');
       
       const currentYear = new Date().getFullYear();
-      const year = parseInt(pricingForm.year) || currentYear;
-      const yearMin = year - 2;
-      const yearMax = year + 2;
+      const years = pricingForm.selectedYears.length > 0 ? pricingForm.selectedYears : [currentYear];
+      const yearMin = Math.min(...years);
+      const yearMax = Math.max(...years);
       
       const response = await fetch('/api/manager/scrape-market', {
         method: 'POST',
@@ -369,7 +370,7 @@ export default function Manager() {
         const vehicleYear = result.year || currentYear;
         setPricingForm(prev => ({
           ...prev,
-          year: String(vehicleYear),
+          selectedYears: vehicleYear ? [vehicleYear] : [],
           make: result.make || "",
           model: result.model || "",
           selectedTrims: result.trim ? [result.trim] : [],
@@ -429,7 +430,7 @@ export default function Manager() {
       const token = localStorage.getItem('auth_token');
       
       const currentYear = new Date().getFullYear();
-      const year = parseInt(pricingForm.year) || currentYear;
+      const years = pricingForm.selectedYears.length > 0 ? pricingForm.selectedYears : [currentYear];
       
       const response = await fetch('/api/manager/market-pricing', {
         method: 'POST',
@@ -440,7 +441,7 @@ export default function Manager() {
         body: JSON.stringify({
           make: pricingForm.make,
           model: pricingForm.model,
-          year,
+          years,
           trims: pricingForm.selectedTrims.length > 0 ? pricingForm.selectedTrims : undefined,
           mileage: pricingForm.mileage ? parseInt(pricingForm.mileage) : undefined,
           radiusKm: parseInt(pricingForm.radiusKm) || settings.defaultRadiusKm,
@@ -724,27 +725,86 @@ export default function Manager() {
                     </Button>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {/* Year */}
+                    {/* Year Multi-Select */}
                     <div>
-                      <Label htmlFor="year">Year</Label>
-                      <Select
-                        value={pricingForm.year}
-                        onValueChange={(value) => setPricingForm({ ...pricingForm, year: value })}
-                      >
-                        <SelectTrigger className="w-full mt-2" data-testid="select-year">
-                          <SelectValue placeholder="Select year" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Array.from({ length: 20 }, (_, i) => new Date().getFullYear() + 1 - i).map((year) => (
-                            <SelectItem key={year} value={String(year)}>
-                              {year}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-slate-500 mt-1">
-                        Select vehicle model year
-                      </p>
+                      <Label>Year (Select Multiple)</Label>
+                      <div className="mt-2">
+                        <Popover open={yearOpen} onOpenChange={setYearOpen}>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              role="combobox"
+                              aria-expanded={yearOpen}
+                              className="w-full justify-between"
+                              data-testid="select-year"
+                            >
+                              <span className="truncate">
+                                {pricingForm.selectedYears.length > 0 
+                                  ? `${pricingForm.selectedYears.length} year(s) selected`
+                                  : "Select years..."}
+                              </span>
+                              <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[250px] p-0" align="start">
+                            <Command>
+                              <CommandInput placeholder="Search year..." />
+                              <CommandList>
+                                <CommandEmpty>No year found.</CommandEmpty>
+                                <CommandGroup>
+                                  {Array.from({ length: 20 }, (_, i) => new Date().getFullYear() + 1 - i).map((year) => {
+                                    const isSelected = pricingForm.selectedYears.includes(year);
+                                    return (
+                                      <CommandItem
+                                        key={year}
+                                        value={String(year)}
+                                        onSelect={() => {
+                                          const newYears = isSelected
+                                            ? pricingForm.selectedYears.filter(y => y !== year)
+                                            : [...pricingForm.selectedYears, year].sort((a, b) => b - a);
+                                          setPricingForm({ ...pricingForm, selectedYears: newYears });
+                                        }}
+                                        data-testid={`option-year-${year}`}
+                                      >
+                                        <Check
+                                          className={cn(
+                                            "mr-2 h-4 w-4",
+                                            isSelected ? "opacity-100" : "opacity-0"
+                                          )}
+                                        />
+                                        {year}
+                                      </CommandItem>
+                                    );
+                                  })}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                        {pricingForm.selectedYears.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {pricingForm.selectedYears.sort((a, b) => b - a).map((year) => (
+                              <Badge
+                                key={year}
+                                variant="secondary"
+                                className="text-xs"
+                                data-testid={`badge-year-${year}`}
+                              >
+                                {year}
+                                <X
+                                  className="ml-1 h-3 w-3 cursor-pointer"
+                                  onClick={() => {
+                                    setPricingForm({
+                                      ...pricingForm,
+                                      selectedYears: pricingForm.selectedYears.filter(y => y !== year)
+                                    });
+                                  }}
+                                />
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* Make Autocomplete */}

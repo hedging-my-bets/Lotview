@@ -1586,10 +1586,10 @@ Format your response in clear sections with actionable recommendations.`;
   // Market pricing analysis (uses external market listings)
   app.post("/api/manager/market-pricing", authMiddleware, requireRole("manager"), async (req, res) => {
     try {
-      const { year, make, model, trim, trims, yearMin, yearMax, mileage, radiusKm, postalCode } = req.body;
+      const { year, years, make, model, trim, trims, yearMin, yearMax, mileage, radiusKm, postalCode } = req.body;
       
       // Validate required fields
-      if (!year && !yearMin) {
+      if (!year && !years && !yearMin) {
         return res.status(400).json({
           error: 'Missing required fields',
           message: 'Year or year range is required'
@@ -1609,8 +1609,28 @@ Format your response in clear sections with actionable recommendations.`;
       
       const searchPostalCode = postalCode || userSettings?.postalCode;
       const searchRadiusKm = radiusKm || userSettings?.defaultRadiusKm || 50;
-      const searchYearMin = yearMin ? parseInt(yearMin) : (year ? parseInt(year) - 2 : new Date().getFullYear() - 5);
-      const searchYearMax = yearMax ? parseInt(yearMax) : (year ? parseInt(year) + 2 : new Date().getFullYear());
+      
+      // Handle years parameter (array) vs single year vs year range
+      let searchYearMin: number;
+      let searchYearMax: number;
+      let targetYear: number;
+      if (years && Array.isArray(years) && years.length > 0) {
+        searchYearMin = Math.min(...years);
+        searchYearMax = Math.max(...years);
+        targetYear = Math.round((searchYearMin + searchYearMax) / 2);
+      } else if (yearMin && yearMax) {
+        searchYearMin = parseInt(yearMin);
+        searchYearMax = parseInt(yearMax);
+        targetYear = Math.round((searchYearMin + searchYearMax) / 2);
+      } else if (year) {
+        targetYear = parseInt(year);
+        searchYearMin = targetYear - 2;
+        searchYearMax = targetYear + 2;
+      } else {
+        searchYearMin = new Date().getFullYear() - 5;
+        searchYearMax = new Date().getFullYear();
+        targetYear = Math.round((searchYearMin + searchYearMax) / 2);
+      }
       
       // Get market listings from database
       let marketListings = await storage.getMarketListings({
@@ -1638,7 +1658,8 @@ Format your response in clear sections with actionable recommendations.`;
             sources: [],
             searchRadius: searchRadiusKm,
             postalCode: searchPostalCode,
-            year: year ? parseInt(year) : Math.round((searchYearMin + searchYearMax) / 2)
+            years: years || (year ? [parseInt(year)] : []),
+            year: targetYear
           }
         });
       }
@@ -1664,11 +1685,6 @@ Format your response in clear sections with actionable recommendations.`;
       // Import market pricing service
       const { analyzeMarketPricing } = await import('./market-pricing');
       
-      // Derive target year from year range (use midpoint for comparison)
-      const targetYear = year 
-        ? parseInt(year) 
-        : Math.round((searchYearMin + searchYearMax) / 2);
-      
       // Prepare request
       const pricingRequest = {
         year: targetYear,
@@ -1692,6 +1708,7 @@ Format your response in clear sections with actionable recommendations.`;
           sources: [...new Set(marketListings.map(l => l.source))],
           searchRadius: searchRadiusKm,
           postalCode: searchPostalCode,
+          years: years || (year ? [parseInt(year)] : []),
           year: targetYear
         }
       };
