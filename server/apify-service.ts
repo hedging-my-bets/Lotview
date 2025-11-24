@@ -28,13 +28,14 @@ export interface ApifyAutoTraderListing {
 
 export class ApifyService {
   private apiToken: string;
-  private autoTraderActorId = 'fayoussef/autotrader-canada'; // Official Apify AutoTrader.ca actor
+  private autoTraderActorId: string;
 
-  constructor(apiToken: string) {
+  constructor(apiToken: string, actorId?: string) {
     if (!apiToken) {
       throw new Error('Apify API token is required');
     }
     this.apiToken = apiToken;
+    this.autoTraderActorId = actorId || 'fayoussef/autotrader-canada'; // Default to official actor
   }
 
   /**
@@ -180,9 +181,15 @@ let apifyService: ApifyService | null = null;
 export function getApifyService(): ApifyService | null {
   if (!apifyService) {
     const apiToken = process.env.APIFY_API_TOKEN;
+    const actorId = process.env.APIFY_AUTOTRADER_ACTOR_ID;
+    
     if (apiToken) {
-      apifyService = new ApifyService(apiToken);
-      console.log('[Apify] Service initialized');
+      apifyService = new ApifyService(apiToken, actorId);
+      console.log('[Apify] Service initialized', actorId ? `with actor ${actorId}` : 'with default actor');
+      
+      if (!actorId) {
+        console.warn('[Apify] APIFY_AUTOTRADER_ACTOR_ID not configured - using default actor');
+      }
     } else {
       console.warn('[Apify] API token not configured (APIFY_API_TOKEN)');
     }

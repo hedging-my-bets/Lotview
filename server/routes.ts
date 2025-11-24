@@ -1853,6 +1853,20 @@ Format your response in clear sections with actionable recommendations.`;
         maxResults: 100
       });
 
+      // Return error status if all sources failed and no data was saved
+      if (!result.success && result.totalListings === 0) {
+        return res.status(500).json({
+          success: false,
+          savedCount: 0,
+          marketCheckCount: result.marketCheckCount,
+          apifyCount: result.apifyCount,
+          scraperCount: result.scraperCount,
+          duplicatesRemoved: result.duplicatesRemoved,
+          errors: result.errors,
+          message: `Failed to aggregate market data. Errors: ${result.errors.join(', ')}`
+        });
+      }
+
       res.json({
         success: result.success,
         savedCount: result.totalListings,

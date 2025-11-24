@@ -166,24 +166,33 @@ export class MarketAggregationService {
       console.log('[MarketAggregation] Skipping scraper (sufficient premium data)');
     }
 
-    // Save all unique listings to database
+    // Save all unique listings to database (batch check existing URLs)
     let savedCount = 0;
+    const listingUrls = allListings.map(l => l.listingUrl);
+    
+    // Fetch all existing listings by URLs (cross-make/model deduplication)
+    let existingUrls = new Set<string>();
+    try {
+      const existingListings = await storage.getMarketListingsByUrls(listingUrls);
+      existingUrls = new Set(existingListings.map(l => l.listingUrl));
+    } catch (error) {
+      console.error('[MarketAggregation] Error fetching existing listings:', error);
+    }
+    
+    // Save only new listings
     for (const listing of allListings) {
-      try {
-        // Check if listing already exists by URL
-        const existingListings = await storage.getMarketListings({
-          make: listing.make,
-          model: listing.model
-        });
-        
-        const alreadyExists = existingListings.some(e => e.listingUrl === listing.listingUrl);
-        
-        if (!alreadyExists) {
+      if (!existingUrls.has(listing.listingUrl)) {
+        try {
           await storage.createMarketListing(listing);
           savedCount++;
+        } catch (error) {
+          // Handle unique constraint violations gracefully (race conditions)
+          if (error instanceof Error && (error.message.includes('unique') || error.message.includes('duplicate key'))) {
+            console.log(`[MarketAggregation] Listing already exists (race condition): ${listing.listingUrl}`);
+          } else {
+            console.error(`[MarketAggregation] Error saving listing:`, error);
+          }
         }
-      } catch (error) {
-        console.error(`[MarketAggregation] Error saving listing:`, error);
       }
     }
 

@@ -211,23 +211,42 @@ Preferred communication style: Simple, everyday language.
 
 **Sales Manager Tools (November 2025):**
 - **VIN Decoder**: NHTSA API integration to decode 17-character VINs and retrieve comprehensive vehicle specifications
-- **Market Pricing Analysis - External Market Data (November 24, 2025)**: 
-  - AutoTrader Canada scraper using Puppeteer for real market listings
-  - Canadian postal code geocoding via Geocoder.ca API (lat/lon conversion, distance calculation)
-  - Manager settings storage (postal code, default search radius in KM)
-  - Market listings cache with source tracking (AutoTrader/Kijiji/etc), listing type (dealer/private), posted date
-  - Multi-trim and flexible year range support in pricing API
-  - Safe SQL filtering with case-insensitive matching
-  - Manual scrape trigger endpoint to prevent API timeouts
-  - Pricing algorithm updated to accept external market listings with mileage, source, listing type fields
+- **Market Pricing Analysis - Enterprise-Grade Three-Tier Data Strategy (November 24, 2025)**: 
+  - **Architecture**: Intelligent data aggregation from multiple sources with automatic failover and deduplication
+  - **Primary Source - MarketCheck API** (enterprise-grade, requires API key via MARKETCHECK_API_KEY secret):
+    - Comprehensive Canadian dealer and private party listings
+    - Clean structured data with lat/lon coordinates for radius searches
+    - Professional market intelligence trusted by dealerships
+    - Configurable in Replit Secrets, graceful degradation if not configured
+  - **Secondary Source - Apify AutoTrader.ca Actor** (managed scraping, requires APIFY_API_TOKEN secret):
+    - Enterprise web scraping platform with quality guarantees
+    - Canada's largest automotive marketplace coverage
+    - Automatic retries and browser automation infrastructure
+    - Configurable actor ID via APIFY_AUTOTRADER_ACTOR_ID secret (defaults to 'fayoussef/autotrader-canada')
+  - **Fallback Source - Puppeteer Scraper** (free, always available):
+    - Direct AutoTrader.ca scraping using Chromium
+    - Activates automatically when premium sources unavailable or return <20 listings
+    - 2024 URL format with robust selector-based extraction
+  - **Data Aggregation Service** (`server/market-aggregation-service.ts`):
+    - Orchestrates all three sources in priority order
+    - Intelligent deduplication using listing URLs across sources
+    - Batch database checking to prevent duplicate inserts
+    - Race condition handling with unique constraint error catching
+    - Comprehensive error reporting and source breakdown metrics
+  - **Canadian postal code geocoding** via Geocoder.ca API (lat/lon conversion, distance calculation)
+  - **Manager settings storage** (postal code, default search radius in KM)
+  - **Market listings cache** with source tracking (marketcheck/apify/autotrader_scraper), listing type (dealer/private), posted date
+  - **Multi-trim and flexible year range support** in pricing API
+  - **Safe SQL filtering** with case-insensitive matching
+  - **Manual scrape trigger endpoint** (`POST /api/manager/scrape-market`) with detailed source breakdown
   - **UI Complete (November 24, 2025)**: 
     - Settings panel with Canadian postal code validation and radius configuration
     - Year range inputs (min/max) replacing single year field
     - Multi-trim selector with badges for comparing multiple trims
-    - "Refresh Market Data" button for manual AutoTrader scraping
+    - "Refresh Market Data" button triggering enterprise data aggregation
     - Enhanced results display showing data sources, year ranges, radius, and location metadata
     - Full validation preventing searches without postal code configuration
-  - **Technical Debt**: Distance filtering not yet implemented (geocoding ready), scraper should run in background job queue, no Kijiji scraper yet, no mileage adjustment or source weighting in pricing algorithm
+  - **Technical Debt**: Distance filtering not yet implemented (geocoding ready), scraper should run in background job queue, no mileage adjustment or source weighting in pricing algorithm
 
 **Cron Scheduling:**
 - Node-cron for scheduled inventory synchronization tasks

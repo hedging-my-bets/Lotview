@@ -194,6 +194,7 @@ export interface IStorage {
   // Market Listings
   getMarketListings(filters: { make?: string; model?: string; yearMin?: number; yearMax?: number; source?: string }): Promise<MarketListing[]>;
   getMarketListingById(id: number): Promise<MarketListing | undefined>;
+  getMarketListingsByUrls(urls: string[]): Promise<MarketListing[]>;
   createMarketListing(listing: InsertMarketListing): Promise<MarketListing>;
   updateMarketListing(id: number, listing: Partial<InsertMarketListing>): Promise<MarketListing | undefined>;
   deactivateMarketListing(url: string): Promise<boolean>;
@@ -776,6 +777,18 @@ export class DatabaseStorage implements IStorage {
       .where(eq(marketListings.id, id))
       .limit(1);
     return result[0];
+  }
+
+  async getMarketListingsByUrls(urls: string[]): Promise<MarketListing[]> {
+    if (urls.length === 0) {
+      return [];
+    }
+    
+    const result = await db
+      .select()
+      .from(marketListings)
+      .where(sql`${marketListings.listingUrl} = ANY(${urls})`);
+    return result;
   }
 
   async createMarketListing(listing: InsertMarketListing): Promise<MarketListing> {
