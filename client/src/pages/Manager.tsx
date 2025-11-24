@@ -35,8 +35,7 @@ export default function Manager() {
 
   // Market pricing state
   const [pricingForm, setPricingForm] = useState({
-    yearMin: "",
-    yearMax: "",
+    year: "",
     make: "",
     model: "",
     selectedTrims: [] as string[],
@@ -271,8 +270,10 @@ export default function Manager() {
     try {
       const token = localStorage.getItem('auth_token');
       
-      const yearMin = parseInt(pricingForm.yearMin) || new Date().getFullYear() - 5;
-      const yearMax = parseInt(pricingForm.yearMax) || new Date().getFullYear();
+      const currentYear = new Date().getFullYear();
+      const year = parseInt(pricingForm.year) || currentYear;
+      const yearMin = year - 2;
+      const yearMax = year + 2;
       
       const response = await fetch('/api/manager/scrape-market', {
         method: 'POST',
@@ -368,8 +369,7 @@ export default function Manager() {
         const vehicleYear = result.year || currentYear;
         setPricingForm(prev => ({
           ...prev,
-          yearMin: String(vehicleYear),
-          yearMax: String(vehicleYear),
+          year: String(vehicleYear),
           make: result.make || "",
           model: result.model || "",
           selectedTrims: result.trim ? [result.trim] : [],
@@ -429,8 +429,7 @@ export default function Manager() {
       const token = localStorage.getItem('auth_token');
       
       const currentYear = new Date().getFullYear();
-      const yearMin = parseInt(pricingForm.yearMin) || (currentYear - 5);
-      const yearMax = parseInt(pricingForm.yearMax) || currentYear;
+      const year = parseInt(pricingForm.year) || currentYear;
       
       const response = await fetch('/api/manager/market-pricing', {
         method: 'POST',
@@ -441,8 +440,7 @@ export default function Manager() {
         body: JSON.stringify({
           make: pricingForm.make,
           model: pricingForm.model,
-          yearMin,
-          yearMax,
+          year,
           trims: pricingForm.selectedTrims.length > 0 ? pricingForm.selectedTrims : undefined,
           mileage: pricingForm.mileage ? parseInt(pricingForm.mileage) : undefined,
           radiusKm: parseInt(pricingForm.radiusKm) || settings.defaultRadiusKm,
@@ -726,100 +724,26 @@ export default function Manager() {
                     </Button>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {/* Year Range */}
+                    {/* Year */}
                     <div>
-                      <Label>Year Range (Optional)</Label>
-                      <div className="flex gap-2 mt-2">
-                        <Select
-                          value={pricingForm.yearMin}
-                          onValueChange={(value) => setPricingForm({ ...pricingForm, yearMin: value })}
-                        >
-                          <SelectTrigger className="w-full" data-testid="select-year-min">
-                            <SelectValue placeholder="Min Year" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {Array.from({ length: 16 }, (_, i) => new Date().getFullYear() + 1 - i).map((year) => (
-                              <SelectItem key={year} value={String(year)}>
-                                {year}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Select
-                          value={pricingForm.yearMax}
-                          onValueChange={(value) => setPricingForm({ ...pricingForm, yearMax: value })}
-                        >
-                          <SelectTrigger className="w-full" data-testid="select-year-max">
-                            <SelectValue placeholder="Max Year" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {Array.from({ length: 16 }, (_, i) => new Date().getFullYear() + 1 - i).map((year) => (
-                              <SelectItem key={year} value={String(year)}>
-                                {year}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      
-                      {/* Quick Range Buttons */}
-                      <div className="flex gap-1 mt-2 flex-wrap">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="text-xs h-7"
-                          onClick={() => {
-                            const year = vinResults?.year || new Date().getFullYear();
-                            setPricingForm({ ...pricingForm, yearMin: String(year), yearMax: String(year) });
-                          }}
-                          data-testid="button-year-exact"
-                        >
-                          Exact Year
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="text-xs h-7"
-                          onClick={() => {
-                            const year = vinResults?.year || new Date().getFullYear();
-                            setPricingForm({ ...pricingForm, yearMin: String(year - 1), yearMax: String(year + 1) });
-                          }}
-                          data-testid="button-year-plus-minus-1"
-                        >
-                          ±1 Year
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="text-xs h-7"
-                          onClick={() => {
-                            const year = vinResults?.year || new Date().getFullYear();
-                            setPricingForm({ ...pricingForm, yearMin: String(year - 2), yearMax: String(year + 2) });
-                          }}
-                          data-testid="button-year-plus-minus-2"
-                        >
-                          ±2 Years
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="text-xs h-7"
-                          onClick={() => {
-                            const currentYear = new Date().getFullYear();
-                            setPricingForm({ ...pricingForm, yearMin: String(currentYear - 5), yearMax: String(currentYear) });
-                          }}
-                          data-testid="button-year-last-5"
-                        >
-                          Last 5 Years
-                        </Button>
-                      </div>
-                      
-                      <p className="text-xs text-slate-500 mt-2">
-                        Leave blank to search last 5 years
+                      <Label htmlFor="year">Year</Label>
+                      <Select
+                        value={pricingForm.year}
+                        onValueChange={(value) => setPricingForm({ ...pricingForm, year: value })}
+                      >
+                        <SelectTrigger className="w-full mt-2" data-testid="select-year">
+                          <SelectValue placeholder="Select year" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 20 }, (_, i) => new Date().getFullYear() + 1 - i).map((year) => (
+                            <SelectItem key={year} value={String(year)}>
+                              {year}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Select vehicle model year
                       </p>
                     </div>
 
@@ -1074,10 +998,10 @@ export default function Manager() {
                                 ))}
                               </div>
                             )}
-                            {pricingResults.meta.yearRange && (
+                            {pricingResults.meta.year && (
                               <div>
-                                <span className="font-medium text-slate-700">Year Range:</span>{' '}
-                                <span className="text-slate-900">{pricingResults.meta.yearRange.min} - {pricingResults.meta.yearRange.max}</span>
+                                <span className="font-medium text-slate-700">Year:</span>{' '}
+                                <span className="text-slate-900">{pricingResults.meta.year}</span>
                               </div>
                             )}
                             {pricingResults.meta.searchRadius && (

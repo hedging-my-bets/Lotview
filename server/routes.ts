@@ -1638,7 +1638,7 @@ Format your response in clear sections with actionable recommendations.`;
             sources: [],
             searchRadius: searchRadiusKm,
             postalCode: searchPostalCode,
-            yearRange: { min: searchYearMin, max: searchYearMax }
+            year: year ? parseInt(year) : Math.round((searchYearMin + searchYearMax) / 2)
           }
         });
       }
@@ -1692,7 +1692,7 @@ Format your response in clear sections with actionable recommendations.`;
           sources: [...new Set(marketListings.map(l => l.source))],
           searchRadius: searchRadiusKm,
           postalCode: searchPostalCode,
-          yearRange: { min: searchYearMin, max: searchYearMax }
+          year: targetYear
         }
       };
       
@@ -1706,11 +1706,12 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
 
-  // Get unique makes from inventory (for autocomplete)
+  // Get unique makes from market listings (for autocomplete)
   app.get("/api/inventory/makes", authMiddleware, requireRole("manager"), async (req, res) => {
     try {
-      const vehicles = await storage.getVehicles();
-      const makes = [...new Set(vehicles.map(v => v.make))].filter(Boolean).sort();
+      // Get all market listings to populate makes
+      const marketListings = await storage.getMarketListings({});
+      const makes = [...new Set(marketListings.map(v => v.make))].filter(Boolean).sort();
       res.json(makes);
     } catch (error) {
       console.error("Error fetching makes:", error);
@@ -1718,17 +1719,17 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
 
-  // Get unique models for a specific make (for autocomplete)
+  // Get unique models for a specific make from market listings (for autocomplete)
   app.get("/api/inventory/models", authMiddleware, requireRole("manager"), async (req, res) => {
     try {
       const { make } = req.query;
-      const vehicles = await storage.getVehicles();
+      const marketListings = await storage.getMarketListings({});
       
       let models;
       if (make) {
-        models = [...new Set(vehicles.filter(v => v.make === make).map(v => v.model))].filter(Boolean).sort();
+        models = [...new Set(marketListings.filter(v => v.make === make).map(v => v.model))].filter(Boolean).sort();
       } else {
-        models = [...new Set(vehicles.map(v => v.model))].filter(Boolean).sort();
+        models = [...new Set(marketListings.map(v => v.model))].filter(Boolean).sort();
       }
       
       res.json(models);
@@ -1738,19 +1739,19 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
 
-  // Get unique trims for a specific make/model (for autocomplete)
+  // Get unique trims for a specific make/model from market listings (for autocomplete)
   app.get("/api/inventory/trims", authMiddleware, requireRole("manager"), async (req, res) => {
     try {
       const { make, model } = req.query;
-      const vehicles = await storage.getVehicles();
+      const marketListings = await storage.getMarketListings({});
       
       let trims;
       if (make && model) {
-        trims = [...new Set(vehicles.filter(v => v.make === make && v.model === model).map(v => v.trim))].filter(Boolean).sort();
+        trims = [...new Set(marketListings.filter(v => v.make === make && v.model === model).map(v => v.trim))].filter(Boolean).sort();
       } else if (make) {
-        trims = [...new Set(vehicles.filter(v => v.make === make).map(v => v.trim))].filter(Boolean).sort();
+        trims = [...new Set(marketListings.filter(v => v.make === make).map(v => v.trim))].filter(Boolean).sort();
       } else {
-        trims = [...new Set(vehicles.map(v => v.trim))].filter(Boolean).sort();
+        trims = [...new Set(marketListings.map(v => v.trim))].filter(Boolean).sort();
       }
       
       res.json(trims);
