@@ -111,7 +111,7 @@ export default function Sales() {
     try {
       const parsedUser = JSON.parse(storedUser);
       
-      if (parsedUser.role !== 'salesperson') {
+      if (parsedUser.role !== 'salesperson' && parsedUser.role !== 'master') {
         toast({
           title: "Access Denied",
           description: "You don't have permission to access this page",

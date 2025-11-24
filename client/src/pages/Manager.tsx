@@ -104,7 +104,7 @@ export default function Manager() {
     try {
       const parsedUser = JSON.parse(storedUser);
       
-      if (parsedUser.role !== 'manager') {
+      if (parsedUser.role !== 'manager' && parsedUser.role !== 'master') {
         toast({
           title: "Access Denied",
           description: "You don't have permission to access this page",

@@ -1,16 +1,19 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { Navbar } from "@/components/Navbar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Lock, MessageSquare, Settings, Sparkles } from "lucide-react";
+import { Lock, MessageSquare, Settings, Sparkles, LogOut, TrendingUp, Users, Car } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Admin() {
+  const [, setLocation] = useLocation();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isMasterUser, setIsMasterUser] = useState(false);
   const { toast } = useToast();
 
   // Check if already authenticated in session
@@ -18,6 +21,19 @@ export default function Admin() {
     const token = sessionStorage.getItem('admin_token');
     if (token) {
       setIsAuthenticated(true);
+      
+      // Check if user is master (has JWT auth from main system)
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) {
+        try {
+          const parsedUser = JSON.parse(storedUser);
+          if (parsedUser.role === 'master') {
+            setIsMasterUser(true);
+          }
+        } catch (error) {
+          console.error("Failed to parse user:", error);
+        }
+      }
     }
   }, []);
 
@@ -57,6 +73,26 @@ export default function Admin() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleLogout = () => {
+    // Clear all authentication tokens
+    sessionStorage.removeItem('admin_token');
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user');
+    
+    setIsAuthenticated(false);
+    setPassword("");
+    
+    toast({
+      title: "Logged Out",
+      description: "You have been successfully logged out",
+    });
+    
+    // Redirect to login after a brief delay
+    setTimeout(() => {
+      setLocation('/login');
+    }, 500);
   };
 
   if (!isAuthenticated) {
@@ -107,10 +143,69 @@ export default function Admin() {
       <Navbar />
       <div className="pt-28 pb-12 px-4">
         <div className="max-w-7xl mx-auto">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-slate-900 mb-2">Admin Dashboard</h1>
-            <p className="text-slate-600">Manage chat conversations and AI settings</p>
+          <div className="mb-8 flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-slate-900 mb-2">Admin Dashboard</h1>
+              <p className="text-slate-600">Manage chat conversations and AI settings</p>
+            </div>
+            <Button onClick={handleLogout} variant="outline" data-testid="button-logout">
+              <LogOut className="w-4 h-4 mr-2" />
+              Logout
+            </Button>
           </div>
+
+          {/* Role Navigation Cards - Only show for master users */}
+          {isMasterUser && (
+            <div className="grid md:grid-cols-3 gap-4 mb-8">
+              <Card 
+                className="cursor-pointer hover:shadow-lg transition-shadow" 
+                onClick={() => setLocation('/admin')}
+                data-testid="card-admin-role"
+              >
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <MessageSquare className="w-5 h-5 text-primary" />
+                    Admin
+                  </CardTitle>
+                  <CardDescription>
+                    Manage conversations, prompts, and AI insights
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+
+              <Card 
+                className="cursor-pointer hover:shadow-lg transition-shadow" 
+                onClick={() => setLocation('/manager')}
+                data-testid="card-manager-role"
+              >
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-green-600" />
+                    Sales Manager
+                  </CardTitle>
+                  <CardDescription>
+                    VIN decoder and market pricing analysis tools
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+
+              <Card 
+                className="cursor-pointer hover:shadow-lg transition-shadow" 
+                onClick={() => setLocation('/sales')}
+                data-testid="card-sales-role"
+              >
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="w-5 h-5 text-blue-600" />
+                    Salesperson
+                  </CardTitle>
+                  <CardDescription>
+                    Facebook Marketplace posting and management
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            </div>
+          )}
 
           <Tabs defaultValue="conversations" className="w-full">
             <TabsList className="grid w-full grid-cols-4 mb-8">
