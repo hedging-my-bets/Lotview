@@ -16,6 +16,21 @@ import { testBadgeDetection } from "./scraper";
 import { generateChatResponse, type ChatMessage } from "./openai";
 
 import { authMiddleware, requireRole, generateToken, comparePassword, hashPassword, type AuthRequest } from "./auth";
+import { facebookService } from "./facebook-service";
+import crypto from "crypto";
+
+// OAuth state store for CSRF protection (in production, use Redis or signed JWTs)
+const oauthStateStore = new Map<string, { userId: number; accountId: number; expiresAt: number }>();
+
+// Clean up expired states every hour
+setInterval(() => {
+  const now = Date.now();
+  for (const [state, data] of oauthStateStore.entries()) {
+    if (data.expiresAt < now) {
+      oauthStateStore.delete(state);
+    }
+  }
+}, 3600000);
 
 // DEPRECATED: Legacy admin authentication middleware
 // WARNING: This is insecure and should only be used for backward compatibility in development
@@ -1339,6 +1354,204 @@ Format your response in clear sections with actionable recommendations.`;
     } catch (error) {
       console.error("Error saving posting schedule:", error);
       res.status(500).json({ error: "Failed to save posting schedule" });
+    }
+  });
+
+  // Check if Facebook is configured
+  app.get("/api/facebook/config/status", authMiddleware, requireRole("salesperson"), (req, res) => {
+    res.json({ configured: facebookService.isConfigured() });
+  });
+
+  // Initiate Facebook OAuth flow
+  app.get("/api/facebook/oauth/init/:accountId", authMiddleware, requireRole("salesperson"), async (req, res) => {
+    try {
+      const accountId = parseInt(req.params.accountId);
+      const userId = req.user!.id;
+      
+      const account = await storage.getFacebookAccountById(accountId, userId);
+      if (!account) {
+        return res.status(404).json({ error: "Account not found or access denied" });
+      }
+      
+      const state = crypto.randomBytes(32).toString('hex');
+      oauthStateStore.set(state, {
+        userId,
+        accountId,
+        expiresAt: Date.now() + 600000
+      });
+      
+      const authUrl = facebookService.getAuthUrl(state);
+      res.json({ authUrl });
+    } catch (error) {
+      console.error("Error initiating OAuth:", error);
+      res.status(500).json({ error: "Failed to initiate OAuth flow" });
+    }
+  });
+
+  // Facebook OAuth callback
+  app.get("/api/facebook/oauth/callback", async (req, res) => {
+    try {
+      const { code, state } = req.query;
+      
+      if (!code || !state) {
+        return res.status(400).send("Missing code or state");
+      }
+
+      const stateData = oauthStateStore.get(state as string);
+      if (!stateData) {
+        return res.status(400).send(`
+          <html>
+            <head><title>Invalid State</title></head>
+            <body style="font-family: system-ui; text-align: center; padding: 50px;">
+              <h1>✗ Invalid or Expired Session</h1>
+              <p>The authentication session is invalid or has expired. Please try again.</p>
+              <button onclick="window.close()">Close</button>
+            </body>
+          </html>
+        `);
+      }
+
+      if (stateData.expiresAt < Date.now()) {
+        oauthStateStore.delete(state as string);
+        return res.status(400).send(`
+          <html>
+            <head><title>Session Expired</title></head>
+            <body style="font-family: system-ui; text-align: center; padding: 50px;">
+              <h1>✗ Session Expired</h1>
+              <p>The authentication session has expired. Please try again.</p>
+              <button onclick="window.close()">Close</button>
+            </body>
+          </html>
+        `);
+      }
+
+      oauthStateStore.delete(state as string);
+
+      const { accountId, userId } = stateData;
+      
+      const account = await storage.getFacebookAccountById(accountId, userId);
+      if (!account) {
+        return res.status(403).send(`
+          <html>
+            <head><title>Access Denied</title></head>
+            <body style="font-family: system-ui; text-align: center; padding: 50px;">
+              <h1>✗ Access Denied</h1>
+              <p>You don't have permission to connect this account.</p>
+              <button onclick="window.close()">Close</button>
+            </body>
+          </html>
+        `);
+      }
+      
+      const { accessToken } = await facebookService.exchangeCodeForToken(code as string);
+      const longLivedToken = await facebookService.getLongLivedToken(accessToken);
+      const userInfo = await facebookService.getUserInfo(longLivedToken.accessToken);
+      
+      const expiresAt = new Date(Date.now() + longLivedToken.expiresIn * 1000);
+      
+      await storage.updateFacebookAccount(accountId, userId, {
+        accessToken: longLivedToken.accessToken,
+        facebookUserId: userInfo.id,
+        tokenExpiresAt: expiresAt,
+        isActive: true
+      });
+      
+      res.send(`
+        <html>
+          <head><title>Facebook Connected</title></head>
+          <body style="font-family: system-ui; text-align: center; padding: 50px;">
+            <h1>✓ Facebook Account Connected</h1>
+            <p>You can close this window and return to the app.</p>
+            <script>window.close();</script>
+          </body>
+        </html>
+      `);
+    } catch (error) {
+      console.error("OAuth callback error:", error);
+      res.status(500).send(`
+        <html>
+          <head><title>Connection Failed</title></head>
+          <body style="font-family: system-ui; text-align: center; padding: 50px;">
+            <h1>✗ Connection Failed</h1>
+            <p>${error instanceof Error ? error.message : "Unknown error"}</p>
+            <button onclick="window.close()">Close</button>
+          </body>
+        </html>
+      `);
+    }
+  });
+
+  // Manually post a vehicle to Facebook Marketplace
+  app.post("/api/facebook/post/:queueId", authMiddleware, requireRole("salesperson"), async (req, res) => {
+    try {
+      const queueId = parseInt(req.params.queueId);
+      const userId = req.user!.id;
+      
+      const queueItem = (await storage.getPostingQueueByUser(userId)).find(item => item.id === queueId);
+      
+      if (!queueItem) {
+        return res.status(404).json({ error: "Queue item not found" });
+      }
+      
+      const vehicle = await storage.getVehicleById(queueItem.vehicleId);
+      if (!vehicle) {
+        return res.status(404).json({ error: "Vehicle not found" });
+      }
+      
+      let account;
+      if (queueItem.facebookAccountId) {
+        account = await storage.getFacebookAccountById(queueItem.facebookAccountId, userId);
+      } else {
+        const accounts = await storage.getFacebookAccountsByUser(userId);
+        account = accounts[0];
+      }
+      
+      if (!account || !account.accessToken) {
+        return res.status(400).json({ error: "No Facebook account connected" });
+      }
+      
+      let template;
+      if (queueItem.templateId) {
+        template = await storage.getAdTemplateById(queueItem.templateId, userId);
+      } else {
+        const templates = await storage.getAdTemplatesByUser(userId);
+        template = templates.find(t => t.isDefault) || templates[0];
+      }
+      
+      if (!template) {
+        return res.status(400).json({ error: "No ad template found" });
+      }
+      
+      await storage.updatePostingQueueItem(queueId, userId, { status: 'posting' });
+      
+      try {
+        const { postId } = await facebookService.postToMarketplace(
+          account.accessToken,
+          vehicle,
+          {
+            titleTemplate: template.titleTemplate,
+            descriptionTemplate: template.descriptionTemplate
+          }
+        );
+        
+        await storage.updatePostingQueueItem(queueId, userId, {
+          status: 'posted',
+          facebookPostId: postId,
+          postedAt: new Date()
+        });
+        
+        res.json({ success: true, postId });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        await storage.updatePostingQueueItem(queueId, userId, {
+          status: 'failed',
+          errorMessage
+        });
+        throw error;
+      }
+    } catch (error) {
+      console.error("Error posting to Facebook:", error);
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to post to Facebook" });
     }
   });
 

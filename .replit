@@ -21,6 +21,10 @@ externalPort = 3001
 exposeLocalhost = true
 
 [[ports]]
+localPort = 32879
+externalPort = 4200
+
+[[ports]]
 localPort = 36059
 externalPort = 3000
 
@@ -59,3 +63,10 @@ waitForPort = 5000
 [agent]
 mockupState = "FULLSTACK"
 integrations = ["javascript_database:1.0.0", "javascript_openai_ai_integrations:1.0.0"]
+
+[userenv]
+
+[userenv.shared]
+FACEBOOK_APP_ID = "YOUR_FACEBOOK_APP_ID"
+FACEBOOK_APP_SECRET = "YOUR_FACEBOOK_APP_SECRET"
+FACEBOOK_REDIRECT_URI = "YOUR_REDIRECT_URI"
