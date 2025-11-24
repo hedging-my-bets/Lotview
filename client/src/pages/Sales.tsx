@@ -11,7 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { LogOut, Facebook, Plus, Trash2, Edit, FileText, ListOrdered, Calendar, Clock } from "lucide-react";
+import { LogOut, Facebook, Plus, Trash2, Edit, FileText, ListOrdered, Calendar, Clock, GripVertical, Car } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 
 type FacebookAccount = {
@@ -39,6 +40,29 @@ type PostingSchedule = {
   isActive: boolean;
 };
 
+type Vehicle = {
+  id: number;
+  year: number;
+  make: string;
+  model: string;
+  trim?: string;
+  price: number;
+  imageUrl?: string;
+  odometer: number;
+};
+
+type QueueItem = {
+  id: number;
+  vehicleId: number;
+  facebookAccountId?: number;
+  templateId?: number;
+  queueOrder: number;
+  status: string;
+  vehicle?: Vehicle;
+  facebookAccount?: FacebookAccount;
+  template?: AdTemplate;
+};
+
 export default function Sales() {
   const [, setLocation] = useLocation();
   const [user, setUser] = useState<any>(null);
@@ -48,8 +72,10 @@ export default function Sales() {
 
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [addToQueueDialogOpen, setAddToQueueDialogOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<FacebookAccount | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<AdTemplate | null>(null);
+  const [draggedItem, setDraggedItem] = useState<number | null>(null);
 
   const [accountForm, setAccountForm] = useState({ accountName: "" });
   const [templateForm, setTemplateForm] = useState({ 
@@ -62,6 +88,11 @@ export default function Sales() {
     startTime: "09:00",
     intervalMinutes: 60,
     isActive: false
+  });
+  const [queueForm, setQueueForm] = useState({
+    vehicleId: 0,
+    facebookAccountId: 0,
+    templateId: 0
   });
 
   useEffect(() => {
@@ -259,6 +290,144 @@ export default function Sales() {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     }
   });
+
+  const { data: vehicles = [], isLoading: vehiclesLoading } = useQuery<Vehicle[]>({
+    queryKey: ['vehicles'],
+    queryFn: async () => {
+      const response = await fetch('/api/vehicles');
+      if (!response.ok) throw new Error('Failed to fetch vehicles');
+      return response.json();
+    }
+  });
+
+  const { data: queueItems = [], isLoading: queueLoading } = useQuery<QueueItem[]>({
+    queryKey: ['posting-queue'],
+    queryFn: async () => {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('/api/facebook/queue', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error('Failed to fetch queue');
+      return response.json();
+    }
+  });
+
+  const addToQueueMutation = useMutation({
+    mutationFn: async (data: { vehicleId: number; facebookAccountId?: number; templateId?: number }) => {
+      const token = localStorage.getItem('auth_token');
+      const maxOrder = Math.max(0, ...queueItems.map(item => item.queueOrder));
+      
+      const payload: any = {
+        vehicleId: data.vehicleId,
+        queueOrder: maxOrder + 1,
+        status: 'queued'
+      };
+      
+      if (data.facebookAccountId && data.facebookAccountId > 0) {
+        payload.facebookAccountId = data.facebookAccountId;
+      }
+      
+      if (data.templateId && data.templateId > 0) {
+        payload.templateId = data.templateId;
+      }
+      
+      const response = await fetch('/api/facebook/queue', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to add to queue');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['posting-queue'] });
+      setAddToQueueDialogOpen(false);
+      setQueueForm({ vehicleId: 0, facebookAccountId: 0, templateId: 0 });
+      toast({ title: "Success", description: "Vehicle added to posting queue" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  });
+
+  const updateQueueMutation = useMutation({
+    mutationFn: async ({ id, ...data }: { id: number; queueOrder?: number; facebookAccountId?: number; templateId?: number }) => {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/facebook/queue/${id}`, {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(data)
+      });
+      if (!response.ok) throw new Error('Failed to update queue item');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['posting-queue'] });
+    }
+  });
+
+  const deleteFromQueueMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/facebook/queue/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error('Failed to remove from queue');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['posting-queue'] });
+      toast({ title: "Success", description: "Vehicle removed from queue" });
+    }
+  });
+
+  const handleDragStart = (id: number) => {
+    setDraggedItem(id);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (targetId: number) => {
+    if (draggedItem === null || draggedItem === targetId) return;
+    
+    const originalOrders = new Map(queueItems.map(item => [item.id, item.queueOrder]));
+    const currentItems = JSON.parse(JSON.stringify(queueItems));
+    const draggedIndex = currentItems.findIndex((item: QueueItem) => item.id === draggedItem);
+    const targetIndex = currentItems.findIndex((item: QueueItem) => item.id === targetId);
+    
+    if (draggedIndex === -1 || targetIndex === -1) return;
+
+    const reorderedItems = [...currentItems];
+    const [removed] = reorderedItems.splice(draggedIndex, 1);
+    reorderedItems.splice(targetIndex, 0, removed);
+
+    const updatedItems = reorderedItems.map((item: QueueItem, index: number) => ({
+      ...item,
+      queueOrder: index + 1
+    }));
+
+    queryClient.setQueryData(['posting-queue'], updatedItems);
+
+    updatedItems.forEach((item: QueueItem) => {
+      const originalOrder = originalOrders.get(item.id);
+      if (originalOrder !== undefined && originalOrder !== item.queueOrder) {
+        updateQueueMutation.mutate({ id: item.id, queueOrder: item.queueOrder });
+      }
+    });
+
+    setDraggedItem(null);
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('auth_token');
@@ -551,17 +720,171 @@ export default function Sales() {
             <TabsContent value="queue" className="mt-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Posting Queue</CardTitle>
-                  <CardDescription>
-                    Select and order vehicles for automated posting (coming soon)
-                  </CardDescription>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>Posting Queue</CardTitle>
+                      <CardDescription>
+                        Drag to reorder • Max 45 vehicles
+                      </CardDescription>
+                    </div>
+                    <Dialog open={addToQueueDialogOpen} onOpenChange={setAddToQueueDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button data-testid="button-add-to-queue" disabled={queueItems.length >= 45}>
+                          <Plus className="w-4 h-4 mr-2" />
+                          Add Vehicle
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Add Vehicle to Posting Queue</DialogTitle>
+                          <DialogDescription>
+                            Select a vehicle, Facebook account, and template
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4 py-4">
+                          <div>
+                            <Label htmlFor="queue-vehicle">Vehicle</Label>
+                            <Select onValueChange={(value) => setQueueForm({ ...queueForm, vehicleId: parseInt(value) })}>
+                              <SelectTrigger id="queue-vehicle" data-testid="select-queue-vehicle">
+                                <SelectValue placeholder="Select vehicle" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {vehicles.filter(v => !queueItems.some(qi => qi.vehicleId === v.id)).map((vehicle) => (
+                                  <SelectItem key={vehicle.id} value={vehicle.id.toString()}>
+                                    {vehicle.year} {vehicle.make} {vehicle.model} - ${vehicle.price?.toLocaleString()}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label htmlFor="queue-account">Facebook Account (Optional)</Label>
+                            <Select onValueChange={(value) => setQueueForm({ ...queueForm, facebookAccountId: parseInt(value) })}>
+                              <SelectTrigger id="queue-account" data-testid="select-queue-account">
+                                <SelectValue placeholder="Use default account" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {accounts.map((account) => (
+                                  <SelectItem key={account.id} value={account.id.toString()}>
+                                    {account.accountName}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label htmlFor="queue-template">Ad Template (Optional)</Label>
+                            <Select onValueChange={(value) => setQueueForm({ ...queueForm, templateId: parseInt(value) })}>
+                              <SelectTrigger id="queue-template" data-testid="select-queue-template">
+                                <SelectValue placeholder="Use default template" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {templates.map((template) => (
+                                  <SelectItem key={template.id} value={template.id.toString()}>
+                                    {template.templateName} {template.isDefault && "(Default)"}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <DialogFooter>
+                          <Button
+                            onClick={() => addToQueueMutation.mutate(queueForm)}
+                            disabled={!queueForm.vehicleId || addToQueueMutation.isPending}
+                            data-testid="button-save-queue-item"
+                          >
+                            Add to Queue
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-center py-12 text-slate-500">
-                    <ListOrdered className="w-12 h-12 mx-auto mb-4 text-slate-300" />
-                    <p className="text-lg font-medium mb-2">Posting Queue</p>
-                    <p>This feature will allow you to select vehicles, drag to reorder (1-45), and manage your posting queue.</p>
-                  </div>
+                  {queueLoading ? (
+                    <div className="text-center py-8">
+                      <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+                    </div>
+                  ) : queueItems.length === 0 ? (
+                    <div className="text-center py-12 text-slate-500">
+                      <ListOrdered className="w-12 h-12 mx-auto mb-4 text-slate-300" />
+                      <p className="text-lg font-medium mb-2">No vehicles in queue</p>
+                      <p className="mb-4">Add vehicles to start building your automated posting schedule</p>
+                      <p className="text-xs">Vehicles will post in order based on your configured schedule</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="text-xs text-slate-500 mb-3 flex items-center justify-between">
+                        <span>Drag items to reorder posting sequence</span>
+                        <span>{queueItems.length}/45 vehicles</span>
+                      </div>
+                      {[...queueItems].sort((a, b) => a.queueOrder - b.queueOrder).map((item, index) => {
+                        const vehicle = vehicles.find(v => v.id === item.vehicleId);
+                        const account = accounts.find(a => a.id === item.facebookAccountId);
+                        const template = templates.find(t => t.id === item.templateId);
+                        
+                        return (
+                          <div
+                            key={item.id}
+                            draggable
+                            onDragStart={() => handleDragStart(item.id)}
+                            onDragOver={handleDragOver}
+                            onDrop={() => handleDrop(item.id)}
+                            className="p-4 border rounded-lg bg-white cursor-move hover:border-blue-300 transition-colors"
+                            data-testid={`queue-item-${item.id}`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <GripVertical className="w-5 h-5 text-slate-400 mt-1 flex-shrink-0" />
+                              <div className="flex-shrink-0 text-lg font-bold text-slate-400 w-8">
+                                #{index + 1}
+                              </div>
+                              {vehicle?.imageUrl && (
+                                <img
+                                  src={vehicle.imageUrl}
+                                  alt={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}
+                                  className="w-20 h-16 object-cover rounded flex-shrink-0"
+                                />
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-start justify-between gap-2 mb-2">
+                                  <div>
+                                    <h3 className="font-medium">
+                                      {vehicle?.year} {vehicle?.make} {vehicle?.model}
+                                    </h3>
+                                    <p className="text-sm text-slate-500">
+                                      ${vehicle?.price?.toLocaleString()} • {vehicle?.odometer?.toLocaleString()}km
+                                    </p>
+                                  </div>
+                                  <Badge variant={item.status === 'queued' ? 'secondary' : item.status === 'posted' ? 'default' : 'destructive'}>
+                                    {item.status}
+                                  </Badge>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                  <div>
+                                    <span className="text-slate-500">Account:</span>{" "}
+                                    <span className="font-medium">{account?.accountName || "Default"}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-slate-500">Template:</span>{" "}
+                                    <span className="font-medium">{template?.templateName || "Default"}</span>
+                                  </div>
+                                </div>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => deleteFromQueueMutation.mutate(item.id)}
+                                data-testid={`button-remove-queue-${item.id}`}
+                              >
+                                <Trash2 className="w-4 h-4 text-red-500" />
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
