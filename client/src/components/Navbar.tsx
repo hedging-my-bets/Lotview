@@ -56,7 +56,7 @@ export function Navbar() {
             </SheetTrigger>
             <SheetContent side="right" className="w-[280px] p-6">
               <div className="flex flex-col gap-4 mt-8">
-                <Link href="/admin">
+                <Link href="/login">
                   <button
                     className="w-full bg-slate-800 text-white py-3 rounded-lg text-sm font-bold hover:bg-slate-700 transition"
                     data-testid="link-admin-menu"
@@ -107,7 +107,7 @@ export function Navbar() {
                     View Inventory
                   </button>
                 </Link>
-                <Link href="/admin">
+                <Link href="/login">
                   <button
                     className="w-full bg-slate-800 text-white py-3 rounded-lg text-sm font-bold hover:bg-slate-700 transition"
                     onClick={() => setIsMenuOpen(false)}
