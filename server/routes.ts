@@ -1699,6 +1699,13 @@ Format your response in clear sections with actionable recommendations.`;
       // Analyze pricing
       const result = analyzeMarketPricing(pricingRequest, vehiclesForAnalysis as any);
       
+      // Calculate source breakdown
+      const sourceBreakdown = {
+        marketcheck: marketListings.filter(l => l.source === 'marketcheck').length,
+        apify: marketListings.filter(l => l.source === 'apify').length,
+        autotrader_scraper: marketListings.filter(l => l.source === 'autotrader_scraper').length
+      };
+      
       // Add meta information about data sources
       const responseWithMeta = {
         ...result,
@@ -1706,6 +1713,7 @@ Format your response in clear sections with actionable recommendations.`;
           dataSource: 'external_market',
           totalListings: marketListings.length,
           sources: [...new Set(marketListings.map(l => l.source))],
+          sourceBreakdown,
           searchRadius: searchRadiusKm,
           postalCode: searchPostalCode,
           years: years || (year ? [parseInt(year)] : []),

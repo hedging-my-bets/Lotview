@@ -296,16 +296,40 @@ export default function Manager() {
       const result = await response.json();
       
       if (result.error) {
+        // Show detailed error breakdown if available
+        const errorDetails = result.errors && result.errors.length > 0 
+          ? `Errors: ${result.errors.join(', ')}`
+          : result.message || "Unable to fetch market data";
+        
         toast({
-          title: "Scraping Failed",
-          description: result.message || "Unable to fetch market data",
+          title: "Market Data Aggregation Failed",
+          description: errorDetails,
           variant: "destructive",
         });
       } else {
+        // Build detailed success message showing source breakdown
+        const sourceBreakdown = [];
+        if (result.marketCheckCount > 0) sourceBreakdown.push(`MarketCheck: ${result.marketCheckCount}`);
+        if (result.apifyCount > 0) sourceBreakdown.push(`Apify: ${result.apifyCount}`);
+        if (result.scraperCount > 0) sourceBreakdown.push(`Scraper: ${result.scraperCount}`);
+        
+        const successMessage = `Saved ${result.savedCount} new listings${sourceBreakdown.length > 0 ? ` (${sourceBreakdown.join(', ')})` : ''}`;
+        
         toast({
           title: "Market Data Refreshed",
-          description: `Fetched ${result.savedCount} new listings from AutoTrader`,
+          description: successMessage,
         });
+        
+        // Show warnings if any sources had errors
+        if (result.errors && result.errors.length > 0) {
+          setTimeout(() => {
+            toast({
+              title: "Some Data Sources Failed",
+              description: result.errors.join(', '),
+              variant: "default",
+            });
+          }, 2000);
+        }
         
         // Auto-trigger market analysis after refresh
         setTimeout(() => {
@@ -1043,37 +1067,57 @@ export default function Manager() {
                       {/* Data Source Info */}
                       {pricingResults.meta && (
                         <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
-                          <div className="flex flex-wrap items-center gap-4 text-sm">
-                            <div>
-                              <span className="font-medium text-slate-700">Data Source:</span>{' '}
-                              <span className="text-slate-900">{pricingResults.meta.dataSource === 'external_market' ? 'External Market Listings' : 'No Data'}</span>
+                          <div className="space-y-3">
+                            {/* Primary metadata row */}
+                            <div className="flex flex-wrap items-center gap-4 text-sm">
+                              <div>
+                                <span className="font-medium text-slate-700">Data Source:</span>{' '}
+                                <span className="text-slate-900">{pricingResults.meta.dataSource === 'external_market' ? 'External Market Listings' : 'No Data'}</span>
+                              </div>
+                              {pricingResults.meta.year && (
+                                <div>
+                                  <span className="font-medium text-slate-700">Year:</span>{' '}
+                                  <span className="text-slate-900">{pricingResults.meta.year}</span>
+                                </div>
+                              )}
+                              {pricingResults.meta.searchRadius && (
+                                <div>
+                                  <span className="font-medium text-slate-700">Search Radius:</span>{' '}
+                                  <span className="text-slate-900">{pricingResults.meta.searchRadius} KM</span>
+                                </div>
+                              )}
+                              {pricingResults.meta.postalCode && (
+                                <div>
+                                  <span className="font-medium text-slate-700">Location:</span>{' '}
+                                  <span className="text-slate-900">{pricingResults.meta.postalCode}</span>
+                                </div>
+                              )}
                             </div>
-                            {pricingResults.meta.sources && pricingResults.meta.sources.length > 0 && (
-                              <div>
-                                <span className="font-medium text-slate-700">Sources:</span>{' '}
-                                {pricingResults.meta.sources.map((source: string, idx: number) => (
-                                  <Badge key={idx} variant="outline" className="ml-1">
-                                    {source}
+                            
+                            {/* Source breakdown badges */}
+                            {pricingResults.meta.sourceBreakdown && (
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-sm font-medium text-slate-700">Data Sources:</span>
+                                {pricingResults.meta.sourceBreakdown.marketcheck > 0 && (
+                                  <Badge variant="default" className="bg-green-600 hover:bg-green-700">
+                                    MarketCheck: {pricingResults.meta.sourceBreakdown.marketcheck}
                                   </Badge>
-                                ))}
-                              </div>
-                            )}
-                            {pricingResults.meta.year && (
-                              <div>
-                                <span className="font-medium text-slate-700">Year:</span>{' '}
-                                <span className="text-slate-900">{pricingResults.meta.year}</span>
-                              </div>
-                            )}
-                            {pricingResults.meta.searchRadius && (
-                              <div>
-                                <span className="font-medium text-slate-700">Search Radius:</span>{' '}
-                                <span className="text-slate-900">{pricingResults.meta.searchRadius} KM</span>
-                              </div>
-                            )}
-                            {pricingResults.meta.postalCode && (
-                              <div>
-                                <span className="font-medium text-slate-700">Location:</span>{' '}
-                                <span className="text-slate-900">{pricingResults.meta.postalCode}</span>
+                                )}
+                                {pricingResults.meta.sourceBreakdown.apify > 0 && (
+                                  <Badge variant="default" className="bg-blue-600 hover:bg-blue-700">
+                                    Apify: {pricingResults.meta.sourceBreakdown.apify}
+                                  </Badge>
+                                )}
+                                {pricingResults.meta.sourceBreakdown.autotrader_scraper > 0 && (
+                                  <Badge variant="outline" className="border-slate-400">
+                                    Scraper: {pricingResults.meta.sourceBreakdown.autotrader_scraper}
+                                  </Badge>
+                                )}
+                                {pricingResults.meta.totalListings > 0 && (
+                                  <Badge variant="secondary" className="ml-2">
+                                    Total: {pricingResults.meta.totalListings}
+                                  </Badge>
+                                )}
                               </div>
                             )}
                           </div>
