@@ -1832,7 +1832,7 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
 
-  // Trigger AutoTrader scrape
+  // Trigger market data aggregation from all sources
   app.post("/api/manager/scrape-market", authMiddleware, requireRole("manager"), async (req, res) => {
     try {
       const { make, model, yearMin, yearMax, postalCode, radiusKm } = req.body;
@@ -1841,9 +1841,9 @@ Format your response in clear sections with actionable recommendations.`;
         return res.status(400).json({ error: "Make and model are required" });
       }
 
-      const { autoTraderScraper } = await import('./autotrader-scraper');
+      const { marketAggregationService } = await import('./market-aggregation-service');
 
-      const savedCount = await autoTraderScraper.searchAndSave({
+      const result = await marketAggregationService.aggregateMarketData({
         make,
         model,
         yearMin,
@@ -1854,13 +1854,18 @@ Format your response in clear sections with actionable recommendations.`;
       });
 
       res.json({
-        success: true,
-        savedCount,
-        message: `Successfully scraped and saved ${savedCount} new listings from AutoTrader`
+        success: result.success,
+        savedCount: result.totalListings,
+        marketCheckCount: result.marketCheckCount,
+        apifyCount: result.apifyCount,
+        scraperCount: result.scraperCount,
+        duplicatesRemoved: result.duplicatesRemoved,
+        errors: result.errors,
+        message: `Successfully aggregated ${result.totalListings} new listings from ${result.marketCheckCount + result.apifyCount + result.scraperCount} sources (MarketCheck: ${result.marketCheckCount}, Apify: ${result.apifyCount}, Scraper: ${result.scraperCount})`
       });
     } catch (error) {
-      console.error("Error scraping market:", error);
-      res.status(500).json({ error: "Failed to scrape market data" });
+      console.error("Error aggregating market data:", error);
+      res.status(500).json({ error: "Failed to aggregate market data" });
     }
   });
 
