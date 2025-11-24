@@ -1634,6 +1634,60 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
 
+  // Get unique makes from inventory (for autocomplete)
+  app.get("/api/inventory/makes", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const vehicles = await storage.getVehicles();
+      const makes = [...new Set(vehicles.map(v => v.make))].filter(Boolean).sort();
+      res.json(makes);
+    } catch (error) {
+      console.error("Error fetching makes:", error);
+      res.status(500).json({ error: "Failed to fetch makes" });
+    }
+  });
+
+  // Get unique models for a specific make (for autocomplete)
+  app.get("/api/inventory/models", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const { make } = req.query;
+      const vehicles = await storage.getVehicles();
+      
+      let models;
+      if (make) {
+        models = [...new Set(vehicles.filter(v => v.make === make).map(v => v.model))].filter(Boolean).sort();
+      } else {
+        models = [...new Set(vehicles.map(v => v.model))].filter(Boolean).sort();
+      }
+      
+      res.json(models);
+    } catch (error) {
+      console.error("Error fetching models:", error);
+      res.status(500).json({ error: "Failed to fetch models" });
+    }
+  });
+
+  // Get unique trims for a specific make/model (for autocomplete)
+  app.get("/api/inventory/trims", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const { make, model } = req.query;
+      const vehicles = await storage.getVehicles();
+      
+      let trims;
+      if (make && model) {
+        trims = [...new Set(vehicles.filter(v => v.make === make && v.model === model).map(v => v.trim))].filter(Boolean).sort();
+      } else if (make) {
+        trims = [...new Set(vehicles.filter(v => v.make === make).map(v => v.trim))].filter(Boolean).sort();
+      } else {
+        trims = [...new Set(vehicles.map(v => v.trim))].filter(Boolean).sort();
+      }
+      
+      res.json(trims);
+    } catch (error) {
+      console.error("Error fetching trims:", error);
+      res.status(500).json({ error: "Failed to fetch trims" });
+    }
+  });
+
   // ===== REMARKETING ROUTES (Master only) =====
   
   // Get all remarketing vehicles
