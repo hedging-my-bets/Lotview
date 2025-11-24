@@ -45,8 +45,13 @@ export interface Vehicle {
   trim?: string;
   price: number;
   mileage?: number;
+  odometer?: number; // Legacy field for internal inventory compatibility
   location: string;
   dealership: string;
+  source?: string; // 'autotrader', 'kijiji', 'internal'
+  listingType?: string; // 'dealer', 'private'
+  postedDate?: Date | null;
+  scrapedAt?: Date | null;
 }
 
 export function analyzeMarketPricing(

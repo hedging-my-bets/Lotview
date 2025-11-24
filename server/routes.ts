@@ -1583,48 +1583,114 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
 
-  // Market pricing analysis
+  // Market pricing analysis (uses external market listings)
   app.post("/api/manager/market-pricing", authMiddleware, requireRole("manager"), async (req, res) => {
     try {
-      const { year, make, model, trim, mileage, radius } = req.body;
+      const { year, make, model, trim, trims, yearMin, yearMax, mileage, radiusKm, postalCode } = req.body;
       
       // Validate required fields
-      if (!year || !make || !model) {
+      if (!year && !yearMin) {
         return res.status(400).json({
           error: 'Missing required fields',
-          message: 'Year, make, and model are required for market pricing analysis'
+          message: 'Year or year range is required'
         });
       }
       
-      // Validate year is a valid number
-      const parsedYear = parseInt(year);
-      if (isNaN(parsedYear)) {
+      if (!make || !model) {
         return res.status(400).json({
-          error: 'Invalid year',
-          message: 'Year must be a valid number'
+          error: 'Missing required fields',
+          message: 'Make and model are required for market pricing analysis'
         });
       }
 
+      // Get user settings for postal code/radius defaults
+      const userId = (req as any).user.id;
+      const userSettings = await storage.getManagerSettings(userId);
+      
+      const searchPostalCode = postalCode || userSettings?.postalCode;
+      const searchRadiusKm = radiusKm || userSettings?.defaultRadiusKm || 50;
+      const searchYearMin = yearMin || parseInt(year) - 2;
+      const searchYearMax = yearMax || parseInt(year) + 2;
+      
+      // Get market listings from database
+      let marketListings = await storage.getMarketListings({
+        make,
+        model,
+        yearMin: searchYearMin,
+        yearMax: searchYearMax
+      });
+
+      // If no market listings found, return message prompting manual scrape
+      if (marketListings.length === 0) {
+        return res.json({
+          averagePrice: 0,
+          medianPrice: 0,
+          minPrice: 0,
+          maxPrice: 0,
+          totalComps: 0,
+          comparisons: [],
+          priceRange: { low: 0, high: 0 },
+          recommendation: `No market data found. Please use the "Refresh Market Data" button to scrape current listings from AutoTrader.`,
+          marketPosition: 'at_market',
+          meta: {
+            dataSource: 'none',
+            totalListings: 0,
+            sources: [],
+            searchRadius: searchRadiusKm,
+            postalCode: searchPostalCode,
+            yearRange: { min: searchYearMin, max: searchYearMax }
+          }
+        });
+      }
+
+      // Convert market listings to Vehicle format for pricing analysis
+      const vehiclesForAnalysis = marketListings.map(listing => ({
+        id: listing.id,
+        stockNumber: listing.externalId,
+        year: listing.year,
+        make: listing.make,
+        model: listing.model,
+        trim: listing.trim || '',
+        price: listing.price,
+        mileage: listing.mileage || 0,
+        location: listing.location,
+        dealership: listing.sellerName,
+        source: listing.source,
+        listingType: listing.listingType,
+        postedDate: listing.postedDate,
+        scrapedAt: listing.scrapedAt
+      }));
+      
       // Import market pricing service
       const { analyzeMarketPricing } = await import('./market-pricing');
-      
-      // Get all vehicles from inventory
-      const allVehicles = await storage.getVehicles();
       
       // Prepare request
       const pricingRequest = {
         year: parseInt(year),
         make,
         model,
-        trim,
+        trim: trim || (trims && trims.length > 0 ? trims[0] : undefined),
         mileage: mileage ? parseInt(mileage) : undefined,
-        radius: radius ? parseInt(radius) : 50
+        radius: searchRadiusKm
       };
       
       // Analyze pricing
-      const result = analyzeMarketPricing(pricingRequest, allVehicles as any);
+      const result = analyzeMarketPricing(pricingRequest, vehiclesForAnalysis as any);
       
-      res.json(result);
+      // Add meta information about data sources
+      const responseWithMeta = {
+        ...result,
+        meta: {
+          dataSource: 'external_market',
+          totalListings: marketListings.length,
+          sources: [...new Set(marketListings.map(l => l.source))],
+          searchRadius: searchRadiusKm,
+          postalCode: searchPostalCode,
+          yearRange: { min: searchYearMin, max: searchYearMax }
+        }
+      };
+      
+      res.json(responseWithMeta);
     } catch (error) {
       console.error("Error analyzing market pricing:", error);
       res.status(500).json({
@@ -1685,6 +1751,92 @@ Format your response in clear sections with actionable recommendations.`;
     } catch (error) {
       console.error("Error fetching trims:", error);
       res.status(500).json({ error: "Failed to fetch trims" });
+    }
+  });
+
+  // ===== MANAGER SETTINGS ROUTES =====
+
+  // Get manager settings
+  app.get("/api/manager/settings", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const userId = (req as any).user.id;
+      const settings = await storage.getManagerSettings(userId);
+      res.json(settings || null);
+    } catch (error) {
+      console.error("Error fetching manager settings:", error);
+      res.status(500).json({ error: "Failed to fetch settings" });
+    }
+  });
+
+  // Save manager settings
+  app.post("/api/manager/settings", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const userId = (req as any).user.id;
+      const { postalCode, defaultRadiusKm } = req.body;
+
+      if (!postalCode) {
+        return res.status(400).json({ error: "Postal code is required" });
+      }
+
+      // Geocode the postal code to get lat/lon
+      const { geocodingService } = await import('./geocoding-service');
+      const geocoded = await geocodingService.geocodePostalCode(postalCode);
+
+      const existing = await storage.getManagerSettings(userId);
+
+      if (existing) {
+        const updated = await storage.updateManagerSettings(userId, {
+          postalCode,
+          defaultRadiusKm: defaultRadiusKm || 50,
+          geocodeLat: geocoded?.latitude.toString() || null,
+          geocodeLon: geocoded?.longitude.toString() || null
+        });
+        res.json(updated);
+      } else {
+        const created = await storage.createManagerSettings({
+          userId,
+          postalCode,
+          defaultRadiusKm: defaultRadiusKm || 50,
+          geocodeLat: geocoded?.latitude.toString() || null,
+          geocodeLon: geocoded?.longitude.toString() || null
+        });
+        res.json(created);
+      }
+    } catch (error) {
+      console.error("Error saving manager settings:", error);
+      res.status(500).json({ error: "Failed to save settings" });
+    }
+  });
+
+  // Trigger AutoTrader scrape
+  app.post("/api/manager/scrape-market", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const { make, model, yearMin, yearMax, postalCode, radiusKm } = req.body;
+
+      if (!make || !model) {
+        return res.status(400).json({ error: "Make and model are required" });
+      }
+
+      const { autoTraderScraper } = await import('./autotrader-scraper');
+
+      const savedCount = await autoTraderScraper.searchAndSave({
+        make,
+        model,
+        yearMin,
+        yearMax,
+        postalCode,
+        radiusKm,
+        maxResults: 100
+      });
+
+      res.json({
+        success: true,
+        savedCount,
+        message: `Successfully scraped and saved ${savedCount} new listings from AutoTrader`
+      });
+    } catch (error) {
+      console.error("Error scraping market:", error);
+      res.status(500).json({ error: "Failed to scrape market data" });
     }
   });
 

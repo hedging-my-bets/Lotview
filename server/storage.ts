@@ -59,7 +59,13 @@ import {
   type InsertPbsConfig,
   pbsWebhookEvents,
   type PbsWebhookEvent,
-  type InsertPbsWebhookEvent
+  type InsertPbsWebhookEvent,
+  managerSettings,
+  type ManagerSettings,
+  type InsertManagerSettings,
+  marketListings,
+  type MarketListing,
+  type InsertMarketListing
 } from "@shared/schema";
 import { eq, desc, sql, and, gte, lte } from "drizzle-orm";
 
@@ -179,6 +185,19 @@ export interface IStorage {
   getPbsWebhookEventById(id: number): Promise<PbsWebhookEvent | undefined>;
   createPbsWebhookEvent(event: InsertPbsWebhookEvent): Promise<PbsWebhookEvent>;
   updatePbsWebhookEvent(id: number, event: Partial<InsertPbsWebhookEvent>): Promise<PbsWebhookEvent | undefined>;
+  
+  // Manager Settings
+  getManagerSettings(userId: number): Promise<ManagerSettings | undefined>;
+  createManagerSettings(settings: InsertManagerSettings): Promise<ManagerSettings>;
+  updateManagerSettings(userId: number, settings: Partial<InsertManagerSettings>): Promise<ManagerSettings | undefined>;
+  
+  // Market Listings
+  getMarketListings(filters: { make?: string; model?: string; yearMin?: number; yearMax?: number; source?: string }): Promise<MarketListing[]>;
+  getMarketListingById(id: number): Promise<MarketListing | undefined>;
+  createMarketListing(listing: InsertMarketListing): Promise<MarketListing>;
+  updateMarketListing(id: number, listing: Partial<InsertMarketListing>): Promise<MarketListing | undefined>;
+  deactivateMarketListing(url: string): Promise<boolean>;
+  deleteOldMarketListings(daysOld: number): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -690,6 +709,106 @@ export class DatabaseStorage implements IStorage {
       .where(eq(pbsWebhookEvents.id, id))
       .returning();
     return result[0];
+  }
+
+  // Manager Settings
+  async getManagerSettings(userId: number): Promise<ManagerSettings | undefined> {
+    const result = await db
+      .select()
+      .from(managerSettings)
+      .where(eq(managerSettings.userId, userId))
+      .limit(1);
+    return result[0];
+  }
+
+  async createManagerSettings(settings: InsertManagerSettings): Promise<ManagerSettings> {
+    const result = await db.insert(managerSettings).values(settings).returning();
+    return result[0];
+  }
+
+  async updateManagerSettings(userId: number, settings: Partial<InsertManagerSettings>): Promise<ManagerSettings | undefined> {
+    const result = await db
+      .update(managerSettings)
+      .set({ ...settings, updatedAt: new Date() })
+      .where(eq(managerSettings.userId, userId))
+      .returning();
+    return result[0];
+  }
+
+  // Market Listings
+  async getMarketListings(filters: { make?: string; model?: string; yearMin?: number; yearMax?: number; source?: string }): Promise<MarketListing[]> {
+    const conditions = [];
+    
+    // Always filter for active listings
+    conditions.push(eq(marketListings.isActive, true));
+    
+    if (filters.make) {
+      // Use parameterized case-insensitive comparison
+      conditions.push(sql`LOWER(${marketListings.make}) = LOWER(${filters.make})`);
+    }
+    if (filters.model) {
+      conditions.push(sql`LOWER(${marketListings.model}) = LOWER(${filters.model})`);
+    }
+    if (filters.yearMin) {
+      conditions.push(gte(marketListings.year, filters.yearMin));
+    }
+    if (filters.yearMax) {
+      conditions.push(lte(marketListings.year, filters.yearMax));
+    }
+    if (filters.source) {
+      conditions.push(eq(marketListings.source, filters.source));
+    }
+    
+    // Ensure we always have at least one condition
+    const whereClause = conditions.length > 0 ? and(...conditions) : eq(marketListings.isActive, true);
+    
+    return await db
+      .select()
+      .from(marketListings)
+      .where(whereClause)
+      .orderBy(desc(marketListings.scrapedAt));
+  }
+
+  async getMarketListingById(id: number): Promise<MarketListing | undefined> {
+    const result = await db
+      .select()
+      .from(marketListings)
+      .where(eq(marketListings.id, id))
+      .limit(1);
+    return result[0];
+  }
+
+  async createMarketListing(listing: InsertMarketListing): Promise<MarketListing> {
+    const result = await db.insert(marketListings).values(listing).returning();
+    return result[0];
+  }
+
+  async updateMarketListing(id: number, listing: Partial<InsertMarketListing>): Promise<MarketListing | undefined> {
+    const result = await db
+      .update(marketListings)
+      .set(listing)
+      .where(eq(marketListings.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async deactivateMarketListing(url: string): Promise<boolean> {
+    await db
+      .update(marketListings)
+      .set({ isActive: false })
+      .where(eq(marketListings.listingUrl, url));
+    return true;
+  }
+
+  async deleteOldMarketListings(daysOld: number): Promise<number> {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+    
+    const result = await db
+      .delete(marketListings)
+      .where(lte(marketListings.scrapedAt, cutoffDate));
+    
+    return 0; // Drizzle doesn't return count for deletes
   }
 }
 

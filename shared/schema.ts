@@ -404,3 +404,54 @@ export const insertPbsWebhookEventSchema = createInsertSchema(pbsWebhookEvents).
 
 export type InsertPbsWebhookEvent = z.infer<typeof insertPbsWebhookEventSchema>;
 export type PbsWebhookEvent = typeof pbsWebhookEvents.$inferSelect;
+
+// Manager Settings for postal code and search preferences
+export const managerSettings = pgTable("manager_settings", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  postalCode: text("postal_code").notNull(), // Canadian postal code (e.g., V6B 1A1)
+  defaultRadiusKm: integer("default_radius_km").notNull().default(50), // Default search radius in kilometers
+  geocodeLat: text("geocode_lat"), // Cached latitude from postal code
+  geocodeLon: text("geocode_lon"), // Cached longitude from postal code
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertManagerSettingsSchema = createInsertSchema(managerSettings).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type InsertManagerSettings = z.infer<typeof insertManagerSettingsSchema>;
+export type ManagerSettings = typeof managerSettings.$inferSelect;
+
+// Market Listings Cache (scraped from AutoTrader, Kijiji, etc.)
+export const marketListings = pgTable("market_listings", {
+  id: serial("id").primaryKey(),
+  externalId: text("external_id").notNull(), // Unique ID from source platform
+  source: text("source").notNull(), // 'autotrader', 'kijiji', 'facebook'
+  listingType: text("listing_type").notNull(), // 'dealer', 'private'
+  year: integer("year").notNull(),
+  make: text("make").notNull(),
+  model: text("model").notNull(),
+  trim: text("trim"),
+  price: integer("price").notNull(),
+  mileage: integer("mileage"), // in kilometers
+  location: text("location").notNull(), // City, Province
+  postalCode: text("postal_code"), // Seller postal code (if available)
+  latitude: text("latitude"),
+  longitude: text("longitude"),
+  sellerName: text("seller_name"), // Dealer name or "Private Seller"
+  imageUrl: text("image_url"),
+  listingUrl: text("listing_url").notNull().unique(), // Original listing URL
+  postedDate: timestamp("posted_date"), // When the listing was posted
+  scrapedAt: timestamp("scraped_at").defaultNow().notNull(), // When we scraped it
+  isActive: boolean("is_active").notNull().default(true), // False if listing is removed
+});
+
+export const insertMarketListingSchema = createInsertSchema(marketListings).omit({
+  id: true,
+  scrapedAt: true,
+});
+
+export type InsertMarketListing = z.infer<typeof insertMarketListingSchema>;
+export type MarketListing = typeof marketListings.$inferSelect;
