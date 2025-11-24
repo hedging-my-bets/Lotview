@@ -1583,6 +1583,57 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
 
+  // Market pricing analysis
+  app.post("/api/manager/market-pricing", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const { year, make, model, trim, mileage, radius } = req.body;
+      
+      // Validate required fields
+      if (!year || !make || !model) {
+        return res.status(400).json({
+          error: 'Missing required fields',
+          message: 'Year, make, and model are required for market pricing analysis'
+        });
+      }
+      
+      // Validate year is a valid number
+      const parsedYear = parseInt(year);
+      if (isNaN(parsedYear)) {
+        return res.status(400).json({
+          error: 'Invalid year',
+          message: 'Year must be a valid number'
+        });
+      }
+
+      // Import market pricing service
+      const { analyzeMarketPricing } = await import('./market-pricing');
+      
+      // Get all vehicles from inventory
+      const allVehicles = await storage.getVehicles();
+      
+      // Prepare request
+      const pricingRequest = {
+        year: parseInt(year),
+        make,
+        model,
+        trim,
+        mileage: mileage ? parseInt(mileage) : undefined,
+        radius: radius ? parseInt(radius) : 50
+      };
+      
+      // Analyze pricing
+      const result = analyzeMarketPricing(pricingRequest, allVehicles as any);
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Error analyzing market pricing:", error);
+      res.status(500).json({
+        error: 'PRICING_ERROR',
+        message: error instanceof Error ? error.message : "Failed to analyze market pricing"
+      });
+    }
+  });
+
   // ===== REMARKETING ROUTES (Master only) =====
   
   // Get all remarketing vehicles

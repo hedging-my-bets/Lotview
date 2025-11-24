@@ -20,6 +20,17 @@ export default function Manager() {
   const [vinResults, setVinResults] = useState<any>(null);
   const [isDecoding, setIsDecoding] = useState(false);
 
+  // Market pricing state
+  const [pricingForm, setPricingForm] = useState({
+    year: "",
+    make: "",
+    model: "",
+    trim: "",
+    mileage: ""
+  });
+  const [pricingResults, setPricingResults] = useState<any>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
   useEffect(() => {
     checkAuth();
   }, []);
@@ -112,11 +123,62 @@ export default function Manager() {
     }
   };
 
-  const handleMarketSearch = () => {
-    toast({
-      title: "Coming Soon",
-      description: "Market pricing analysis will be available soon",
-    });
+  const handleMarketSearch = async () => {
+    if (!pricingForm.year || !pricingForm.make || !pricingForm.model) {
+      toast({
+        title: "Missing Information",
+        description: "Please enter year, make, and model to search",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setPricingResults(null);
+
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('/api/manager/market-pricing', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          year: parseInt(pricingForm.year),
+          make: pricingForm.make,
+          model: pricingForm.model,
+          trim: pricingForm.trim || undefined,
+          mileage: pricingForm.mileage ? parseInt(pricingForm.mileage) : undefined,
+          radius: parseInt(searchRadius) || 50 // Default to 50 miles if invalid
+        }),
+      });
+
+      const result = await response.json();
+      
+      if (result.error) {
+        toast({
+          title: "Analysis Failed",
+          description: result.message || "Unable to analyze market pricing",
+          variant: "destructive",
+        });
+      } else {
+        setPricingResults(result);
+        toast({
+          title: "Analysis Complete",
+          description: `Found ${result.totalComps} comparable vehicles`,
+        });
+      }
+    } catch (error) {
+      console.error("Market pricing error:", error);
+      toast({
+        title: "Error",
+        description: "Failed to analyze market pricing. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   if (isLoading) {
@@ -348,10 +410,23 @@ export default function Manager() {
                   <div className="space-y-6">
                     <div className="grid gap-4 md:grid-cols-2">
                       <div>
+                        <Label htmlFor="year">Year</Label>
+                        <Input
+                          id="year"
+                          placeholder="e.g., 2023"
+                          type="number"
+                          value={pricingForm.year}
+                          onChange={(e) => setPricingForm({ ...pricingForm, year: e.target.value })}
+                          data-testid="input-year"
+                        />
+                      </div>
+                      <div>
                         <Label htmlFor="make">Make</Label>
                         <Input
                           id="make"
                           placeholder="e.g., Toyota"
+                          value={pricingForm.make}
+                          onChange={(e) => setPricingForm({ ...pricingForm, make: e.target.value })}
                           data-testid="input-make"
                         />
                       </div>
@@ -360,27 +435,34 @@ export default function Manager() {
                         <Input
                           id="model"
                           placeholder="e.g., Camry"
+                          value={pricingForm.model}
+                          onChange={(e) => setPricingForm({ ...pricingForm, model: e.target.value })}
                           data-testid="input-model"
                         />
                       </div>
                       <div>
-                        <Label htmlFor="year">Year Range</Label>
-                        <div className="flex gap-2">
-                          <Input
-                            id="year"
-                            placeholder="Min"
-                            type="number"
-                            data-testid="input-year-min"
-                          />
-                          <Input
-                            placeholder="Max"
-                            type="number"
-                            data-testid="input-year-max"
-                          />
-                        </div>
+                        <Label htmlFor="trim">Trim (Optional)</Label>
+                        <Input
+                          id="trim"
+                          placeholder="e.g., XLE"
+                          value={pricingForm.trim}
+                          onChange={(e) => setPricingForm({ ...pricingForm, trim: e.target.value })}
+                          data-testid="input-trim"
+                        />
                       </div>
                       <div>
-                        <Label htmlFor="radius">Search Radius (km)</Label>
+                        <Label htmlFor="mileage">Mileage (Optional)</Label>
+                        <Input
+                          id="mileage"
+                          type="number"
+                          placeholder="e.g., 25000"
+                          value={pricingForm.mileage}
+                          onChange={(e) => setPricingForm({ ...pricingForm, mileage: e.target.value })}
+                          data-testid="input-mileage"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="radius">Search Radius (miles)</Label>
                         <Input
                           id="radius"
                           type="number"
@@ -394,70 +476,127 @@ export default function Manager() {
                     <Button 
                       onClick={handleMarketSearch} 
                       className="w-full md:w-auto"
+                      disabled={isAnalyzing || !pricingForm.year || !pricingForm.make || !pricingForm.model}
                       data-testid="button-search-market"
                     >
-                      <TrendingUp className="w-4 h-4 mr-2" />
-                      Search Market
+                      {isAnalyzing ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                          Analyzing...
+                        </>
+                      ) : (
+                        <>
+                          <TrendingUp className="w-4 h-4 mr-2" />
+                          Analyze Market Pricing
+                        </>
+                      )}
                     </Button>
 
-                    <div className="border-t pt-6">
-                      <div className="text-center py-12 text-slate-500">
-                        <TrendingUp className="w-16 h-16 mx-auto mb-4 text-slate-300" />
-                        <h3 className="text-lg font-medium mb-2">Market Insights</h3>
-                        <p className="text-sm mb-4">
-                          Search for vehicles to see competitive intelligence including:
-                        </p>
-                        <div className="grid gap-3 md:grid-cols-3 max-w-3xl mx-auto text-left">
-                          <div className="flex items-start gap-2">
-                            <div className="w-1.5 h-1.5 bg-green-500 rounded-full mt-2" />
-                            <div>
-                              <div className="font-medium text-slate-700">Price Range</div>
-                              <div className="text-xs">Min, max, and average pricing</div>
+                    {pricingResults ? (
+                      <div className="border-t pt-6" data-testid="pricing-results">
+                        <div className="space-y-6">
+                          {/* Market Statistics */}
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+                            <h3 className="text-xl font-bold text-slate-900 mb-4">
+                              Market Analysis: {pricingForm.year} {pricingForm.make} {pricingForm.model}
+                            </h3>
+                            <div className="grid gap-4 md:grid-cols-4">
+                              <div data-testid="stat-average-price">
+                                <div className="text-xs text-slate-500 font-medium">Average Price</div>
+                                <div className="text-2xl font-bold text-green-600">
+                                  ${pricingResults.averagePrice.toLocaleString()}
+                                </div>
+                              </div>
+                              <div data-testid="stat-median-price">
+                                <div className="text-xs text-slate-500 font-medium">Median Price</div>
+                                <div className="text-2xl font-bold">${pricingResults.medianPrice.toLocaleString()}</div>
+                              </div>
+                              <div data-testid="stat-price-range">
+                                <div className="text-xs text-slate-500 font-medium">Price Range</div>
+                                <div className="text-lg font-semibold">
+                                  ${pricingResults.minPrice.toLocaleString()} - ${pricingResults.maxPrice.toLocaleString()}
+                                </div>
+                              </div>
+                              <div data-testid="stat-total-comps">
+                                <div className="text-xs text-slate-500 font-medium">Comparables Found</div>
+                                <div className="text-2xl font-bold">{pricingResults.totalComps}</div>
+                              </div>
                             </div>
                           </div>
-                          <div className="flex items-start gap-2">
-                            <div className="w-1.5 h-1.5 bg-green-500 rounded-full mt-2" />
-                            <div>
-                              <div className="font-medium text-slate-700">Days in Stock</div>
-                              <div className="text-xs">Average time on market</div>
+
+                          {/* Recommendation */}
+                          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                            <h4 className="font-semibold text-slate-900 mb-2">Market Recommendation</h4>
+                            <p className="text-sm text-slate-700">{pricingResults.recommendation}</p>
+                            <div className="mt-3 text-sm">
+                              <span className="font-medium">Recommended Price Range:</span>{' '}
+                              <span className="font-semibold text-green-600">
+                                ${pricingResults.priceRange.low.toLocaleString()} - ${pricingResults.priceRange.high.toLocaleString()}
+                              </span>
                             </div>
                           </div>
-                          <div className="flex items-start gap-2">
-                            <div className="w-1.5 h-1.5 bg-green-500 rounded-full mt-2" />
+
+                          {/* Comparable Vehicles */}
+                          {pricingResults.comparisons && pricingResults.comparisons.length > 0 && (
                             <div>
-                              <div className="font-medium text-slate-700">Competitor Listings</div>
-                              <div className="text-xs">Active inventory nearby</div>
+                              <h4 className="font-semibold text-slate-900 mb-4">Comparable Vehicles</h4>
+                              <div className="space-y-3">
+                                {pricingResults.comparisons.slice(0, 10).map((comp: any, index: number) => (
+                                  <div 
+                                    key={index}
+                                    className="border rounded-lg p-4 hover:bg-slate-50"
+                                    data-testid={`comparison-${index}`}
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex-1">
+                                        <div className="font-medium">
+                                          {comp.year} {comp.make} {comp.model}
+                                          {comp.trim && ` ${comp.trim}`}
+                                        </div>
+                                        <div className="text-sm text-slate-500 mt-1">
+                                          Stock #{comp.stockNumber} • {comp.location} • {comp.dealership}
+                                          {comp.mileage && ` • ${comp.mileage.toLocaleString()} mi`}
+                                        </div>
+                                      </div>
+                                      <div className="text-right ml-4">
+                                        <div className="font-bold text-lg">${comp.price.toLocaleString()}</div>
+                                        <div className={`text-sm ${comp.priceDifference >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                          {comp.priceDifference >= 0 ? '+' : ''}{comp.percentageDifference}% vs avg
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
-                          </div>
-                          <div className="flex items-start gap-2">
-                            <div className="w-1.5 h-1.5 bg-green-500 rounded-full mt-2" />
-                            <div>
-                              <div className="font-medium text-slate-700">Price Trends</div>
-                              <div className="text-xs">Historical pricing data</div>
-                            </div>
-                          </div>
-                          <div className="flex items-start gap-2">
-                            <div className="w-1.5 h-1.5 bg-green-500 rounded-full mt-2" />
-                            <div>
-                              <div className="font-medium text-slate-700">Mileage Analysis</div>
-                              <div className="text-xs">Odometer vs. price correlation</div>
-                            </div>
-                          </div>
-                          <div className="flex items-start gap-2">
-                            <div className="w-1.5 h-1.5 bg-green-500 rounded-full mt-2" />
-                            <div>
-                              <div className="font-medium text-slate-700">Market Share</div>
-                              <div className="text-xs">Inventory distribution</div>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="mt-6 p-4 bg-green-50 rounded-lg border border-green-200 max-w-3xl mx-auto">
-                          <p className="text-sm text-green-700">
-                            <strong>Coming Soon:</strong> Real-time competitor scraping and market analysis
-                          </p>
+                          )}
                         </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="border-t pt-6">
+                        <div className="text-center py-12 text-slate-500">
+                          <TrendingUp className="w-16 h-16 mx-auto mb-4 text-slate-300" />
+                          <h3 className="text-lg font-medium mb-2">Market Pricing Analysis</h3>
+                          <p className="text-sm mb-4">
+                            Enter vehicle information above and click "Analyze Market Pricing" to see:
+                          </p>
+                          <div className="max-w-md mx-auto text-left space-y-2">
+                            <div className="flex items-start gap-2">
+                              <div className="w-1.5 h-1.5 bg-green-500 rounded-full mt-2" />
+                              <div className="text-sm">Average, median, and price range from comparable vehicles</div>
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <div className="w-1.5 h-1.5 bg-green-500 rounded-full mt-2" />
+                              <div className="text-sm">Detailed comparison with similar inventory</div>
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <div className="w-1.5 h-1.5 bg-green-500 rounded-full mt-2" />
+                              <div className="text-sm">Pricing recommendations based on market data</div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
