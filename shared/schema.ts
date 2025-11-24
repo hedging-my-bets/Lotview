@@ -344,3 +344,20 @@ export const insertPostingScheduleSchema = createInsertSchema(postingSchedule).o
 
 export type InsertPostingSchedule = z.infer<typeof insertPostingScheduleSchema>;
 export type PostingSchedule = typeof postingSchedule.$inferSelect;
+
+// Remarketing vehicles - Master user selects up to 20 vehicles for remarketing campaigns
+export const remarketingVehicles = pgTable("remarketing_vehicles", {
+  id: serial("id").primaryKey(),
+  vehicleId: integer("vehicle_id").notNull().references(() => vehicles.id, { onDelete: 'cascade' }),
+  budgetPriority: integer("budget_priority").notNull(), // 1-5 scale (5 = highest priority)
+  isActive: boolean("is_active").notNull().default(true),
+  addedAt: timestamp("added_at").defaultNow().notNull(),
+});
+
+export const insertRemarketingVehicleSchema = createInsertSchema(remarketingVehicles).omit({
+  id: true,
+  addedAt: true,
+});
+
+export type InsertRemarketingVehicle = z.infer<typeof insertRemarketingVehicleSchema>;
+export type RemarketingVehicle = typeof remarketingVehicles.$inferSelect;

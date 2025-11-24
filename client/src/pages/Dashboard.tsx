@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { MessageSquare, Settings, Sparkles, Users, LogOut, DollarSign, Plus, Edit2, Trash2, Target, Webhook } from "lucide-react";
+import { MessageSquare, Settings, Sparkles, Users, LogOut, DollarSign, Plus, Edit2, Trash2, Target, Webhook, Star, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -78,6 +78,13 @@ export default function Dashboard() {
   const [editingCreditTier, setEditingCreditTier] = useState<CreditScoreTier | null>(null);
   const [editingModelYearTerm, setEditingModelYearTerm] = useState<ModelYearTerm | null>(null);
   
+  // Remarketing state
+  const [remarketingVehicles, setRemarketingVehicles] = useState<any[]>([]);
+  const [allVehicles, setAllVehicles] = useState<any[]>([]);
+  const [isAddVehicleDialogOpen, setIsAddVehicleDialogOpen] = useState(false);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
+  const [budgetPriority, setBudgetPriority] = useState<number>(3);
+  
   const [newCreditTier, setNewCreditTier] = useState({
     tierName: "",
     minScore: 300,
@@ -121,6 +128,8 @@ export default function Dashboard() {
       setUser(parsedUser);
       await loadUsers(token);
       await loadFinancingRules(token);
+      await loadVehicles(token);
+      await loadRemarketingVehicles(token);
     } catch (error) {
       console.error("Auth check failed:", error);
       setLocation('/login');
@@ -234,6 +243,36 @@ export default function Dashboard() {
         description: "Failed to update user",
         variant: "destructive",
       });
+    }
+  };
+
+  const loadVehicles = async (token: string) => {
+    try {
+      const response = await fetch('/api/vehicles', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setAllVehicles(data);
+      }
+    } catch (error) {
+      console.error("Failed to load vehicles:", error);
+    }
+  };
+
+  const loadRemarketingVehicles = async (token: string) => {
+    try {
+      const response = await fetch('/api/remarketing/vehicles', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setRemarketingVehicles(data);
+      }
+    } catch (error) {
+      console.error("Failed to load remarketing vehicles:", error);
     }
   };
 
@@ -432,6 +471,106 @@ export default function Dashboard() {
       availableTerms: term.availableTerms,
     });
     setIsModelYearDialogOpen(true);
+  };
+
+  const handleAddRemarketingVehicle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
+
+    try {
+      const response = await fetch('/api/remarketing/vehicles', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          vehicleId: parseInt(selectedVehicleId),
+          budgetPriority,
+        }),
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Vehicle Added",
+          description: "Vehicle has been added to remarketing",
+        });
+        setIsAddVehicleDialogOpen(false);
+        setSelectedVehicleId("");
+        setBudgetPriority(3);
+        await loadRemarketingVehicles(token);
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Error",
+          description: error.error || "Failed to add vehicle",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to add vehicle to remarketing",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const updateRemarketingPriority = async (id: number, newPriority: number) => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
+
+    try {
+      const response = await fetch(`/api/remarketing/vehicles/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ budgetPriority: newPriority }),
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Priority Updated",
+          description: "Budget priority has been updated",
+        });
+        await loadRemarketingVehicles(token);
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update priority",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const removeRemarketingVehicle = async (id: number) => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
+
+    try {
+      const response = await fetch(`/api/remarketing/vehicles/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Vehicle Removed",
+          description: "Vehicle has been removed from remarketing",
+        });
+        await loadRemarketingVehicles(token);
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to remove vehicle",
+        variant: "destructive",
+      });
+    }
   };
 
   const deleteModelYearTerm = async (id: number) => {
@@ -929,17 +1068,136 @@ export default function Dashboard() {
             <TabsContent value="remarketing">
               <Card>
                 <CardHeader>
-                  <CardTitle>Remarketing Configuration</CardTitle>
-                  <CardDescription>
-                    Select up to 20 vehicles for remarketing campaigns and set budget priorities
-                  </CardDescription>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>Remarketing Configuration</CardTitle>
+                      <CardDescription>
+                        Select up to 20 vehicles for remarketing campaigns ({remarketingVehicles.length}/20 selected)
+                      </CardDescription>
+                    </div>
+                    <Dialog open={isAddVehicleDialogOpen} onOpenChange={setIsAddVehicleDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button 
+                          disabled={remarketingVehicles.length >= 20}
+                          data-testid="button-add-remarketing-vehicle"
+                        >
+                          <Plus className="w-4 h-4 mr-2" />
+                          Add Vehicle
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Add Vehicle to Remarketing</DialogTitle>
+                          <DialogDescription>
+                            Select a vehicle and set its budget priority (1-5 stars)
+                          </DialogDescription>
+                        </DialogHeader>
+                        <form onSubmit={handleAddRemarketingVehicle} className="space-y-4">
+                          <div>
+                            <Label htmlFor="vehicle">Vehicle</Label>
+                            <Select value={selectedVehicleId} onValueChange={setSelectedVehicleId} required>
+                              <SelectTrigger id="vehicle" data-testid="select-vehicle">
+                                <SelectValue placeholder="Select a vehicle" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {allVehicles
+                                  .filter(v => !remarketingVehicles.some(rv => rv.vehicleId === v.id))
+                                  .map(vehicle => (
+                                    <SelectItem key={vehicle.id} value={vehicle.id.toString()}>
+                                      {vehicle.year} {vehicle.make} {vehicle.model} - ${vehicle.price.toLocaleString()}
+                                    </SelectItem>
+                                  ))
+                                }
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label>Budget Priority (1-5 stars)</Label>
+                            <div className="flex gap-2 mt-2">
+                              {[1, 2, 3, 4, 5].map(priority => (
+                                <button
+                                  key={priority}
+                                  type="button"
+                                  onClick={() => setBudgetPriority(priority)}
+                                  className={`p-2 rounded transition-colors ${
+                                    budgetPriority >= priority ? 'text-yellow-500' : 'text-slate-300'
+                                  }`}
+                                  data-testid={`button-priority-${priority}`}
+                                >
+                                  <Star className="w-6 h-6" fill={budgetPriority >= priority ? 'currentColor' : 'none'} />
+                                </button>
+                              ))}
+                            </div>
+                            <p className="text-xs text-slate-500 mt-2">
+                              {budgetPriority === 5 && "Highest priority - Maximum ad spend"}
+                              {budgetPriority === 4 && "High priority - Above average spend"}
+                              {budgetPriority === 3 && "Medium priority - Average spend"}
+                              {budgetPriority === 2 && "Low priority - Below average spend"}
+                              {budgetPriority === 1 && "Lowest priority - Minimum ad spend"}
+                            </p>
+                          </div>
+                          <Button type="submit" className="w-full" data-testid="button-submit-add-vehicle">
+                            Add to Remarketing
+                          </Button>
+                        </form>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
                 </CardHeader>
-                <CardContent className="py-12 text-center">
-                  <Target className="w-12 h-12 mx-auto mb-4 text-slate-400" />
-                  <p className="text-slate-500 mb-4">Remarketing vehicle selector coming soon</p>
-                  <p className="text-sm text-slate-400">
-                    Choose vehicles based on view history and engagement metrics
-                  </p>
+                <CardContent>
+                  {remarketingVehicles.length === 0 ? (
+                    <div className="text-center py-12 text-slate-500">
+                      <Target className="w-12 h-12 mx-auto mb-4 text-slate-300" />
+                      <h3 className="text-lg font-medium mb-2">No Vehicles Selected</h3>
+                      <p className="text-sm mb-4">
+                        Add vehicles to your remarketing campaign (up to 20)
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {remarketingVehicles.map(rv => {
+                        const vehicle = allVehicles.find(v => v.id === rv.vehicleId);
+                        if (!vehicle) return null;
+                        
+                        return (
+                          <div key={rv.id} className="flex items-center justify-between p-4 border rounded-lg" data-testid={`remarketing-vehicle-${rv.id}`}>
+                            <div className="flex-1">
+                              <div className="font-medium">
+                                {vehicle.year} {vehicle.make} {vehicle.model}
+                              </div>
+                              <div className="text-sm text-slate-500">
+                                ${vehicle.price.toLocaleString()} • Stock #{vehicle.stockNumber || 'N/A'}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <div className="flex items-center gap-1">
+                                {[1, 2, 3, 4, 5].map(priority => (
+                                  <button
+                                    key={priority}
+                                    onClick={() => updateRemarketingPriority(rv.id, priority)}
+                                    className={`p-1 rounded transition-colors ${
+                                      rv.budgetPriority >= priority ? 'text-yellow-500' : 'text-slate-300'
+                                    }`}
+                                    data-testid={`button-update-priority-${rv.id}-${priority}`}
+                                  >
+                                    <Star className="w-5 h-5" fill={rv.budgetPriority >= priority ? 'currentColor' : 'none'} />
+                                  </button>
+                                ))}
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => removeRemarketingVehicle(rv.id)}
+                                data-testid={`button-remove-${rv.id}`}
+                              >
+                                <X className="w-4 h-4 text-red-500" />
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>

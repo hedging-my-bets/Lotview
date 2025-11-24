@@ -1583,6 +1583,90 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
 
+  // ===== REMARKETING ROUTES (Master only) =====
+  
+  // Get all remarketing vehicles
+  app.get("/api/remarketing/vehicles", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const remarketingVehicles = await storage.getRemarketingVehicles();
+      res.json(remarketingVehicles);
+    } catch (error) {
+      console.error("Error fetching remarketing vehicles:", error);
+      res.status(500).json({ error: "Failed to fetch remarketing vehicles" });
+    }
+  });
+  
+  // Add vehicle to remarketing
+  app.post("/api/remarketing/vehicles", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const { vehicleId, budgetPriority } = req.body;
+      
+      if (!vehicleId || budgetPriority === undefined) {
+        return res.status(400).json({ error: "vehicleId and budgetPriority are required" });
+      }
+      
+      // Check if vehicle exists
+      const existingVehicle = await storage.getVehicleById(vehicleId);
+      if (!existingVehicle) {
+        return res.status(404).json({ error: "Vehicle not found" });
+      }
+      
+      // Check if vehicle is already in remarketing
+      const remarketingVehicles = await storage.getRemarketingVehicles();
+      if (remarketingVehicles.some(rv => rv.vehicleId === vehicleId)) {
+        return res.status(400).json({ error: "Vehicle is already in remarketing" });
+      }
+      
+      // Check if we already have 20 active vehicles
+      const count = await storage.getRemarketingVehicleCount();
+      if (count >= 20) {
+        return res.status(400).json({ error: "Maximum 20 vehicles allowed for remarketing" });
+      }
+      
+      const vehicle = await storage.addRemarketingVehicle({ vehicleId, budgetPriority, isActive: true });
+      res.json(vehicle);
+    } catch (error) {
+      console.error("Error adding remarketing vehicle:", error);
+      res.status(500).json({ error: "Failed to add remarketing vehicle" });
+    }
+  });
+  
+  // Update remarketing vehicle priority
+  app.patch("/api/remarketing/vehicles/:id", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { budgetPriority } = req.body;
+      
+      const vehicle = await storage.updateRemarketingVehicle(id, { budgetPriority });
+      
+      if (!vehicle) {
+        return res.status(404).json({ error: "Remarketing vehicle not found" });
+      }
+      
+      res.json(vehicle);
+    } catch (error) {
+      console.error("Error updating remarketing vehicle:", error);
+      res.status(500).json({ error: "Failed to update remarketing vehicle" });
+    }
+  });
+  
+  // Remove vehicle from remarketing
+  app.delete("/api/remarketing/vehicles/:id", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const success = await storage.removeRemarketingVehicle(id);
+      
+      if (!success) {
+        return res.status(404).json({ error: "Remarketing vehicle not found" });
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error removing remarketing vehicle:", error);
+      res.status(500).json({ error: "Failed to remove remarketing vehicle" });
+    }
+  });
+
   // ===== ADMIN ROUTES =====
   
   // Save GHL configuration

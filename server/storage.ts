@@ -17,6 +17,7 @@ import {
   adTemplates,
   postingQueue,
   postingSchedule,
+  remarketingVehicles,
   type Vehicle, 
   type InsertVehicle,
   type VehicleView,
@@ -50,7 +51,9 @@ import {
   type PostingQueue,
   type InsertPostingQueue,
   type PostingSchedule,
-  type InsertPostingSchedule
+  type InsertPostingSchedule,
+  type RemarketingVehicle,
+  type InsertRemarketingVehicle
 } from "@shared/schema";
 import { eq, desc, sql, and, gte, lte } from "drizzle-orm";
 
@@ -151,6 +154,13 @@ export interface IStorage {
   getAllPostingSchedules(): Promise<PostingSchedule[]>;
   createPostingSchedule(schedule: InsertPostingSchedule): Promise<PostingSchedule>;
   updatePostingSchedule(userId: number, schedule: Partial<InsertPostingSchedule>): Promise<PostingSchedule | undefined>;
+  
+  // Remarketing Vehicles
+  getRemarketingVehicles(): Promise<RemarketingVehicle[]>;
+  addRemarketingVehicle(vehicle: InsertRemarketingVehicle): Promise<RemarketingVehicle>;
+  updateRemarketingVehicle(id: number, vehicle: Partial<InsertRemarketingVehicle>): Promise<RemarketingVehicle | undefined>;
+  removeRemarketingVehicle(id: number): Promise<boolean>;
+  getRemarketingVehicleCount(): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -561,6 +571,46 @@ export class DatabaseStorage implements IStorage {
   async updatePostingSchedule(userId: number, schedule: Partial<InsertPostingSchedule>): Promise<PostingSchedule | undefined> {
     const result = await db.update(postingSchedule).set({ ...schedule, updatedAt: new Date() }).where(eq(postingSchedule.userId, userId)).returning();
     return result[0];
+  }
+
+  // Remarketing Vehicles
+  async getRemarketingVehicles(): Promise<RemarketingVehicle[]> {
+    return await db
+      .select()
+      .from(remarketingVehicles)
+      .where(eq(remarketingVehicles.isActive, true))
+      .orderBy(desc(remarketingVehicles.budgetPriority));
+  }
+
+  async addRemarketingVehicle(vehicle: InsertRemarketingVehicle): Promise<RemarketingVehicle> {
+    const result = await db.insert(remarketingVehicles).values(vehicle).returning();
+    return result[0];
+  }
+
+  async updateRemarketingVehicle(id: number, vehicle: Partial<InsertRemarketingVehicle>): Promise<RemarketingVehicle | undefined> {
+    const result = await db
+      .update(remarketingVehicles)
+      .set(vehicle)
+      .where(eq(remarketingVehicles.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async removeRemarketingVehicle(id: number): Promise<boolean> {
+    const result = await db
+      .update(remarketingVehicles)
+      .set({ isActive: false })
+      .where(and(eq(remarketingVehicles.id, id), eq(remarketingVehicles.isActive, true)))
+      .returning();
+    return result.length > 0;
+  }
+
+  async getRemarketingVehicleCount(): Promise<number> {
+    const result = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(remarketingVehicles)
+      .where(eq(remarketingVehicles.isActive, true));
+    return Number(result[0]?.count || 0);
   }
 }
 
