@@ -211,7 +211,16 @@ Preferred communication style: Simple, everyday language.
 
 **Sales Manager Tools (November 2025):**
 - **VIN Decoder**: NHTSA API integration to decode 17-character VINs and retrieve comprehensive vehicle specifications
-- **Market Pricing Analysis**: Inventory-based pricing analysis with comparable vehicle matching (±2 years, same make/model), statistical calculations (average, median, min/max, price range), detailed comparisons with pricing differences, and market recommendations based on price distribution
+- **Market Pricing Analysis - External Market Data (November 24, 2025)**: 
+  - AutoTrader Canada scraper using Puppeteer for real market listings
+  - Canadian postal code geocoding via Geocoder.ca API (lat/lon conversion, distance calculation)
+  - Manager settings storage (postal code, default search radius in KM)
+  - Market listings cache with source tracking (AutoTrader/Kijiji/etc), listing type (dealer/private), posted date
+  - Multi-trim and flexible year range support in pricing API
+  - Safe SQL filtering with case-insensitive matching
+  - Manual scrape trigger endpoint to prevent API timeouts
+  - Pricing algorithm updated to accept external market listings with mileage, source, listing type fields
+  - **Technical Debt**: Distance filtering not yet implemented (geocoding ready), scraper should run in background job queue, no Kijiji scraper yet, UI not updated
 
 **Cron Scheduling:**
 - Node-cron for scheduled inventory synchronization tasks
