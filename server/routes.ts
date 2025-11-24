@@ -843,6 +843,18 @@ Format your response in clear sections with actionable recommendations.`;
         return res.status(400).json({ error: "All fields are required" });
       }
       
+      if (minScore > maxScore) {
+        return res.status(400).json({ error: "Min score must be less than or equal to max score" });
+      }
+      
+      if (minScore < 300 || maxScore > 850) {
+        return res.status(400).json({ error: "Credit scores must be between 300 and 850" });
+      }
+      
+      if (interestRate < 0 || interestRate > 100) {
+        return res.status(400).json({ error: "Interest rate must be between 0 and 100" });
+      }
+      
       const tier = await storage.createCreditScoreTier({
         tierName,
         minScore,
@@ -862,6 +874,24 @@ Format your response in clear sections with actionable recommendations.`;
   app.patch("/api/financing/credit-tiers/:id", authMiddleware, requireRole("master"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      const { minScore, maxScore, interestRate } = req.body;
+      
+      if (minScore !== undefined && maxScore !== undefined && minScore > maxScore) {
+        return res.status(400).json({ error: "Min score must be less than or equal to max score" });
+      }
+      
+      if (minScore !== undefined && (minScore < 300 || minScore > 850)) {
+        return res.status(400).json({ error: "Min score must be between 300 and 850" });
+      }
+      
+      if (maxScore !== undefined && (maxScore < 300 || maxScore > 850)) {
+        return res.status(400).json({ error: "Max score must be between 300 and 850" });
+      }
+      
+      if (interestRate !== undefined && (interestRate < 0 || interestRate > 100)) {
+        return res.status(400).json({ error: "Interest rate must be between 0 and 100" });
+      }
+      
       const tier = await storage.updateCreditScoreTier(id, req.body);
       
       if (!tier) {
@@ -907,6 +937,19 @@ Format your response in clear sections with actionable recommendations.`;
         return res.status(400).json({ error: "All fields are required" });
       }
       
+      if (minModelYear > maxModelYear) {
+        return res.status(400).json({ error: "Min year must be less than or equal to max year" });
+      }
+      
+      if (!Array.isArray(availableTerms) || availableTerms.length === 0) {
+        return res.status(400).json({ error: "At least one term must be selected" });
+      }
+      
+      const validTerms = ["36", "48", "60", "72", "84"];
+      if (!availableTerms.every(term => validTerms.includes(term))) {
+        return res.status(400).json({ error: "Invalid term selected" });
+      }
+      
       const term = await storage.createModelYearTerm({
         minModelYear,
         maxModelYear,
@@ -925,6 +968,23 @@ Format your response in clear sections with actionable recommendations.`;
   app.patch("/api/financing/model-year-terms/:id", authMiddleware, requireRole("master"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      const { minModelYear, maxModelYear, availableTerms } = req.body;
+      
+      if (minModelYear !== undefined && maxModelYear !== undefined && minModelYear > maxModelYear) {
+        return res.status(400).json({ error: "Min year must be less than or equal to max year" });
+      }
+      
+      if (availableTerms !== undefined) {
+        if (!Array.isArray(availableTerms) || availableTerms.length === 0) {
+          return res.status(400).json({ error: "At least one term must be selected" });
+        }
+        
+        const validTerms = ["36", "48", "60", "72", "84"];
+        if (!availableTerms.every(term => validTerms.includes(term))) {
+          return res.status(400).json({ error: "Invalid term selected" });
+        }
+      }
+      
       const term = await storage.updateModelYearTerm(id, req.body);
       
       if (!term) {

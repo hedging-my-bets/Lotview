@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { MessageSquare, Settings, Sparkles, Users, LogOut } from "lucide-react";
+import { MessageSquare, Settings, Sparkles, Users, LogOut, DollarSign, Plus, Edit2, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -33,6 +33,27 @@ interface User {
   createdAt: string;
 }
 
+interface CreditScoreTier {
+  id: number;
+  tierName: string;
+  minScore: number;
+  maxScore: number;
+  interestRate: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ModelYearTerm {
+  id: number;
+  minModelYear: number;
+  maxModelYear: number;
+  availableTerms: string[];
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export default function Dashboard() {
   const [, setLocation] = useLocation();
   const [user, setUser] = useState<User | null>(null);
@@ -47,6 +68,27 @@ export default function Dashboard() {
     password: "",
     name: "",
     role: "salesperson",
+  });
+
+  // Financing rules state
+  const [creditTiers, setCreditTiers] = useState<CreditScoreTier[]>([]);
+  const [modelYearTerms, setModelYearTerms] = useState<ModelYearTerm[]>([]);
+  const [isCreditTierDialogOpen, setIsCreditTierDialogOpen] = useState(false);
+  const [isModelYearDialogOpen, setIsModelYearDialogOpen] = useState(false);
+  const [editingCreditTier, setEditingCreditTier] = useState<CreditScoreTier | null>(null);
+  const [editingModelYearTerm, setEditingModelYearTerm] = useState<ModelYearTerm | null>(null);
+  
+  const [newCreditTier, setNewCreditTier] = useState({
+    tierName: "",
+    minScore: 300,
+    maxScore: 850,
+    interestRate: 5.99,
+  });
+
+  const [newModelYearTerm, setNewModelYearTerm] = useState({
+    minModelYear: 2020,
+    maxModelYear: 2025,
+    availableTerms: ["36", "48", "60"],
   });
 
   useEffect(() => {
@@ -78,6 +120,7 @@ export default function Dashboard() {
 
       setUser(parsedUser);
       await loadUsers(token);
+      await loadFinancingRules(token);
     } catch (error) {
       console.error("Auth check failed:", error);
       setLocation('/login');
@@ -194,6 +237,231 @@ export default function Dashboard() {
     }
   };
 
+  const loadFinancingRules = async (token: string) => {
+    try {
+      const [tiersResponse, termsResponse] = await Promise.all([
+        fetch('/api/financing/credit-tiers', {
+          headers: { 'Authorization': `Bearer ${token}` },
+        }),
+        fetch('/api/financing/model-year-terms', {
+          headers: { 'Authorization': `Bearer ${token}` },
+        }),
+      ]);
+
+      if (tiersResponse.ok) {
+        const tiers = await tiersResponse.json();
+        setCreditTiers(tiers);
+      }
+
+      if (termsResponse.ok) {
+        const terms = await termsResponse.json();
+        setModelYearTerms(terms);
+      }
+    } catch (error) {
+      console.error("Failed to load financing rules:", error);
+    }
+  };
+
+  const handleCreateCreditTier = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
+
+    if (newCreditTier.minScore > newCreditTier.maxScore) {
+      toast({
+        title: "Validation Error",
+        description: "Min score must be less than or equal to max score",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const url = editingCreditTier 
+        ? `/api/financing/credit-tiers/${editingCreditTier.id}`
+        : '/api/financing/credit-tiers';
+      
+      const method = editingCreditTier ? 'PATCH' : 'POST';
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(newCreditTier),
+      });
+
+      if (response.ok) {
+        toast({
+          title: editingCreditTier ? "Credit Tier Updated" : "Credit Tier Created",
+          description: `${newCreditTier.tierName} has been ${editingCreditTier ? 'updated' : 'added'} successfully`,
+        });
+        
+        setIsCreditTierDialogOpen(false);
+        setEditingCreditTier(null);
+        setNewCreditTier({ tierName: "", minScore: 300, maxScore: 850, interestRate: 5.99 });
+        await loadFinancingRules(token);
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Error",
+          description: error.error || `Failed to ${editingCreditTier ? 'update' : 'create'} credit tier`,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: `Failed to ${editingCreditTier ? 'update' : 'create'} credit tier`,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const openEditCreditTier = (tier: CreditScoreTier) => {
+    setEditingCreditTier(tier);
+    setNewCreditTier({
+      tierName: tier.tierName,
+      minScore: tier.minScore,
+      maxScore: tier.maxScore,
+      interestRate: tier.interestRate,
+    });
+    setIsCreditTierDialogOpen(true);
+  };
+
+  const deleteCreditTier = async (id: number) => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
+
+    try {
+      const response = await fetch(`/api/financing/credit-tiers/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Credit Tier Deleted",
+          description: "The tier has been removed successfully",
+        });
+        await loadFinancingRules(token);
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete credit tier",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleCreateModelYearTerm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
+
+    if (newModelYearTerm.minModelYear > newModelYearTerm.maxModelYear) {
+      toast({
+        title: "Validation Error",
+        description: "Min year must be less than or equal to max year",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (newModelYearTerm.availableTerms.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "Please select at least one term",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const url = editingModelYearTerm
+        ? `/api/financing/model-year-terms/${editingModelYearTerm.id}`
+        : '/api/financing/model-year-terms';
+      
+      const method = editingModelYearTerm ? 'PATCH' : 'POST';
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(newModelYearTerm),
+      });
+
+      if (response.ok) {
+        toast({
+          title: editingModelYearTerm ? "Model Year Term Updated" : "Model Year Term Created",
+          description: `The term rule has been ${editingModelYearTerm ? 'updated' : 'added'} successfully`,
+        });
+        
+        setIsModelYearDialogOpen(false);
+        setEditingModelYearTerm(null);
+        setNewModelYearTerm({ minModelYear: 2020, maxModelYear: 2025, availableTerms: ["36", "48", "60"] });
+        await loadFinancingRules(token);
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Error",
+          description: error.error || `Failed to ${editingModelYearTerm ? 'update' : 'create'} model year term`,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: `Failed to ${editingModelYearTerm ? 'update' : 'create'} model year term`,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const openEditModelYearTerm = (term: ModelYearTerm) => {
+    setEditingModelYearTerm(term);
+    setNewModelYearTerm({
+      minModelYear: term.minModelYear,
+      maxModelYear: term.maxModelYear,
+      availableTerms: term.availableTerms,
+    });
+    setIsModelYearDialogOpen(true);
+  };
+
+  const deleteModelYearTerm = async (id: number) => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
+
+    try {
+      const response = await fetch(`/api/financing/model-year-terms/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Model Year Term Deleted",
+          description: "The term rule has been removed successfully",
+        });
+        await loadFinancingRules(token);
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete model year term",
+        variant: "destructive",
+      });
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -222,10 +490,14 @@ export default function Dashboard() {
           </div>
 
           <Tabs defaultValue="users" className="w-full">
-            <TabsList className="grid w-full grid-cols-4 mb-8">
+            <TabsList className="grid w-full grid-cols-5 mb-8">
               <TabsTrigger value="users" className="flex items-center gap-2" data-testid="tab-users">
                 <Users className="w-4 h-4" />
                 <span className="hidden sm:inline">Users</span>
+              </TabsTrigger>
+              <TabsTrigger value="financing" className="flex items-center gap-2" data-testid="tab-financing">
+                <DollarSign className="w-4 h-4" />
+                <span className="hidden sm:inline">Financing</span>
               </TabsTrigger>
               <TabsTrigger value="conversations" className="flex items-center gap-2" data-testid="tab-conversations">
                 <MessageSquare className="w-4 h-4" />
@@ -366,6 +638,288 @@ export default function Dashboard() {
                   </div>
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            <TabsContent value="financing">
+              <div className="grid gap-6 md:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>Credit Score Tiers</CardTitle>
+                        <CardDescription>
+                          Configure interest rates by credit score range
+                        </CardDescription>
+                      </div>
+                      <Dialog open={isCreditTierDialogOpen} onOpenChange={(open) => {
+                        setIsCreditTierDialogOpen(open);
+                        if (!open) {
+                          setEditingCreditTier(null);
+                          setNewCreditTier({ tierName: "", minScore: 300, maxScore: 850, interestRate: 5.99 });
+                        }
+                      }}>
+                        <DialogTrigger asChild>
+                          <Button size="sm" data-testid="button-create-credit-tier">
+                            <Plus className="w-4 h-4 mr-2" />
+                            Add Tier
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>{editingCreditTier ? 'Edit' : 'Create'} Credit Score Tier</DialogTitle>
+                            <DialogDescription>
+                              Define a credit score range and its interest rate
+                            </DialogDescription>
+                          </DialogHeader>
+                          <form onSubmit={handleCreateCreditTier} className="space-y-4">
+                            <div>
+                              <Label htmlFor="tierName">Tier Name</Label>
+                              <Input
+                                id="tierName"
+                                value={newCreditTier.tierName}
+                                onChange={(e) => setNewCreditTier({ ...newCreditTier, tierName: e.target.value })}
+                                placeholder="Excellent"
+                                required
+                                data-testid="input-tier-name"
+                              />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <Label htmlFor="minScore">Min Score</Label>
+                                <Input
+                                  id="minScore"
+                                  type="number"
+                                  min={300}
+                                  max={850}
+                                  value={newCreditTier.minScore}
+                                  onChange={(e) => setNewCreditTier({ ...newCreditTier, minScore: parseInt(e.target.value) })}
+                                  required
+                                  data-testid="input-min-score"
+                                />
+                              </div>
+                              <div>
+                                <Label htmlFor="maxScore">Max Score</Label>
+                                <Input
+                                  id="maxScore"
+                                  type="number"
+                                  min={300}
+                                  max={850}
+                                  value={newCreditTier.maxScore}
+                                  onChange={(e) => setNewCreditTier({ ...newCreditTier, maxScore: parseInt(e.target.value) })}
+                                  required
+                                  data-testid="input-max-score"
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <Label htmlFor="interestRate">Interest Rate (%)</Label>
+                              <Input
+                                id="interestRate"
+                                type="number"
+                                step="0.01"
+                                min={0}
+                                max={100}
+                                value={newCreditTier.interestRate}
+                                onChange={(e) => setNewCreditTier({ ...newCreditTier, interestRate: parseFloat(e.target.value) })}
+                                required
+                                data-testid="input-interest-rate"
+                              />
+                            </div>
+                            <Button type="submit" className="w-full" data-testid="button-submit-credit-tier">
+                              {editingCreditTier ? 'Update' : 'Create'} Tier
+                            </Button>
+                          </form>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {creditTiers.length === 0 ? (
+                        <div className="text-center py-8 text-slate-500">
+                          No credit tiers configured. Add your first tier to get started.
+                        </div>
+                      ) : (
+                        creditTiers.map((tier) => (
+                          <div
+                            key={tier.id}
+                            className="flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50"
+                            data-testid={`credit-tier-${tier.id}`}
+                          >
+                            <div className="flex-1">
+                              <div className="font-semibold text-slate-900">{tier.tierName}</div>
+                              <div className="text-sm text-slate-600">
+                                {tier.minScore} - {tier.maxScore}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div className="text-right">
+                                <div className="font-semibold text-primary">{tier.interestRate}%</div>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => openEditCreditTier(tier)}
+                                data-testid={`button-edit-tier-${tier.id}`}
+                              >
+                                <Edit2 className="w-4 h-4 text-blue-500" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => deleteCreditTier(tier.id)}
+                                data-testid={`button-delete-tier-${tier.id}`}
+                              >
+                                <Trash2 className="w-4 h-4 text-red-500" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>Model Year Terms</CardTitle>
+                        <CardDescription>
+                          Configure available loan terms by vehicle age
+                        </CardDescription>
+                      </div>
+                      <Dialog open={isModelYearDialogOpen} onOpenChange={(open) => {
+                        setIsModelYearDialogOpen(open);
+                        if (!open) {
+                          setEditingModelYearTerm(null);
+                          setNewModelYearTerm({ minModelYear: 2020, maxModelYear: 2025, availableTerms: ["36", "48", "60"] });
+                        }
+                      }}>
+                        <DialogTrigger asChild>
+                          <Button size="sm" data-testid="button-create-model-year-term">
+                            <Plus className="w-4 h-4 mr-2" />
+                            Add Rule
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>{editingModelYearTerm ? 'Edit' : 'Create'} Model Year Term Rule</DialogTitle>
+                            <DialogDescription>
+                              Define available loan terms for a model year range
+                            </DialogDescription>
+                          </DialogHeader>
+                          <form onSubmit={handleCreateModelYearTerm} className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <Label htmlFor="minModelYear">Min Year</Label>
+                                <Input
+                                  id="minModelYear"
+                                  type="number"
+                                  min={1980}
+                                  max={2050}
+                                  value={newModelYearTerm.minModelYear}
+                                  onChange={(e) => setNewModelYearTerm({ ...newModelYearTerm, minModelYear: parseInt(e.target.value) })}
+                                  required
+                                  data-testid="input-min-year"
+                                />
+                              </div>
+                              <div>
+                                <Label htmlFor="maxModelYear">Max Year</Label>
+                                <Input
+                                  id="maxModelYear"
+                                  type="number"
+                                  min={1980}
+                                  max={2050}
+                                  value={newModelYearTerm.maxModelYear}
+                                  onChange={(e) => setNewModelYearTerm({ ...newModelYearTerm, maxModelYear: parseInt(e.target.value) })}
+                                  required
+                                  data-testid="input-max-year"
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <Label>Available Terms (months)</Label>
+                              <div className="grid grid-cols-3 gap-2 mt-2">
+                                {["36", "48", "60", "72", "84"].map((term) => (
+                                  <label key={term} className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={newModelYearTerm.availableTerms.includes(term)}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          setNewModelYearTerm({
+                                            ...newModelYearTerm,
+                                            availableTerms: [...newModelYearTerm.availableTerms, term].sort(),
+                                          });
+                                        } else {
+                                          setNewModelYearTerm({
+                                            ...newModelYearTerm,
+                                            availableTerms: newModelYearTerm.availableTerms.filter(t => t !== term),
+                                          });
+                                        }
+                                      }}
+                                      className="rounded"
+                                    />
+                                    <span className="text-sm">{term}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                            <Button type="submit" className="w-full" data-testid="button-submit-model-year-term">
+                              {editingModelYearTerm ? 'Update' : 'Create'} Rule
+                            </Button>
+                          </form>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {modelYearTerms.length === 0 ? (
+                        <div className="text-center py-8 text-slate-500">
+                          No term rules configured. Add your first rule to get started.
+                        </div>
+                      ) : (
+                        modelYearTerms.map((term) => (
+                          <div
+                            key={term.id}
+                            className="flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50"
+                            data-testid={`model-year-term-${term.id}`}
+                          >
+                            <div className="flex-1">
+                              <div className="font-semibold text-slate-900">
+                                {term.minModelYear} - {term.maxModelYear}
+                              </div>
+                              <div className="text-sm text-slate-600">
+                                Terms: {term.availableTerms.join(", ")} months
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => openEditModelYearTerm(term)}
+                                data-testid={`button-edit-term-${term.id}`}
+                              >
+                                <Edit2 className="w-4 h-4 text-blue-500" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => deleteModelYearTerm(term.id)}
+                                data-testid={`button-delete-term-${term.id}`}
+                              >
+                                <Trash2 className="w-4 h-4 text-red-500" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             </TabsContent>
 
             <TabsContent value="conversations">
