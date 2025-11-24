@@ -5,11 +5,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LogOut, Search, TrendingUp, Car, ChevronDown, Check } from "lucide-react";
+import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 
 export default function Manager() {
   const [, setLocation] = useLocation();
@@ -22,17 +24,27 @@ export default function Manager() {
   const [vinResults, setVinResults] = useState<any>(null);
   const [isDecoding, setIsDecoding] = useState(false);
 
+  // Manager settings state
+  const [settings, setSettings] = useState({
+    postalCode: "",
+    defaultRadiusKm: 50
+  });
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+
   // Market pricing state
   const [pricingForm, setPricingForm] = useState({
-    year: "",
+    yearMin: "",
+    yearMax: "",
     make: "",
     model: "",
-    trim: "",
+    selectedTrims: [] as string[],
     mileage: "",
-    radius: "50"
+    radiusKm: "50"
   });
   const [pricingResults, setPricingResults] = useState<any>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isScraping, setIsScraping] = useState(false);
 
   // Autocomplete data
   const [makes, setMakes] = useState<string[]>([]);
@@ -52,6 +64,7 @@ export default function Manager() {
   useEffect(() => {
     if (user) {
       loadMakes();
+      loadSettings();
     }
   }, [user]);
 
@@ -61,9 +74,9 @@ export default function Manager() {
     } else {
       setModels([]);
     }
-    // Clear model and trim when make changes
+    // Clear model and trims when make changes
     if (pricingForm.make !== vinResults?.make) {
-      setPricingForm(prev => ({ ...prev, model: "", trim: "" }));
+      setPricingForm(prev => ({ ...prev, model: "", selectedTrims: [] }));
     }
   }, [pricingForm.make]);
 
@@ -73,9 +86,9 @@ export default function Manager() {
     } else {
       setTrims([]);
     }
-    // Clear trim when model changes
+    // Clear trims when model changes
     if (pricingForm.model !== vinResults?.model) {
-      setPricingForm(prev => ({ ...prev, trim: "" }));
+      setPricingForm(prev => ({ ...prev, selectedTrims: [] }));
     }
   }, [pricingForm.make, pricingForm.model]);
 
@@ -155,6 +168,159 @@ export default function Manager() {
     }
   };
 
+  const loadSettings = async () => {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('/api/manager/settings', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data) {
+          setSettings({
+            postalCode: data.postalCode || "",
+            defaultRadiusKm: data.defaultRadiusKm || 50
+          });
+          setPricingForm(prev => ({ ...prev, radiusKm: String(data.defaultRadiusKm || 50) }));
+        }
+      }
+    } catch (error) {
+      console.error("Error loading settings:", error);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    // Validate postal code (Canadian format: A1A 1A1 or A1A1A1)
+    const trimmedPostalCode = settings.postalCode.trim().toUpperCase();
+    const canadianPostalCodeRegex = /^[A-Z]\d[A-Z]\s?\d[A-Z]\d$/;
+    
+    if (!trimmedPostalCode || !canadianPostalCodeRegex.test(trimmedPostalCode)) {
+      toast({
+        title: "Invalid Postal Code",
+        description: "Please enter a valid Canadian postal code (e.g., V6B 5J3)",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSavingSettings(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('/api/manager/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ...settings,
+          postalCode: trimmedPostalCode
+        }),
+      });
+
+      if (response.ok) {
+        setSettings(prev => ({ ...prev, postalCode: trimmedPostalCode }));
+        toast({
+          title: "Settings Saved",
+          description: "Your postal code and default radius have been saved",
+        });
+        setSettingsOpen(false);
+        setPricingForm(prev => ({ ...prev, radiusKm: String(settings.defaultRadiusKm) }));
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Save Failed",
+          description: error.message || "Unable to save settings",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error saving settings:", error);
+      toast({
+        title: "Error",
+        description: "Failed to save settings. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
+  const handleRefreshMarketData = async () => {
+    if (!pricingForm.make || !pricingForm.model) {
+      toast({
+        title: "Missing Information",
+        description: "Please select make and model first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!settings.postalCode || settings.postalCode.trim() === '') {
+      toast({
+        title: "Settings Required",
+        description: "Please configure your postal code in Settings first",
+        variant: "destructive",
+      });
+      setSettingsOpen(true);
+      return;
+    }
+
+    setIsScraping(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      
+      const yearMin = parseInt(pricingForm.yearMin) || new Date().getFullYear() - 5;
+      const yearMax = parseInt(pricingForm.yearMax) || new Date().getFullYear();
+      
+      const response = await fetch('/api/manager/scrape-market', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          make: pricingForm.make,
+          model: pricingForm.model,
+          yearMin,
+          yearMax,
+          postalCode: settings.postalCode.trim(),
+          radiusKm: parseInt(pricingForm.radiusKm) || settings.defaultRadiusKm,
+          maxResults: 100
+        }),
+      });
+
+      const result = await response.json();
+      
+      if (result.error) {
+        toast({
+          title: "Scraping Failed",
+          description: result.message || "Unable to fetch market data",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Market Data Refreshed",
+          description: `Fetched ${result.savedCount} new listings from AutoTrader`,
+        });
+        
+        // Auto-trigger market analysis after refresh
+        setTimeout(() => {
+          handleMarketSearch();
+        }, 500);
+      }
+    } catch (error) {
+      console.error("Market scraping error:", error);
+      toast({
+        title: "Error",
+        description: "Failed to refresh market data. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsScraping(false);
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('auth_token');
     localStorage.removeItem('user');
@@ -197,14 +363,19 @@ export default function Manager() {
         setVinResults(result);
         
         // Auto-populate market pricing form
-        setPricingForm({
-          year: result.year || "",
+        const currentYear = new Date().getFullYear();
+        const vehicleYear = result.year || currentYear;
+        setPricingForm(prev => ({
+          ...prev,
+          yearMin: String(vehicleYear - 2),
+          yearMax: String(vehicleYear + 1),
           make: result.make || "",
           model: result.model || "",
-          trim: result.trim || "",
+          selectedTrims: result.trim ? [result.trim] : [],
           mileage: "",
-          radius: pricingForm.radius || "50"
-        });
+          // Preserve existing radiusKm (from settings) or use settings default
+          radiusKm: prev.radiusKm || String(settings.defaultRadiusKm || 50)
+        }));
 
         toast({
           title: "VIN Decoded Successfully",
@@ -213,8 +384,8 @@ export default function Manager() {
 
         // Auto-trigger market analysis
         setTimeout(() => {
-          if (result.year && result.make && result.model) {
-            analyzeMarket(result.year, result.make, result.model, result.trim || "", "", pricingForm.radius || "50");
+          if (result.make && result.model) {
+            handleMarketSearch();
           }
         }, 500);
       }
@@ -230,12 +401,36 @@ export default function Manager() {
     }
   };
 
-  const analyzeMarket = async (year: string, make: string, model: string, trim: string, mileage: string, radius: string) => {
+  const handleMarketSearch = async () => {
+    if (!pricingForm.make || !pricingForm.model) {
+      toast({
+        title: "Missing Information",
+        description: "Please select make and model to search",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!settings.postalCode || settings.postalCode.trim() === '') {
+      toast({
+        title: "Settings Required",
+        description: "Please configure your postal code in Settings first to enable market pricing",
+        variant: "destructive",
+      });
+      setSettingsOpen(true);
+      return;
+    }
+
     setIsAnalyzing(true);
     setPricingResults(null);
 
     try {
       const token = localStorage.getItem('auth_token');
+      
+      const currentYear = new Date().getFullYear();
+      const yearMin = parseInt(pricingForm.yearMin) || (currentYear - 5);
+      const yearMax = parseInt(pricingForm.yearMax) || currentYear;
+      
       const response = await fetch('/api/manager/market-pricing', {
         method: 'POST',
         headers: {
@@ -243,12 +438,14 @@ export default function Manager() {
           'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
-          year: parseInt(year),
-          make,
-          model,
-          trim: trim || undefined,
-          mileage: mileage ? parseInt(mileage) : undefined,
-          radius: parseInt(radius) || 50
+          make: pricingForm.make,
+          model: pricingForm.model,
+          yearMin,
+          yearMax,
+          trims: pricingForm.selectedTrims.length > 0 ? pricingForm.selectedTrims : undefined,
+          mileage: pricingForm.mileage ? parseInt(pricingForm.mileage) : undefined,
+          radiusKm: parseInt(pricingForm.radiusKm) || settings.defaultRadiusKm,
+          postalCode: settings.postalCode.trim(),
         }),
       });
 
@@ -262,10 +459,18 @@ export default function Manager() {
         });
       } else {
         setPricingResults(result);
-        toast({
-          title: "Analysis Complete",
-          description: `Found ${result.totalComps} comparable vehicles`,
-        });
+        if (result.totalComps > 0) {
+          toast({
+            title: "Analysis Complete",
+            description: `Found ${result.totalComps} comparable vehicles`,
+          });
+        } else {
+          toast({
+            title: "No Results",
+            description: result.recommendation || "No comparable vehicles found",
+            variant: "default",
+          });
+        }
       }
     } catch (error) {
       console.error("Market pricing error:", error);
@@ -277,19 +482,6 @@ export default function Manager() {
     } finally {
       setIsAnalyzing(false);
     }
-  };
-
-  const handleMarketSearch = () => {
-    if (!pricingForm.year || !pricingForm.make || !pricingForm.model) {
-      toast({
-        title: "Missing Information",
-        description: "Please select year, make, and model to search",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    analyzeMarket(pricingForm.year, pricingForm.make, pricingForm.model, pricingForm.trim, pricingForm.mileage, pricingForm.radius);
   };
 
   if (isLoading) {
@@ -318,6 +510,80 @@ export default function Manager() {
               Logout
             </Button>
           </div>
+
+          {/* Settings Card */}
+          <Card className="mb-6">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Settings className="w-5 h-5" />
+                    Manager Settings
+                  </CardTitle>
+                  <CardDescription>
+                    Configure your location for market pricing searches
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSettingsOpen(!settingsOpen)}
+                  data-testid="button-toggle-settings"
+                >
+                  {settingsOpen ? "Hide Settings" : "Show Settings"}
+                </Button>
+              </div>
+            </CardHeader>
+            {settingsOpen && (
+              <CardContent>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <Label htmlFor="postal-code">Postal Code *</Label>
+                    <Input
+                      id="postal-code"
+                      placeholder="e.g., V6B 5J3"
+                      value={settings.postalCode}
+                      onChange={(e) => setSettings({ ...settings, postalCode: e.target.value.toUpperCase() })}
+                      data-testid="input-postal-code"
+                      className="mt-2"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">
+                      Used for geocoding and radius-based market searches
+                    </p>
+                  </div>
+                  <div>
+                    <Label htmlFor="default-radius">Default Search Radius (KM)</Label>
+                    <Input
+                      id="default-radius"
+                      type="number"
+                      value={settings.defaultRadiusKm}
+                      onChange={(e) => setSettings({ ...settings, defaultRadiusKm: parseInt(e.target.value) || 50 })}
+                      data-testid="input-default-radius"
+                      className="mt-2"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">
+                      Default radius for searching nearby listings
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  onClick={handleSaveSettings}
+                  disabled={isSavingSettings || !settings.postalCode}
+                  className="mt-4"
+                  data-testid="button-save-settings"
+                >
+                  {isSavingSettings ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                      Saving...
+                    </>
+                  ) : (
+                    "Save Settings"
+                  )}
+                </Button>
+              </CardContent>
+            )}
+          </Card>
 
           <Card>
             <CardHeader>
@@ -436,20 +702,53 @@ export default function Manager() {
 
                 {/* Market Pricing Section */}
                 <div className="border-t pt-6">
-                  <h3 className="text-lg font-semibold text-slate-900 mb-4">Market Pricing Analysis</h3>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-slate-900">Market Pricing Analysis</h3>
+                    <Button
+                      onClick={handleRefreshMarketData}
+                      disabled={isScraping || !pricingForm.make || !pricingForm.model}
+                      variant="outline"
+                      size="sm"
+                      data-testid="button-refresh-market"
+                    >
+                      {isScraping ? (
+                        <>
+                          <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin mr-2" />
+                          Refreshing...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="w-3 h-3 mr-2" />
+                          Refresh Market Data
+                        </>
+                      )}
+                    </Button>
+                  </div>
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {/* Year Input */}
+                    {/* Year Range */}
                     <div>
-                      <Label htmlFor="year">Year *</Label>
-                      <Input
-                        id="year"
-                        placeholder="e.g., 2023"
-                        type="number"
-                        value={pricingForm.year}
-                        onChange={(e) => setPricingForm({ ...pricingForm, year: e.target.value })}
-                        data-testid="input-year"
-                        className="mt-2"
-                      />
+                      <Label htmlFor="year-min">Year Range (Optional)</Label>
+                      <div className="flex gap-2 mt-2">
+                        <Input
+                          id="year-min"
+                          placeholder="Min"
+                          type="number"
+                          value={pricingForm.yearMin}
+                          onChange={(e) => setPricingForm({ ...pricingForm, yearMin: e.target.value })}
+                          data-testid="input-year-min"
+                        />
+                        <Input
+                          id="year-max"
+                          placeholder="Max"
+                          type="number"
+                          value={pricingForm.yearMax}
+                          onChange={(e) => setPricingForm({ ...pricingForm, yearMax: e.target.value })}
+                          data-testid="input-year-max"
+                        />
+                      </div>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Leave blank to search last 5 years
+                      </p>
                     </div>
 
                     {/* Make Autocomplete */}
@@ -479,7 +778,7 @@ export default function Manager() {
                                     key={make}
                                     value={make}
                                     onSelect={() => {
-                                      setPricingForm({ ...pricingForm, make, model: "", trim: "" });
+                                      setPricingForm({ ...pricingForm, make, model: "", selectedTrims: [] });
                                       setMakeOpen(false);
                                     }}
                                     data-testid={`option-make-${make.toLowerCase()}`}
@@ -528,7 +827,7 @@ export default function Manager() {
                                     key={model}
                                     value={model}
                                     onSelect={() => {
-                                      setPricingForm({ ...pricingForm, model, trim: "" });
+                                      setPricingForm({ ...pricingForm, model, selectedTrims: [] });
                                       setModelOpen(false);
                                     }}
                                     data-testid={`option-model-${model.toLowerCase()}`}
@@ -549,53 +848,88 @@ export default function Manager() {
                       </Popover>
                     </div>
 
-                    {/* Trim Autocomplete */}
-                    <div>
-                      <Label>Trim (Optional)</Label>
-                      <Popover open={trimOpen} onOpenChange={setTrimOpen}>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            role="combobox"
-                            aria-expanded={trimOpen}
-                            className="w-full justify-between mt-2"
-                            disabled={!pricingForm.model}
-                            data-testid="select-trim"
-                          >
-                            {pricingForm.trim || "Select trim..."}
-                            <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-[300px] p-0">
-                          <Command>
-                            <CommandInput placeholder="Search trim..." />
-                            <CommandList>
-                              <CommandEmpty>No trim found.</CommandEmpty>
-                              <CommandGroup>
-                                {trims.map((trim) => (
-                                  <CommandItem
-                                    key={trim}
-                                    value={trim}
-                                    onSelect={() => {
-                                      setPricingForm({ ...pricingForm, trim });
-                                      setTrimOpen(false);
-                                    }}
-                                    data-testid={`option-trim-${trim.toLowerCase()}`}
-                                  >
-                                    <Check
-                                      className={cn(
-                                        "mr-2 h-4 w-4",
-                                        pricingForm.trim === trim ? "opacity-100" : "opacity-0"
-                                      )}
-                                    />
-                                    {trim}
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
-                            </CommandList>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
+                    {/* Trim Multi-Select */}
+                    <div className="md:col-span-3">
+                      <Label>Trims (Optional - Select Multiple)</Label>
+                      <div className="mt-2">
+                        <Popover open={trimOpen} onOpenChange={setTrimOpen}>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              role="combobox"
+                              aria-expanded={trimOpen}
+                              className="w-full justify-between"
+                              disabled={!pricingForm.model}
+                              data-testid="select-trim"
+                            >
+                              <span className="truncate">
+                                {pricingForm.selectedTrims.length > 0 
+                                  ? `${pricingForm.selectedTrims.length} trim(s) selected`
+                                  : "Select trims..."}
+                              </span>
+                              <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[400px] p-0">
+                            <Command>
+                              <CommandInput placeholder="Search trim..." />
+                              <CommandList>
+                                <CommandEmpty>No trim found.</CommandEmpty>
+                                <CommandGroup>
+                                  {trims.map((trim) => {
+                                    const isSelected = pricingForm.selectedTrims.includes(trim);
+                                    return (
+                                      <CommandItem
+                                        key={trim}
+                                        value={trim}
+                                        onSelect={() => {
+                                          const newTrims = isSelected
+                                            ? pricingForm.selectedTrims.filter(t => t !== trim)
+                                            : [...pricingForm.selectedTrims, trim];
+                                          setPricingForm({ ...pricingForm, selectedTrims: newTrims });
+                                        }}
+                                        data-testid={`option-trim-${trim.toLowerCase().replace(/\s+/g, '-')}`}
+                                      >
+                                        <Check
+                                          className={cn(
+                                            "mr-2 h-4 w-4",
+                                            isSelected ? "opacity-100" : "opacity-0"
+                                          )}
+                                        />
+                                        {trim}
+                                      </CommandItem>
+                                    );
+                                  })}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                        {/* Selected trims badges */}
+                        {pricingForm.selectedTrims.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {pricingForm.selectedTrims.map((trim) => (
+                              <Badge
+                                key={trim}
+                                variant="secondary"
+                                className="gap-1"
+                                data-testid={`badge-trim-${trim.toLowerCase().replace(/\s+/g, '-')}`}
+                              >
+                                {trim}
+                                <X
+                                  className="w-3 h-3 cursor-pointer hover:text-destructive"
+                                  onClick={() => {
+                                    setPricingForm({
+                                      ...pricingForm,
+                                      selectedTrims: pricingForm.selectedTrims.filter(t => t !== trim)
+                                    });
+                                  }}
+                                />
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* Mileage Input */}
@@ -614,12 +948,12 @@ export default function Manager() {
 
                     {/* Radius Input */}
                     <div>
-                      <Label htmlFor="radius">Search Radius (miles)</Label>
+                      <Label htmlFor="radius-km">Search Radius (KM)</Label>
                       <Input
-                        id="radius"
+                        id="radius-km"
                         type="number"
-                        value={pricingForm.radius}
-                        onChange={(e) => setPricingForm({ ...pricingForm, radius: e.target.value })}
+                        value={pricingForm.radiusKm}
+                        onChange={(e) => setPricingForm({ ...pricingForm, radiusKm: e.target.value })}
                         data-testid="input-radius"
                         className="mt-2"
                       />
@@ -629,7 +963,7 @@ export default function Manager() {
                   <Button 
                     onClick={handleMarketSearch} 
                     className="w-full md:w-auto mt-6"
-                    disabled={isAnalyzing || !pricingForm.year || !pricingForm.make || !pricingForm.model}
+                    disabled={isAnalyzing || !pricingForm.make || !pricingForm.model}
                     data-testid="button-search-market"
                   >
                     {isAnalyzing ? (
@@ -650,10 +984,51 @@ export default function Manager() {
                 {pricingResults && (
                   <div className="border-t pt-6" data-testid="pricing-results">
                     <div className="space-y-6">
+                      {/* Data Source Info */}
+                      {pricingResults.meta && (
+                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                          <div className="flex flex-wrap items-center gap-4 text-sm">
+                            <div>
+                              <span className="font-medium text-slate-700">Data Source:</span>{' '}
+                              <span className="text-slate-900">{pricingResults.meta.dataSource === 'external_market' ? 'External Market Listings' : 'No Data'}</span>
+                            </div>
+                            {pricingResults.meta.sources && pricingResults.meta.sources.length > 0 && (
+                              <div>
+                                <span className="font-medium text-slate-700">Sources:</span>{' '}
+                                {pricingResults.meta.sources.map((source: string, idx: number) => (
+                                  <Badge key={idx} variant="outline" className="ml-1">
+                                    {source}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+                            {pricingResults.meta.yearRange && (
+                              <div>
+                                <span className="font-medium text-slate-700">Year Range:</span>{' '}
+                                <span className="text-slate-900">{pricingResults.meta.yearRange.min} - {pricingResults.meta.yearRange.max}</span>
+                              </div>
+                            )}
+                            {pricingResults.meta.searchRadius && (
+                              <div>
+                                <span className="font-medium text-slate-700">Search Radius:</span>{' '}
+                                <span className="text-slate-900">{pricingResults.meta.searchRadius} KM</span>
+                              </div>
+                            )}
+                            {pricingResults.meta.postalCode && (
+                              <div>
+                                <span className="font-medium text-slate-700">Location:</span>{' '}
+                                <span className="text-slate-900">{pricingResults.meta.postalCode}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Market Statistics */}
                       <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
                         <h3 className="text-xl font-bold text-slate-900 mb-4">
-                          Market Analysis: {pricingForm.year} {pricingForm.make} {pricingForm.model}
+                          Market Analysis: {pricingForm.make} {pricingForm.model}
+                          {pricingForm.selectedTrims.length > 0 && ` - ${pricingForm.selectedTrims.join(', ')}`}
                         </h3>
                         <div className="grid gap-4 md:grid-cols-4">
                           <div data-testid="stat-average-price">
