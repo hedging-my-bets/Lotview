@@ -13,6 +13,10 @@ import {
   users,
   creditScoreTiers,
   modelYearTerms,
+  facebookAccounts,
+  adTemplates,
+  postingQueue,
+  postingSchedule,
   type Vehicle, 
   type InsertVehicle,
   type VehicleView,
@@ -38,7 +42,15 @@ import {
   type CreditScoreTier,
   type InsertCreditScoreTier,
   type ModelYearTerm,
-  type InsertModelYearTerm
+  type InsertModelYearTerm,
+  type FacebookAccount,
+  type InsertFacebookAccount,
+  type AdTemplate,
+  type InsertAdTemplate,
+  type PostingQueue,
+  type InsertPostingQueue,
+  type PostingSchedule,
+  type InsertPostingSchedule
 } from "@shared/schema";
 import { eq, desc, sql, and, gte, lte } from "drizzle-orm";
 
@@ -406,6 +418,113 @@ export class DatabaseStorage implements IStorage {
       .limit(1);
     
     return result[0]?.availableTerms ?? ["36", "48", "60"]; // Default terms if no rule found
+  }
+
+  // Facebook Accounts
+  async getFacebookAccountsByUser(userId: number): Promise<FacebookAccount[]> {
+    return await db.select().from(facebookAccounts).where(eq(facebookAccounts.userId, userId));
+  }
+
+  async getFacebookAccountById(id: number): Promise<FacebookAccount | undefined> {
+    const result = await db.select().from(facebookAccounts).where(eq(facebookAccounts.id, id)).limit(1);
+    return result[0];
+  }
+
+  async createFacebookAccount(account: InsertFacebookAccount): Promise<FacebookAccount> {
+    const result = await db.insert(facebookAccounts).values(account).returning();
+    return result[0];
+  }
+
+  async updateFacebookAccount(id: number, userId: number, account: Partial<InsertFacebookAccount>): Promise<FacebookAccount | undefined> {
+    const result = await db.update(facebookAccounts).set({ ...account, updatedAt: new Date() }).where(and(eq(facebookAccounts.id, id), eq(facebookAccounts.userId, userId))).returning();
+    return result[0];
+  }
+
+  async deleteFacebookAccount(id: number, userId: number): Promise<boolean> {
+    const result = await db.delete(facebookAccounts).where(and(eq(facebookAccounts.id, id), eq(facebookAccounts.userId, userId))).returning();
+    return result.length > 0;
+  }
+
+  // Ad Templates
+  async getAdTemplatesByUser(userId: number): Promise<AdTemplate[]> {
+    return await db.select().from(adTemplates).where(eq(adTemplates.userId, userId));
+  }
+
+  async getAdTemplateById(id: number): Promise<AdTemplate | undefined> {
+    const result = await db.select().from(adTemplates).where(eq(adTemplates.id, id)).limit(1);
+    return result[0];
+  }
+
+  async createAdTemplate(template: InsertAdTemplate): Promise<AdTemplate> {
+    const result = await db.insert(adTemplates).values(template).returning();
+    return result[0];
+  }
+
+  async updateAdTemplate(id: number, userId: number, template: Partial<InsertAdTemplate>): Promise<AdTemplate | undefined> {
+    const result = await db.update(adTemplates).set({ ...template, updatedAt: new Date() }).where(and(eq(adTemplates.id, id), eq(adTemplates.userId, userId))).returning();
+    return result[0];
+  }
+
+  async deleteAdTemplate(id: number, userId: number): Promise<boolean> {
+    const result = await db.delete(adTemplates).where(and(eq(adTemplates.id, id), eq(adTemplates.userId, userId))).returning();
+    return result.length > 0;
+  }
+
+  // Posting Queue
+  async getPostingQueueByUser(userId: number): Promise<PostingQueue[]> {
+    return await db.select().from(postingQueue).where(eq(postingQueue.userId, userId)).orderBy(postingQueue.queueOrder);
+  }
+
+  async getPostingQueueItem(id: number): Promise<PostingQueue | undefined> {
+    const result = await db.select().from(postingQueue).where(eq(postingQueue.id, id)).limit(1);
+    return result[0];
+  }
+
+  async createPostingQueueItem(item: InsertPostingQueue): Promise<PostingQueue> {
+    const result = await db.insert(postingQueue).values(item).returning();
+    return result[0];
+  }
+
+  async updatePostingQueueItem(id: number, userId: number, item: Partial<InsertPostingQueue>): Promise<PostingQueue | undefined> {
+    const result = await db.update(postingQueue).set({ ...item, updatedAt: new Date() }).where(and(eq(postingQueue.id, id), eq(postingQueue.userId, userId))).returning();
+    return result[0];
+  }
+
+  async deletePostingQueueItem(id: number, userId: number): Promise<boolean> {
+    const result = await db.delete(postingQueue).where(and(eq(postingQueue.id, id), eq(postingQueue.userId, userId))).returning();
+    return result.length > 0;
+  }
+
+  async getNextQueuedPost(userId: number): Promise<PostingQueue | undefined> {
+    const result = await db
+      .select()
+      .from(postingQueue)
+      .where(
+        and(
+          eq(postingQueue.userId, userId),
+          eq(postingQueue.status, 'queued')
+        )
+      )
+      .orderBy(postingQueue.queueOrder)
+      .limit(1);
+    
+    return result[0];
+  }
+
+  // Posting Schedule
+  async getPostingScheduleByUser(userId: number): Promise<PostingSchedule | undefined> {
+    const result = await db.select().from(postingSchedule).where(eq(postingSchedule.userId, userId)).limit(1);
+    return result[0];
+  }
+
+  async createPostingSchedule(schedule: InsertPostingSchedule): Promise<PostingSchedule> {
+    const result = await db.insert(postingSchedule).values(schedule).returning();
+    return result[0];
+  }
+
+  async updatePostingSchedule(userId: number, schedule: Partial<InsertPostingSchedule>): Promise<PostingSchedule | undefined> {
+    const result = await db.update(postingSchedule).set({ ...schedule, updatedAt: new Date() }).where(eq(postingSchedule.userId, userId)).returning();
+    return result[0];
   }
 }
 

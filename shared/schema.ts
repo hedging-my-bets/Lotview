@@ -256,3 +256,91 @@ export const insertModelYearTermSchema = createInsertSchema(modelYearTerms).omit
 
 export type InsertModelYearTerm = z.infer<typeof insertModelYearTermSchema>;
 export type ModelYearTerm = typeof modelYearTerms.$inferSelect;
+
+// Facebook accounts for salespeople (up to 5 per user)
+export const facebookAccounts = pgTable("facebook_accounts", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id), // Salesperson who owns this account
+  accountName: text("account_name").notNull(), // Display name for the account
+  facebookUserId: text("facebook_user_id"), // Facebook user ID (from OAuth)
+  accessToken: text("access_token"), // Long-lived access token
+  tokenExpiresAt: timestamp("token_expires_at"), // When the token expires
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertFacebookAccountSchema = createInsertSchema(facebookAccounts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertFacebookAccount = z.infer<typeof insertFacebookAccountSchema>;
+export type FacebookAccount = typeof facebookAccounts.$inferSelect;
+
+// Ad templates for Facebook Marketplace posts
+export const adTemplates = pgTable("ad_templates", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id), // Salesperson who created this
+  templateName: text("template_name").notNull(), // e.g., "Classic", "Premium", "Budget"
+  titleTemplate: text("title_template").notNull(), // e.g., "{year} {make} {model} - ${price}"
+  descriptionTemplate: text("description_template").notNull(), // Full description with variables
+  isDefault: boolean("is_default").notNull().default(false), // If this is the default template
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertAdTemplateSchema = createInsertSchema(adTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertAdTemplate = z.infer<typeof insertAdTemplateSchema>;
+export type AdTemplate = typeof adTemplates.$inferSelect;
+
+// Posting queue for Facebook Marketplace
+export const postingQueue = pgTable("posting_queue", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id), // Salesperson
+  facebookAccountId: integer("facebook_account_id").references(() => facebookAccounts.id), // Which account to use
+  vehicleId: integer("vehicle_id").notNull().references(() => vehicles.id),
+  templateId: integer("template_id").references(() => adTemplates.id), // Which template to use
+  queueOrder: integer("queue_order").notNull(), // Position in queue (1-45)
+  status: text("status").notNull().default('queued'), // 'queued', 'scheduled', 'posting', 'posted', 'failed'
+  scheduledFor: timestamp("scheduled_for"), // When to post (null = use auto-scheduler)
+  postedAt: timestamp("posted_at"), // When it was actually posted
+  facebookPostId: text("facebook_post_id"), // Facebook Marketplace listing ID
+  errorMessage: text("error_message"), // If posting failed
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertPostingQueueSchema = createInsertSchema(postingQueue).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertPostingQueue = z.infer<typeof insertPostingQueueSchema>;
+export type PostingQueue = typeof postingQueue.$inferSelect;
+
+// Posting schedule configuration (per salesperson)
+export const postingSchedule = pgTable("posting_schedule", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id).unique(), // One schedule per salesperson
+  startTime: text("start_time").notNull().default('09:00'), // HH:MM format
+  intervalMinutes: integer("interval_minutes").notNull().default(30), // Time between posts
+  isActive: boolean("is_active").notNull().default(false), // Auto-posting enabled/disabled
+  lastPostedAt: timestamp("last_posted_at"), // Track when we last posted
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertPostingScheduleSchema = createInsertSchema(postingSchedule).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type InsertPostingSchedule = z.infer<typeof insertPostingScheduleSchema>;
+export type PostingSchedule = typeof postingSchedule.$inferSelect;

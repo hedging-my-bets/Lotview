@@ -40,8 +40,21 @@ Preferred communication style: Simple, everyday language.
 **API Design:**
 - RESTful API endpoints under `/api` prefix
 - Vehicle CRUD operations with view tracking
-- Facebook page management for social media integration
+- Authentication endpoints (login, logout, session management)
+- User management (master users only)
+- Financing rules management (credit score tiers, model year terms)
+- Facebook posting system (accounts, templates, queue, schedule)
 - Manual sync trigger endpoint for on-demand inventory updates
+
+**Security Architecture:**
+- JWT authentication with httpOnly cookies
+- Role-based access control (RBAC) middleware
+- Multi-tenant data isolation with userId foreign keys
+- Ownership enforcement at storage layer (WHERE clause scoping)
+- Input validation with Zod schemas on all endpoints
+- Foreign key ownership verification to prevent cross-user resource hijacking
+- PATCH payload sanitization to prevent field injection attacks
+- Defense-in-depth security with multiple validation layers
 
 **Data Access Layer:**
 - Storage abstraction pattern with `IStorage` interface for database operations
@@ -55,7 +68,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Database Schema
 
-**Tables:**
+**Core Tables:**
 1. **vehicles** - Core inventory data
    - Vehicle specifications (year, make, model, trim, type)
    - Pricing and odometer information
@@ -68,14 +81,49 @@ Preferred communication style: Simple, everyday language.
    - Session ID for user tracking
    - Timestamp for view analytics
 
-3. **facebook_pages** - Social media integration
-   - Page credentials and configuration
-   - Active status and template selection
-   - Connection timestamps
+**User Management (November 2025):**
+3. **users** - System users with role-based access
+   - Email and hashed password authentication
+   - Role (master/manager/salesperson)
+   - Active status tracking
+   - Created/updated timestamps
 
-4. **page_priority_vehicles** - Featured vehicle management
-   - Many-to-many relationship between pages and vehicles
-   - Priority ordering for social media posts
+**Financing Rules (November 2025):**
+4. **credit_score_tiers** - Interest rate rules by credit score
+   - Credit score ranges (min/max)
+   - Interest rates for each tier
+   - Active status for enabling/disabling rules
+
+5. **model_year_terms** - Financing term eligibility by vehicle age
+   - Model year ranges (min/max)
+   - Available term lengths (array of months)
+   - Active status for rule management
+
+**Facebook Posting System (November 2025):**
+6. **facebook_accounts** - Salesperson Facebook accounts (up to 5 per user)
+   - Account credentials and OAuth tokens
+   - Token expiration tracking
+   - User ownership with foreign key
+
+7. **ad_templates** - Custom posting templates with dynamic variables
+   - Template name and content (title/description)
+   - Default template flag
+   - User ownership for multi-tenant isolation
+
+8. **posting_queue** - Vehicle posting queue with priority ordering
+   - Vehicle, account, and template references
+   - Queue order for sequential posting
+   - Status tracking (queued/posting/posted/failed)
+   - User ownership enforcement
+
+9. **posting_schedule** - Per-user automated posting configuration
+   - Start time and interval settings
+   - Active status for schedule control
+   - One schedule per salesperson
+
+**Legacy Tables (Deprecated):**
+10. **facebook_pages** - Legacy social media integration
+11. **page_priority_vehicles** - Legacy featured vehicle management
 
 **Schema Management:**
 - Drizzle Kit for migrations stored in `/migrations`
@@ -121,9 +169,12 @@ Preferred communication style: Simple, everyday language.
 - Autoprefixer for browser compatibility
 - Custom Tailwind v4 configuration with inline theme definitions
 
-**Session & State Management:**
-- Client-side session ID generation for anonymous user tracking
-- No authentication system currently implemented (noted as "coming soon" for sales team login)
+**Authentication & Authorization:**
+- JWT-based authentication with httpOnly cookies for security
+- Three user roles: master (full system control), manager (VIN decoder and market pricing), salesperson (Facebook posting)
+- Role-based access control (RBAC) with middleware enforcement
+- Secure password hashing with bcrypt
+- Session-based view tracking for anonymous users (vehicle remarketing)
 
 **Cron Scheduling:**
 - Node-cron for scheduled inventory synchronization tasks

@@ -1,11 +1,20 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertVehicleSchema, insertVehicleViewSchema, insertFacebookPageSchema } from "@shared/schema";
+import { 
+  insertVehicleSchema, 
+  insertVehicleViewSchema, 
+  insertFacebookPageSchema,
+  insertFacebookAccountSchema,
+  insertAdTemplateSchema,
+  insertPostingQueueSchema,
+  insertPostingScheduleSchema
+} from "@shared/schema";
 import { fromZodError } from "zod-validation-error";
 import { triggerManualSync } from "./scheduler";
 import { testBadgeDetection } from "./scraper";
 import { generateChatResponse, type ChatMessage } from "./openai";
+
 import { authMiddleware, requireRole, generateToken, comparePassword, hashPassword, type AuthRequest } from "./auth";
 
 // DEPRECATED: Legacy admin authentication middleware
@@ -1010,6 +1019,329 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
   
+  // ===== FACEBOOK POSTING ROUTES (Salespeople) =====
+  
+  // Get Facebook accounts for current user
+  app.get("/api/facebook/accounts", authMiddleware, requireRole("salesperson"), async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const accounts = await storage.getFacebookAccountsByUser(userId);
+      res.json(accounts);
+    } catch (error) {
+      console.error("Error fetching Facebook accounts:", error);
+      res.status(500).json({ error: "Failed to fetch Facebook accounts" });
+    }
+  });
+
+  // Create Facebook account
+  app.post("/api/facebook/accounts", authMiddleware, requireRole("salesperson"), async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      
+      // Validate request body
+      const validated = insertFacebookAccountSchema.omit({ userId: true, isActive: true }).safeParse(req.body);
+      if (!validated.success) {
+        return res.status(400).json({ error: fromZodError(validated.error).message });
+      }
+
+      // Check if user already has 5 accounts
+      const existingAccounts = await storage.getFacebookAccountsByUser(userId);
+      if (existingAccounts.length >= 5) {
+        return res.status(400).json({ error: "Maximum 5 Facebook accounts per user" });
+      }
+      
+      const account = await storage.createFacebookAccount({
+        ...validated.data,
+        userId,
+        isActive: true,
+      });
+      
+      res.status(201).json(account);
+    } catch (error) {
+      console.error("Error creating Facebook account:", error);
+      res.status(500).json({ error: "Failed to create Facebook account" });
+    }
+  });
+
+  // Update Facebook account
+  app.patch("/api/facebook/accounts/:id", authMiddleware, requireRole("salesperson"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = req.user!.id;
+      
+      // Validate with partial schema, excluding ownership fields
+      const updateSchema = insertFacebookAccountSchema.omit({ userId: true }).partial();
+      const validated = updateSchema.safeParse(req.body);
+      if (!validated.success) {
+        return res.status(400).json({ error: fromZodError(validated.error).message });
+      }
+      
+      const account = await storage.updateFacebookAccount(id, userId, validated.data);
+      
+      if (!account) {
+        return res.status(404).json({ error: "Facebook account not found or access denied" });
+      }
+      
+      res.json(account);
+    } catch (error) {
+      console.error("Error updating Facebook account:", error);
+      res.status(500).json({ error: "Failed to update Facebook account" });
+    }
+  });
+
+  // Delete Facebook account
+  app.delete("/api/facebook/accounts/:id", authMiddleware, requireRole("salesperson"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = req.user!.id;
+      
+      const success = await storage.deleteFacebookAccount(id, userId);
+      
+      if (!success) {
+        return res.status(404).json({ error: "Facebook account not found or access denied" });
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting Facebook account:", error);
+      res.status(500).json({ error: "Failed to delete Facebook account" });
+    }
+  });
+
+  // Get ad templates for current user
+  app.get("/api/facebook/templates", authMiddleware, requireRole("salesperson"), async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const templates = await storage.getAdTemplatesByUser(userId);
+      res.json(templates);
+    } catch (error) {
+      console.error("Error fetching ad templates:", error);
+      res.status(500).json({ error: "Failed to fetch ad templates" });
+    }
+  });
+
+  // Create ad template
+  app.post("/api/facebook/templates", authMiddleware, requireRole("salesperson"), async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      
+      // Validate request body
+      const validated = insertAdTemplateSchema.omit({ userId: true }).safeParse(req.body);
+      if (!validated.success) {
+        return res.status(400).json({ error: fromZodError(validated.error).message });
+      }
+      
+      const template = await storage.createAdTemplate({
+        ...validated.data,
+        userId,
+      });
+      
+      res.status(201).json(template);
+    } catch (error) {
+      console.error("Error creating ad template:", error);
+      res.status(500).json({ error: "Failed to create ad template" });
+    }
+  });
+
+  // Update ad template
+  app.patch("/api/facebook/templates/:id", authMiddleware, requireRole("salesperson"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = req.user!.id;
+      
+      // Validate with partial schema, excluding ownership fields
+      const updateSchema = insertAdTemplateSchema.omit({ userId: true }).partial();
+      const validated = updateSchema.safeParse(req.body);
+      if (!validated.success) {
+        return res.status(400).json({ error: fromZodError(validated.error).message });
+      }
+      
+      const template = await storage.updateAdTemplate(id, userId, validated.data);
+      
+      if (!template) {
+        return res.status(404).json({ error: "Template not found or access denied" });
+      }
+      
+      res.json(template);
+    } catch (error) {
+      console.error("Error updating ad template:", error);
+      res.status(500).json({ error: "Failed to update ad template" });
+    }
+  });
+
+  // Delete ad template
+  app.delete("/api/facebook/templates/:id", authMiddleware, requireRole("salesperson"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = req.user!.id;
+      
+      const success = await storage.deleteAdTemplate(id, userId);
+      
+      if (!success) {
+        return res.status(404).json({ error: "Template not found or access denied" });
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting ad template:", error);
+      res.status(500).json({ error: "Failed to delete ad template" });
+    }
+  });
+
+  // Get posting queue for current user
+  app.get("/api/facebook/queue", authMiddleware, requireRole("salesperson"), async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const queue = await storage.getPostingQueueByUser(userId);
+      res.json(queue);
+    } catch (error) {
+      console.error("Error fetching posting queue:", error);
+      res.status(500).json({ error: "Failed to fetch posting queue" });
+    }
+  });
+
+  // Add vehicle to posting queue
+  app.post("/api/facebook/queue", authMiddleware, requireRole("salesperson"), async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      
+      // Validate request body
+      const validated = insertPostingQueueSchema.omit({ userId: true, status: true }).safeParse(req.body);
+      if (!validated.success) {
+        return res.status(400).json({ error: fromZodError(validated.error).message });
+      }
+      
+      // Verify ownership of foreign key references
+      if (validated.data.facebookAccountId) {
+        const account = await storage.getFacebookAccountById(validated.data.facebookAccountId);
+        if (!account || account.userId !== userId) {
+          return res.status(403).json({ error: "Facebook account not found or access denied" });
+        }
+      }
+      
+      if (validated.data.templateId) {
+        const template = await storage.getAdTemplateById(validated.data.templateId);
+        if (!template || template.userId !== userId) {
+          return res.status(403).json({ error: "Ad template not found or access denied" });
+        }
+      }
+      
+      const item = await storage.createPostingQueueItem({
+        ...validated.data,
+        userId,
+        status: 'queued',
+      });
+      
+      res.status(201).json(item);
+    } catch (error) {
+      console.error("Error adding to posting queue:", error);
+      res.status(500).json({ error: "Failed to add to posting queue" });
+    }
+  });
+
+  // Update queue item
+  app.patch("/api/facebook/queue/:id", authMiddleware, requireRole("salesperson"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = req.user!.id;
+      
+      // Validate with partial schema, excluding ownership and status fields
+      const updateSchema = insertPostingQueueSchema.omit({ userId: true, status: true }).partial();
+      const validated = updateSchema.safeParse(req.body);
+      if (!validated.success) {
+        return res.status(400).json({ error: fromZodError(validated.error).message });
+      }
+      
+      // Verify ownership of foreign key references if being updated
+      if (validated.data.facebookAccountId) {
+        const account = await storage.getFacebookAccountById(validated.data.facebookAccountId);
+        if (!account || account.userId !== userId) {
+          return res.status(403).json({ error: "Facebook account not found or access denied" });
+        }
+      }
+      
+      if (validated.data.templateId) {
+        const template = await storage.getAdTemplateById(validated.data.templateId);
+        if (!template || template.userId !== userId) {
+          return res.status(403).json({ error: "Ad template not found or access denied" });
+        }
+      }
+      
+      const item = await storage.updatePostingQueueItem(id, userId, validated.data);
+      
+      if (!item) {
+        return res.status(404).json({ error: "Queue item not found or access denied" });
+      }
+      
+      res.json(item);
+    } catch (error) {
+      console.error("Error updating queue item:", error);
+      res.status(500).json({ error: "Failed to update queue item" });
+    }
+  });
+
+  // Delete queue item
+  app.delete("/api/facebook/queue/:id", authMiddleware, requireRole("salesperson"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = req.user!.id;
+      
+      const success = await storage.deletePostingQueueItem(id, userId);
+      
+      if (!success) {
+        return res.status(404).json({ error: "Queue item not found or access denied" });
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting queue item:", error);
+      res.status(500).json({ error: "Failed to delete queue item" });
+    }
+  });
+
+  // Get posting schedule for current user
+  app.get("/api/facebook/schedule", authMiddleware, requireRole("salesperson"), async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const schedule = await storage.getPostingScheduleByUser(userId);
+      res.json(schedule || null);
+    } catch (error) {
+      console.error("Error fetching posting schedule:", error);
+      res.status(500).json({ error: "Failed to fetch posting schedule" });
+    }
+  });
+
+  // Create or update posting schedule
+  app.post("/api/facebook/schedule", authMiddleware, requireRole("salesperson"), async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      
+      // Validate request body
+      const validated = insertPostingScheduleSchema.omit({ userId: true }).safeParse(req.body);
+      if (!validated.success) {
+        return res.status(400).json({ error: fromZodError(validated.error).message });
+      }
+      
+      // Check if schedule exists
+      const existing = await storage.getPostingScheduleByUser(userId);
+      
+      let schedule;
+      if (existing) {
+        schedule = await storage.updatePostingSchedule(userId, validated.data);
+      } else {
+        schedule = await storage.createPostingSchedule({
+          ...validated.data,
+          userId,
+        });
+      }
+      
+      res.json(schedule);
+    } catch (error) {
+      console.error("Error saving posting schedule:", error);
+      res.status(500).json({ error: "Failed to save posting schedule" });
+    }
+  });
+
   // ===== ADMIN ROUTES =====
   
   // Save GHL configuration
