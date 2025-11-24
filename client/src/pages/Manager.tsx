@@ -9,6 +9,7 @@ import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshC
 import { useToast } from "@/hooks/use-toast";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -367,8 +368,8 @@ export default function Manager() {
         const vehicleYear = result.year || currentYear;
         setPricingForm(prev => ({
           ...prev,
-          yearMin: String(vehicleYear - 2),
-          yearMax: String(vehicleYear + 1),
+          yearMin: String(vehicleYear),
+          yearMax: String(vehicleYear),
           make: result.make || "",
           model: result.model || "",
           selectedTrims: result.trim ? [result.trim] : [],
@@ -727,26 +728,97 @@ export default function Manager() {
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                     {/* Year Range */}
                     <div>
-                      <Label htmlFor="year-min">Year Range (Optional)</Label>
+                      <Label>Year Range (Optional)</Label>
                       <div className="flex gap-2 mt-2">
-                        <Input
-                          id="year-min"
-                          placeholder="Min"
-                          type="number"
+                        <Select
                           value={pricingForm.yearMin}
-                          onChange={(e) => setPricingForm({ ...pricingForm, yearMin: e.target.value })}
-                          data-testid="input-year-min"
-                        />
-                        <Input
-                          id="year-max"
-                          placeholder="Max"
-                          type="number"
+                          onValueChange={(value) => setPricingForm({ ...pricingForm, yearMin: value })}
+                        >
+                          <SelectTrigger className="w-full" data-testid="select-year-min">
+                            <SelectValue placeholder="Min Year" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Array.from({ length: 16 }, (_, i) => new Date().getFullYear() + 1 - i).map((year) => (
+                              <SelectItem key={year} value={String(year)}>
+                                {year}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Select
                           value={pricingForm.yearMax}
-                          onChange={(e) => setPricingForm({ ...pricingForm, yearMax: e.target.value })}
-                          data-testid="input-year-max"
-                        />
+                          onValueChange={(value) => setPricingForm({ ...pricingForm, yearMax: value })}
+                        >
+                          <SelectTrigger className="w-full" data-testid="select-year-max">
+                            <SelectValue placeholder="Max Year" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Array.from({ length: 16 }, (_, i) => new Date().getFullYear() + 1 - i).map((year) => (
+                              <SelectItem key={year} value={String(year)}>
+                                {year}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
-                      <p className="text-xs text-slate-500 mt-1">
+                      
+                      {/* Quick Range Buttons */}
+                      <div className="flex gap-1 mt-2 flex-wrap">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="text-xs h-7"
+                          onClick={() => {
+                            const year = vinResults?.year || new Date().getFullYear();
+                            setPricingForm({ ...pricingForm, yearMin: String(year), yearMax: String(year) });
+                          }}
+                          data-testid="button-year-exact"
+                        >
+                          Exact Year
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="text-xs h-7"
+                          onClick={() => {
+                            const year = vinResults?.year || new Date().getFullYear();
+                            setPricingForm({ ...pricingForm, yearMin: String(year - 1), yearMax: String(year + 1) });
+                          }}
+                          data-testid="button-year-plus-minus-1"
+                        >
+                          ±1 Year
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="text-xs h-7"
+                          onClick={() => {
+                            const year = vinResults?.year || new Date().getFullYear();
+                            setPricingForm({ ...pricingForm, yearMin: String(year - 2), yearMax: String(year + 2) });
+                          }}
+                          data-testid="button-year-plus-minus-2"
+                        >
+                          ±2 Years
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="text-xs h-7"
+                          onClick={() => {
+                            const currentYear = new Date().getFullYear();
+                            setPricingForm({ ...pricingForm, yearMin: String(currentYear - 5), yearMax: String(currentYear) });
+                          }}
+                          data-testid="button-year-last-5"
+                        >
+                          Last 5 Years
+                        </Button>
+                      </div>
+                      
+                      <p className="text-xs text-slate-500 mt-2">
                         Leave blank to search last 5 years
                       </p>
                     </div>

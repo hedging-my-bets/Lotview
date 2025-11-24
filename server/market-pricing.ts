@@ -3,6 +3,7 @@ export interface MarketPricingRequest {
   make: string;
   model: string;
   trim?: string;
+  trims?: string[]; // Support multiple trim selection
   mileage?: number;
   radius?: number; // miles for location-based search
 }
@@ -67,11 +68,20 @@ export function analyzeMarketPricing(
     const makeMatch = v.make.toLowerCase() === targetVehicle.make.toLowerCase();
     const modelMatch = v.model.toLowerCase() === targetVehicle.model.toLowerCase();
     
-    // If trim is specified, prefer exact match but allow without trim
+    // If trim(s) is specified, match against any selected trim
     let trimMatch = true;
-    if (targetVehicle.trim && v.trim) {
-      trimMatch = v.trim.toLowerCase().includes(targetVehicle.trim.toLowerCase()) ||
-                  targetVehicle.trim.toLowerCase().includes(v.trim.toLowerCase());
+    if (v.trim) {
+      // Check if multiple trims are specified
+      if (targetVehicle.trims && targetVehicle.trims.length > 0) {
+        trimMatch = targetVehicle.trims.some(targetTrim => 
+          v.trim!.toLowerCase().includes(targetTrim.toLowerCase()) ||
+          targetTrim.toLowerCase().includes(v.trim!.toLowerCase())
+        );
+      } else if (targetVehicle.trim) {
+        // Legacy single trim support
+        trimMatch = v.trim.toLowerCase().includes(targetVehicle.trim.toLowerCase()) ||
+                    targetVehicle.trim.toLowerCase().includes(v.trim.toLowerCase());
+      }
     }
     
     return yearMatch && makeMatch && modelMatch && trimMatch;

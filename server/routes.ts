@@ -1609,8 +1609,8 @@ Format your response in clear sections with actionable recommendations.`;
       
       const searchPostalCode = postalCode || userSettings?.postalCode;
       const searchRadiusKm = radiusKm || userSettings?.defaultRadiusKm || 50;
-      const searchYearMin = yearMin || parseInt(year) - 2;
-      const searchYearMax = yearMax || parseInt(year) + 2;
+      const searchYearMin = yearMin ? parseInt(yearMin) : (year ? parseInt(year) - 2 : new Date().getFullYear() - 5);
+      const searchYearMax = yearMax ? parseInt(yearMax) : (year ? parseInt(year) + 2 : new Date().getFullYear());
       
       // Get market listings from database
       let marketListings = await storage.getMarketListings({
@@ -1664,12 +1664,18 @@ Format your response in clear sections with actionable recommendations.`;
       // Import market pricing service
       const { analyzeMarketPricing } = await import('./market-pricing');
       
+      // Derive target year from year range (use midpoint for comparison)
+      const targetYear = year 
+        ? parseInt(year) 
+        : Math.round((searchYearMin + searchYearMax) / 2);
+      
       // Prepare request
       const pricingRequest = {
-        year: parseInt(year),
+        year: targetYear,
         make,
         model,
-        trim: trim || (trims && trims.length > 0 ? trims[0] : undefined),
+        trim: trim, // Legacy single trim support
+        trims: trims && trims.length > 0 ? trims : undefined, // Multi-trim support
         mileage: mileage ? parseInt(mileage) : undefined,
         radius: searchRadiusKm
       };
