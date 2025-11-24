@@ -821,6 +821,135 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
 
+  // ===== FINANCING RULES ROUTES (Master Only) =====
+  
+  // Get all credit score tiers
+  app.get("/api/financing/credit-tiers", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const tiers = await storage.getCreditScoreTiers();
+      res.json(tiers);
+    } catch (error) {
+      console.error("Error fetching credit tiers:", error);
+      res.status(500).json({ error: "Failed to fetch credit tiers" });
+    }
+  });
+  
+  // Create credit score tier
+  app.post("/api/financing/credit-tiers", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const { tierName, minScore, maxScore, interestRate } = req.body;
+      
+      if (!tierName || minScore === undefined || maxScore === undefined || interestRate === undefined) {
+        return res.status(400).json({ error: "All fields are required" });
+      }
+      
+      const tier = await storage.createCreditScoreTier({
+        tierName,
+        minScore,
+        maxScore,
+        interestRate,
+        isActive: true,
+      });
+      
+      res.status(201).json(tier);
+    } catch (error) {
+      console.error("Error creating credit tier:", error);
+      res.status(500).json({ error: "Failed to create credit tier" });
+    }
+  });
+  
+  // Update credit score tier
+  app.patch("/api/financing/credit-tiers/:id", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const tier = await storage.updateCreditScoreTier(id, req.body);
+      
+      if (!tier) {
+        return res.status(404).json({ error: "Credit tier not found" });
+      }
+      
+      res.json(tier);
+    } catch (error) {
+      console.error("Error updating credit tier:", error);
+      res.status(500).json({ error: "Failed to update credit tier" });
+    }
+  });
+  
+  // Delete credit score tier
+  app.delete("/api/financing/credit-tiers/:id", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteCreditScoreTier(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting credit tier:", error);
+      res.status(500).json({ error: "Failed to delete credit tier" });
+    }
+  });
+  
+  // Get all model year terms
+  app.get("/api/financing/model-year-terms", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const terms = await storage.getModelYearTerms();
+      res.json(terms);
+    } catch (error) {
+      console.error("Error fetching model year terms:", error);
+      res.status(500).json({ error: "Failed to fetch model year terms" });
+    }
+  });
+  
+  // Create model year term
+  app.post("/api/financing/model-year-terms", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const { minModelYear, maxModelYear, availableTerms } = req.body;
+      
+      if (!minModelYear || !maxModelYear || !availableTerms) {
+        return res.status(400).json({ error: "All fields are required" });
+      }
+      
+      const term = await storage.createModelYearTerm({
+        minModelYear,
+        maxModelYear,
+        availableTerms,
+        isActive: true,
+      });
+      
+      res.status(201).json(term);
+    } catch (error) {
+      console.error("Error creating model year term:", error);
+      res.status(500).json({ error: "Failed to create model year term" });
+    }
+  });
+  
+  // Update model year term
+  app.patch("/api/financing/model-year-terms/:id", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const term = await storage.updateModelYearTerm(id, req.body);
+      
+      if (!term) {
+        return res.status(404).json({ error: "Model year term not found" });
+      }
+      
+      res.json(term);
+    } catch (error) {
+      console.error("Error updating model year term:", error);
+      res.status(500).json({ error: "Failed to update model year term" });
+    }
+  });
+  
+  // Delete model year term
+  app.delete("/api/financing/model-year-terms/:id", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteModelYearTerm(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting model year term:", error);
+      res.status(500).json({ error: "Failed to delete model year term" });
+    }
+  });
+  
   // ===== ADMIN ROUTES =====
   
   // Save GHL configuration

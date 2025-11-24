@@ -10,12 +10,20 @@ import Inventory from "@/pages/Inventory";
 import VehicleDetail from "@/pages/VehicleDetail";
 import EmbedWidget from "@/pages/EmbedWidget";
 import Admin from "@/pages/Admin";
+import Login from "@/pages/Login";
+import Dashboard from "@/pages/Dashboard";
+import Manager from "@/pages/Manager";
+import Sales from "@/pages/Sales";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Inventory} />
       <Route path="/vehicle/:id" component={VehicleDetail} />
+      <Route path="/login" component={Login} />
+      <Route path="/dashboard" component={Dashboard} />
+      <Route path="/manager" component={Manager} />
+      <Route path="/sales" component={Sales} />
       <Route path="/admin" component={Admin} />
       <Route path="/embed" component={EmbedWidget} />
       <Route component={NotFound} />

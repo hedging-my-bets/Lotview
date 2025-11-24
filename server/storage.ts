@@ -11,6 +11,8 @@ import {
   chatPrompts,
   adminConfig,
   users,
+  creditScoreTiers,
+  modelYearTerms,
   type Vehicle, 
   type InsertVehicle,
   type VehicleView,
@@ -32,9 +34,13 @@ import {
   type AdminConfig,
   type InsertAdminConfig,
   type User,
-  type InsertUser
+  type InsertUser,
+  type CreditScoreTier,
+  type InsertCreditScoreTier,
+  type ModelYearTerm,
+  type InsertModelYearTerm
 } from "@shared/schema";
-import { eq, desc, sql, and } from "drizzle-orm";
+import { eq, desc, sql, and, gte, lte } from "drizzle-orm";
 
 export interface IStorage {
   // Vehicle operations
@@ -91,6 +97,20 @@ export interface IStorage {
   updateUser(id: number, user: Partial<InsertUser>): Promise<User | undefined>;
   getAllUsers(): Promise<User[]>;
   getUsersByRole(role: string): Promise<User[]>;
+  
+  // Financing rules - Credit score tiers
+  getCreditScoreTiers(): Promise<CreditScoreTier[]>;
+  createCreditScoreTier(tier: InsertCreditScoreTier): Promise<CreditScoreTier>;
+  updateCreditScoreTier(id: number, tier: Partial<InsertCreditScoreTier>): Promise<CreditScoreTier | undefined>;
+  deleteCreditScoreTier(id: number): Promise<boolean>;
+  getInterestRateForCreditScore(score: number): Promise<number | null>;
+  
+  // Financing rules - Model year terms
+  getModelYearTerms(): Promise<ModelYearTerm[]>;
+  createModelYearTerm(term: InsertModelYearTerm): Promise<ModelYearTerm>;
+  updateModelYearTerm(id: number, term: Partial<InsertModelYearTerm>): Promise<ModelYearTerm | undefined>;
+  deleteModelYearTerm(id: number): Promise<boolean>;
+  getAvailableTermsForYear(modelYear: number): Promise<string[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -314,6 +334,78 @@ export class DatabaseStorage implements IStorage {
 
   async getUsersByRole(role: string): Promise<User[]> {
     return await db.select().from(users).where(eq(users.role, role)).orderBy(desc(users.createdAt));
+  }
+
+  // Financing rules - Credit score tiers
+  async getCreditScoreTiers(): Promise<CreditScoreTier[]> {
+    return await db.select().from(creditScoreTiers).where(eq(creditScoreTiers.isActive, true)).orderBy(creditScoreTiers.minScore);
+  }
+
+  async createCreditScoreTier(tier: InsertCreditScoreTier): Promise<CreditScoreTier> {
+    const result = await db.insert(creditScoreTiers).values(tier).returning();
+    return result[0];
+  }
+
+  async updateCreditScoreTier(id: number, tier: Partial<InsertCreditScoreTier>): Promise<CreditScoreTier | undefined> {
+    const result = await db.update(creditScoreTiers).set({ ...tier, updatedAt: new Date() }).where(eq(creditScoreTiers.id, id)).returning();
+    return result[0];
+  }
+
+  async deleteCreditScoreTier(id: number): Promise<boolean> {
+    await db.update(creditScoreTiers).set({ isActive: false }).where(eq(creditScoreTiers.id, id));
+    return true;
+  }
+
+  async getInterestRateForCreditScore(score: number): Promise<number | null> {
+    const result = await db
+      .select()
+      .from(creditScoreTiers)
+      .where(
+        and(
+          eq(creditScoreTiers.isActive, true),
+          lte(creditScoreTiers.minScore, score),
+          gte(creditScoreTiers.maxScore, score)
+        )
+      )
+      .limit(1);
+    
+    return result[0]?.interestRate ?? null;
+  }
+
+  // Financing rules - Model year terms
+  async getModelYearTerms(): Promise<ModelYearTerm[]> {
+    return await db.select().from(modelYearTerms).where(eq(modelYearTerms.isActive, true)).orderBy(modelYearTerms.minModelYear);
+  }
+
+  async createModelYearTerm(term: InsertModelYearTerm): Promise<ModelYearTerm> {
+    const result = await db.insert(modelYearTerms).values(term).returning();
+    return result[0];
+  }
+
+  async updateModelYearTerm(id: number, term: Partial<InsertModelYearTerm>): Promise<ModelYearTerm | undefined> {
+    const result = await db.update(modelYearTerms).set({ ...term, updatedAt: new Date() }).where(eq(modelYearTerms.id, id)).returning();
+    return result[0];
+  }
+
+  async deleteModelYearTerm(id: number): Promise<boolean> {
+    await db.update(modelYearTerms).set({ isActive: false }).where(eq(modelYearTerms.id, id));
+    return true;
+  }
+
+  async getAvailableTermsForYear(modelYear: number): Promise<string[]> {
+    const result = await db
+      .select()
+      .from(modelYearTerms)
+      .where(
+        and(
+          eq(modelYearTerms.isActive, true),
+          lte(modelYearTerms.minModelYear, modelYear),
+          gte(modelYearTerms.maxModelYear, modelYear)
+        )
+      )
+      .limit(1);
+    
+    return result[0]?.availableTerms ?? ["36", "48", "60"]; // Default terms if no rule found
   }
 }
 

@@ -215,3 +215,44 @@ export const insertAdminConfigSchema = createInsertSchema(adminConfig).omit({
 
 export type InsertAdminConfig = z.infer<typeof insertAdminConfigSchema>;
 export type AdminConfig = typeof adminConfig.$inferSelect;
+
+// Financing rules - Credit score tiers
+export const creditScoreTiers = pgTable("credit_score_tiers", {
+  id: serial("id").primaryKey(),
+  tierName: text("tier_name").notNull(), // e.g., "Excellent", "Good", "Fair", "Poor"
+  minScore: integer("min_score").notNull(),
+  maxScore: integer("max_score").notNull(),
+  interestRate: integer("interest_rate").notNull(), // Stored as basis points (e.g., 575 = 5.75%)
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertCreditScoreTierSchema = createInsertSchema(creditScoreTiers).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertCreditScoreTier = z.infer<typeof insertCreditScoreTierSchema>;
+export type CreditScoreTier = typeof creditScoreTiers.$inferSelect;
+
+// Financing rules - Model year term eligibility
+export const modelYearTerms = pgTable("model_year_terms", {
+  id: serial("id").primaryKey(),
+  minModelYear: integer("min_model_year").notNull(), // e.g., 2020
+  maxModelYear: integer("max_model_year").notNull(), // e.g., 2024
+  availableTerms: text("available_terms").array().notNull(), // e.g., ["36", "48", "60", "72", "84"]
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertModelYearTermSchema = createInsertSchema(modelYearTerms).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertModelYearTerm = z.infer<typeof insertModelYearTermSchema>;
+export type ModelYearTerm = typeof modelYearTerms.$inferSelect;
