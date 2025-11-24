@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { MessageSquare, Settings, Sparkles, Users, LogOut, DollarSign, Plus, Edit2, Trash2 } from "lucide-react";
+import { MessageSquare, Settings, Sparkles, Users, LogOut, DollarSign, Plus, Edit2, Trash2, Target, Webhook } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -490,7 +490,7 @@ export default function Dashboard() {
           </div>
 
           <Tabs defaultValue="users" className="w-full">
-            <TabsList className="grid w-full grid-cols-5 mb-8">
+            <TabsList className="grid w-full grid-cols-6 mb-8">
               <TabsTrigger value="users" className="flex items-center gap-2" data-testid="tab-users">
                 <Users className="w-4 h-4" />
                 <span className="hidden sm:inline">Users</span>
@@ -499,13 +499,17 @@ export default function Dashboard() {
                 <DollarSign className="w-4 h-4" />
                 <span className="hidden sm:inline">Financing</span>
               </TabsTrigger>
+              <TabsTrigger value="remarketing" className="flex items-center gap-2" data-testid="tab-remarketing">
+                <Target className="w-4 h-4" />
+                <span className="hidden sm:inline">Remarketing</span>
+              </TabsTrigger>
+              <TabsTrigger value="webhooks" className="flex items-center gap-2" data-testid="tab-webhooks">
+                <Webhook className="w-4 h-4" />
+                <span className="hidden sm:inline">Webhooks</span>
+              </TabsTrigger>
               <TabsTrigger value="conversations" className="flex items-center gap-2" data-testid="tab-conversations">
                 <MessageSquare className="w-4 h-4" />
-                <span className="hidden sm:inline">Conversations</span>
-              </TabsTrigger>
-              <TabsTrigger value="prompts" className="flex items-center gap-2" data-testid="tab-prompts">
-                <Settings className="w-4 h-4" />
-                <span className="hidden sm:inline">Prompts</span>
+                <span className="hidden sm:inline">Chat</span>
               </TabsTrigger>
               <TabsTrigger value="insights" className="flex items-center gap-2" data-testid="tab-insights">
                 <Sparkles className="w-4 h-4" />
@@ -922,29 +926,74 @@ export default function Dashboard() {
               </div>
             </TabsContent>
 
-            <TabsContent value="conversations">
+            <TabsContent value="remarketing">
               <Card>
+                <CardHeader>
+                  <CardTitle>Remarketing Configuration</CardTitle>
+                  <CardDescription>
+                    Select up to 20 vehicles for remarketing campaigns and set budget priorities
+                  </CardDescription>
+                </CardHeader>
                 <CardContent className="py-12 text-center">
-                  <MessageSquare className="w-12 h-12 mx-auto mb-4 text-slate-400" />
-                  <p className="text-slate-500">Conversation analytics coming soon</p>
+                  <Target className="w-12 h-12 mx-auto mb-4 text-slate-400" />
+                  <p className="text-slate-500 mb-4">Remarketing vehicle selector coming soon</p>
+                  <p className="text-sm text-slate-400">
+                    Choose vehicles based on view history and engagement metrics
+                  </p>
                 </CardContent>
               </Card>
             </TabsContent>
 
-            <TabsContent value="prompts">
+            <TabsContent value="webhooks">
               <Card>
+                <CardHeader>
+                  <CardTitle>Webhook Configuration</CardTitle>
+                  <CardDescription>
+                    Configure PBS and other webhook integrations for lead capture
+                  </CardDescription>
+                </CardHeader>
                 <CardContent className="py-12 text-center">
-                  <Settings className="w-12 h-12 mx-auto mb-4 text-slate-400" />
-                  <p className="text-slate-500">Prompt management coming soon</p>
+                  <Webhook className="w-12 h-12 mx-auto mb-4 text-slate-400" />
+                  <p className="text-slate-500 mb-4">Webhook management coming soon</p>
+                  <p className="text-sm text-slate-400">
+                    Connect PBS and external platforms for automated lead routing
+                  </p>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="conversations">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Live Conversations</CardTitle>
+                  <CardDescription>
+                    Monitor chatbot conversations in real-time and view conversation history
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="py-12 text-center">
+                  <MessageSquare className="w-12 h-12 mx-auto mb-4 text-slate-400" />
+                  <p className="text-slate-500 mb-4">Chatbot conversation monitoring coming soon</p>
+                  <p className="text-sm text-slate-400">
+                    Track customer interactions with SMS handoff to GoHighLevel
+                  </p>
                 </CardContent>
               </Card>
             </TabsContent>
 
             <TabsContent value="insights">
               <Card>
+                <CardHeader>
+                  <CardTitle>AI Analytics & Insights</CardTitle>
+                  <CardDescription>
+                    View sentiment analysis, intent detection, and conversion insights
+                  </CardDescription>
+                </CardHeader>
                 <CardContent className="py-12 text-center">
                   <Sparkles className="w-12 h-12 mx-auto mb-4 text-slate-400" />
-                  <p className="text-slate-500">AI insights coming soon</p>
+                  <p className="text-slate-500 mb-4">AI-powered analytics coming soon</p>
+                  <p className="text-sm text-slate-400">
+                    Analyze conversation sentiment, customer intent, and conversion patterns
+                  </p>
                 </CardContent>
               </Card>
             </TabsContent>
