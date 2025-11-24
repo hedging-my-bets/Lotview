@@ -10,6 +10,7 @@ import {
   chatConversations,
   chatPrompts,
   adminConfig,
+  users,
   type Vehicle, 
   type InsertVehicle,
   type VehicleView,
@@ -29,7 +30,9 @@ import {
   type ChatPrompt,
   type InsertChatPrompt,
   type AdminConfig,
-  type InsertAdminConfig
+  type InsertAdminConfig,
+  type User,
+  type InsertUser
 } from "@shared/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
 
@@ -80,6 +83,14 @@ export interface IStorage {
   // Admin
   getAdminConfig(): Promise<AdminConfig | undefined>;
   setAdminPassword(passwordHash: string): Promise<AdminConfig>;
+  
+  // User management
+  getUserByEmail(email: string): Promise<User | undefined>;
+  getUserById(id: number): Promise<User | undefined>;
+  createUser(user: InsertUser): Promise<User>;
+  updateUser(id: number, user: Partial<InsertUser>): Promise<User | undefined>;
+  getAllUsers(): Promise<User[]>;
+  getUsersByRole(role: string): Promise<User[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -274,6 +285,35 @@ export class DatabaseStorage implements IStorage {
     // Insert new config
     const result = await db.insert(adminConfig).values({ passwordHash }).returning();
     return result[0];
+  }
+
+  // User management
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    return result[0];
+  }
+
+  async getUserById(id: number): Promise<User | undefined> {
+    const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    return result[0];
+  }
+
+  async createUser(user: InsertUser): Promise<User> {
+    const result = await db.insert(users).values(user).returning();
+    return result[0];
+  }
+
+  async updateUser(id: number, user: Partial<InsertUser>): Promise<User | undefined> {
+    const result = await db.update(users).set(user).where(eq(users.id, id)).returning();
+    return result[0];
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return await db.select().from(users).orderBy(desc(users.createdAt));
+  }
+
+  async getUsersByRole(role: string): Promise<User[]> {
+    return await db.select().from(users).where(eq(users.role, role)).orderBy(desc(users.createdAt));
   }
 }
 

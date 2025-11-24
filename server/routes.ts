@@ -6,13 +6,22 @@ import { fromZodError } from "zod-validation-error";
 import { triggerManualSync } from "./scheduler";
 import { testBadgeDetection } from "./scraper";
 import { generateChatResponse, type ChatMessage } from "./openai";
+import { authMiddleware, requireRole, generateToken, comparePassword, hashPassword, type AuthRequest } from "./auth";
 
-// Simple admin authentication middleware
-// NOTE: This is a basic demo implementation. For production, use proper session management with bcrypt.
+// DEPRECATED: Legacy admin authentication middleware
+// WARNING: This is insecure and should only be used for backward compatibility in development
+// In production, all admin routes should use JWT authentication
+const LEGACY_ADMIN_ENABLED = process.env.LEGACY_ADMIN_ENABLED === "true" || process.env.NODE_ENV === "development";
+
 const adminAuthMiddleware = (req: any, res: any, next: any) => {
+  // Disable legacy auth in production for security
+  if (!LEGACY_ADMIN_ENABLED) {
+    return res.status(401).json({ error: 'Legacy admin authentication is disabled. Please use JWT authentication.' });
+  }
+  
   const adminToken = req.headers['x-admin-token'];
   
-  // Simple token check - in production, use proper session management
+  // Simple token check - only for development/testing
   if (adminToken === 'admin123') {
     next();
   } else {
@@ -22,7 +31,174 @@ const adminAuthMiddleware = (req: any, res: any, next: any) => {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
-  // ===== ADMIN AUTH ROUTES =====
+  // ===== AUTHENTICATION ROUTES (JWT) =====
+  
+  // Login endpoint (all user roles)
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      
+      if (!email || !password) {
+        return res.status(400).json({ error: "Email and password are required" });
+      }
+      
+      // Find user by email
+      const user = await storage.getUserByEmail(email);
+      if (!user) {
+        return res.status(401).json({ error: "Invalid email or password" });
+      }
+      
+      // Check if user is active
+      if (!user.isActive) {
+        return res.status(403).json({ error: "Account is deactivated" });
+      }
+      
+      // Verify password
+      const isValidPassword = await comparePassword(password, user.passwordHash);
+      if (!isValidPassword) {
+        return res.status(401).json({ error: "Invalid email or password" });
+      }
+      
+      // Generate JWT token
+      const token = generateToken(user);
+      
+      // Return user info and token (exclude password hash)
+      const { passwordHash, ...userWithoutPassword } = user;
+      res.json({ 
+        token, 
+        user: userWithoutPassword,
+        success: true 
+      });
+    } catch (error) {
+      console.error("Error during login:", error);
+      res.status(500).json({ error: "Login failed" });
+    }
+  });
+  
+  // Get current user info (requires authentication)
+  app.get("/api/auth/me", authMiddleware, async (req, res) => {
+    try {
+      const authReq = req as AuthRequest;
+      const user = await storage.getUserById(authReq.user!.id);
+      
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      const { passwordHash, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ error: "Failed to fetch user info" });
+    }
+  });
+  
+  // Logout endpoint (client-side token removal, but can be used for logging/analytics)
+  app.post("/api/auth/logout", authMiddleware, async (req, res) => {
+    try {
+      const authReq = req as AuthRequest;
+      // In a stateless JWT system, logout is primarily client-side (remove token)
+      // This endpoint can be used for logging, analytics, or future token blacklisting
+      console.log(`User ${authReq.user!.email} logged out at ${new Date().toISOString()}`);
+      res.json({ success: true, message: "Logged out successfully" });
+    } catch (error) {
+      console.error("Error during logout:", error);
+      res.status(500).json({ error: "Logout failed" });
+    }
+  });
+  
+  // ===== USER MANAGEMENT ROUTES (Master Only) =====
+  
+  // Get all users (master only)
+  app.get("/api/users", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const users = await storage.getAllUsers();
+      // Exclude password hashes
+      const usersWithoutPasswords = users.map(({ passwordHash, ...user }) => user);
+      res.json(usersWithoutPasswords);
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      res.status(500).json({ error: "Failed to fetch users" });
+    }
+  });
+  
+  // Create new user (master only)
+  app.post("/api/users", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const authReq = req as AuthRequest;
+      const { email, password, name, role } = req.body;
+      
+      if (!email || !password || !name || !role) {
+        return res.status(400).json({ error: "Email, password, name, and role are required" });
+      }
+      
+      // Validate role
+      if (!["master", "manager", "salesperson"].includes(role)) {
+        return res.status(400).json({ error: "Invalid role. Must be master, manager, or salesperson" });
+      }
+      
+      // Check if email already exists
+      const existingUser = await storage.getUserByEmail(email);
+      if (existingUser) {
+        return res.status(409).json({ error: "User with this email already exists" });
+      }
+      
+      // Hash password
+      const passwordHash = await hashPassword(password);
+      
+      // Create user
+      const user = await storage.createUser({
+        email,
+        passwordHash,
+        name,
+        role,
+        isActive: true,
+        createdBy: authReq.user!.id,
+      });
+      
+      // Return user without password hash
+      const { passwordHash: _, ...userWithoutPassword } = user;
+      res.status(201).json(userWithoutPassword);
+    } catch (error) {
+      console.error("Error creating user:", error);
+      res.status(500).json({ error: "Failed to create user" });
+    }
+  });
+  
+  // Update user (master only)
+  app.patch("/api/users/:id", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { email, password, name, role, isActive } = req.body;
+      
+      const updates: any = {};
+      if (email !== undefined) updates.email = email;
+      if (name !== undefined) updates.name = name;
+      if (role !== undefined) {
+        if (!["master", "manager", "salesperson"].includes(role)) {
+          return res.status(400).json({ error: "Invalid role" });
+        }
+        updates.role = role;
+      }
+      if (isActive !== undefined) updates.isActive = isActive;
+      if (password) {
+        updates.passwordHash = await hashPassword(password);
+      }
+      
+      const user = await storage.updateUser(id, updates);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      const { passwordHash, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      console.error("Error updating user:", error);
+      res.status(500).json({ error: "Failed to update user" });
+    }
+  });
+  
+  // ===== ADMIN AUTH ROUTES (LEGACY - for backward compatibility) =====
   
   // Admin login endpoint
   app.post("/api/admin/login", async (req, res) => {
@@ -359,7 +535,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get all conversations (with optional category filter) - ADMIN ONLY
-  app.get("/api/conversations", adminAuthMiddleware, async (req, res) => {
+  app.get("/api/conversations", authMiddleware, requireRole("master"), async (req, res) => {
     try {
       const category = req.query.category as string | undefined;
       const conversations = await storage.getAllConversations(category);
@@ -378,7 +554,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get conversation by ID - ADMIN ONLY
-  app.get("/api/conversations/:id", adminAuthMiddleware, async (req, res) => {
+  app.get("/api/conversations/:id", authMiddleware, requireRole("master"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const conversation = await storage.getConversationById(id);
@@ -400,7 +576,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===== CHAT PROMPT ROUTES =====
 
   // Get all chat prompts - ADMIN ONLY
-  app.get("/api/chat-prompts", adminAuthMiddleware, async (req, res) => {
+  app.get("/api/chat-prompts", authMiddleware, requireRole("master"), async (req, res) => {
     try {
       const prompts = await storage.getChatPrompts();
       res.json(prompts);
@@ -411,7 +587,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get chat prompt by scenario - ADMIN ONLY
-  app.get("/api/chat-prompts/:scenario", adminAuthMiddleware, async (req, res) => {
+  app.get("/api/chat-prompts/:scenario", authMiddleware, requireRole("master"), async (req, res) => {
     try {
       const scenario = req.params.scenario;
       const prompt = await storage.getChatPromptByScenario(scenario);
@@ -428,7 +604,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create or update chat prompt - ADMIN ONLY
-  app.post("/api/chat-prompts", adminAuthMiddleware, async (req, res) => {
+  app.post("/api/chat-prompts", authMiddleware, requireRole("master"), async (req, res) => {
     try {
       const { scenario, systemPrompt, greeting } = req.body;
 
@@ -464,7 +640,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Generate AI insights for conversations - ADMIN ONLY
-  app.post("/api/chat-insights", adminAuthMiddleware, async (req, res) => {
+  app.post("/api/chat-insights", authMiddleware, requireRole("master"), async (req, res) => {
     try {
       const { scenario } = req.body;
 
@@ -648,7 +824,7 @@ Format your response in clear sections with actionable recommendations.`;
   // ===== ADMIN ROUTES =====
   
   // Save GHL configuration
-  app.post("/api/admin/ghl-config", adminAuthMiddleware, async (req, res) => {
+  app.post("/api/admin/ghl-config", authMiddleware, requireRole("master"), async (req, res) => {
     try {
       const { apiKey, locationId } = req.body;
 
@@ -665,7 +841,7 @@ Format your response in clear sections with actionable recommendations.`;
   });
 
   // Save GHL Webhook configuration
-  app.post("/api/admin/ghl-webhook-config", adminAuthMiddleware, async (req, res) => {
+  app.post("/api/admin/ghl-webhook-config", authMiddleware, requireRole("master"), async (req, res) => {
     try {
       const { webhookUrl, webhookName } = req.body;
 
@@ -686,7 +862,7 @@ Format your response in clear sections with actionable recommendations.`;
   });
 
   // Get GHL Webhook configuration
-  app.get("/api/admin/ghl-webhook-config", adminAuthMiddleware, async (req, res) => {
+  app.get("/api/admin/ghl-webhook-config", authMiddleware, requireRole("master"), async (req, res) => {
     try {
       const config = await storage.getActiveGHLWebhookConfig();
       res.json(config || null);
@@ -697,7 +873,7 @@ Format your response in clear sections with actionable recommendations.`;
   });
 
   // Save AI prompt template
-  app.post("/api/admin/ai-prompt", async (req, res) => {
+  app.post("/api/admin/ai-prompt", authMiddleware, requireRole("master"), async (req, res) => {
     try {
       const { name, promptText, isActive } = req.body;
 
