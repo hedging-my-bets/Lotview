@@ -8,6 +8,7 @@ import { createServer as createViteServer, createLogger } from "vite";
 
 import runApp from "./app";
 import { startInventoryScheduler } from "./scheduler";
+import { startPostingScheduler } from "./posting-scheduler";
 
 import viteConfig from "../vite.config";
 
@@ -64,6 +65,9 @@ export async function setupVite(app: Express, server: Server) {
 (async () => {
   // Start the inventory scheduler
   startInventoryScheduler();
+  
+  // Start the Facebook posting scheduler
+  startPostingScheduler();
   
   await runApp(setupVite);
 })();

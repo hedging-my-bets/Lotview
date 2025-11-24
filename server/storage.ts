@@ -123,6 +123,34 @@ export interface IStorage {
   updateModelYearTerm(id: number, term: Partial<InsertModelYearTerm>): Promise<ModelYearTerm | undefined>;
   deleteModelYearTerm(id: number): Promise<boolean>;
   getAvailableTermsForYear(modelYear: number): Promise<string[]>;
+  
+  // Facebook Accounts
+  getFacebookAccountsByUser(userId: number): Promise<FacebookAccount[]>;
+  getFacebookAccountById(id: number, userId: number): Promise<FacebookAccount | undefined>;
+  createFacebookAccount(account: InsertFacebookAccount): Promise<FacebookAccount>;
+  updateFacebookAccount(id: number, userId: number, account: Partial<InsertFacebookAccount>): Promise<FacebookAccount | undefined>;
+  deleteFacebookAccount(id: number, userId: number): Promise<boolean>;
+  
+  // Ad Templates
+  getAdTemplatesByUser(userId: number): Promise<AdTemplate[]>;
+  getAdTemplateById(id: number, userId: number): Promise<AdTemplate | undefined>;
+  createAdTemplate(template: InsertAdTemplate): Promise<AdTemplate>;
+  updateAdTemplate(id: number, userId: number, template: Partial<InsertAdTemplate>): Promise<AdTemplate | undefined>;
+  deleteAdTemplate(id: number, userId: number): Promise<boolean>;
+  
+  // Posting Queue
+  getPostingQueueByUser(userId: number): Promise<PostingQueue[]>;
+  getPostingQueueItem(id: number): Promise<PostingQueue | undefined>;
+  createPostingQueueItem(item: InsertPostingQueue): Promise<PostingQueue>;
+  updatePostingQueueItem(id: number, userId: number, item: Partial<InsertPostingQueue>): Promise<PostingQueue | undefined>;
+  deletePostingQueueItem(id: number, userId: number): Promise<boolean>;
+  getNextQueuedPost(userId: number): Promise<PostingQueue | undefined>;
+  
+  // Posting Schedule
+  getPostingScheduleByUser(userId: number): Promise<PostingSchedule | undefined>;
+  getAllPostingSchedules(): Promise<PostingSchedule[]>;
+  createPostingSchedule(schedule: InsertPostingSchedule): Promise<PostingSchedule>;
+  updatePostingSchedule(userId: number, schedule: Partial<InsertPostingSchedule>): Promise<PostingSchedule | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -425,8 +453,10 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(facebookAccounts).where(eq(facebookAccounts.userId, userId));
   }
 
-  async getFacebookAccountById(id: number): Promise<FacebookAccount | undefined> {
-    const result = await db.select().from(facebookAccounts).where(eq(facebookAccounts.id, id)).limit(1);
+  async getFacebookAccountById(id: number, userId: number): Promise<FacebookAccount | undefined> {
+    const result = await db.select().from(facebookAccounts).where(
+      and(eq(facebookAccounts.id, id), eq(facebookAccounts.userId, userId))
+    ).limit(1);
     return result[0];
   }
 
@@ -450,8 +480,10 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(adTemplates).where(eq(adTemplates.userId, userId));
   }
 
-  async getAdTemplateById(id: number): Promise<AdTemplate | undefined> {
-    const result = await db.select().from(adTemplates).where(eq(adTemplates.id, id)).limit(1);
+  async getAdTemplateById(id: number, userId: number): Promise<AdTemplate | undefined> {
+    const result = await db.select().from(adTemplates).where(
+      and(eq(adTemplates.id, id), eq(adTemplates.userId, userId))
+    ).limit(1);
     return result[0];
   }
 
@@ -515,6 +547,10 @@ export class DatabaseStorage implements IStorage {
   async getPostingScheduleByUser(userId: number): Promise<PostingSchedule | undefined> {
     const result = await db.select().from(postingSchedule).where(eq(postingSchedule.userId, userId)).limit(1);
     return result[0];
+  }
+
+  async getAllPostingSchedules(): Promise<PostingSchedule[]> {
+    return await db.select().from(postingSchedule);
   }
 
   async createPostingSchedule(schedule: InsertPostingSchedule): Promise<PostingSchedule> {

@@ -6,6 +6,7 @@ import express, { type Express, type Request } from "express";
 
 import runApp from "./app";
 import { startInventoryScheduler } from "./scheduler";
+import { startPostingScheduler } from "./posting-scheduler";
 
 export async function serveStatic(app: Express, server: Server) {
   const distPath = path.resolve(import.meta.dirname, "public");
@@ -27,6 +28,9 @@ export async function serveStatic(app: Express, server: Server) {
 (async () => {
   // Start the inventory scheduler
   startInventoryScheduler();
+  
+  // Start the Facebook posting scheduler
+  startPostingScheduler();
   
   await runApp(serveStatic);
 })();
