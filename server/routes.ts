@@ -18,6 +18,7 @@ import { generateChatResponse, type ChatMessage } from "./openai";
 import { authMiddleware, requireRole, generateToken, comparePassword, hashPassword, type AuthRequest } from "./auth";
 import { facebookService } from "./facebook-service";
 import crypto from "crypto";
+import { decodeVIN } from "./vin-decoder";
 
 // OAuth state store for CSRF protection (in production, use Redis or signed JWTs)
 const oauthStateStore = new Map<string, { userId: number; accountId: number; expiresAt: number }>();
@@ -1552,6 +1553,33 @@ Format your response in clear sections with actionable recommendations.`;
     } catch (error) {
       console.error("Error posting to Facebook:", error);
       res.status(500).json({ error: error instanceof Error ? error.message : "Failed to post to Facebook" });
+    }
+  });
+
+  // ===== SALES MANAGER ROUTES =====
+  
+  // Decode VIN
+  app.post("/api/manager/decode-vin", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const { vin } = req.body;
+      
+      if (!vin || typeof vin !== 'string') {
+        return res.json({
+          vin: '',
+          errorCode: 'MISSING_VIN',
+          errorMessage: 'VIN is required'
+        });
+      }
+      
+      const result = await decodeVIN(vin);
+      res.json(result);
+    } catch (error) {
+      console.error("Error decoding VIN:", error);
+      res.json({
+        vin: req.body.vin || '',
+        errorCode: 'DECODE_ERROR',
+        errorMessage: error instanceof Error ? error.message : "Failed to decode VIN"
+      });
     }
   });
 
