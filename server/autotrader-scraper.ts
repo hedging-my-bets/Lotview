@@ -33,13 +33,37 @@ export class AutoTraderScraper {
 
   async initialize() {
     if (!this.browser) {
+      // Dynamically find Chromium executable
+      const { execSync } = await import('child_process');
+      let executablePath: string | undefined;
+      
+      try {
+        // Try to find chromium in PATH
+        executablePath = execSync('which chromium 2>/dev/null || which chromium-browser 2>/dev/null', { encoding: 'utf8' }).trim();
+      } catch {
+        // Fallback: search in common Nix store locations
+        try {
+          executablePath = execSync('find /nix/store -name chromium -type f -path "*/bin/chromium" 2>/dev/null | head -1', { encoding: 'utf8' }).trim();
+        } catch {
+          throw new Error('Chromium executable not found. Please install chromium.');
+        }
+      }
+      
+      if (!executablePath) {
+        throw new Error('Chromium executable not found in PATH or Nix store');
+      }
+      
+      console.log(`[AutoTrader] Using Chromium: ${executablePath}`);
+      
       this.browser = await puppeteer.launch({
         headless: true,
+        executablePath,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
-          '--disable-gpu'
+          '--disable-gpu',
+          '--disable-software-rasterizer'
         ]
       });
     }
@@ -58,34 +82,35 @@ export class AutoTraderScraper {
   private buildSearchUrl(params: AutoTraderSearchParams): string {
     const { make, model, yearMin, yearMax, postalCode, radiusKm } = params;
     
+    // Normalize make and model for URL (lowercase, replace spaces with hyphens)
+    const normalizedMake = make.toLowerCase().replace(/\s+/g, '-');
+    const normalizedModel = model.toLowerCase().replace(/\s+/g, '-');
+    
     // Base URL structure: https://www.autotrader.ca/cars/{make}/{model}/
-    const baseUrl = `https://www.autotrader.ca/cars/${make.toLowerCase()}/${model.toLowerCase()}/`;
+    const baseUrl = `https://www.autotrader.ca/cars/${normalizedMake}/${normalizedModel}/`;
     
     // Build query parameters
     const queryParams = new URLSearchParams();
-    queryParams.append('rcp', '100'); // Results per page
+    queryParams.append('rcp', '100'); // Results per page (max)
     queryParams.append('rcs', '0'); // Start index
-    queryParams.append('srt', '35'); // Sort by date (newest first)
-    queryParams.append('sts', 'New-Used'); // New and used
+    queryParams.append('srt', '35'); // Sort order (35 = relevance)
     
     if (postalCode) {
-      queryParams.append('loc', postalCode.replace(/\s/g, ''));
+      // Remove all spaces from postal code
+      queryParams.append('loc', postalCode.replace(/\s/g, '').toUpperCase());
     }
     
     if (radiusKm) {
       queryParams.append('prx', radiusKm.toString());
     }
     
-    if (yearMin) {
+    // Year range parameter format: min,max
+    if (yearMin && yearMax) {
+      queryParams.append('yRng', `${yearMin},${yearMax}`);
+    } else if (yearMin) {
       queryParams.append('yRng', `${yearMin},`);
-    }
-    
-    if (yearMax) {
-      if (yearMin) {
-        queryParams.set('yRng', `${yearMin},${yearMax}`);
-      } else {
-        queryParams.append('yRng', `,${yearMax}`);
-      }
+    } else if (yearMax) {
+      queryParams.append('yRng', `,${yearMax}`);
     }
     
     return `${baseUrl}?${queryParams.toString()}`;
@@ -117,57 +142,134 @@ export class AutoTraderScraper {
         timeout: 30000
       });
       
-      // Wait for listings to load
-      await page.waitForSelector('.result-item, .no-results', { timeout: 10000 }).catch(() => {
-        console.log('[AutoTrader] No results found or page structure changed');
-      });
+      // Wait for page to load and check for listings
+      await new Promise(resolve => setTimeout(resolve, 5000)); // Give the page time to fully render
       
-      // Extract listing data
+      // Debug: Save HTML and screenshot for analysis
+      const htmlContent = await page.content();
+      console.log('[AutoTrader] Page loaded, HTML length:', htmlContent.length);
+      
+      // Extract listing data with multiple selector strategies for robustness
       const scrapedData = await page.evaluate(() => {
         const results: any[] = [];
-        const cards = document.querySelectorAll('.result-item');
         
-        cards.forEach((card) => {
+        // Try multiple selector strategies for AutoTrader's structure
+        const possibleSelectors = [
+          '.result-item',
+          '[class*="listing"]',
+          '[class*="Result"]',
+          '[data-testid*="listing"]',
+          'article',
+          '.search-result'
+        ];
+        
+        let cards: NodeListOf<Element> | null = null;
+        for (const selector of possibleSelectors) {
+          cards = document.querySelectorAll(selector);
+          if (cards.length > 0) {
+            console.log(`Found ${cards.length} listings with selector: ${selector}`);
+            break;
+          }
+        }
+        
+        if (!cards || cards.length === 0) {
+          console.log('No listings found with any selector');
+          return results;
+        }
+        
+        cards.forEach((card, index) => {
           try {
-            // Extract data from each listing card
-            const titleElement = card.querySelector('.title-with-make') || card.querySelector('.title');
-            const title = titleElement?.textContent?.trim() || '';
+            // Extract all text content for parsing
+            const allText = card.textContent || '';
             
-            const priceElement = card.querySelector('.price-amount');
-            const priceText = priceElement?.textContent?.trim().replace(/[^0-9]/g, '') || '0';
-            const price = parseInt(priceText);
-            
-            const mileageElement = card.querySelector('.kms');
-            const mileageText = mileageElement?.textContent?.trim().replace(/[^0-9]/g, '') || '';
-            const mileage = mileageText ? parseInt(mileageText) : undefined;
-            
-            const locationElement = card.querySelector('.proximity, .location');
-            const location = locationElement?.textContent?.trim() || '';
-            
-            const linkElement = card.querySelector('a');
+            // Try multiple strategies to find the link
+            const linkElement = card.querySelector('a[href*="/a/"]') || 
+                              card.querySelector('a[href*="autotrader.ca"]') ||
+                              card.querySelector('a');
             const link = linkElement?.getAttribute('href') || '';
+            
+            if (!link) {
+              console.log(`Card ${index}: No link found`);
+              return;
+            }
+            
             const fullUrl = link.startsWith('http') ? link : `https://www.autotrader.ca${link}`;
             
-            // Extract listing ID from URL
-            const idMatch = link.match(/\/(\d+)$/);
-            const externalId = idMatch ? idMatch[1] : '';
+            // Extract listing ID from URL (various patterns)
+            const idMatch = link.match(/\/(\d+)(?:\/|$)/) || link.match(/id=(\d+)/);
+            const externalId = idMatch ? idMatch[1] : `generated-${Date.now()}-${index}`;
             
-            // Extract seller type and name
-            const sellerBadge = card.querySelector('.dealer-badge, .private-badge');
-            const listingType = sellerBadge?.textContent?.toLowerCase().includes('private') ? 'private' : 'dealer';
+            // Find price (look for $ followed by numbers)
+            const priceMatches = allText.match(/\$\s*([0-9,]+)/g);
+            let price = 0;
+            if (priceMatches && priceMatches.length > 0) {
+              const priceText = priceMatches[0].replace(/[^0-9]/g, '');
+              price = parseInt(priceText);
+            }
             
-            const sellerElement = card.querySelector('.dealer-name, .seller-name');
-            const sellerName = sellerElement?.textContent?.trim() || (listingType === 'private' ? 'Private Seller' : 'Dealer');
+            // Find mileage/kilometers
+            const mileageMatches = allText.match(/([0-9,]+)\s*km/i);
+            let mileage: number | undefined = undefined;
+            if (mileageMatches) {
+              const mileageText = mileageMatches[1].replace(/[^0-9]/g, '');
+              mileage = parseInt(mileageText);
+            }
+            
+            // Find year (4-digit number that looks like a year)
+            const yearMatch = allText.match(/(20\d{2})/);
+            const year = yearMatch ? parseInt(yearMatch[1]) : 0;
+            
+            // Extract title from multiple possible locations
+            const titleElement = card.querySelector('[class*="title"]') ||
+                               card.querySelector('h2') ||
+                               card.querySelector('h3') ||
+                               linkElement;
+            const title = titleElement?.textContent?.trim() || allText.substring(0, 100);
+            
+            // Extract location - look for patterns like "City, Province" or "City, AB/BC/ON"
+            // AutoTrader shows location in format: "City, Province" or nearby listings
+            let location = '';
+            const locationElement = card.querySelector('[data-cy="listingCardLocation"]') ||
+                                  card.querySelector('[class*="location"]') ||
+                                  card.querySelector('[class*="proximity"]');
+            
+            if (locationElement) {
+              location = locationElement.textContent?.trim() || '';
+            } else {
+              // Fallback: search for "City, Province" pattern in text
+              const cityProvinceMatch = allText.match(/([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*),\s*(BC|AB|SK|MB|ON|QC|NB|NS|PE|NL|YT|NT|NU)/);
+              if (cityProvinceMatch) {
+                location = `${cityProvinceMatch[1]}, ${cityProvinceMatch[2]}`;
+              } else {
+                // Last resort: look for just province abbreviation
+                const provinceMatch = allText.match(/\b(BC|AB|SK|MB|ON|QC|NB|NS|PE|NL|YT|NT|NU)\b/);
+                location = provinceMatch ? provinceMatch[1] : '';
+              }
+            }
+            
+            // Determine if private or dealer (look for keywords)
+            const isPrivate = allText.toLowerCase().includes('private') || 
+                            allText.toLowerCase().includes('owner');
+            const listingType = isPrivate ? 'private' : 'dealer';
+            
+            // Extract seller name (look for dealer name patterns)
+            let sellerName = 'Unknown Seller';
+            if (listingType === 'dealer') {
+              // Look for common dealer name patterns
+              const dealerMatch = allText.match(/([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+(?:Motors|Auto|Car|Dealer|Sales|Group))/);
+              sellerName = dealerMatch ? dealerMatch[0] : 'Dealer';
+            } else {
+              sellerName = 'Private Seller';
+            }
             
             // Extract image
             const imageElement = card.querySelector('img');
-            const imageUrl = imageElement?.getAttribute('src') || imageElement?.getAttribute('data-src') || '';
+            const imageUrl = imageElement?.getAttribute('src') || 
+                           imageElement?.getAttribute('data-src') ||
+                           imageElement?.getAttribute('data-lazy') || '';
             
-            // Parse year from title
-            const yearMatch = title.match(/(\d{4})/);
-            const year = yearMatch ? parseInt(yearMatch[1]) : 0;
-            
-            if (externalId && price > 0 && year > 0) {
+            // Only add if we have minimum viable data
+            if (price > 0 && year > 0) {
               results.push({
                 externalId,
                 title,
@@ -182,7 +284,7 @@ export class AutoTraderScraper {
               });
             }
           } catch (err) {
-            console.error('Error parsing listing card:', err);
+            console.error(`Error parsing listing card ${index}:`, err);
           }
         });
         
@@ -193,19 +295,33 @@ export class AutoTraderScraper {
       for (const data of scrapedData) {
         const { title, year, price, mileage, location, sellerName, listingType, imageUrl, listingUrl, externalId } = data;
         
+        // Skip listings with invalid prices (likely parsing errors)
+        if (price < 1000) {
+          console.log(`[AutoTrader] Skipping listing with invalid price: $${price}`);
+          continue;
+        }
+        
         // Parse make/model/trim from title
         const titleParts = title.split(' ');
         const parsedYear = year;
-        const parsedMake = titleParts[1] || params.make;
-        const parsedModel = titleParts[2] || params.model;
-        const parsedTrim = titleParts.slice(3).join(' ') || undefined;
+        
+        // Normalize make and model to uppercase for consistency
+        const parsedMake = (titleParts[1] || params.make).toUpperCase();
+        const parsedModel = (titleParts[2] || params.model).toUpperCase();
+        
+        // Clean trim - keep it concise, remove common marketing phrases
+        let parsedTrim = titleParts.slice(3).join(' ').trim();
+        if (parsedTrim.length > 100) {
+          // Trim is too long - likely full description, truncate
+          parsedTrim = parsedTrim.substring(0, 100);
+        }
         
         listings.push({
           externalId,
           year: parsedYear,
           make: parsedMake,
           model: parsedModel,
-          trim: parsedTrim,
+          trim: parsedTrim || undefined,
           price,
           mileage,
           location,
