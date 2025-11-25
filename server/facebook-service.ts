@@ -102,7 +102,8 @@ export class FacebookService {
       .replace(/{make}/g, vehicle.make)
       .replace(/{model}/g, vehicle.model)
       .replace(/{trim}/g, vehicle.trim || '')
-      .replace(/{odometer}/g, vehicle.odometer?.toString() || '0');
+      .replace(/{odometer}/g, vehicle.odometer?.toString() || '0')
+      .replace(/{carfaxUrl}/g, vehicle.carfaxUrl || '');
   }
 
   async postToMarketplace(
@@ -121,8 +122,11 @@ export class FacebookService {
     formData.append('currency', 'CAD');
     formData.append('availability', 'in stock');
     
+    // Add all vehicle images (Facebook supports multiple images)
     if (vehicle.images && vehicle.images.length > 0) {
-      formData.append('images[0][url]', vehicle.images[0]);
+      vehicle.images.forEach((imageUrl, index) => {
+        formData.append(`images[${index}][url]`, imageUrl);
+      });
     }
 
     const response = await fetch('https://graph.facebook.com/v18.0/me/marketplace_listings', {
