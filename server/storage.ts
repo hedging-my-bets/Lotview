@@ -100,7 +100,7 @@ export interface IStorage {
   
   // ====== VEHICLE OPERATIONS (Multi-Tenant) ======
   // dealershipId is REQUIRED for all multi-tenant operations to ensure data isolation
-  getVehicles(dealershipId: number): Promise<Vehicle[]>;
+  getVehicles(dealershipId: number, limit?: number, offset?: number): Promise<{ vehicles: Vehicle[]; total: number }>;
   getVehicleById(id: number, dealershipId: number): Promise<Vehicle | undefined>;
   createVehicle(vehicle: InsertVehicle): Promise<Vehicle>;
   updateVehicle(id: number, vehicle: Partial<InsertVehicle>, dealershipId: number): Promise<Vehicle | undefined>;
@@ -132,7 +132,7 @@ export interface IStorage {
   
   // Chat conversations (Multi-Tenant)
   saveChatConversation(conversation: InsertChatConversation): Promise<ChatConversation>; // Must include dealershipId
-  getAllConversations(dealershipId: number, category?: string): Promise<ChatConversation[]>; // REQUIRED filtering
+  getAllConversations(dealershipId: number, category?: string, limit?: number, offset?: number): Promise<{ conversations: ChatConversation[]; total: number }>; // REQUIRED filtering
   getConversationById(id: number, dealershipId: number): Promise<ChatConversation | undefined>; // REQUIRED filtering
   updateConversationHandoff(id: number, dealershipId: number, data: { handoffRequested?: boolean; handoffPhone?: string; handoffSent?: boolean; handoffSentAt?: Date }): Promise<ChatConversation | undefined>;
   
@@ -221,7 +221,7 @@ export interface IStorage {
   updateManagerSettings(userId: number, dealershipId: number, settings: Partial<InsertManagerSettings>): Promise<ManagerSettings | undefined>;
   
   // Market Listings (Multi-Tenant)
-  getMarketListings(dealershipId: number, filters: { make?: string; model?: string; yearMin?: number; yearMax?: number; source?: string }): Promise<MarketListing[]>;
+  getMarketListings(dealershipId: number, filters: { make?: string; model?: string; yearMin?: number; yearMax?: number; source?: string }, limit?: number, offset?: number): Promise<{ listings: MarketListing[]; total: number }>;
   getMarketListingById(id: number, dealershipId: number): Promise<MarketListing | undefined>;
   getMarketListingsByUrls(dealershipId: number, urls: string[]): Promise<MarketListing[]>;
   createMarketListing(listing: InsertMarketListing): Promise<MarketListing>;
@@ -329,10 +329,24 @@ export class DatabaseStorage implements IStorage {
 
   // ====== VEHICLE OPERATIONS (Multi-Tenant) ======
   // All operations enforce dealership isolation for security
-  async getVehicles(dealershipId: number): Promise<Vehicle[]> {
-    return await db.select().from(vehicles)
+  async getVehicles(dealershipId: number, limit: number = 50, offset: number = 0): Promise<{ vehicles: Vehicle[]; total: number }> {
+    // Get total count for pagination metadata
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(vehicles)
+      .where(eq(vehicles.dealershipId, dealershipId));
+    
+    // Get paginated vehicles
+    const vehiclesList = await db.select().from(vehicles)
       .where(eq(vehicles.dealershipId, dealershipId))
-      .orderBy(desc(vehicles.createdAt));
+      .orderBy(desc(vehicles.createdAt))
+      .limit(limit)
+      .offset(offset);
+    
+    return {
+      vehicles: vehiclesList,
+      total: count
+    };
   }
 
   async getVehicleById(id: number, dealershipId: number): Promise<Vehicle | undefined> {
@@ -518,15 +532,29 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  async getAllConversations(dealershipId: number, category?: string): Promise<ChatConversation[]> {
+  async getAllConversations(dealershipId: number, category?: string, limit: number = 50, offset: number = 0): Promise<{ conversations: ChatConversation[]; total: number }> {
     // REQUIRED: Only return conversations from specific dealership
     const conditions = category
       ? and(eq(chatConversations.dealershipId, dealershipId), eq(chatConversations.category, category))
       : eq(chatConversations.dealershipId, dealershipId);
     
-    return await db.select().from(chatConversations)
+    // Get total count
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(chatConversations)
+      .where(conditions);
+    
+    // Get paginated conversations
+    const conversations = await db.select().from(chatConversations)
       .where(conditions)
-      .orderBy(desc(chatConversations.createdAt));
+      .orderBy(desc(chatConversations.createdAt))
+      .limit(limit)
+      .offset(offset);
+    
+    return {
+      conversations,
+      total: count
+    };
   }
 
   async getConversationById(id: number, dealershipId: number): Promise<ChatConversation | undefined> {
@@ -1189,7 +1217,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ====== MARKET LISTINGS (Multi-Tenant) ======
-  async getMarketListings(dealershipId: number, filters: { make?: string; model?: string; yearMin?: number; yearMax?: number; source?: string }): Promise<MarketListing[]> {
+  async getMarketListings(dealershipId: number, filters: { make?: string; model?: string; yearMin?: number; yearMax?: number; source?: string }, limit: number = 50, offset: number = 0): Promise<{ listings: MarketListing[]; total: number }> {
     const conditions = [];
     
     // REQUIRED: Always filter by dealership
@@ -1217,11 +1245,25 @@ export class DatabaseStorage implements IStorage {
     
     const whereClause = and(...conditions);
     
-    return await db
+    // Get total count
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(marketListings)
+      .where(whereClause);
+    
+    // Get paginated listings
+    const listings = await db
       .select()
       .from(marketListings)
       .where(whereClause)
-      .orderBy(desc(marketListings.scrapedAt));
+      .orderBy(desc(marketListings.scrapedAt))
+      .limit(limit)
+      .offset(offset);
+    
+    return {
+      listings,
+      total: count
+    };
   }
 
   async getMarketListingById(id: number, dealershipId: number): Promise<MarketListing | undefined> {

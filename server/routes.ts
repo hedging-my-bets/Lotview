@@ -260,17 +260,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/vehicles", async (req, res) => {
     try {
       // Dealership ID extracted from tenant middleware
-      // For now, default to dealershipId = 1 for public vehicle listings
       const dealershipId = req.dealershipId!;
-      const vehicles = await storage.getVehicles(dealershipId);
+      
+      // Parse pagination parameters (optional - maintains backward compatibility)
+      const page = req.query.page ? parseInt(req.query.page as string) : undefined;
+      const limit = page ? Math.min(parseInt(req.query.limit as string) || 50, 100) : 10000; // No limit if page not specified
+      const offset = page ? (page - 1) * limit : 0;
+      
+      const { vehicles: vehiclesList, total } = await storage.getVehicles(dealershipId, limit, offset);
       
       // Add randomized view counts (5-35 views) to create social proof
-      const vehiclesWithViews = vehicles.map(vehicle => ({
+      const vehiclesWithViews = vehiclesList.map(vehicle => ({
         ...vehicle,
         views: Math.floor(Math.random() * (35 - 5 + 1)) + 5 // Random between 5-35
       }));
       
-      res.json(vehiclesWithViews);
+      // Return paginated response if page param provided, otherwise return array (backward compatible)
+      if (page) {
+        res.json({
+          data: vehiclesWithViews,
+          pagination: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit)
+          }
+        });
+      } else {
+        res.json(vehiclesWithViews);
+      }
     } catch (error) {
       console.error("Error fetching vehicles:", error);
       res.status(500).json({ error: "Failed to fetch vehicles" });
@@ -599,7 +617,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const dealershipId = req.dealershipId!;
       const category = req.query.category as string | undefined;
-      const conversations = await storage.getAllConversations(dealershipId, category);
+      
+      // Parse pagination parameters (optional)
+      const page = req.query.page ? parseInt(req.query.page as string) : undefined;
+      const limit = page ? Math.min(parseInt(req.query.limit as string) || 50, 100) : 10000; // No limit if page not specified
+      const offset = page ? (page - 1) * limit : 0;
+      
+      const { conversations, total } = await storage.getAllConversations(dealershipId, category, limit, offset);
       
       // Parse messages JSON for each conversation
       const parsed = conversations.map(conv => ({
@@ -607,7 +631,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         messages: JSON.parse(conv.messages)
       }));
       
-      res.json(parsed);
+      // Return paginated response if page param provided, otherwise return array (backward compatible)
+      if (page) {
+        res.json({
+          data: parsed,
+          pagination: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit)
+          }
+        });
+      } else {
+        res.json(parsed);
+      }
     } catch (error) {
       console.error("Error fetching conversations:", error);
       res.status(500).json({ error: "Failed to fetch conversations" });
@@ -715,8 +752,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "scenario is required" });
       }
 
-      // Get conversations for this scenario
-      const conversations = await storage.getAllConversations(dealershipId, scenario);
+      // Get conversations for this scenario (no pagination - need full dataset for insights)
+      const { conversations } = await storage.getAllConversations(dealershipId, scenario, 10000, 0);
 
       if (conversations.length === 0) {
         return res.json({
@@ -1730,13 +1767,13 @@ Format your response in clear sections with actionable recommendations.`;
         targetYear = Math.round((searchYearMin + searchYearMax) / 2);
       }
       
-      // Get market listings from database
-      let marketListings = await storage.getMarketListings(dealershipId, {
+      // Get market listings from database (no pagination - need full dataset for analytics)
+      let { listings: marketListings } = await storage.getMarketListings(dealershipId, {
         make,
         model,
         yearMin: searchYearMin,
         yearMax: searchYearMax
-      });
+      }, 10000, 0);
 
       // If no market listings found, return message prompting manual scrape
       if (marketListings.length === 0) {
@@ -1834,7 +1871,7 @@ Format your response in clear sections with actionable recommendations.`;
     try {
       const dealershipId = req.dealershipId!;
       // Get all market listings to populate makes
-      const marketListings = await storage.getMarketListings(dealershipId, {});
+      const { listings: marketListings } = await storage.getMarketListings(dealershipId, {}, 10000, 0);
       const makes = Array.from(new Set(marketListings.map(v => v.make))).filter(Boolean).sort();
       res.json(makes);
     } catch (error) {
@@ -1848,7 +1885,7 @@ Format your response in clear sections with actionable recommendations.`;
     try {
       const dealershipId = req.dealershipId!;
       const { make } = req.query;
-      const marketListings = await storage.getMarketListings(dealershipId, {});
+      const { listings: marketListings } = await storage.getMarketListings(dealershipId, {}, 10000, 0);
       
       let models;
       if (make) {
@@ -1869,7 +1906,7 @@ Format your response in clear sections with actionable recommendations.`;
     try {
       const dealershipId = req.dealershipId!;
       const { make, model } = req.query;
-      const marketListings = await storage.getMarketListings(dealershipId, {});
+      const { listings: marketListings } = await storage.getMarketListings(dealershipId, {}, 10000, 0);
       
       let trims;
       if (make && model) {
