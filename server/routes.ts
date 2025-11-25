@@ -149,7 +149,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create new dealership with full setup (super admin only)
   app.post("/api/super-admin/dealerships", authMiddleware, superAdminOnly, async (req, res) => {
     try {
-      const { name, slug, subdomain, masterAdminEmail, masterAdminName, masterAdminPassword } = req.body;
+      const { 
+        name, 
+        slug, 
+        subdomain, 
+        address,
+        city,
+        province,
+        postalCode,
+        phone,
+        timezone,
+        defaultCurrency,
+        masterAdminEmail, 
+        masterAdminName, 
+        masterAdminPassword 
+      } = req.body;
       
       // Validate required fields
       if (!name || !slug || !subdomain || !masterAdminEmail || !masterAdminName || !masterAdminPassword) {
@@ -175,6 +189,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         name,
         slug,
         subdomain,
+        address,
+        city,
+        province,
+        postalCode,
+        phone,
+        timezone,
+        defaultCurrency,
         masterAdminEmail,
         masterAdminName,
         masterAdminPassword

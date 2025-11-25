@@ -119,6 +119,13 @@ export default function SuperAdminDashboard() {
       name: string;
       slug: string;
       subdomain: string;
+      address?: string;
+      city?: string;
+      province?: string;
+      postalCode?: string;
+      phone?: string;
+      timezone?: string;
+      defaultCurrency?: string;
       masterAdminEmail: string;
       masterAdminName: string;
       masterAdminPassword: string;
@@ -419,6 +426,13 @@ function CreateDealershipDialog({ onSubmit }: { onSubmit: (data: any) => void })
     name: "",
     slug: "",
     subdomain: "",
+    address: "",
+    city: "",
+    province: "",
+    postalCode: "",
+    phone: "",
+    timezone: "America/Vancouver",
+    defaultCurrency: "CAD",
     masterAdminEmail: "",
     masterAdminName: "",
     masterAdminPassword: "",
@@ -432,6 +446,13 @@ function CreateDealershipDialog({ onSubmit }: { onSubmit: (data: any) => void })
       name: "",
       slug: "",
       subdomain: "",
+      address: "",
+      city: "",
+      province: "",
+      postalCode: "",
+      phone: "",
+      timezone: "America/Vancouver",
+      defaultCurrency: "CAD",
       masterAdminEmail: "",
       masterAdminName: "",
       masterAdminPassword: "",
@@ -488,6 +509,61 @@ function CreateDealershipDialog({ onSubmit }: { onSubmit: (data: any) => void })
               required
               data-testid="input-dealership-subdomain"
             />
+          </div>
+          <div className="border-t pt-4">
+            <h4 className="font-medium mb-3">Contact Information</h4>
+            <div className="grid grid-cols-2 gap-4 mb-3">
+              <div className="col-span-2 space-y-2">
+                <Label htmlFor="address">Street Address</Label>
+                <Input
+                  id="address"
+                  value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  placeholder="123 Main Street"
+                  data-testid="input-dealership-address"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="city">City</Label>
+                <Input
+                  id="city"
+                  value={formData.city}
+                  onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                  placeholder="Vancouver"
+                  data-testid="input-dealership-city"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="province">Province</Label>
+                <Input
+                  id="province"
+                  value={formData.province}
+                  onChange={(e) => setFormData({ ...formData, province: e.target.value })}
+                  placeholder="BC"
+                  data-testid="input-dealership-province"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="postalCode">Postal Code</Label>
+                <Input
+                  id="postalCode"
+                  value={formData.postalCode}
+                  onChange={(e) => setFormData({ ...formData, postalCode: e.target.value })}
+                  placeholder="V6B 5J3"
+                  data-testid="input-dealership-postal-code"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone</Label>
+                <Input
+                  id="phone"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  placeholder="(604) 555-1234"
+                  data-testid="input-dealership-phone"
+                />
+              </div>
+            </div>
           </div>
           <div className="border-t pt-4">
             <h4 className="font-medium mb-3">Master Admin Account</h4>

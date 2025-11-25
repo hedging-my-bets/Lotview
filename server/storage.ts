@@ -101,6 +101,13 @@ export interface IStorage {
     name: string;
     slug: string;
     subdomain: string;
+    address?: string;
+    city?: string;
+    province?: string;
+    postalCode?: string;
+    phone?: string;
+    timezone?: string;
+    defaultCurrency?: string;
     masterAdminEmail: string;
     masterAdminName: string;
     masterAdminPassword: string;
@@ -1433,6 +1440,13 @@ export class DatabaseStorage implements IStorage {
     name: string;
     slug: string;
     subdomain: string;
+    address?: string;
+    city?: string;
+    province?: string;
+    postalCode?: string;
+    phone?: string;
+    timezone?: string;
+    defaultCurrency?: string;
     masterAdminEmail: string;
     masterAdminName: string;
     masterAdminPassword: string;
@@ -1445,6 +1459,13 @@ export class DatabaseStorage implements IStorage {
           name: params.name,
           slug: params.slug,
           subdomain: params.subdomain,
+          address: params.address,
+          city: params.city,
+          province: params.province,
+          postalCode: params.postalCode,
+          phone: params.phone,
+          timezone: params.timezone || 'America/Vancouver',
+          defaultCurrency: params.defaultCurrency || 'CAD',
           isActive: true,
         })
         .returning();
