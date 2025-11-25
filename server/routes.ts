@@ -16,7 +16,7 @@ import { testBadgeDetection } from "./scraper";
 import { generateChatResponse, type ChatMessage } from "./openai";
 
 import { authMiddleware, requireRole, generateToken, comparePassword, hashPassword, type AuthRequest } from "./auth";
-import { requireDealership } from "./tenant-middleware";
+import { requireDealership, superAdminOnly } from "./tenant-middleware";
 import { facebookService } from "./facebook-service";
 import crypto from "crypto";
 import { decodeVIN } from "./vin-decoder";
@@ -130,6 +130,163 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error during logout:", error);
       res.status(500).json({ error: "Logout failed" });
+    }
+  });
+  
+  // ===== SUPER ADMIN ROUTES (Super Admin Only) =====
+  
+  // Get all dealerships (super admin only)
+  app.get("/api/super-admin/dealerships", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const dealerships = await storage.getAllDealerships();
+      res.json(dealerships);
+    } catch (error) {
+      console.error("Error fetching dealerships:", error);
+      res.status(500).json({ error: "Failed to fetch dealerships" });
+    }
+  });
+  
+  // Create new dealership with full setup (super admin only)
+  app.post("/api/super-admin/dealerships", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const { name, slug, subdomain, masterAdminEmail, masterAdminName, masterAdminPassword } = req.body;
+      
+      // Validate required fields
+      if (!name || !slug || !subdomain || !masterAdminEmail || !masterAdminName || !masterAdminPassword) {
+        return res.status(400).json({ 
+          error: "Missing required fields: name, slug, subdomain, masterAdminEmail, masterAdminName, masterAdminPassword" 
+        });
+      }
+      
+      // Check if email already exists
+      const existingUser = await storage.getUserByEmail(masterAdminEmail);
+      if (existingUser) {
+        return res.status(400).json({ error: "Email already in use" });
+      }
+      
+      // Check if slug already exists
+      const existingDealership = await storage.getDealershipBySlug(slug);
+      if (existingDealership) {
+        return res.status(400).json({ error: "Slug already in use" });
+      }
+      
+      // Create dealership with full setup (transactional)
+      const result = await storage.createDealershipWithSetup({
+        name,
+        slug,
+        subdomain,
+        masterAdminEmail,
+        masterAdminName,
+        masterAdminPassword
+      });
+      
+      // Log audit action
+      const authReq = req as AuthRequest;
+      await storage.logAuditAction({
+        userId: authReq.user!.id,
+        action: "CREATE_DEALERSHIP",
+        resource: "dealership",
+        resourceId: String(result.dealership.id),
+        details: `Created dealership: ${name} with master admin: ${masterAdminEmail}`,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent']
+      });
+      
+      res.status(201).json(result);
+    } catch (error) {
+      console.error("Error creating dealership:", error);
+      res.status(500).json({ error: "Failed to create dealership" });
+    }
+  });
+  
+  // Get all global settings (super admin only)
+  app.get("/api/super-admin/global-settings", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const settings = await storage.getAllGlobalSettings();
+      res.json(settings);
+    } catch (error) {
+      console.error("Error fetching global settings:", error);
+      res.status(500).json({ error: "Failed to fetch global settings" });
+    }
+  });
+  
+  // Set or update a global setting (super admin only)
+  app.put("/api/super-admin/global-settings/:key", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const { key } = req.params;
+      const { value, description, isSecret } = req.body;
+      
+      if (!value) {
+        return res.status(400).json({ error: "Value is required" });
+      }
+      
+      const authReq = req as AuthRequest;
+      const setting = await storage.setGlobalSetting({
+        key,
+        value,
+        description,
+        isSecret: isSecret ?? true,
+        updatedBy: authReq.user!.id
+      });
+      
+      // Log audit action
+      await storage.logAuditAction({
+        userId: authReq.user!.id,
+        action: "UPDATE_GLOBAL_SETTING",
+        resource: "global_setting",
+        resourceId: key,
+        details: `Updated global setting: ${key}`,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent']
+      });
+      
+      res.json(setting);
+    } catch (error) {
+      console.error("Error setting global setting:", error);
+      res.status(500).json({ error: "Failed to set global setting" });
+    }
+  });
+  
+  // Delete a global setting (super admin only)
+  app.delete("/api/super-admin/global-settings/:key", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const { key } = req.params;
+      
+      const deleted = await storage.deleteGlobalSetting(key);
+      if (!deleted) {
+        return res.status(404).json({ error: "Setting not found" });
+      }
+      
+      // Log audit action
+      const authReq = req as AuthRequest;
+      await storage.logAuditAction({
+        userId: authReq.user!.id,
+        action: "DELETE_GLOBAL_SETTING",
+        resource: "global_setting",
+        resourceId: key,
+        details: `Deleted global setting: ${key}`,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent']
+      });
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting global setting:", error);
+      res.status(500).json({ error: "Failed to delete global setting" });
+    }
+  });
+  
+  // Get audit logs (super admin only)
+  app.get("/api/super-admin/audit-logs", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = parseInt(req.query.offset as string) || 0;
+      
+      const result = await storage.getAuditLogs(limit, offset);
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching audit logs:", error);
+      res.status(500).json({ error: "Failed to fetch audit logs" });
     }
   });
   

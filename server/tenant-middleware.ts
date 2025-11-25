@@ -77,10 +77,8 @@ export function tenantMiddleware(storage: any) {
         try {
           const decoded = jwt.verify(token, JWT_SECRET) as any;
           
-          // Super admin bypass: super_admin users don't need dealership context
+          // Super admin handling: skip dealership resolution but continue to authMiddleware
           if (decoded && decoded.role === 'super_admin') {
-            dealershipId = undefined; // Super admins operate without dealership context
-            source = 'none';
             req.user = {
               id: decoded.id,
               email: decoded.email,
@@ -88,9 +86,9 @@ export function tenantMiddleware(storage: any) {
               name: decoded.name,
               dealershipId: null
             };
-            // Allow super admin requests to proceed without dealership ID
             req.dealershipId = undefined;
             req.tenantSource = 'none';
+            // Continue to next middleware (authMiddleware will validate the token and user status)
             return next();
           }
           

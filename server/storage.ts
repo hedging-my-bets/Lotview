@@ -686,9 +686,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createUser(user: InsertUser): Promise<User> {
-    // Ensure dealershipId is set for non-master users
-    if (!user.dealershipId && user.role !== 'master') {
-      throw new Error('dealershipId is required when creating a non-master user');
+    // Ensure dealershipId is set for non-privileged users
+    // super_admin and master users can have null dealershipId
+    if (!user.dealershipId && user.role !== 'master' && user.role !== 'super_admin') {
+      throw new Error('dealershipId is required when creating a non-privileged user');
     }
     const result = await db.insert(users).values(user).returning();
     return result[0];

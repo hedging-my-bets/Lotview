@@ -52,7 +52,7 @@ export function verifyToken(token: string): any {
   }
 }
 
-export function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
+export async function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -66,8 +66,35 @@ export function authMiddleware(req: AuthRequest, res: Response, next: NextFuncti
     return res.status(401).json({ error: "Invalid or expired token" });
   }
 
-  req.user = decoded;
-  next();
+  // SECURITY: Verify user status in database to prevent stale token usage
+  // This prevents inactive users or role-changed users from accessing protected routes
+  try {
+    // Use dynamic import to avoid circular dependency (storage.ts imports hashPassword from this file)
+    const storageModule = await import("./storage");
+    const user = await storageModule.storage.getUserById(decoded.id);
+    
+    if (!user) {
+      return res.status(401).json({ error: "User not found" });
+    }
+    
+    if (!user.isActive) {
+      return res.status(403).json({ error: "Account is deactivated" });
+    }
+    
+    // Update req.user with fresh data from database (prevents stale role/permissions)
+    req.user = {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      name: user.name,
+      dealershipId: user.dealershipId
+    };
+    
+    next();
+  } catch (error) {
+    console.error("Error validating user:", error);
+    return res.status(500).json({ error: "Authentication failed" });
+  }
 }
 
 export function requireRole(...roles: string[]) {
