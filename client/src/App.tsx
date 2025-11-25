@@ -14,6 +14,7 @@ import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
 import Manager from "@/pages/Manager";
 import Sales from "@/pages/Sales";
+import SuperAdminDashboard from "@/pages/SuperAdminDashboard";
 
 function Router() {
   return (
@@ -25,6 +26,7 @@ function Router() {
       <Route path="/manager" component={Manager} />
       <Route path="/sales" component={Sales} />
       <Route path="/admin" component={Admin} />
+      <Route path="/super-admin" component={SuperAdminDashboard} />
       <Route path="/embed" component={EmbedWidget} />
       <Route component={NotFound} />
     </Switch>

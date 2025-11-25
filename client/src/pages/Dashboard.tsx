@@ -740,10 +740,17 @@ export default function Dashboard() {
               <h1 className="text-3xl font-bold text-slate-900 mb-2">Master Dashboard</h1>
               <p className="text-slate-600">Welcome back, {user?.name}</p>
             </div>
-            <Button onClick={handleLogout} variant="outline" data-testid="button-logout">
-              <LogOut className="w-4 h-4 mr-2" />
-              Logout
-            </Button>
+            <div className="flex gap-2">
+              {user?.role === 'super_admin' && (
+                <Button onClick={() => setLocation('/super-admin')} variant="default" data-testid="button-super-admin">
+                  Super Admin
+                </Button>
+              )}
+              <Button onClick={handleLogout} variant="outline" data-testid="button-logout">
+                <LogOut className="w-4 h-4 mr-2" />
+                Logout
+              </Button>
+            </div>
           </div>
 
           <Tabs defaultValue="users" className="w-full">
