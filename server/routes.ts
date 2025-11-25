@@ -738,7 +738,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Chat endpoint for AI responses
   app.post("/api/chat", async (req, res) => {
     try {
-      const { messages, vehicleContext } = req.body;
+      const { messages, vehicleContext, scenario, dealershipId } = req.body;
 
       if (!Array.isArray(messages) || messages.length === 0) {
         return res.status(400).json({ error: "Messages array is required" });
@@ -754,7 +754,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const response = await generateChatResponse(messages as ChatMessage[], vehicleContext);
+      // Use dealershipId from request, fallback to default (1 for backward compatibility)
+      const finalDealershipId = dealershipId || 1;
+      const finalScenario = scenario || 'general';
+
+      const response = await generateChatResponse(
+        messages as ChatMessage[], 
+        finalDealershipId,
+        finalScenario,
+        vehicleContext
+      );
       res.json({ message: response });
     } catch (error) {
       console.error("Error generating chat response:", error);
