@@ -43,9 +43,29 @@ Preferred communication style: Simple, everyday language.
 - **Security**: Dual-path resolution (JWT → subdomain → header → default), fail-closed for authenticated requests, `requireDealership` guards on 7 high-risk routes
 - **Testing**: Comprehensive regression suite validating tenant isolation, invalid token handling, dealershipId tampering prevention
 
+### Super Admin System (Multi-Tenant Management)
+- **Role**: `super_admin` - System-wide administrator with no dealership affiliation (`dealershipId=null`)
+- **Authentication**: JWT-based auth with enhanced security - auth middleware validates user status from database on every request to prevent stale tokens
+- **Capabilities**:
+  - Manage all dealerships (view, create, update)
+  - Configure global API keys via `global_settings` table
+  - Create new dealerships with full provisioning (dealership + master admin + financing rules + chat prompts)
+  - View system-wide audit logs for compliance and security tracking
+- **API Routes**: `/api/super-admin/*` endpoints protected with `superAdminOnly` middleware
+- **Security Features**:
+  - Auth middleware validates `isActive` status and refreshes role data from database
+  - Audit logging tracks all administrative actions with IP address and user agent
+  - Global settings support `isSecret` flag for sensitive configuration
+  - Transactional dealership provisioning ensures atomicity
+- **Seed Account**: `superadmin@olympicauto.com` (change password after first login)
+- **Database Tables**:
+  - `global_settings` - System-wide configuration storage
+  - `audit_logs` - Security and compliance event tracking
+
 ### Expansion Path (Multi-Tenant SaaS)
 - **Documented**: MULTI_TENANT_TODO.md outlines UI features (dealership selector), subdomain routing, background job improvements, deployment steps
 - **Architecture**: Pool Model with shared tables, Row-Level Security ready, tenant resolution infrastructure in place
+- **Super Admin Ready**: Full super admin system implemented for multi-dealership management
 
 ## External Dependencies
 
