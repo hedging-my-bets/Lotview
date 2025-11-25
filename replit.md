@@ -15,9 +15,11 @@ Preferred communication style: Simple, everyday language.
 
 ### Backend Architecture
 - **Server**: Express.js with TypeScript, separate dev/prod entry points, custom request logging middleware.
-- **API Design**: RESTful API (`/api`) for vehicle CRUD, authentication, user management, financing rules, Facebook posting, remarketing, and PBS DMS integration.
+- **API Design**: RESTful API (`/api`) for vehicle CRUD, authentication, user management, financing rules, Facebook posting, remarketing, and PBS DMS integration. Backward-compatible pagination (opt-in via `?page` query param).
+- **Multi-Tenancy**: Pool Model architecture with shared tables, `dealership_id` filtering at storage layer. Dual-path tenant resolution (JWT → subdomain → header → default=1) with fail-closed security. `requireDealership` guards on high-risk routes (vehicle writes, user management, video generation).
 - **Security**: JWT authentication with httpOnly cookies, Role-Based Access Control (RBAC), multi-tenant data isolation via `dealership_id` and `userId` foreign keys, Zod schema validation, PATCH payload sanitization, defense-in-depth security.
-- **Data Access**: Storage abstraction with `IStorage` interface, Drizzle ORM for type-safe queries, PostgreSQL (Neon serverless).
+- **Data Access**: Storage abstraction with `IStorage` interface, Drizzle ORM for type-safe queries, PostgreSQL (Neon serverless). All queries filtered by `dealership_id`.
+- **Pagination**: Opt-in pagination for vehicles, conversations, market listings via `?page` query param. Returns array by default (backward compatible), returns `{data, pagination}` when paginated. Analytics routes explicitly fetch full datasets (limit=10000).
 - **Scheduled Jobs**: Cron-based inventory synchronization (daily at 2:00 AM), manual sync capability, web scraping with Cheerio.
 
 ### Database Schema
@@ -33,6 +35,17 @@ Preferred communication style: Simple, everyday language.
 - **Development**: Vite middleware for HMR, Replit-specific plugins.
 - **Production**: Static file serving from `/dist/public`, server bundled with esbuild, environment-specific configuration.
 - **Code Organization**: Monorepo with shared types in `/shared`, path aliases, strict TypeScript.
+
+## Multi-Tenant Architecture
+
+### Current State (Production-Ready for Single Dealership)
+- **Hardcoded**: Default `dealershipId=1` for Olympic Hyundai Vancouver in tenant middleware
+- **Security**: Dual-path resolution (JWT → subdomain → header → default), fail-closed for authenticated requests, `requireDealership` guards on 7 high-risk routes
+- **Testing**: Comprehensive regression suite validating tenant isolation, invalid token handling, dealershipId tampering prevention
+
+### Expansion Path (Multi-Tenant SaaS)
+- **Documented**: MULTI_TENANT_TODO.md outlines UI features (dealership selector), subdomain routing, background job improvements, deployment steps
+- **Architecture**: Pool Model with shared tables, Row-Level Security ready, tenant resolution infrastructure in place
 
 ## External Dependencies
 
