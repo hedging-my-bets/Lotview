@@ -15,11 +15,15 @@ import jwt from 'jsonwebtoken';
 // JWT secret (same as auth.ts)
 const JWT_SECRET = process.env.JWT_SECRET || "olympic-auto-jwt-dev-secret-DO-NOT-USE-IN-PRODUCTION";
 
+// Tenant resolution sources for tracking and debugging
+type TenantResolutionSource = 'jwt' | 'subdomain' | 'header' | 'default' | 'none';
+
 // Extend Express Request type to include dealership context and user
 declare global {
   namespace Express {
     interface Request {
       dealershipId?: number;
+      tenantSource?: TenantResolutionSource;
       dealership?: {
         id: number;
         name: string;
@@ -63,9 +67,9 @@ export function tenantMiddleware(storage: any) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       let dealershipId: number | undefined;
+      let source: TenantResolutionSource = 'none';
       
       // Strategy 1: Extract dealership from JWT token (if present)
-      // This allows us to get user's dealership before authMiddleware runs
       const authHeader = req.headers.authorization;
       let tokenInvalid = false;
       if (authHeader && authHeader.startsWith("Bearer ")) {
@@ -73,11 +77,10 @@ export function tenantMiddleware(storage: any) {
         try {
           const decoded = jwt.verify(token, JWT_SECRET) as any;
           if (decoded && decoded.dealershipId) {
-            // All users (including master) get dealershipId from JWT for single-dealership mode
-            // For multi-tenant expansion, master users may override via query param or header
             dealershipId = decoded.dealershipId;
+            source = 'jwt';
             
-            // Also set req.user for convenience (will be overwritten by authMiddleware later)
+            // Set req.user for convenience (will be overwritten by authMiddleware later)
             req.user = {
               id: decoded.id,
               email: decoded.email,
@@ -86,9 +89,10 @@ export function tenantMiddleware(storage: any) {
               dealershipId: decoded.dealershipId
             };
           } else if (decoded && !decoded.dealershipId) {
-            // Token is valid but missing dealershipId (legacy token or corrupted data)
+            // Valid token but missing dealershipId (legacy token)
             // For single-dealership mode, default to dealershipId=1
             dealershipId = 1;
+            source = 'default';
             req.user = {
               id: decoded.id,
               email: decoded.email,
@@ -109,11 +113,25 @@ export function tenantMiddleware(storage: any) {
         const subdomain = extractDealershipFromSubdomain(req.hostname);
         
         if (subdomain) {
-          // Look up dealership by subdomain
-          const dealership = await storage.getDealershipBySubdomain(subdomain);
-          if (dealership) {
-            dealershipId = dealership.id;
-            req.dealership = dealership;
+          try {
+            // Look up dealership by subdomain
+            const dealership = await storage.getDealershipBySubdomain(subdomain);
+            if (dealership) {
+              dealershipId = dealership.id;
+              source = 'subdomain';
+              req.dealership = dealership;
+            } else if (authHeader) {
+              // Authenticated request with invalid subdomain - fail closed
+              return res.status(404).json({ error: `Dealership not found for subdomain: ${subdomain}` });
+            }
+          } catch (error) {
+            // Subdomain lookup failed
+            if (authHeader) {
+              // Authenticated request with subdomain lookup error - fail closed
+              console.error('Subdomain lookup error:', error);
+              return res.status(500).json({ error: 'Failed to resolve dealership from subdomain' });
+            }
+            // Public request - will fall through to default
           }
         }
       }
@@ -123,40 +141,57 @@ export function tenantMiddleware(storage: any) {
         const headerDealershipId = parseInt(req.headers['x-dealership-id'] as string);
         if (!isNaN(headerDealershipId)) {
           dealershipId = headerDealershipId;
+          source = 'header';
         }
       }
       
-      // Strategy 4: Handle missing dealership context
-      // CRITICAL: For single-dealership mode, ALWAYS set dealershipId to prevent crashes
-      // Public routes need dealershipId even if Authorization header is invalid
+      // Strategy 4: Handle missing dealership context - DUAL PATH STRATEGY
+      // - If NO auth header: default to dealershipId=1 (public access for single-dealership mode)
+      // - If auth header present but cannot resolve dealership: fail closed with 401/400
       if (!dealershipId) {
-        // Default to dealershipId=1 for single-dealership mode
-        // This ensures public routes always work, even with invalid/expired tokens
-        // Protected routes will still be rejected by authMiddleware if token is invalid
-        dealershipId = 1;
+        if (!authHeader) {
+          // Public request with no tenant hints - default to single-dealership mode
+          dealershipId = 1;
+          source = 'default';
+        } else if (tokenInvalid) {
+          // Invalid/expired token - fail closed with 401
+          return res.status(401).json({ error: 'Invalid or expired token' });
+        } else {
+          // Auth header present but dealershipId couldn't be resolved - fail closed
+          return res.status(400).json({ error: 'Could not determine dealership context from authentication' });
+        }
       }
       
-      // ALWAYS set dealership ID in request context
-      req.dealershipId = dealershipId;
-      
-      // If we haven't loaded the dealership details yet, load them
-      if (!req.dealership && dealershipId) {
-        const dealership = await storage.getDealership(dealershipId);
-        if (dealership) {
-          req.dealership = dealership;
+      // Set dealership ID and source in request context
+      if (dealershipId) {
+        req.dealershipId = dealershipId;
+        req.tenantSource = source;
+        
+        // Load dealership details if not already loaded
+        if (!req.dealership) {
+          try {
+            const dealership = await storage.getDealership(dealershipId);
+            if (dealership) {
+              req.dealership = dealership;
+            }
+          } catch (error) {
+            console.error('Failed to load dealership details:', error);
+            // Don't fail the request - continue without dealership details
+          }
         }
       }
       
       next();
     } catch (error) {
       console.error('Tenant middleware error:', error);
-      // CRITICAL: For single-dealership mode, ALWAYS set dealershipId even on errors
-      // This prevents downstream routes from crashing with undefined dealershipId
-      // Protected routes will still validate authentication independently via authMiddleware
-      if (!req.dealershipId) {
+      // For single-dealership mode, fall back to dealershipId=1 ONLY for public requests
+      if (!req.dealershipId && !req.headers.authorization) {
         req.dealershipId = 1;
+        req.tenantSource = 'default';
+        return next();
       }
-      next();
+      // Authenticated requests with errors fail closed
+      return res.status(500).json({ error: 'Tenant resolution failed' });
     }
   };
 }
