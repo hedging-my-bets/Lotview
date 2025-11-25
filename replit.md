@@ -25,10 +25,12 @@ Preferred communication style: Simple, everyday language.
 ### Database Schema
 - **Core Tables**: `vehicles` (inventory), `vehicle_views` (remarketing tracking).
 - **User Management**: `users` (system users with roles).
-- **Financing Rules**: `credit_score_tiers` (interest rates), `model_year_terms` (financing term eligibility).
+- **Financing Rules**: `credit_score_tiers` (interest rates in basis points: 699 = 6.99%), `model_year_terms` (financing term eligibility).
 - **Facebook Posting**: `facebook_accounts`, `ad_templates`, `posting_queue`, `posting_schedule`.
 - **Remarketing**: `remarketing_vehicles` (selected vehicles for campaigns).
 - **PBS DMS Integration**: `pbs_config` (API configuration), `pbs_webhook_events` (event log).
+- **AI Chat**: `chat_prompts` (scenario-based system prompts and greetings), `chat_conversations` (saved conversations).
+- **Dealership API Keys**: `dealership_api_keys` (per-dealership API keys including OpenAI for custom AI training).
 - **Schema Management**: Drizzle Kit for migrations, Zod schemas from Drizzle for runtime validation, type inference for full type safety.
 
 ### Development Workflow
@@ -81,3 +83,17 @@ Preferred communication style: Simple, everyday language.
         - **Fallback**: Puppeteer Scraper (direct AutoTrader.ca scraping).
         - **Geocoding**: Geocoder.ca API for Canadian postal codes.
 - **Cron Scheduling**: Node-cron for scheduled tasks.
+- **AI/LLM**: OpenAI GPT-5 via Replit AI Integrations (fallback) or per-dealership OpenAI API keys for custom training.
+
+## Recent Changes (November 25, 2024)
+
+### AI Chat Prompt Management System
+- **Database Prompts Control AI**: Chat prompts stored in `chat_prompts` table now directly control OpenAI AI behavior
+- **Scenario-Based Prompts**: 5 scenarios supported (test-drive, get-approved, value-trade, reserve, general)
+- **Per-Dealership Configuration**: Each dealership can customize prompts and use their own OpenAI API key
+- **Master Dashboard UI**: 
+  - Chat Prompts tab for managing all 5 scenarios with system prompts and greetings
+  - API Keys tab for managing per-dealership OpenAI API key (masked for security)
+- **Full Integration**: ChatBot component passes scenario/dealershipId across all code paths (manual input, CTA auto-send, ChatContext)
+- **Security**: API keys masked in responses (****1234 format), strict multi-tenant filtering on all prompt/key operations
+- **Credit Tier Fix**: Interest rate validation updated to support basis points (max 10000 instead of 100)

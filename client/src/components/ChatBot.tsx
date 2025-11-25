@@ -84,8 +84,16 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
       setMessages(conversationWithUser);
       setIsLoading(true);
 
+      // Map action to scenario
+      const scenario = action === 'test-drive' ? 'test-drive' 
+        : action === 'reserve' ? 'reserve'
+        : action === 'get-approved' ? 'get-approved'
+        : action === 'value-trade' ? 'value-trade'
+        : 'general';
+      const dealershipId = 1;
+
       // Send full conversation including assistant greeting for context
-      sendChatMessage(conversationWithUser, vehicleName || "").then(response => {
+      sendChatMessage(conversationWithUser, vehicleName || "", scenario, dealershipId).then(response => {
         setMessages(prev => {
           const updated = [...prev, { role: "assistant" as const, content: response }];
           trackChatMessage(vehicle, updated.length);
@@ -143,12 +151,20 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
         
         const userMessage: ChatMessage = { role: "user", content: message };
         
+        // Map action to scenario
+        const scenario = action === 'test-drive' ? 'test-drive' 
+          : action === 'reserve' ? 'reserve'
+          : action === 'get-approved' ? 'get-approved'
+          : action === 'value-trade' ? 'value-trade'
+          : 'general';
+        const dealershipId = 1;
+        
         // Use functional setState to ensure we have the latest messages
         setMessages(currentMessages => {
           const fullConversation = [...currentMessages, userMessage];
           
           // Send full conversation to backend from within setState
-          sendChatMessage(fullConversation, vehicleName).then(response => {
+          sendChatMessage(fullConversation, vehicleName, scenario, dealershipId).then(response => {
             setMessages(prevMessages => {
               const updated = [...prevMessages, { role: "assistant" as const, content: response }];
               trackChatMessage(vehicle, updated.length);
