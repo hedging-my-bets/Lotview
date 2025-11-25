@@ -16,6 +16,7 @@ import { testBadgeDetection } from "./scraper";
 import { generateChatResponse, type ChatMessage } from "./openai";
 
 import { authMiddleware, requireRole, generateToken, comparePassword, hashPassword, type AuthRequest } from "./auth";
+import { requireDealership } from "./tenant-middleware";
 import { facebookService } from "./facebook-service";
 import crypto from "crypto";
 import { decodeVIN } from "./vin-decoder";
@@ -135,7 +136,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===== USER MANAGEMENT ROUTES (Master Only) =====
   
   // Get all users (master only)
-  app.get("/api/users", authMiddleware, requireRole("master"), async (req, res) => {
+  app.get("/api/users", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
     try {
       // TODO: Multi-tenant - Master users should see users from specific dealership or all dealerships
       // For now, show users from dealershipId=1
@@ -151,7 +152,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Create new user (master only)
-  app.post("/api/users", authMiddleware, requireRole("master"), async (req, res) => {
+  app.post("/api/users", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
     try {
       const authReq = req as AuthRequest;
       const { email, password, name, role } = req.body;
@@ -199,7 +200,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Update user (master only)
-  app.patch("/api/users/:id", authMiddleware, requireRole("master"), async (req, res) => {
+  app.patch("/api/users/:id", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const { email, password, name, role, isActive } = req.body;
@@ -299,7 +300,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create vehicle (master only)
-  app.post("/api/vehicles", authMiddleware, requireRole("master"), async (req, res) => {
+  app.post("/api/vehicles", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
     try {
       const parsed = insertVehicleSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -316,7 +317,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update vehicle (master only)
-  app.patch("/api/vehicles/:id", authMiddleware, requireRole("master"), async (req, res) => {
+  app.patch("/api/vehicles/:id", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const parsed = insertVehicleSchema.partial().safeParse(req.body);
@@ -344,7 +345,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete vehicle (master only)
-  app.delete("/api/vehicles/:id", authMiddleware, requireRole("master"), async (req, res) => {
+  app.delete("/api/vehicles/:id", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       // TODO: Multi-tenant - use req.dealershipId from auth when middleware is applied
@@ -358,7 +359,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Generate video for vehicle using Gemini Veo (master only)
-  app.post("/api/vehicles/:id/generate-video", authMiddleware, requireRole("master"), async (req, res) => {
+  app.post("/api/vehicles/:id/generate-video", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       // TODO: Multi-tenant - use req.dealershipId from auth when middleware is applied
