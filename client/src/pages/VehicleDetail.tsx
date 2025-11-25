@@ -21,6 +21,7 @@ export default function VehicleDetail() {
   const [sessionId] = useState(() => `session-${Date.now()}-${Math.random()}`);
   const [selectedTerm, setSelectedTerm] = useState<FinanceTerm>(84);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [isLiked, setIsLiked] = useState(false);
 
   const vehicleId = Number(params?.id);
   
@@ -45,9 +46,71 @@ export default function VehicleDetail() {
         trackGTMVehicleView(car); // GTM tracking
         console.log(`Tracked view for vehicle ${car.id} for remarketing.`);
       }, 2000);
+      
+      // Check if vehicle is liked
+      const likedVehicles = JSON.parse(localStorage.getItem('likedVehicles') || '[]');
+      setIsLiked(likedVehicles.includes(car.id));
+      
       return () => clearTimeout(timer);
     }
   }, [car]);
+
+  const handleShare = async () => {
+    if (!car) return;
+    
+    const shareData = {
+      title: `${car.year} ${car.make} ${car.model}`,
+      text: `Check out this ${car.year} ${car.make} ${car.model} for $${car.price.toLocaleString()}`,
+      url: window.location.href,
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+        toast({
+          title: "Shared successfully!",
+          description: "Thanks for sharing this vehicle.",
+        });
+      } else {
+        // Fallback: copy link to clipboard
+        await navigator.clipboard.writeText(window.location.href);
+        toast({
+          title: "Link copied!",
+          description: "Share link has been copied to your clipboard.",
+        });
+      }
+    } catch (error) {
+      if ((error as Error).name !== 'AbortError') {
+        console.error('Error sharing:', error);
+      }
+    }
+  };
+
+  const handleLike = () => {
+    if (!car) return;
+    
+    const likedVehicles = JSON.parse(localStorage.getItem('likedVehicles') || '[]');
+    
+    if (isLiked) {
+      // Remove from liked
+      const updated = likedVehicles.filter((id: number) => id !== car.id);
+      localStorage.setItem('likedVehicles', JSON.stringify(updated));
+      setIsLiked(false);
+      toast({
+        title: "Removed from favorites",
+        description: "This vehicle has been removed from your favorites.",
+      });
+    } else {
+      // Add to liked
+      likedVehicles.push(car.id);
+      localStorage.setItem('likedVehicles', JSON.stringify(likedVehicles));
+      setIsLiked(true);
+      toast({
+        title: "Added to favorites!",
+        description: "This vehicle has been saved to your favorites.",
+      });
+    }
+  };
 
   const handleAction = (actionType: string) => {
     if (!car) return;
@@ -158,10 +221,20 @@ export default function VehicleDetail() {
               )}
 
               <div className="absolute top-4 right-4 flex gap-2">
-                <button className="p-2 bg-white/90 backdrop-blur rounded-full text-slate-600 hover:text-red-500 transition shadow-sm">
-                  <Heart className="w-5 h-5" />
+                <button 
+                  onClick={handleLike}
+                  className={`p-2 bg-white/90 backdrop-blur rounded-full transition shadow-sm ${
+                    isLiked ? 'text-red-500' : 'text-slate-600 hover:text-red-500'
+                  }`}
+                  data-testid="button-like-vehicle"
+                >
+                  <Heart className={`w-5 h-5 ${isLiked ? 'fill-current' : ''}`} />
                 </button>
-                <button className="p-2 bg-white/90 backdrop-blur rounded-full text-slate-600 hover:text-primary transition shadow-sm">
+                <button 
+                  onClick={handleShare}
+                  className="p-2 bg-white/90 backdrop-blur rounded-full text-slate-600 hover:text-primary transition shadow-sm"
+                  data-testid="button-share-vehicle"
+                >
                   <Share2 className="w-5 h-5" />
                 </button>
               </div>
