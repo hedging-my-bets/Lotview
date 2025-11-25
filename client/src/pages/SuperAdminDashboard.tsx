@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Key, FileText, Plus, Eye, EyeOff, Trash2 } from "lucide-react";
+import { Building2, Key, FileText, Plus, Eye, EyeOff, Trash2, LogOut } from "lucide-react";
 import { format } from "date-fns";
 
 interface Dealership {
@@ -63,6 +63,25 @@ export default function SuperAdminDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
+
+  const handleLogout = async () => {
+    const token = localStorage.getItem('auth_token');
+    
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user');
+    setLocation('/login');
+  };
 
   // Check authentication on mount
   useEffect(() => {
@@ -194,9 +213,15 @@ export default function SuperAdminDashboard() {
 
   return (
     <div className="container mx-auto p-6" data-testid="super-admin-dashboard">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">Super Admin Dashboard</h1>
-        <p className="text-muted-foreground">System-wide administration and configuration</p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Super Admin Dashboard</h1>
+          <p className="text-muted-foreground">System-wide administration and configuration</p>
+        </div>
+        <Button onClick={handleLogout} variant="outline" data-testid="button-logout">
+          <LogOut className="w-4 h-4 mr-2" />
+          Logout
+        </Button>
       </div>
 
       <Tabs defaultValue="dealerships" className="space-y-4">
