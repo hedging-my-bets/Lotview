@@ -987,13 +987,93 @@ Format your response in clear sections with actionable recommendations.`;
 
       const response = await generateChatResponse(
         [{ role: 'user', content: analysisPrompt }],
-        ''
+        dealershipId,
+        'general'
       );
 
       res.json({ insights: response, conversationCount: conversations.length });
     } catch (error) {
       console.error("Error generating insights:", error);
       res.status(500).json({ error: "Failed to generate insights" });
+    }
+  });
+
+  // ===== DEALERSHIP API KEYS ROUTES =====
+
+  // Get dealership API keys - ADMIN ONLY
+  app.get("/api/dealership-api-keys", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const apiKeys = await storage.getDealershipApiKeys(dealershipId);
+      
+      // Mask all API keys for security (show only last 4 characters)
+      if (apiKeys) {
+        const masked = {
+          ...apiKeys,
+          openaiApiKey: apiKeys.openaiApiKey ? `****${apiKeys.openaiApiKey.slice(-4)}` : null,
+          marketcheckKey: apiKeys.marketcheckKey ? `****${apiKeys.marketcheckKey.slice(-4)}` : null,
+          apifyToken: apiKeys.apifyToken ? `****${apiKeys.apifyToken.slice(-4)}` : null,
+          geminiApiKey: apiKeys.geminiApiKey ? `****${apiKeys.geminiApiKey.slice(-4)}` : null,
+          ghlApiKey: apiKeys.ghlApiKey ? `****${apiKeys.ghlApiKey.slice(-4)}` : null,
+          facebookAppSecret: apiKeys.facebookAppSecret ? `****${apiKeys.facebookAppSecret.slice(-4)}` : null,
+        };
+        res.json(masked);
+      } else {
+        res.json(null);
+      }
+    } catch (error) {
+      console.error("Error fetching API keys:", error);
+      res.status(500).json({ error: "Failed to fetch API keys" });
+    }
+  });
+
+  // Update dealership API keys - ADMIN ONLY
+  app.patch("/api/dealership-api-keys", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const updates = req.body;
+
+      // Validate that only allowed fields are being updated
+      const allowedFields = ['openaiApiKey', 'marketcheckKey', 'apifyToken', 'apifyActorId', 'geminiApiKey', 'ghlApiKey', 'ghlLocationId', 'facebookAppId', 'facebookAppSecret'];
+      const invalidFields = Object.keys(updates).filter(key => !allowedFields.includes(key));
+      
+      if (invalidFields.length > 0) {
+        return res.status(400).json({ error: `Invalid fields: ${invalidFields.join(', ')}` });
+      }
+
+      // Check if API keys exist for this dealership
+      const existing = await storage.getDealershipApiKeys(dealershipId);
+      
+      let apiKeys;
+      if (existing) {
+        // Update existing
+        apiKeys = await storage.updateDealershipApiKeys(dealershipId, updates);
+      } else {
+        // Create new
+        apiKeys = await storage.saveDealershipApiKeys({
+          dealershipId,
+          ...updates
+        });
+      }
+
+      // Mask the response
+      if (apiKeys) {
+        const masked = {
+          ...apiKeys,
+          openaiApiKey: apiKeys.openaiApiKey ? `****${apiKeys.openaiApiKey.slice(-4)}` : null,
+          marketcheckKey: apiKeys.marketcheckKey ? `****${apiKeys.marketcheckKey.slice(-4)}` : null,
+          apifyToken: apiKeys.apifyToken ? `****${apiKeys.apifyToken.slice(-4)}` : null,
+          geminiApiKey: apiKeys.geminiApiKey ? `****${apiKeys.geminiApiKey.slice(-4)}` : null,
+          ghlApiKey: apiKeys.ghlApiKey ? `****${apiKeys.ghlApiKey.slice(-4)}` : null,
+          facebookAppSecret: apiKeys.facebookAppSecret ? `****${apiKeys.facebookAppSecret.slice(-4)}` : null,
+        };
+        res.json(masked);
+      } else {
+        res.status(500).json({ error: "Failed to save API keys" });
+      }
+    } catch (error) {
+      console.error("Error updating API keys:", error);
+      res.status(500).json({ error: "Failed to update API keys" });
     }
   });
 
