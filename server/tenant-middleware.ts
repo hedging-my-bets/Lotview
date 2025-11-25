@@ -2,7 +2,7 @@
  * Multi-Tenant Middleware
  * 
  * Extracts dealership context from:
- * 1. Authenticated user's dealershipId
+ * 1. JWT token (if present in Authorization header)
  * 2. Subdomain (e.g., olympic.yourdomain.com)
  * 3. Custom header (X-Dealership-Id) for API integrations
  * 
@@ -10,8 +10,12 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
 
-// Extend Express Request type to include dealership context
+// JWT secret (same as auth.ts)
+const JWT_SECRET = process.env.JWT_SECRET || "olympic-auto-jwt-dev-secret-DO-NOT-USE-IN-PRODUCTION";
+
+// Extend Express Request type to include dealership context and user
 declare global {
   namespace Express {
     interface Request {
@@ -21,6 +25,13 @@ declare global {
         name: string;
         slug: string;
         subdomain?: string;
+      };
+      user?: {
+        id: number;
+        email: string;
+        role: string;
+        name: string;
+        dealershipId?: number | null;
       };
     }
   }
@@ -53,18 +64,44 @@ export function tenantMiddleware(storage: any) {
     try {
       let dealershipId: number | undefined;
       
-      // Strategy 1: Get dealership from authenticated user
-      if (req.user) {
-        const user = req.user as any;
-        
-        // Master users can access all dealerships, so they don't have a fixed dealershipId
-        // For master users, we'll use other methods to determine context
-        if (user.role !== 'master' && user.dealershipId) {
-          dealershipId = user.dealershipId;
+      // Strategy 1: Extract dealership from JWT token (if present)
+      // This allows us to get user's dealership before authMiddleware runs
+      const authHeader = req.headers.authorization;
+      let tokenInvalid = false;
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        const token = authHeader.substring(7);
+        try {
+          const decoded = jwt.verify(token, JWT_SECRET) as any;
+          if (decoded && decoded.dealershipId) {
+            // All users (including master) get dealershipId from JWT for single-dealership mode
+            // For multi-tenant expansion, master users may override via query param or header
+            dealershipId = decoded.dealershipId;
+            
+            // Also set req.user for convenience (will be overwritten by authMiddleware later)
+            req.user = {
+              id: decoded.id,
+              email: decoded.email,
+              role: decoded.role,
+              name: decoded.name,
+              dealershipId: decoded.dealershipId
+            };
+          } else if (decoded && !decoded.dealershipId) {
+            // Token is valid but missing dealershipId (legacy token or corrupted data)
+            // For single-dealership mode, default to dealershipId=1
+            dealershipId = 1;
+            req.user = {
+              id: decoded.id,
+              email: decoded.email,
+              role: decoded.role,
+              name: decoded.name,
+              dealershipId: 1
+            };
+          }
+        } catch (error) {
+          // Invalid/expired token - mark for later handling
+          // authMiddleware will return proper 401 error
+          tokenInvalid = true;
         }
-        
-        // If master user and no other context, we'll handle this in individual routes
-        // Master users will need to specify dealership via query param or access all
       }
       
       // Strategy 2: Extract from subdomain (if not already set)
@@ -89,13 +126,17 @@ export function tenantMiddleware(storage: any) {
         }
       }
       
-      // Strategy 4: Default to Olympic Auto Group (ID: 1) if no context found
-      // This provides backward compatibility for existing deployments
+      // Strategy 4: Handle missing dealership context
+      // CRITICAL: For single-dealership mode, ALWAYS set dealershipId to prevent crashes
+      // Public routes need dealershipId even if Authorization header is invalid
       if (!dealershipId) {
-        dealershipId = 1; // Default to first dealership
+        // Default to dealershipId=1 for single-dealership mode
+        // This ensures public routes always work, even with invalid/expired tokens
+        // Protected routes will still be rejected by authMiddleware if token is invalid
+        dealershipId = 1;
       }
       
-      // Set dealership ID in request context
+      // ALWAYS set dealership ID in request context
       req.dealershipId = dealershipId;
       
       // If we haven't loaded the dealership details yet, load them
@@ -109,8 +150,12 @@ export function tenantMiddleware(storage: any) {
       next();
     } catch (error) {
       console.error('Tenant middleware error:', error);
-      // Continue anyway with default dealership to avoid breaking the app
-      req.dealershipId = 1;
+      // CRITICAL: For single-dealership mode, ALWAYS set dealershipId even on errors
+      // This prevents downstream routes from crashing with undefined dealershipId
+      // Protected routes will still validate authentication independently via authMiddleware
+      if (!req.dealershipId) {
+        req.dealershipId = 1;
+      }
       next();
     }
   };

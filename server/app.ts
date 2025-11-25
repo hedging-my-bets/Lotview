@@ -2,6 +2,8 @@ import { type Server } from "node:http";
 
 import express, { type Express, type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
+import { tenantMiddleware } from "./tenant-middleware";
+import { storage } from "./storage";
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -27,6 +29,10 @@ app.use(express.json({
   }
 }));
 app.use(express.urlencoded({ extended: false }));
+
+// Tenant context middleware - extract dealership from user/subdomain/header
+// MUST run before routes to ensure req.dealershipId is available
+app.use(tenantMiddleware(storage));
 
 app.use((req, res, next) => {
   const start = Date.now();

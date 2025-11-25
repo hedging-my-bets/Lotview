@@ -125,7 +125,7 @@ export interface IStorage {
   
   // GHL Webhook config
   saveGHLWebhookConfig(config: InsertGhlWebhookConfig): Promise<GhlWebhookConfig>;
-  getActiveGHLWebhookConfig(): Promise<GhlWebhookConfig | undefined>;
+  getActiveGHLWebhookConfig(dealershipId: number): Promise<GhlWebhookConfig | undefined>;
   
   // AI prompt templates
   saveAIPromptTemplate(template: InsertAiPromptTemplate): Promise<AiPromptTemplate>;
@@ -233,18 +233,28 @@ export interface IStorage {
 export class DatabaseStorage implements IStorage {
   // ====== DEALERSHIP MANAGEMENT ======
   async getDealership(id: number): Promise<Dealership | undefined> {
-    const result = await db.select().from(dealerships).where(eq(dealerships.id, id)).limit(1);
-    return result[0];
+    // Database columns: id, name, slug, subdomain, is_active, created_at, updated_at
+    const result = await db.execute(
+      sql`SELECT id, name, slug, subdomain, is_active, created_at, updated_at 
+          FROM dealerships WHERE id = ${id} LIMIT 1`
+    );
+    return result.rows[0] as any;
   }
 
   async getDealershipBySlug(slug: string): Promise<Dealership | undefined> {
-    const result = await db.select().from(dealerships).where(eq(dealerships.slug, slug)).limit(1);
-    return result[0];
+    const result = await db.execute(
+      sql`SELECT id, name, slug, subdomain, is_active, created_at, updated_at 
+          FROM dealerships WHERE slug = ${slug} LIMIT 1`
+    );
+    return result.rows[0] as any;
   }
 
   async getDealershipBySubdomain(subdomain: string): Promise<Dealership | undefined> {
-    const result = await db.select().from(dealerships).where(eq(dealerships.subdomain, subdomain)).limit(1);
-    return result[0];
+    const result = await db.execute(
+      sql`SELECT id, name, slug, subdomain, is_active, created_at, updated_at 
+          FROM dealerships WHERE subdomain = ${subdomain} LIMIT 1`
+    );
+    return result.rows[0] as any;
   }
 
   async getAllDealerships(): Promise<Dealership[]> {
@@ -476,8 +486,13 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  async getActiveGHLWebhookConfig(): Promise<GhlWebhookConfig | undefined> {
-    const result = await db.select().from(ghlWebhookConfig).where(eq(ghlWebhookConfig.isActive, true)).limit(1);
+  async getActiveGHLWebhookConfig(dealershipId: number): Promise<GhlWebhookConfig | undefined> {
+    const result = await db.select().from(ghlWebhookConfig)
+      .where(and(
+        eq(ghlWebhookConfig.dealershipId, dealershipId),
+        eq(ghlWebhookConfig.isActive, true)
+      ))
+      .limit(1);
     return result[0];
   }
 

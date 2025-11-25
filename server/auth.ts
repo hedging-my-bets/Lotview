@@ -18,6 +18,7 @@ export interface AuthRequest extends Request {
     email: string;
     role: string;
     name: string;
+    dealershipId?: number | null;
   };
 }
 
@@ -36,6 +37,7 @@ export function generateToken(user: User): string {
       email: user.email,
       role: user.role,
       name: user.name,
+      dealershipId: user.dealershipId,
     },
     SECRET,
     { expiresIn: JWT_EXPIRES_IN }
