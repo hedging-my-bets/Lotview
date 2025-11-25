@@ -348,6 +348,7 @@ export type ModelYearTerm = typeof modelYearTerms.$inferSelect;
 // Facebook accounts for salespeople (up to 5 per user)
 export const facebookAccounts = pgTable("facebook_accounts", {
   id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
   userId: integer("user_id").notNull().references(() => users.id), // Salesperson who owns this account
   accountName: text("account_name").notNull(), // Display name for the account
   facebookUserId: text("facebook_user_id"), // Facebook user ID (from OAuth)
@@ -370,6 +371,7 @@ export type FacebookAccount = typeof facebookAccounts.$inferSelect;
 // Ad templates for Facebook Marketplace posts
 export const adTemplates = pgTable("ad_templates", {
   id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
   userId: integer("user_id").notNull().references(() => users.id), // Salesperson who created this
   templateName: text("template_name").notNull(), // e.g., "Classic", "Premium", "Budget"
   titleTemplate: text("title_template").notNull(), // e.g., "{year} {make} {model} - ${price}"
@@ -391,6 +393,7 @@ export type AdTemplate = typeof adTemplates.$inferSelect;
 // Posting queue for Facebook Marketplace
 export const postingQueue = pgTable("posting_queue", {
   id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
   userId: integer("user_id").notNull().references(() => users.id), // Salesperson
   facebookAccountId: integer("facebook_account_id").references(() => facebookAccounts.id), // Which account to use
   vehicleId: integer("vehicle_id").notNull().references(() => vehicles.id),
@@ -417,6 +420,7 @@ export type PostingQueue = typeof postingQueue.$inferSelect;
 // Posting schedule configuration (per salesperson)
 export const postingSchedule = pgTable("posting_schedule", {
   id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
   userId: integer("user_id").notNull().references(() => users.id).unique(), // One schedule per salesperson
   startTime: text("start_time").notNull().default('09:00'), // HH:MM format
   intervalMinutes: integer("interval_minutes").notNull().default(30), // Time between posts

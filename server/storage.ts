@@ -154,47 +154,47 @@ export interface IStorage {
   getAllUsers(dealershipId: number): Promise<User[]>; // REQUIRED: only get users from specific dealership
   getUsersByRole(role: string): Promise<User[]>;
   
-  // Financing rules - Credit score tiers
-  getCreditScoreTiers(): Promise<CreditScoreTier[]>;
+  // Financing rules - Credit score tiers (Multi-Tenant)
+  getCreditScoreTiers(dealershipId: number): Promise<CreditScoreTier[]>;
   createCreditScoreTier(tier: InsertCreditScoreTier): Promise<CreditScoreTier>;
-  updateCreditScoreTier(id: number, tier: Partial<InsertCreditScoreTier>): Promise<CreditScoreTier | undefined>;
-  deleteCreditScoreTier(id: number): Promise<boolean>;
-  getInterestRateForCreditScore(score: number): Promise<number | null>;
+  updateCreditScoreTier(id: number, dealershipId: number, tier: Partial<InsertCreditScoreTier>): Promise<CreditScoreTier | undefined>;
+  deleteCreditScoreTier(id: number, dealershipId: number): Promise<boolean>;
+  getInterestRateForCreditScore(dealershipId: number, score: number): Promise<number | null>;
   
-  // Financing rules - Model year terms
-  getModelYearTerms(): Promise<ModelYearTerm[]>;
+  // Financing rules - Model year terms (Multi-Tenant)
+  getModelYearTerms(dealershipId: number): Promise<ModelYearTerm[]>;
   createModelYearTerm(term: InsertModelYearTerm): Promise<ModelYearTerm>;
-  updateModelYearTerm(id: number, term: Partial<InsertModelYearTerm>): Promise<ModelYearTerm | undefined>;
-  deleteModelYearTerm(id: number): Promise<boolean>;
-  getAvailableTermsForYear(modelYear: number): Promise<string[]>;
+  updateModelYearTerm(id: number, dealershipId: number, term: Partial<InsertModelYearTerm>): Promise<ModelYearTerm | undefined>;
+  deleteModelYearTerm(id: number, dealershipId: number): Promise<boolean>;
+  getAvailableTermsForYear(dealershipId: number, modelYear: number): Promise<string[]>;
   
-  // Facebook Accounts
-  getFacebookAccountsByUser(userId: number): Promise<FacebookAccount[]>;
-  getFacebookAccountById(id: number, userId: number): Promise<FacebookAccount | undefined>;
+  // Facebook Accounts (Multi-Tenant - Defense-in-Depth)
+  getFacebookAccountsByUser(userId: number, dealershipId: number): Promise<FacebookAccount[]>;
+  getFacebookAccountById(id: number, userId: number, dealershipId: number): Promise<FacebookAccount | undefined>;
   createFacebookAccount(account: InsertFacebookAccount): Promise<FacebookAccount>;
-  updateFacebookAccount(id: number, userId: number, account: Partial<InsertFacebookAccount>): Promise<FacebookAccount | undefined>;
-  deleteFacebookAccount(id: number, userId: number): Promise<boolean>;
+  updateFacebookAccount(id: number, userId: number, dealershipId: number, account: Partial<InsertFacebookAccount>): Promise<FacebookAccount | undefined>;
+  deleteFacebookAccount(id: number, userId: number, dealershipId: number): Promise<boolean>;
   
-  // Ad Templates
-  getAdTemplatesByUser(userId: number): Promise<AdTemplate[]>;
-  getAdTemplateById(id: number, userId: number): Promise<AdTemplate | undefined>;
+  // Ad Templates (Multi-Tenant - Defense-in-Depth)
+  getAdTemplatesByUser(userId: number, dealershipId: number): Promise<AdTemplate[]>;
+  getAdTemplateById(id: number, userId: number, dealershipId: number): Promise<AdTemplate | undefined>;
   createAdTemplate(template: InsertAdTemplate): Promise<AdTemplate>;
-  updateAdTemplate(id: number, userId: number, template: Partial<InsertAdTemplate>): Promise<AdTemplate | undefined>;
-  deleteAdTemplate(id: number, userId: number): Promise<boolean>;
+  updateAdTemplate(id: number, userId: number, dealershipId: number, template: Partial<InsertAdTemplate>): Promise<AdTemplate | undefined>;
+  deleteAdTemplate(id: number, userId: number, dealershipId: number): Promise<boolean>;
   
-  // Posting Queue
-  getPostingQueueByUser(userId: number): Promise<PostingQueue[]>;
-  getPostingQueueItem(id: number): Promise<PostingQueue | undefined>;
+  // Posting Queue (Multi-Tenant - Defense-in-Depth)
+  getPostingQueueByUser(userId: number, dealershipId: number): Promise<PostingQueue[]>;
+  getPostingQueueItem(id: number, dealershipId: number): Promise<PostingQueue | undefined>;
   createPostingQueueItem(item: InsertPostingQueue): Promise<PostingQueue>;
-  updatePostingQueueItem(id: number, userId: number, item: Partial<InsertPostingQueue>): Promise<PostingQueue | undefined>;
-  deletePostingQueueItem(id: number, userId: number): Promise<boolean>;
-  getNextQueuedPost(userId: number): Promise<PostingQueue | undefined>;
+  updatePostingQueueItem(id: number, userId: number, dealershipId: number, item: Partial<InsertPostingQueue>): Promise<PostingQueue | undefined>;
+  deletePostingQueueItem(id: number, userId: number, dealershipId: number): Promise<boolean>;
+  getNextQueuedPost(userId: number, dealershipId: number): Promise<PostingQueue | undefined>;
   
-  // Posting Schedule
-  getPostingScheduleByUser(userId: number): Promise<PostingSchedule | undefined>;
-  getAllPostingSchedules(): Promise<PostingSchedule[]>;
+  // Posting Schedule (Multi-Tenant - Defense-in-Depth)
+  getPostingScheduleByUser(userId: number, dealershipId: number): Promise<PostingSchedule | undefined>;
+  getAllPostingSchedules(dealershipId: number): Promise<PostingSchedule[]>;
   createPostingSchedule(schedule: InsertPostingSchedule): Promise<PostingSchedule>;
-  updatePostingSchedule(userId: number, schedule: Partial<InsertPostingSchedule>): Promise<PostingSchedule | undefined>;
+  updatePostingSchedule(userId: number, dealershipId: number, schedule: Partial<InsertPostingSchedule>): Promise<PostingSchedule | undefined>;
   
   // Remarketing Vehicles (Multi-Tenant)
   getRemarketingVehicles(dealershipId: number): Promise<RemarketingVehicle[]>; // REQUIRED filtering
@@ -203,31 +203,31 @@ export interface IStorage {
   removeRemarketingVehicle(id: number, dealershipId: number): Promise<boolean>;
   getRemarketingVehicleCount(dealershipId: number): Promise<number>; // REQUIRED filtering
   
-  // PBS DMS Integration
-  getPbsConfig(): Promise<PbsConfig | undefined>;
+  // PBS DMS Integration (Multi-Tenant)
+  getPbsConfig(dealershipId: number): Promise<PbsConfig | undefined>;
   createPbsConfig(config: InsertPbsConfig): Promise<PbsConfig>;
-  updatePbsConfig(id: number, config: Partial<InsertPbsConfig>): Promise<PbsConfig | undefined>;
-  deletePbsConfig(id: number): Promise<boolean>;
+  updatePbsConfig(id: number, dealershipId: number, config: Partial<InsertPbsConfig>): Promise<PbsConfig | undefined>;
+  deletePbsConfig(id: number, dealershipId: number): Promise<boolean>;
   
-  // PBS Webhook Events
-  getPbsWebhookEvents(limit?: number): Promise<PbsWebhookEvent[]>;
-  getPbsWebhookEventById(id: number): Promise<PbsWebhookEvent | undefined>;
+  // PBS Webhook Events (Multi-Tenant)
+  getPbsWebhookEvents(dealershipId: number, limit?: number): Promise<PbsWebhookEvent[]>;
+  getPbsWebhookEventById(id: number, dealershipId: number): Promise<PbsWebhookEvent | undefined>;
   createPbsWebhookEvent(event: InsertPbsWebhookEvent): Promise<PbsWebhookEvent>;
-  updatePbsWebhookEvent(id: number, event: Partial<InsertPbsWebhookEvent>): Promise<PbsWebhookEvent | undefined>;
+  updatePbsWebhookEvent(id: number, dealershipId: number, event: Partial<InsertPbsWebhookEvent>): Promise<PbsWebhookEvent | undefined>;
   
-  // Manager Settings
-  getManagerSettings(userId: number): Promise<ManagerSettings | undefined>;
+  // Manager Settings (Multi-Tenant)
+  getManagerSettings(userId: number, dealershipId: number): Promise<ManagerSettings | undefined>;
   createManagerSettings(settings: InsertManagerSettings): Promise<ManagerSettings>;
-  updateManagerSettings(userId: number, settings: Partial<InsertManagerSettings>): Promise<ManagerSettings | undefined>;
+  updateManagerSettings(userId: number, dealershipId: number, settings: Partial<InsertManagerSettings>): Promise<ManagerSettings | undefined>;
   
-  // Market Listings
-  getMarketListings(filters: { make?: string; model?: string; yearMin?: number; yearMax?: number; source?: string }): Promise<MarketListing[]>;
-  getMarketListingById(id: number): Promise<MarketListing | undefined>;
-  getMarketListingsByUrls(urls: string[]): Promise<MarketListing[]>;
+  // Market Listings (Multi-Tenant)
+  getMarketListings(dealershipId: number, filters: { make?: string; model?: string; yearMin?: number; yearMax?: number; source?: string }): Promise<MarketListing[]>;
+  getMarketListingById(id: number, dealershipId: number): Promise<MarketListing | undefined>;
+  getMarketListingsByUrls(dealershipId: number, urls: string[]): Promise<MarketListing[]>;
   createMarketListing(listing: InsertMarketListing): Promise<MarketListing>;
-  updateMarketListing(id: number, listing: Partial<InsertMarketListing>): Promise<MarketListing | undefined>;
-  deactivateMarketListing(url: string): Promise<boolean>;
-  deleteOldMarketListings(daysOld: number): Promise<number>;
+  updateMarketListing(id: number, dealershipId: number, listing: Partial<InsertMarketListing>): Promise<MarketListing | undefined>;
+  deactivateMarketListing(dealershipId: number, url: string): Promise<boolean>;
+  deleteOldMarketListings(dealershipId: number, daysOld: number): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
