@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { Building2, Key, FileText, Plus, Eye, EyeOff, Trash2, LogOut } from "lucide-react";
 import { format } from "date-fns";
@@ -129,6 +130,15 @@ export default function SuperAdminDashboard() {
       masterAdminEmail: string;
       masterAdminName: string;
       masterAdminPassword: string;
+      openaiApiKey?: string;
+      marketcheckKey?: string;
+      apifyToken?: string;
+      apifyActorId?: string;
+      geminiApiKey?: string;
+      ghlApiKey?: string;
+      ghlLocationId?: string;
+      facebookAppId?: string;
+      facebookAppSecret?: string;
     }) => {
       const response = await fetch("/api/super-admin/dealerships", {
         method: "POST",
@@ -436,6 +446,16 @@ function CreateDealershipDialog({ onSubmit }: { onSubmit: (data: any) => void })
     masterAdminEmail: "",
     masterAdminName: "",
     masterAdminPassword: "",
+    // API Keys
+    openaiApiKey: "",
+    marketcheckKey: "",
+    apifyToken: "",
+    apifyActorId: "",
+    geminiApiKey: "",
+    ghlApiKey: "",
+    ghlLocationId: "",
+    facebookAppId: "",
+    facebookAppSecret: "",
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -456,6 +476,16 @@ function CreateDealershipDialog({ onSubmit }: { onSubmit: (data: any) => void })
       masterAdminEmail: "",
       masterAdminName: "",
       masterAdminPassword: "",
+      // API Keys
+      openaiApiKey: "",
+      marketcheckKey: "",
+      apifyToken: "",
+      apifyActorId: "",
+      geminiApiKey: "",
+      ghlApiKey: "",
+      ghlLocationId: "",
+      facebookAppId: "",
+      facebookAppSecret: "",
     });
   };
 
@@ -467,14 +497,15 @@ function CreateDealershipDialog({ onSubmit }: { onSubmit: (data: any) => void })
           Create Dealership
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-4xl max-h-[90vh]">
         <DialogHeader>
           <DialogTitle>Create New Dealership</DialogTitle>
           <DialogDescription>
-            Create a new dealership with full setup including master admin, financing rules, and chat prompts.
+            Complete setup questionnaire for a new dealership including master admin, API keys, financing rules, and chat prompts.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          <ScrollArea className="h-[60vh] pr-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="name">Dealership Name *</Label>
@@ -605,6 +636,142 @@ function CreateDealershipDialog({ onSubmit }: { onSubmit: (data: any) => void })
               </div>
             </div>
           </div>
+          <div className="border-t pt-4">
+            <h4 className="font-medium mb-3 flex items-center gap-2">
+              <Key className="h-4 w-4" />
+              API Keys & Integration Settings
+            </h4>
+            <p className="text-sm text-slate-500 mb-4">
+              Configure third-party API keys for this dealership. All fields are optional but required for specific features.
+            </p>
+            <div className="space-y-4">
+              {/* AI & Chat */}
+              <div className="space-y-3">
+                <h5 className="text-sm font-medium text-slate-700">AI & Customer Chat</h5>
+                <div className="space-y-2">
+                  <Label htmlFor="openaiApiKey">OpenAI API Key</Label>
+                  <Input
+                    id="openaiApiKey"
+                    type="password"
+                    value={formData.openaiApiKey}
+                    onChange={(e) => setFormData({ ...formData, openaiApiKey: e.target.value })}
+                    placeholder="sk-..."
+                    data-testid="input-openai-key"
+                  />
+                  <p className="text-xs text-slate-500">For custom AI training & ChatGPT integration</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="geminiApiKey">Google Gemini API Key</Label>
+                  <Input
+                    id="geminiApiKey"
+                    type="password"
+                    value={formData.geminiApiKey}
+                    onChange={(e) => setFormData({ ...formData, geminiApiKey: e.target.value })}
+                    placeholder="AI..."
+                    data-testid="input-gemini-key"
+                  />
+                  <p className="text-xs text-slate-500">For video generation with Gemini Veo</p>
+                </div>
+              </div>
+              {/* Market Analysis */}
+              <div className="space-y-3">
+                <h5 className="text-sm font-medium text-slate-700">Market Pricing & Data</h5>
+                <div className="space-y-2">
+                  <Label htmlFor="marketcheckKey">MarketCheck API Key</Label>
+                  <Input
+                    id="marketcheckKey"
+                    type="password"
+                    value={formData.marketcheckKey}
+                    onChange={(e) => setFormData({ ...formData, marketcheckKey: e.target.value })}
+                    placeholder="Enter MarketCheck API key"
+                    data-testid="input-marketcheck-key"
+                  />
+                  <p className="text-xs text-slate-500">For market pricing analysis (primary source)</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="apifyToken">Apify API Token</Label>
+                    <Input
+                      id="apifyToken"
+                      type="password"
+                      value={formData.apifyToken}
+                      onChange={(e) => setFormData({ ...formData, apifyToken: e.target.value })}
+                      placeholder="apify_api_..."
+                      data-testid="input-apify-token"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="apifyActorId">Apify Actor ID</Label>
+                    <Input
+                      id="apifyActorId"
+                      value={formData.apifyActorId}
+                      onChange={(e) => setFormData({ ...formData, apifyActorId: e.target.value })}
+                      placeholder="autotrader-scraper"
+                      data-testid="input-apify-actor"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500">For AutoTrader.ca scraping (fallback source)</p>
+              </div>
+              {/* CRM & Marketing */}
+              <div className="space-y-3">
+                <h5 className="text-sm font-medium text-slate-700">CRM & Marketing Automation</h5>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="ghlApiKey">GoHighLevel API Key</Label>
+                    <Input
+                      id="ghlApiKey"
+                      type="password"
+                      value={formData.ghlApiKey}
+                      onChange={(e) => setFormData({ ...formData, ghlApiKey: e.target.value })}
+                      placeholder="Enter GHL API key"
+                      data-testid="input-ghl-key"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="ghlLocationId">GHL Location ID</Label>
+                    <Input
+                      id="ghlLocationId"
+                      value={formData.ghlLocationId}
+                      onChange={(e) => setFormData({ ...formData, ghlLocationId: e.target.value })}
+                      placeholder="Location/Sub-account ID"
+                      data-testid="input-ghl-location"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500">For lead management & automation workflows</p>
+              </div>
+              {/* Facebook */}
+              <div className="space-y-3">
+                <h5 className="text-sm font-medium text-slate-700">Facebook Integration</h5>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="facebookAppId">Facebook App ID</Label>
+                    <Input
+                      id="facebookAppId"
+                      value={formData.facebookAppId}
+                      onChange={(e) => setFormData({ ...formData, facebookAppId: e.target.value })}
+                      placeholder="Enter App ID"
+                      data-testid="input-facebook-app-id"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="facebookAppSecret">Facebook App Secret</Label>
+                    <Input
+                      id="facebookAppSecret"
+                      type="password"
+                      value={formData.facebookAppSecret}
+                      onChange={(e) => setFormData({ ...formData, facebookAppSecret: e.target.value })}
+                      placeholder="Enter App Secret"
+                      data-testid="input-facebook-app-secret"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500">For automated Facebook Marketplace posting</p>
+              </div>
+            </div>
+          </div>
+          </ScrollArea>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
