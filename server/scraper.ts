@@ -22,6 +22,7 @@ interface ScrapedVehicle {
   fullPageContent?: string;
   vin?: string;
   stockNumber?: string;
+  carfaxUrl?: string;
 }
 
 const INVENTORY_URL = 'https://www.olympicautogroup.ca/vehicles/used/?st=year,desc&view=grid&sc=used&fn=Boundary%20Hyundai,Olympic%20Hyundai%20Vancouver,Kia%20Vancouver';
@@ -553,6 +554,45 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
             if (stockMatch) stockNumber = stockMatch[1];
           }
           
+          // Extract Carfax URL with multiple strategies
+          let carfaxUrl = '';
+          
+          // Strategy 1: Look for Carfax links in common patterns
+          const carfaxLink = document.querySelector('a[href*="carfax"]') as HTMLAnchorElement;
+          if (carfaxLink && carfaxLink.href) {
+            carfaxUrl = carfaxLink.href;
+          }
+          
+          // Strategy 2: Check for data attributes
+          if (!carfaxUrl) {
+            const carfaxDataEl = document.querySelector('[data-carfax], [data-carfax-url], [data-carfax-link]');
+            if (carfaxDataEl) {
+              carfaxUrl = carfaxDataEl.getAttribute('data-carfax') || 
+                         carfaxDataEl.getAttribute('data-carfax-url') || 
+                         carfaxDataEl.getAttribute('data-carfax-link') || '';
+            }
+          }
+          
+          // Strategy 3: Look for buttons/divs with Carfax class
+          if (!carfaxUrl) {
+            const carfaxBtn = document.querySelector('.carfax-link, .carfax-button, .carfax-report');
+            if (carfaxBtn) {
+              const href = carfaxBtn.getAttribute('href') || carfaxBtn.getAttribute('data-url');
+              if (href) carfaxUrl = href;
+            }
+          }
+          
+          // Strategy 4: Search all links for carfax.com URLs
+          if (!carfaxUrl) {
+            const allLinks = Array.from(document.querySelectorAll('a[href]')) as HTMLAnchorElement[];
+            for (const link of allLinks) {
+              if (link.href && (link.href.includes('carfax.com') || link.href.includes('carfax.ca'))) {
+                carfaxUrl = link.href;
+                break;
+              }
+            }
+          }
+          
           // Extract body style from specs
           let bodyStyle = '';
           const bodyStyleElem = Array.from(document.querySelectorAll('li')).find(li => 
@@ -568,6 +608,7 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
             fullPageContent,
             vin,
             stockNumber,
+            carfaxUrl,
             bodyStyle
           };
         });
@@ -594,7 +635,8 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
           description: finalDescription,
           fullPageContent: detailData.fullPageContent || undefined,
           vin: detailData.vin || undefined,
-          stockNumber: detailData.stockNumber || undefined
+          stockNumber: detailData.stockNumber || undefined,
+          carfaxUrl: detailData.carfaxUrl || undefined
         });
         
         // Small delay between requests
