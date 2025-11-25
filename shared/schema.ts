@@ -11,10 +11,7 @@ export const dealerships = pgTable("dealerships", {
   name: text("name").notNull(), // e.g., "Olympic Auto Group"
   slug: text("slug").notNull().unique(), // URL-safe identifier (e.g., "olympic-auto")
   subdomain: text("subdomain").unique(), // For subdomain routing (e.g., "olympic")
-  logo: text("logo"), // Logo URL
-  brandColors: text("brand_colors"), // JSON object with primary/secondary colors
-  status: text("status").notNull().default('active'), // active, suspended, cancelled
-  trialEndsAt: timestamp("trial_ends_at"), // 14-day trial end date
+  isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
