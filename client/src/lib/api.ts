@@ -70,12 +70,14 @@ export interface ChatMessage {
 
 export async function sendChatMessage(
   messages: ChatMessage[],
-  vehicleContext?: string
+  vehicleContext?: string,
+  scenario?: string,
+  dealershipId?: number
 ): Promise<string> {
   const response = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages, vehicleContext }),
+    body: JSON.stringify({ messages, vehicleContext, scenario, dealershipId }),
   });
   if (!response.ok) throw new Error("Failed to send chat message");
   const data = await response.json();

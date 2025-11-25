@@ -317,15 +317,20 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
       const wantsText = lowerMessage.includes('text') || lowerMessage.includes('sms') || 
                         lowerMessage.includes('message me') || lowerMessage.includes('text me');
       
-      // Build context message that includes CTA action if present
+      // Map action to scenario for database prompt lookup
+      let scenario = 'general';
       let contextPrefix = "";
       if (action === 'test-drive') {
+        scenario = 'test-drive';
         contextPrefix = "The customer clicked 'Book Test Drive' and wants to schedule a test drive. ";
       } else if (action === 'reserve') {
+        scenario = 'reserve';
         contextPrefix = "The customer clicked 'Reserve Vehicle' and wants to reserve this vehicle. ";
       } else if (action === 'get-approved') {
+        scenario = 'get-approved';
         contextPrefix = "The customer clicked 'Get Pre-Approved' and wants to get pre-approved for financing. ";
       } else if (action === 'value-trade') {
+        scenario = 'value-trade';
         contextPrefix = "The customer clicked 'Value Trade-in' and wants to get a trade-in value. ";
       }
 
@@ -333,9 +338,15 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
         ? `${contextPrefix}Vehicle: ${vehicleName}`
         : contextPrefix;
 
+      // For now, defaulting to dealershipId=1 (Olympic Hyundai Vancouver)
+      // In the future, this could be derived from subdomain or vehicle dealership
+      const dealershipId = 1;
+
       const response = await sendChatMessage(
         [...messages, userMessage],
-        vehicleContextWithAction
+        vehicleContextWithAction,
+        scenario,
+        dealershipId
       );
 
       setMessages(prev => {
