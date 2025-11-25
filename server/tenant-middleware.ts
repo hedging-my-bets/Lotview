@@ -76,6 +76,24 @@ export function tenantMiddleware(storage: any) {
         const token = authHeader.substring(7);
         try {
           const decoded = jwt.verify(token, JWT_SECRET) as any;
+          
+          // Super admin bypass: super_admin users don't need dealership context
+          if (decoded && decoded.role === 'super_admin') {
+            dealershipId = undefined; // Super admins operate without dealership context
+            source = 'none';
+            req.user = {
+              id: decoded.id,
+              email: decoded.email,
+              role: decoded.role,
+              name: decoded.name,
+              dealershipId: null
+            };
+            // Allow super admin requests to proceed without dealership ID
+            req.dealershipId = undefined;
+            req.tenantSource = 'none';
+            return next();
+          }
+          
           if (decoded && decoded.dealershipId) {
             dealershipId = decoded.dealershipId;
             source = 'jwt';
@@ -210,6 +228,22 @@ export function requireDealership(req: Request, res: Response, next: NextFunctio
 }
 
 /**
+ * Super admin only middleware - requires authenticated super_admin user
+ */
+export function superAdminOnly(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  
+  const user = req.user as any;
+  if (user.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Super admin access required' });
+  }
+  
+  next();
+}
+
+/**
  * Master user only middleware - requires authenticated master user
  */
 export function masterOnly(req: Request, res: Response, next: NextFunction) {
@@ -237,8 +271,8 @@ export function dealershipOwnerOrMaster(req: Request, res: Response, next: NextF
   const user = req.user as any;
   const targetDealershipId = req.dealershipId || parseInt(req.params.dealershipId) || parseInt(req.query.dealershipId as string);
   
-  // Master users can access all dealerships
-  if (user.role === 'master') {
+  // Super admins and master users can access all dealerships
+  if (user.role === 'super_admin' || user.role === 'master') {
     return next();
   }
   

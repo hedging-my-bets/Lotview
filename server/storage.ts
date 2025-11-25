@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { hashPassword } from "./auth";
 import { 
   dealerships,
   dealershipSubscriptions,
@@ -74,11 +75,37 @@ import {
   type InsertManagerSettings,
   marketListings,
   type MarketListing,
-  type InsertMarketListing
+  type InsertMarketListing,
+  globalSettings,
+  type GlobalSetting,
+  type InsertGlobalSetting,
+  auditLogs,
+  type AuditLog,
+  type InsertAuditLog
 } from "@shared/schema";
 import { eq, desc, sql, and, gte, lte } from "drizzle-orm";
 
 export interface IStorage {
+  // ====== SUPER ADMIN - GLOBAL SETTINGS ======
+  getGlobalSetting(key: string): Promise<GlobalSetting | undefined>;
+  getAllGlobalSettings(): Promise<GlobalSetting[]>;
+  setGlobalSetting(setting: InsertGlobalSetting): Promise<GlobalSetting>;
+  deleteGlobalSetting(key: string): Promise<boolean>;
+  
+  // ====== SUPER ADMIN - AUDIT LOGGING ======
+  logAuditAction(log: InsertAuditLog): Promise<AuditLog>;
+  getAuditLogs(limit?: number, offset?: number): Promise<{ logs: AuditLog[]; total: number }>;
+  
+  // ====== SUPER ADMIN - DEALERSHIP PROVISIONING ======
+  createDealershipWithSetup(params: {
+    name: string;
+    slug: string;
+    subdomain: string;
+    masterAdminEmail: string;
+    masterAdminName: string;
+    masterAdminPassword: string;
+  }): Promise<{ dealership: Dealership; masterAdmin: User }>;
+  
   // ====== DEALERSHIP MANAGEMENT ======
   getDealership(id: number): Promise<Dealership | undefined>;
   getDealershipBySlug(slug: string): Promise<Dealership | undefined>;
@@ -1342,6 +1369,222 @@ export class DatabaseStorage implements IStorage {
       ));
     
     return 0; // Drizzle doesn't return count for deletes
+  }
+
+  // ====== SUPER ADMIN - GLOBAL SETTINGS ======
+  async getGlobalSetting(key: string): Promise<GlobalSetting | undefined> {
+    const result = await db.select().from(globalSettings).where(eq(globalSettings.key, key)).limit(1);
+    return result[0];
+  }
+
+  async getAllGlobalSettings(): Promise<GlobalSetting[]> {
+    return await db.select().from(globalSettings).orderBy(globalSettings.key);
+  }
+
+  async setGlobalSetting(setting: InsertGlobalSetting): Promise<GlobalSetting> {
+    const result = await db
+      .insert(globalSettings)
+      .values(setting)
+      .onConflictDoUpdate({
+        target: globalSettings.key,
+        set: {
+          value: setting.value,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return result[0];
+  }
+
+  async deleteGlobalSetting(key: string): Promise<boolean> {
+    await db.delete(globalSettings).where(eq(globalSettings.key, key));
+    return true;
+  }
+
+  // ====== SUPER ADMIN - AUDIT LOGGING ======
+  async logAuditAction(log: InsertAuditLog): Promise<AuditLog> {
+    const result = await db.insert(auditLogs).values(log).returning();
+    return result[0];
+  }
+
+  async getAuditLogs(limit: number = 50, offset: number = 0): Promise<{ logs: AuditLog[]; total: number }> {
+    // Get total count
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(auditLogs);
+    
+    // Get paginated logs, ordered by createdAt DESC
+    const logs = await db
+      .select()
+      .from(auditLogs)
+      .orderBy(desc(auditLogs.createdAt))
+      .limit(limit)
+      .offset(offset);
+    
+    return {
+      logs,
+      total: count
+    };
+  }
+
+  // ====== SUPER ADMIN - DEALERSHIP PROVISIONING ======
+  async createDealershipWithSetup(params: {
+    name: string;
+    slug: string;
+    subdomain: string;
+    masterAdminEmail: string;
+    masterAdminName: string;
+    masterAdminPassword: string;
+  }): Promise<{ dealership: Dealership; masterAdmin: User }> {
+    return await db.transaction(async (tx) => {
+      // a) Create dealership
+      const [dealership] = await tx
+        .insert(dealerships)
+        .values({
+          name: params.name,
+          slug: params.slug,
+          subdomain: params.subdomain,
+          isActive: true,
+        })
+        .returning();
+
+      // b) Create master admin user with hashed password
+      const passwordHash = await hashPassword(params.masterAdminPassword);
+      const [masterAdmin] = await tx
+        .insert(users)
+        .values({
+          dealershipId: dealership.id,
+          email: params.masterAdminEmail,
+          passwordHash: passwordHash,
+          name: params.masterAdminName,
+          role: 'master',
+          isActive: true,
+          createdBy: null,
+        })
+        .returning();
+
+      // c) Create 5 credit score tiers
+      const creditTiers = [
+        {
+          dealershipId: dealership.id,
+          tierName: "Excellent",
+          minScore: 750,
+          maxScore: 850,
+          interestRate: 399,
+          isActive: true,
+        },
+        {
+          dealershipId: dealership.id,
+          tierName: "Very Good",
+          minScore: 700,
+          maxScore: 749,
+          interestRate: 499,
+          isActive: true,
+        },
+        {
+          dealershipId: dealership.id,
+          tierName: "Good",
+          minScore: 650,
+          maxScore: 699,
+          interestRate: 699,
+          isActive: true,
+        },
+        {
+          dealershipId: dealership.id,
+          tierName: "Fair",
+          minScore: 600,
+          maxScore: 649,
+          interestRate: 999,
+          isActive: true,
+        },
+        {
+          dealershipId: dealership.id,
+          tierName: "Poor",
+          minScore: 300,
+          maxScore: 599,
+          interestRate: 1499,
+          isActive: true,
+        },
+      ];
+      await tx.insert(creditScoreTiers).values(creditTiers);
+
+      // d) Create 4 model year financing terms
+      const currentYear = new Date().getFullYear();
+      const yearTerms = [
+        {
+          dealershipId: dealership.id,
+          minModelYear: currentYear,
+          maxModelYear: currentYear + 1,
+          availableTerms: ["24", "36", "48", "60", "72", "84"],
+          isActive: true,
+        },
+        {
+          dealershipId: dealership.id,
+          minModelYear: currentYear - 3,
+          maxModelYear: currentYear - 1,
+          availableTerms: ["24", "36", "48", "60", "72"],
+          isActive: true,
+        },
+        {
+          dealershipId: dealership.id,
+          minModelYear: currentYear - 7,
+          maxModelYear: currentYear - 4,
+          availableTerms: ["24", "36", "48", "60"],
+          isActive: true,
+        },
+        {
+          dealershipId: dealership.id,
+          minModelYear: 2010,
+          maxModelYear: currentYear - 8,
+          availableTerms: ["24", "36", "48"],
+          isActive: true,
+        },
+      ];
+      await tx.insert(modelYearTerms).values(yearTerms);
+
+      // e) Create 5 chat prompts
+      const chatPromptData = [
+        {
+          dealershipId: dealership.id,
+          scenario: "test-drive",
+          systemPrompt: `You are a helpful assistant for ${params.name}. Help customers schedule test drives. Be friendly, professional, and gather: preferred date/time, contact information, and which vehicle they're interested in. If they have questions about the vehicle, answer them enthusiastically.`,
+          greeting: `Hi! I'd love to help you schedule a test drive at ${params.name}. Which vehicle are you interested in?`,
+          isActive: true,
+        },
+        {
+          dealershipId: dealership.id,
+          scenario: "get-approved",
+          systemPrompt: `You are a financing specialist for ${params.name}. Help customers understand their financing options and pre-approval process. Gather: employment status, credit score range, down payment amount, and monthly budget. Explain the benefits of getting pre-approved and how it speeds up the buying process.`,
+          greeting: `Welcome to ${params.name}! Let's explore your financing options. Getting pre-approved is quick and won't affect your credit score. What vehicle are you interested in financing?`,
+          isActive: true,
+        },
+        {
+          dealershipId: dealership.id,
+          scenario: "value-trade",
+          systemPrompt: `You are a trade-in specialist for ${params.name}. Help customers get a trade-in valuation for their current vehicle. Gather: year, make, model, trim, odometer reading, condition, and any issues. Explain that we offer competitive trade-in values and can provide an instant estimate.`,
+          greeting: `Hi! I can help you get a trade-in value for your current vehicle. What are you driving right now?`,
+          isActive: true,
+        },
+        {
+          dealershipId: dealership.id,
+          scenario: "reserve",
+          systemPrompt: `You are a reservation specialist for ${params.name}. Help customers reserve vehicles with a refundable deposit. Gather: which vehicle they want to reserve, contact information, and preferred payment method. Explain that reservations are fully refundable and hold the vehicle for 48 hours.`,
+          greeting: `Great choice! I can help you reserve this vehicle. Reservations are fully refundable and hold the vehicle for 48 hours. Let me get a few details from you.`,
+          isActive: true,
+        },
+        {
+          dealershipId: dealership.id,
+          scenario: "general",
+          systemPrompt: `You are a knowledgeable sales assistant for ${params.name}. Answer questions about vehicles, inventory, features, pricing, and dealership services. Be helpful, enthusiastic, and guide customers toward booking a test drive or speaking with a sales specialist for specific pricing questions.`,
+          greeting: `Welcome to ${params.name}! How can I help you today? Are you looking for something specific or would you like to browse our inventory?`,
+          isActive: true,
+        },
+      ];
+      await tx.insert(chatPrompts).values(chatPromptData);
+
+      // f) Return created dealership and master admin
+      return { dealership, masterAdmin };
+    });
   }
 }
 

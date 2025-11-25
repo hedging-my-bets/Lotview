@@ -268,7 +268,7 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   name: text("name").notNull(),
-  role: text("role").notNull(), // 'master', 'manager', 'salesperson'
+  role: text("role").notNull(), // 'super_admin', 'master', 'manager', 'salesperson'
   isActive: boolean("is_active").notNull().default(true),
   createdBy: integer("created_by"), // Master user who created this account
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -298,6 +298,48 @@ export const insertAdminConfigSchema = createInsertSchema(adminConfig).omit({
 
 export type InsertAdminConfig = z.infer<typeof insertAdminConfigSchema>;
 export type AdminConfig = typeof adminConfig.$inferSelect;
+
+// Global settings - Super admin manages API keys and global configuration
+export const globalSettings = pgTable("global_settings", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(), // e.g., 'marketcheck_api_key', 'apify_api_key'
+  value: text("value").notNull(), // Encrypted value
+  description: text("description"), // Human-readable description
+  isSecret: boolean("is_secret").notNull().default(true), // If true, mask value in UI
+  updatedBy: integer("updated_by").references(() => users.id), // Super admin who last updated
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertGlobalSettingSchema = createInsertSchema(globalSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertGlobalSetting = z.infer<typeof insertGlobalSettingSchema>;
+export type GlobalSetting = typeof globalSettings.$inferSelect;
+
+// Audit logs - Track all super admin actions
+export const auditLogs = pgTable("audit_logs", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id), // Super admin who performed action
+  action: text("action").notNull(), // e.g., 'create_dealership', 'update_global_setting'
+  resource: text("resource").notNull(), // e.g., 'dealership', 'global_setting'
+  resourceId: text("resource_id"), // ID of affected resource
+  details: text("details"), // JSON with additional context
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+export type AuditLog = typeof auditLogs.$inferSelect;
 
 // Financing rules - Credit score tiers
 export const creditScoreTiers = pgTable("credit_score_tiers", {
