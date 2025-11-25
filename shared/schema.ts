@@ -59,6 +59,7 @@ export type DealershipSubscription = typeof dealershipSubscriptions.$inferSelect
 export const dealershipApiKeys = pgTable("dealership_api_keys", {
   id: serial("id").primaryKey(),
   dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  openaiApiKey: text("openai_api_key"), // OpenAI API key for per-dealership AI training
   marketcheckKey: text("marketcheck_key"), // MarketCheck API key
   apifyToken: text("apify_token"), // Apify API token
   apifyActorId: text("apify_actor_id"), // Apify actor ID for AutoTrader scraper

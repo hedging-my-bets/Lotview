@@ -980,13 +980,13 @@ export default function Dashboard() {
                               </div>
                             </div>
                             <div>
-                              <Label htmlFor="interestRate">Interest Rate (%)</Label>
+                              <Label htmlFor="interestRate">Interest Rate (basis points: 699 = 6.99%)</Label>
                               <Input
                                 id="interestRate"
                                 type="number"
-                                step="0.01"
+                                step="1"
                                 min={0}
-                                max={100}
+                                max={10000}
                                 value={newCreditTier.interestRate}
                                 onChange={(e) => setNewCreditTier({ ...newCreditTier, interestRate: parseFloat(e.target.value) })}
                                 required
