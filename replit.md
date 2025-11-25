@@ -87,13 +87,32 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (November 25, 2024)
 
+### Enhanced Security Model - API Key Management
+- **SuperAdmin Exclusive Control**: API Keys tab removed from Master Dashboard - only SuperAdmin can manage API keys
+- **Comprehensive Onboarding**: SuperAdmin dealership creation wizard now captures ALL API keys during setup:
+  - OpenAI API Key (custom AI training)
+  - MarketCheck API Key (enterprise market pricing)
+  - Apify API Token & Actor ID (AutoTrader.ca scraping)
+  - Gemini API Key (future video generation)
+  - GoHighLevel API Key & Location ID (CRM integration)
+  - Facebook App ID & Secret (Marketplace posting)
+- **Atomic Provisioning**: Backend creates dealership + master admin + financing rules + chat prompts + API keys in single transaction
+- **Enhanced Security**: All API keys stored securely in `dealership_api_keys` table, masked in responses (****1234 format)
+
+### Sales Manager Dashboard
+- **Metrics Overview**: Added 4 KPI cards with real-time data:
+  - Total Leads (all chat conversations)
+  - Active Conversations (last 7 days)
+  - Appointments Booked (placeholder - shows 0 with "Coming soon", requires future appointments system)
+  - Scheduled Posts (Facebook posting queue count)
+- **Read-Only Chat Prompts**: Added Chat Prompts section showing all 5 AI scenarios (test-drive, get-approved, value-trade, reserve, general) with greetings in accordion UI
+- **Responsive Design**: 4-column responsive grid (2 cols on tablet, 4 on desktop) with loading states and comprehensive error handling
+
 ### AI Chat Prompt Management System
-- **Database Prompts Control AI**: Chat prompts stored in `chat_prompts` table now directly control OpenAI AI behavior
+- **Database Prompts Control AI**: Chat prompts stored in `chat_prompts` table directly control OpenAI AI behavior
 - **Scenario-Based Prompts**: 5 scenarios supported (test-drive, get-approved, value-trade, reserve, general)
-- **Per-Dealership Configuration**: Each dealership can customize prompts and use their own OpenAI API key
-- **Master Dashboard UI**: 
-  - Chat Prompts tab for managing all 5 scenarios with system prompts and greetings
-  - API Keys tab for managing per-dealership OpenAI API key (masked for security)
+- **Per-Dealership Configuration**: Each dealership can customize prompts via Master Dashboard
+- **Master Dashboard UI**: Chat Prompts tab for managing all 5 scenarios with system prompts and greetings
 - **Full Integration**: ChatBot component passes scenario/dealershipId across all code paths (manual input, CTA auto-send, ChatContext)
-- **Security**: API keys masked in responses (****1234 format), strict multi-tenant filtering on all prompt/key operations
+- **Security**: Strict multi-tenant filtering on all prompt operations
 - **Credit Tier Fix**: Interest rate validation updated to support basis points (max 10000 instead of 100)
