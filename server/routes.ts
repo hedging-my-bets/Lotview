@@ -137,7 +137,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all users (master only)
   app.get("/api/users", authMiddleware, requireRole("master"), async (req, res) => {
     try {
-      const users = await storage.getAllUsers();
+      // TODO: Multi-tenant - Master users should see users from specific dealership or all dealerships
+      // For now, show users from dealershipId=1
+      const dealershipId = 1;
+      const users = await storage.getAllUsers(dealershipId);
       // Exclude password hashes
       const usersWithoutPasswords = users.map(({ passwordHash, ...user }) => user);
       res.json(usersWithoutPasswords);
@@ -171,12 +174,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Hash password
       const passwordHash = await hashPassword(password);
       
+      // TODO: Multi-tenant - Set dealershipId based on context or allow master to specify
+      // For now, create users in dealershipId=1
+      const dealershipId = role === "master" ? null : 1;
+      
       // Create user
       const user = await storage.createUser({
         email,
         passwordHash,
         name,
         role,
+        dealershipId,
         isActive: true,
         createdBy: authReq.user!.id,
       });
@@ -210,7 +218,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updates.passwordHash = await hashPassword(password);
       }
       
-      const user = await storage.updateUser(id, updates);
+      // TODO: Multi-tenant - Pass dealershipId for validation, or allow master to update any user
+      // For now, pass undefined to allow master full access
+      const user = await storage.updateUser(id, updates, undefined);
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
@@ -248,7 +258,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all vehicles with 24h view counts (randomized for engagement)
   app.get("/api/vehicles", async (req, res) => {
     try {
-      const vehicles = await storage.getVehicles();
+      // TODO: Multi-tenant - use req.dealershipId from subdomain when middleware is applied
+      // For now, default to dealershipId = 1 for public vehicle listings
+      const dealershipId = 1;
+      const vehicles = await storage.getVehicles(dealershipId);
       
       // Add randomized view counts (5-35 views) to create social proof
       const vehiclesWithViews = vehicles.map(vehicle => ({
@@ -267,7 +280,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/vehicles/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const vehicle = await storage.getVehicleById(id);
+      // TODO: Multi-tenant - use req.dealershipId from subdomain when middleware is applied
+      const dealershipId = 1;
+      const vehicle = await storage.getVehicleById(id, dealershipId);
       
       if (!vehicle) {
         return res.status(404).json({ error: "Vehicle not found" });
@@ -309,7 +324,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: fromZodError(parsed.error).message });
       }
 
-      const vehicle = await storage.updateVehicle(id, parsed.data);
+      // TODO: Multi-tenant - use req.dealershipId from auth when middleware is applied
+      const dealershipId = 1;
+      const vehicle = await storage.updateVehicle(id, parsed.data, dealershipId);
       
       if (!vehicle) {
         return res.status(404).json({ error: "Vehicle not found" });
@@ -326,7 +343,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/vehicles/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      await storage.deleteVehicle(id);
+      // TODO: Multi-tenant - use req.dealershipId from auth when middleware is applied
+      const dealershipId = 1;
+      await storage.deleteVehicle(id, dealershipId);
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting vehicle:", error);
@@ -338,7 +357,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/vehicles/:id/generate-video", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const vehicle = await storage.getVehicleById(id);
+      // TODO: Multi-tenant - use req.dealershipId from auth when middleware is applied
+      const dealershipId = 1;
+      const vehicle = await storage.getVehicleById(id, dealershipId);
       
       if (!vehicle) {
         return res.status(404).json({ error: "Vehicle not found" });
@@ -379,10 +400,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const vehicleId = parseInt(req.params.id);
       const sessionId = req.body.sessionId || `session-${Date.now()}`;
+      // TODO: Multi-tenant - get dealershipId from vehicle record
+      const dealershipId = 1;
 
       const view = await storage.trackVehicleView({
         vehicleId,
-        sessionId
+        sessionId,
+        dealershipId
       });
 
       res.status(201).json(view);
@@ -397,8 +421,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const vehicleId = parseInt(req.params.id);
       const hours = parseInt(req.query.hours as string) || 24;
+      // TODO: Multi-tenant - get dealershipId from vehicle record
+      const dealershipId = 1;
       
-      const count = await storage.getVehicleViews(vehicleId, hours);
+      const count = await storage.getVehicleViews(vehicleId, dealershipId, hours);
       res.json({ vehicleId, hours, count });
     } catch (error) {
       console.error("Error fetching views:", error);
@@ -851,7 +877,9 @@ Format your response in clear sections with actionable recommendations.`;
   // Get all credit score tiers
   app.get("/api/financing/credit-tiers", authMiddleware, requireRole("master"), async (req, res) => {
     try {
-      const tiers = await storage.getCreditScoreTiers();
+      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
+      const dealershipId = 1;
+      const tiers = await storage.getCreditScoreTiers(dealershipId);
       res.json(tiers);
     } catch (error) {
       console.error("Error fetching credit tiers:", error);
@@ -880,7 +908,10 @@ Format your response in clear sections with actionable recommendations.`;
         return res.status(400).json({ error: "Interest rate must be between 0 and 100" });
       }
       
+      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
+      const dealershipId = 1;
       const tier = await storage.createCreditScoreTier({
+        dealershipId,
         tierName,
         minScore,
         maxScore,
@@ -917,7 +948,9 @@ Format your response in clear sections with actionable recommendations.`;
         return res.status(400).json({ error: "Interest rate must be between 0 and 100" });
       }
       
-      const tier = await storage.updateCreditScoreTier(id, req.body);
+      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
+      const dealershipId = 1;
+      const tier = await storage.updateCreditScoreTier(id, dealershipId, req.body);
       
       if (!tier) {
         return res.status(404).json({ error: "Credit tier not found" });
@@ -934,7 +967,9 @@ Format your response in clear sections with actionable recommendations.`;
   app.delete("/api/financing/credit-tiers/:id", authMiddleware, requireRole("master"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      await storage.deleteCreditScoreTier(id);
+      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
+      const dealershipId = 1;
+      await storage.deleteCreditScoreTier(id, dealershipId);
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting credit tier:", error);
@@ -945,7 +980,9 @@ Format your response in clear sections with actionable recommendations.`;
   // Get all model year terms
   app.get("/api/financing/model-year-terms", authMiddleware, requireRole("master"), async (req, res) => {
     try {
-      const terms = await storage.getModelYearTerms();
+      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
+      const dealershipId = 1;
+      const terms = await storage.getModelYearTerms(dealershipId);
       res.json(terms);
     } catch (error) {
       console.error("Error fetching model year terms:", error);
@@ -975,7 +1012,10 @@ Format your response in clear sections with actionable recommendations.`;
         return res.status(400).json({ error: "Invalid term selected" });
       }
       
+      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
+      const dealershipId = 1;
       const term = await storage.createModelYearTerm({
+        dealershipId,
         minModelYear,
         maxModelYear,
         availableTerms,
@@ -1010,7 +1050,9 @@ Format your response in clear sections with actionable recommendations.`;
         }
       }
       
-      const term = await storage.updateModelYearTerm(id, req.body);
+      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
+      const dealershipId = 1;
+      const term = await storage.updateModelYearTerm(id, dealershipId, req.body);
       
       if (!term) {
         return res.status(404).json({ error: "Model year term not found" });
@@ -1027,7 +1069,9 @@ Format your response in clear sections with actionable recommendations.`;
   app.delete("/api/financing/model-year-terms/:id", authMiddleware, requireRole("master"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      await storage.deleteModelYearTerm(id);
+      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
+      const dealershipId = 1;
+      await storage.deleteModelYearTerm(id, dealershipId);
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting model year term:", error);
