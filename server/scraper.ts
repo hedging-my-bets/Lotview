@@ -18,6 +18,7 @@ interface ScrapedVehicle {
   badges: string[];
   location: string;
   dealership: string;
+  dealershipId: number;
   description: string;
   fullPageContent?: string;
   vin?: string;
@@ -206,17 +207,21 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
         }
         if (!trim || trim.length === 0) trim = 'Base';
         
-        // Determine dealership
+        // Determine dealership and dealershipId
         let dealership = 'Olympic Hyundai Vancouver';
+        let dealershipId = 1;
         let location = 'Vancouver';
         if (cardText.includes('Boundary Hyundai')) {
           dealership = 'Boundary Hyundai Vancouver';
+          dealershipId = 2;
           location = 'Burnaby';
         } else if (cardText.includes('Kia Vancouver')) {
           dealership = 'Kia Vancouver';
+          dealershipId = 3;
           location = 'Vancouver';
         } else if (cardText.includes('Olympic Hyundai Vancouver')) {
           dealership = 'Olympic Hyundai Vancouver';
+          dealershipId = 1;
           location = 'Vancouver';
         }
         
@@ -289,6 +294,7 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
           detailUrl,
           location,
           dealership,
+          dealershipId,
           cardText: cardText.substring(0, 500), // For badge detection
           heading
         });
@@ -632,6 +638,7 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
           badges,
           location: v.location,
           dealership: v.dealership,
+          dealershipId: v.dealershipId,
           description: finalDescription,
           fullPageContent: detailData.fullPageContent || undefined,
           vin: detailData.vin || undefined,
@@ -660,6 +667,7 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
           badges,
           location: v.location,
           dealership: v.dealership,
+          dealershipId: v.dealershipId,
           description: `${v.year} ${v.make} ${v.model} ${v.trim}`.trim()
         });
       } finally {

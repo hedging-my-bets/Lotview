@@ -97,6 +97,11 @@ Preferred communication style: Simple, everyday language.
   - Displays Carfax link in vehicle details page with external link icon
   - Shows VIN and Stock Number in vehicle info grid
   - Template variable `{carfaxUrl}` available for Facebook post descriptions
+  - **Automated Scraping**: Web scraper now automatically extracts Carfax URLs from dealership websites using 4 detection strategies:
+    1. Direct link detection (`a[href*="carfax"]`)
+    2. Data attribute extraction (`data-carfax`, `data-carfax-url`, `data-carfax-link`)
+    3. Class-based detection (`.carfax-link`, `.carfax-button`, `.carfax-report`)
+    4. Comprehensive URL scanning for carfax.com/carfax.ca domains
 - **Facebook Multi-Image Posting**: 
   - Updated Facebook Marketplace posting to include ALL vehicle images
   - Previously only posted first image, now posts entire gallery
