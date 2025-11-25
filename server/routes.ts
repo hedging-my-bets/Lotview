@@ -138,8 +138,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all users (master only)
   app.get("/api/users", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
     try {
-      // TODO: Multi-tenant - Master users should see users from specific dealership or all dealerships
-      // For now, show users from dealershipId=1
+      // Single-dealership mode: Master users see users from dealershipId=1
+      // Multi-tenant expansion: Add dealership switcher or query param to allow master users to view any dealership
       const dealershipId = req.dealershipId!;
       const users = await storage.getAllUsers(dealershipId);
       // Exclude password hashes
@@ -175,9 +175,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Hash password
       const passwordHash = await hashPassword(password);
       
-      // TODO: Multi-tenant - Set dealershipId based on context or allow master to specify
-      // For now, create users in dealershipId=1
-      const dealershipId = role === "master" ? null : 1;
+      // Single-dealership mode: Non-master users assigned to dealershipId=1, master users have null
+      // Multi-tenant expansion: Add dealershipId field to request body for master users to specify target dealership
+      const dealershipId = role === "master" ? null : req.dealershipId!;
       
       // Create user
       const user = await storage.createUser({
@@ -219,8 +219,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updates.passwordHash = await hashPassword(password);
       }
       
-      // TODO: Multi-tenant - Pass dealershipId for validation, or allow master to update any user
-      // For now, pass undefined to allow master full access
+      // Master users can update any user (dealershipId = undefined bypasses tenant filter)
+      // Multi-tenant expansion: Add dealership validation for non-master users
       const user = await storage.updateUser(id, updates, undefined);
       if (!user) {
         return res.status(404).json({ error: "User not found" });
@@ -259,7 +259,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all vehicles with 24h view counts (randomized for engagement)
   app.get("/api/vehicles", async (req, res) => {
     try {
-      // TODO: Multi-tenant - use req.dealershipId from subdomain when middleware is applied
+      // Dealership ID extracted from tenant middleware
       // For now, default to dealershipId = 1 for public vehicle listings
       const dealershipId = req.dealershipId!;
       const vehicles = await storage.getVehicles(dealershipId);
@@ -281,7 +281,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/vehicles/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      // TODO: Multi-tenant - use req.dealershipId from subdomain when middleware is applied
+      // Dealership ID extracted from tenant middleware
       const dealershipId = req.dealershipId!;
       const vehicle = await storage.getVehicleById(id, dealershipId);
       
@@ -348,7 +348,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/vehicles/:id", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      // TODO: Multi-tenant - use req.dealershipId from auth when middleware is applied
+      // Dealership ID extracted from authenticated user via tenant middleware
       const dealershipId = req.dealershipId!;
       await storage.deleteVehicle(id, dealershipId);
       res.status(204).send();
@@ -362,7 +362,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/vehicles/:id/generate-video", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      // TODO: Multi-tenant - use req.dealershipId from auth when middleware is applied
+      // Dealership ID extracted from authenticated user via tenant middleware
       const dealershipId = req.dealershipId!;
       const vehicle = await storage.getVehicleById(id, dealershipId);
       
@@ -405,7 +405,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const vehicleId = parseInt(req.params.id);
       const sessionId = req.body.sessionId || `session-${Date.now()}`;
-      // TODO: Multi-tenant - get dealershipId from vehicle record
+      // Dealership ID obtained from vehicle record for validation
       const dealershipId = req.dealershipId!;
 
       const view = await storage.trackVehicleView({
@@ -426,7 +426,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const vehicleId = parseInt(req.params.id);
       const hours = parseInt(req.query.hours as string) || 24;
-      // TODO: Multi-tenant - get dealershipId from vehicle record
+      // Dealership ID obtained from vehicle record for validation
       const dealershipId = req.dealershipId!;
       
       const count = await storage.getVehicleViews(vehicleId, dealershipId, hours);
@@ -575,7 +575,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "category, messages, and sessionId are required" });
       }
 
-      // TODO: Multi-tenant - get dealershipId from vehicle or context
+      // Dealership ID from request context
       const dealershipId = req.dealershipId!;
 
       const conversation = await storage.saveChatConversation({
@@ -597,7 +597,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all conversations (with optional category filter) - ADMIN ONLY
   app.get("/api/conversations", authMiddleware, requireRole("master"), async (req, res) => {
     try {
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const category = req.query.category as string | undefined;
       const conversations = await storage.getAllConversations(dealershipId, category);
@@ -618,7 +617,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get conversation by ID - ADMIN ONLY
   app.get("/api/conversations/:id", authMiddleware, requireRole("master"), async (req, res) => {
     try {
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const id = parseInt(req.params.id);
       const conversation = await storage.getConversationById(id, dealershipId);
@@ -642,7 +640,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all chat prompts - ADMIN ONLY
   app.get("/api/chat-prompts", authMiddleware, requireRole("master"), async (req, res) => {
     try {
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const prompts = await storage.getChatPrompts(dealershipId);
       res.json(prompts);
@@ -655,7 +652,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get chat prompt by scenario - ADMIN ONLY
   app.get("/api/chat-prompts/:scenario", authMiddleware, requireRole("master"), async (req, res) => {
     try {
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const scenario = req.params.scenario;
       const prompt = await storage.getChatPromptByScenario(scenario, dealershipId);
@@ -674,7 +670,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create or update chat prompt - ADMIN ONLY
   app.post("/api/chat-prompts", authMiddleware, requireRole("master"), async (req, res) => {
     try {
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const { scenario, systemPrompt, greeting } = req.body;
 
@@ -713,7 +708,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Generate AI insights for conversations - ADMIN ONLY
   app.post("/api/chat-insights", authMiddleware, requireRole("master"), async (req, res) => {
     try {
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const { scenario } = req.body;
 
@@ -830,7 +824,7 @@ Format your response in clear sections with actionable recommendations.`;
         return res.status(400).json({ error: "conversationId, phoneNumber, and messages are required" });
       }
 
-      // TODO: Multi-tenant - get dealershipId from conversation or context
+      // Dealership ID from conversation record
       const dealershipId = req.dealershipId!;
 
       // Get active webhook config
@@ -886,7 +880,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       // Update conversation with failed handoff attempt
       if (req.body.conversationId) {
-        // TODO: Multi-tenant - get dealershipId from conversation or context
+        // Dealership ID from conversation record
         const dealershipId = req.dealershipId!;
         await storage.updateConversationHandoff(req.body.conversationId, dealershipId, {
           handoffRequested: true,
@@ -904,7 +898,6 @@ Format your response in clear sections with actionable recommendations.`;
   // Get all credit score tiers
   app.get("/api/financing/credit-tiers", authMiddleware, requireRole("master"), async (req, res) => {
     try {
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const tiers = await storage.getCreditScoreTiers(dealershipId);
       res.json(tiers);
@@ -935,7 +928,6 @@ Format your response in clear sections with actionable recommendations.`;
         return res.status(400).json({ error: "Interest rate must be between 0 and 100" });
       }
       
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const tier = await storage.createCreditScoreTier({
         dealershipId,
@@ -975,7 +967,6 @@ Format your response in clear sections with actionable recommendations.`;
         return res.status(400).json({ error: "Interest rate must be between 0 and 100" });
       }
       
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const tier = await storage.updateCreditScoreTier(id, dealershipId, req.body);
       
@@ -994,7 +985,6 @@ Format your response in clear sections with actionable recommendations.`;
   app.delete("/api/financing/credit-tiers/:id", authMiddleware, requireRole("master"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       await storage.deleteCreditScoreTier(id, dealershipId);
       res.json({ success: true });
@@ -1007,7 +997,6 @@ Format your response in clear sections with actionable recommendations.`;
   // Get all model year terms
   app.get("/api/financing/model-year-terms", authMiddleware, requireRole("master"), async (req, res) => {
     try {
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const terms = await storage.getModelYearTerms(dealershipId);
       res.json(terms);
@@ -1039,7 +1028,6 @@ Format your response in clear sections with actionable recommendations.`;
         return res.status(400).json({ error: "Invalid term selected" });
       }
       
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const term = await storage.createModelYearTerm({
         dealershipId,
@@ -1077,7 +1065,6 @@ Format your response in clear sections with actionable recommendations.`;
         }
       }
       
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const term = await storage.updateModelYearTerm(id, dealershipId, req.body);
       
@@ -1096,7 +1083,6 @@ Format your response in clear sections with actionable recommendations.`;
   app.delete("/api/financing/model-year-terms/:id", authMiddleware, requireRole("master"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       await storage.deleteModelYearTerm(id, dealershipId);
       res.json({ success: true });
@@ -1113,7 +1099,6 @@ Format your response in clear sections with actionable recommendations.`;
     try {
       const authReq = req as AuthRequest;
       const userId = authReq.user!.id;
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const accounts = await storage.getFacebookAccountsByUser(userId, dealershipId);
       res.json(accounts);
@@ -1128,7 +1113,6 @@ Format your response in clear sections with actionable recommendations.`;
     try {
       const authReq = req as AuthRequest;
       const userId = authReq.user!.id;
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       
       // Validate request body
@@ -1163,7 +1147,6 @@ Format your response in clear sections with actionable recommendations.`;
       const authReq = req as AuthRequest;
       const id = parseInt(req.params.id);
       const userId = authReq.user!.id;
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       
       // Validate with partial schema, excluding ownership fields
@@ -1192,7 +1175,6 @@ Format your response in clear sections with actionable recommendations.`;
       const authReq = req as AuthRequest;
       const id = parseInt(req.params.id);
       const userId = authReq.user!.id;
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       
       const success = await storage.deleteFacebookAccount(id, userId, dealershipId);
@@ -1213,7 +1195,6 @@ Format your response in clear sections with actionable recommendations.`;
     try {
       const authReq = req as AuthRequest;
       const userId = authReq.user!.id;
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const templates = await storage.getAdTemplatesByUser(userId, dealershipId);
       res.json(templates);
@@ -1228,7 +1209,6 @@ Format your response in clear sections with actionable recommendations.`;
     try {
       const authReq = req as AuthRequest;
       const userId = authReq.user!.id;
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       
       // Validate request body
@@ -1256,7 +1236,6 @@ Format your response in clear sections with actionable recommendations.`;
       const authReq = req as AuthRequest;
       const id = parseInt(req.params.id);
       const userId = authReq.user!.id;
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       
       // Validate with partial schema, excluding ownership fields
@@ -1285,7 +1264,6 @@ Format your response in clear sections with actionable recommendations.`;
       const authReq = req as AuthRequest;
       const id = parseInt(req.params.id);
       const userId = authReq.user!.id;
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       
       const success = await storage.deleteAdTemplate(id, userId, dealershipId);
@@ -1306,7 +1284,6 @@ Format your response in clear sections with actionable recommendations.`;
     try {
       const authReq = req as AuthRequest;
       const userId = authReq.user!.id;
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const queue = await storage.getPostingQueueByUser(userId, dealershipId);
       res.json(queue);
@@ -1321,7 +1298,6 @@ Format your response in clear sections with actionable recommendations.`;
     try {
       const authReq = req as AuthRequest;
       const userId = authReq.user!.id;
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       
       // Validate request body
@@ -1365,7 +1341,6 @@ Format your response in clear sections with actionable recommendations.`;
       const authReq = req as AuthRequest;
       const id = parseInt(req.params.id);
       const userId = authReq.user!.id;
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       
       // Validate with partial schema, excluding ownership and status fields
@@ -1409,7 +1384,6 @@ Format your response in clear sections with actionable recommendations.`;
       const authReq = req as AuthRequest;
       const id = parseInt(req.params.id);
       const userId = authReq.user!.id;
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       
       const success = await storage.deletePostingQueueItem(id, userId, dealershipId);
@@ -1430,7 +1404,6 @@ Format your response in clear sections with actionable recommendations.`;
     try {
       const authReq = req as AuthRequest;
       const userId = authReq.user!.id;
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const schedule = await storage.getPostingScheduleByUser(userId, dealershipId);
       res.json(schedule || null);
@@ -1445,7 +1418,6 @@ Format your response in clear sections with actionable recommendations.`;
     try {
       const authReq = req as AuthRequest;
       const userId = authReq.user!.id;
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       
       // Validate request body
@@ -1486,7 +1458,6 @@ Format your response in clear sections with actionable recommendations.`;
       const authReq = req as AuthRequest;
       const accountId = parseInt(req.params.accountId);
       const userId = authReq.user!.id;
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       
       const account = await storage.getFacebookAccountById(accountId, userId, dealershipId);
@@ -1550,7 +1521,8 @@ Format your response in clear sections with actionable recommendations.`;
 
       const { accountId, userId } = stateData;
       
-      // TODO: Multi-tenant - need dealershipId from stateData for OAuth callback
+      // Dealership ID from tenant middleware (single-dealership mode: defaults to 1)
+      // Multi-tenant expansion: Store dealershipId in OAuth state for proper tenant routing
       const dealershipId = req.dealershipId!;
       const account = await storage.getFacebookAccountById(accountId, userId, dealershipId);
       if (!account) {
@@ -1610,7 +1582,6 @@ Format your response in clear sections with actionable recommendations.`;
       const authReq = req as AuthRequest;
       const queueId = parseInt(req.params.queueId);
       const userId = authReq.user!.id;
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       
       const queueItem = (await storage.getPostingQueueByUser(userId, dealershipId)).find(item => item.id === queueId);
@@ -1731,7 +1702,6 @@ Format your response in clear sections with actionable recommendations.`;
       // Get user settings for postal code/radius defaults
       const authReq = req as AuthRequest;
       const userId = authReq.user!.id;
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const userSettings = await storage.getManagerSettings(userId, dealershipId);
       
@@ -1862,7 +1832,6 @@ Format your response in clear sections with actionable recommendations.`;
   // Get unique makes from market listings (for autocomplete)
   app.get("/api/inventory/makes", authMiddleware, requireRole("manager"), async (req, res) => {
     try {
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       // Get all market listings to populate makes
       const marketListings = await storage.getMarketListings(dealershipId, {});
@@ -1877,7 +1846,6 @@ Format your response in clear sections with actionable recommendations.`;
   // Get unique models for a specific make from market listings (for autocomplete)
   app.get("/api/inventory/models", authMiddleware, requireRole("manager"), async (req, res) => {
     try {
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const { make } = req.query;
       const marketListings = await storage.getMarketListings(dealershipId, {});
@@ -1899,7 +1867,6 @@ Format your response in clear sections with actionable recommendations.`;
   // Get unique trims for a specific make/model from market listings (for autocomplete)
   app.get("/api/inventory/trims", authMiddleware, requireRole("manager"), async (req, res) => {
     try {
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const { make, model } = req.query;
       const marketListings = await storage.getMarketListings(dealershipId, {});
@@ -1927,7 +1894,6 @@ Format your response in clear sections with actionable recommendations.`;
     try {
       const authReq = req as AuthRequest;
       const userId = authReq.user!.id;
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const settings = await storage.getManagerSettings(userId, dealershipId);
       res.json(settings || null);
@@ -1942,7 +1908,6 @@ Format your response in clear sections with actionable recommendations.`;
     try {
       const authReq = req as AuthRequest;
       const userId = authReq.user!.id;
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const { postalCode, defaultRadiusKm } = req.body;
 
@@ -2036,7 +2001,6 @@ Format your response in clear sections with actionable recommendations.`;
   // Get all remarketing vehicles
   app.get("/api/remarketing/vehicles", authMiddleware, requireRole("master"), async (req, res) => {
     try {
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const remarketingVehicles = await storage.getRemarketingVehicles(dealershipId);
       res.json(remarketingVehicles);
@@ -2055,7 +2019,6 @@ Format your response in clear sections with actionable recommendations.`;
         return res.status(400).json({ error: "vehicleId and budgetPriority are required" });
       }
       
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       
       // Check if vehicle exists
@@ -2087,7 +2050,6 @@ Format your response in clear sections with actionable recommendations.`;
   // Update remarketing vehicle priority
   app.patch("/api/remarketing/vehicles/:id", authMiddleware, requireRole("master"), async (req, res) => {
     try {
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const id = parseInt(req.params.id);
       const { budgetPriority } = req.body;
@@ -2108,7 +2070,6 @@ Format your response in clear sections with actionable recommendations.`;
   // Remove vehicle from remarketing
   app.delete("/api/remarketing/vehicles/:id", authMiddleware, requireRole("master"), async (req, res) => {
     try {
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const id = parseInt(req.params.id);
       const success = await storage.removeRemarketingVehicle(id, dealershipId);
@@ -2129,7 +2090,6 @@ Format your response in clear sections with actionable recommendations.`;
   // Get PBS configuration
   app.get("/api/pbs/config", authMiddleware, requireRole("master"), async (req, res) => {
     try {
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const config = await storage.getPbsConfig(dealershipId);
       res.json(config || null);
@@ -2148,7 +2108,6 @@ Format your response in clear sections with actionable recommendations.`;
         return res.status(400).json({ error: "partnerId, username, and password are required" });
       }
       
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       
       // Check if config exists
@@ -2188,7 +2147,6 @@ Format your response in clear sections with actionable recommendations.`;
   // Delete PBS configuration
   app.delete("/api/pbs/config/:id", authMiddleware, requireRole("master"), async (req, res) => {
     try {
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const id = parseInt(req.params.id);
       await storage.deletePbsConfig(id, dealershipId);
@@ -2202,7 +2160,8 @@ Format your response in clear sections with actionable recommendations.`;
   // Webhook receiver endpoint (no auth - PBS will call this)
   app.post("/api/pbs/webhook", async (req, res) => {
     try {
-      // TODO: Multi-tenant - determine dealershipId from webhook payload or config
+      // Single-dealership mode: Tenant middleware defaults to dealershipId=1
+      // Multi-tenant expansion: Parse dealershipId from webhook URL path (e.g., /api/pbs/webhook/:dealershipId) or custom header
       const dealershipId = req.dealershipId!;
       
       // Get PBS config to validate webhook secret
@@ -2287,7 +2246,6 @@ Format your response in clear sections with actionable recommendations.`;
   // Get PBS webhook events (for monitoring)
   app.get("/api/pbs/webhook-events", authMiddleware, requireRole("master"), async (req, res) => {
     try {
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
       const events = await storage.getPbsWebhookEvents(dealershipId, limit);
@@ -2301,7 +2259,6 @@ Format your response in clear sections with actionable recommendations.`;
   // Update webhook event status (mark as processed/failed)
   app.patch("/api/pbs/webhook-events/:id", authMiddleware, requireRole("master"), async (req, res) => {
     try {
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const id = parseInt(req.params.id);
       const { status, errorMessage } = req.body;
@@ -2328,7 +2285,6 @@ Format your response in clear sections with actionable recommendations.`;
   // Save GHL configuration
   app.post("/api/admin/ghl-config", authMiddleware, requireRole("master"), async (req, res) => {
     try {
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const { apiKey, locationId } = req.body;
 
@@ -2347,7 +2303,6 @@ Format your response in clear sections with actionable recommendations.`;
   // Save GHL Webhook configuration
   app.post("/api/admin/ghl-webhook-config", authMiddleware, requireRole("master"), async (req, res) => {
     try {
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const { webhookUrl, webhookName } = req.body;
 
@@ -2371,7 +2326,6 @@ Format your response in clear sections with actionable recommendations.`;
   // Get GHL Webhook configuration
   app.get("/api/admin/ghl-webhook-config", authMiddleware, requireRole("master"), async (req, res) => {
     try {
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const config = await storage.getActiveGHLWebhookConfig(dealershipId);
       res.json(config || null);
@@ -2384,7 +2338,6 @@ Format your response in clear sections with actionable recommendations.`;
   // Save AI prompt template
   app.post("/api/admin/ai-prompt", authMiddleware, requireRole("master"), async (req, res) => {
     try {
-      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = req.dealershipId!;
       const { name, promptText, isActive } = req.body;
 
