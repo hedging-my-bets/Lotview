@@ -1475,6 +1475,16 @@ export class DatabaseStorage implements IStorage {
     masterAdminEmail: string;
     masterAdminName: string;
     masterAdminPassword: string;
+    // API Keys (optional)
+    openaiApiKey?: string;
+    marketcheckKey?: string;
+    apifyToken?: string;
+    apifyActorId?: string;
+    geminiApiKey?: string;
+    ghlApiKey?: string;
+    ghlLocationId?: string;
+    facebookAppId?: string;
+    facebookAppSecret?: string;
   }): Promise<{ dealership: Dealership; masterAdmin: User }> {
     return await db.transaction(async (tx) => {
       // a) Create dealership
@@ -1629,7 +1639,27 @@ export class DatabaseStorage implements IStorage {
       ];
       await tx.insert(chatPrompts).values(chatPromptData);
 
-      // f) Return created dealership and master admin
+      // f) Create API keys entry if any keys are provided
+      const hasApiKeys = params.openaiApiKey || params.marketcheckKey || params.apifyToken || 
+                        params.apifyActorId || params.geminiApiKey || params.ghlApiKey || 
+                        params.ghlLocationId || params.facebookAppId || params.facebookAppSecret;
+      
+      if (hasApiKeys) {
+        await tx.insert(dealershipApiKeys).values({
+          dealershipId: dealership.id,
+          openaiApiKey: params.openaiApiKey || null,
+          marketcheckKey: params.marketcheckKey || null,
+          apifyToken: params.apifyToken || null,
+          apifyActorId: params.apifyActorId || null,
+          geminiApiKey: params.geminiApiKey || null,
+          ghlApiKey: params.ghlApiKey || null,
+          ghlLocationId: params.ghlLocationId || null,
+          facebookAppId: params.facebookAppId || null,
+          facebookAppSecret: params.facebookAppSecret || null,
+        });
+      }
+
+      // g) Return created dealership and master admin
       return { dealership, masterAdmin };
     });
   }

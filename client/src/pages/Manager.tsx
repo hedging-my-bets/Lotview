@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X } from "lucide-react";
+import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 export default function Manager() {
   const [, setLocation] = useLocation();
@@ -57,6 +58,19 @@ export default function Manager() {
   const [modelOpen, setModelOpen] = useState(false);
   const [trimOpen, setTrimOpen] = useState(false);
 
+  // Metrics state
+  const [metrics, setMetrics] = useState({
+    totalLeads: 0,
+    activeConversations: 0,
+    appointmentsBooked: 0,
+    scheduledPosts: 0
+  });
+  const [isLoadingMetrics, setIsLoadingMetrics] = useState(true);
+
+  // Chat prompts state
+  const [chatPrompts, setChatPrompts] = useState<any[]>([]);
+  const [isLoadingPrompts, setIsLoadingPrompts] = useState(true);
+
   useEffect(() => {
     checkAuth();
   }, []);
@@ -66,6 +80,8 @@ export default function Manager() {
     if (user) {
       loadMakes();
       loadSettings();
+      loadMetrics();
+      loadChatPrompts();
     }
   }, [user]);
 
@@ -188,6 +204,126 @@ export default function Manager() {
     } catch (error) {
       console.error("Error loading settings:", error);
     }
+  };
+
+  const loadMetrics = async () => {
+    setIsLoadingMetrics(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      
+      const [conversationsRes, queueRes] = await Promise.all([
+        fetch('/api/conversations', {
+          headers: { 'Authorization': `Bearer ${token}` },
+        }),
+        fetch('/api/facebook/queue', {
+          headers: { 'Authorization': `Bearer ${token}` },
+        })
+      ]);
+
+      let totalLeads = 0;
+      let activeConversations = 0;
+      let appointmentsBooked = 0;  // TODO: Implement appointments system
+      let scheduledPosts = 0;
+
+      if (conversationsRes.ok) {
+        const data = await conversationsRes.json();
+        
+        // Handle both array (backward compatible) and paginated response format
+        let conversationsList: any[] = [];
+        if (Array.isArray(data)) {
+          conversationsList = data;
+        } else if (data && typeof data === 'object') {
+          // Check for various response structures
+          if (Array.isArray(data.data)) {
+            conversationsList = data.data;
+          } else if (Array.isArray(data.conversations)) {
+            conversationsList = data.conversations;
+          }
+        }
+        
+        // Safely get total count
+        totalLeads = (data && typeof data === 'object' && typeof data.total === 'number')
+          ? data.total
+          : conversationsList.length;
+        
+        // Calculate active conversations (last 7 days)
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        
+        activeConversations = conversationsList.filter((conv: any) => {
+          if (!conv) return false;
+          
+          // Safely parse timestamp
+          const timestamp = conv.lastMessageAt || conv.createdAt;
+          if (!timestamp) return false;
+          
+          const lastMessageDate = new Date(timestamp);
+          // Validate date is not Invalid Date
+          if (isNaN(lastMessageDate.getTime())) return false;
+          
+          return lastMessageDate >= sevenDaysAgo;
+        }).length;
+      }
+
+      if (queueRes.ok) {
+        const queueData = await queueRes.json();
+        
+        // Handle both array and potential object response
+        let queueList: any[] = [];
+        if (Array.isArray(queueData)) {
+          queueList = queueData;
+        } else if (queueData && typeof queueData === 'object') {
+          if (Array.isArray(queueData.queue)) {
+            queueList = queueData.queue;
+          } else if (Array.isArray(queueData.data)) {
+            queueList = queueData.data;
+          }
+        }
+        
+        scheduledPosts = queueList.length;
+      }
+
+      setMetrics({
+        totalLeads,
+        activeConversations,
+        appointmentsBooked,
+        scheduledPosts
+      });
+    } catch (error) {
+      console.error("Error loading metrics:", error);
+    } finally {
+      setIsLoadingMetrics(false);
+    }
+  };
+
+  const loadChatPrompts = async () => {
+    setIsLoadingPrompts(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('/api/chat-prompts', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setChatPrompts(data);
+      }
+    } catch (error) {
+      console.error("Error loading chat prompts:", error);
+    } finally {
+      setIsLoadingPrompts(false);
+    }
+  };
+
+  const formatScenario = (scenario: string): string => {
+    const scenarioMap: { [key: string]: string } = {
+      'test-drive': 'Test Drive',
+      'get-approved': 'Get Approved',
+      'value-trade': 'Value Trade',
+      'reserve': 'Reserve',
+      'general': 'General'
+    };
+    return scenarioMap[scenario] || scenario;
   };
 
   const handleSaveSettings = async () => {
@@ -534,6 +670,135 @@ export default function Manager() {
               Logout
             </Button>
           </div>
+
+          {/* Metrics Cards */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
+            <Card data-testid="metric-total-leads">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Leads</CardTitle>
+                <MessageSquare className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {isLoadingMetrics ? (
+                  <div className="space-y-2">
+                    <div className="h-8 w-20 bg-slate-200 rounded animate-pulse" />
+                    <div className="h-3 w-32 bg-slate-200 rounded animate-pulse" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="text-2xl font-bold" data-testid="value-total-leads">{metrics.totalLeads}</div>
+                    <p className="text-xs text-muted-foreground">All chat conversations</p>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card data-testid="metric-active-conversations">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Active Conversations</CardTitle>
+                <Users className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {isLoadingMetrics ? (
+                  <div className="space-y-2">
+                    <div className="h-8 w-20 bg-slate-200 rounded animate-pulse" />
+                    <div className="h-3 w-32 bg-slate-200 rounded animate-pulse" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="text-2xl font-bold" data-testid="value-active-conversations">{metrics.activeConversations}</div>
+                    <p className="text-xs text-muted-foreground">Last 7 days</p>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card data-testid="metric-appointments-booked">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Appointments Booked</CardTitle>
+                <CalendarCheck className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {isLoadingMetrics ? (
+                  <div className="space-y-2">
+                    <div className="h-8 w-20 bg-slate-200 rounded animate-pulse" />
+                    <div className="h-3 w-32 bg-slate-200 rounded animate-pulse" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="text-2xl font-bold" data-testid="value-appointments-booked">{metrics.appointmentsBooked}</div>
+                    <p className="text-xs text-muted-foreground">Coming soon</p>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card data-testid="metric-scheduled-posts">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Scheduled Posts</CardTitle>
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {isLoadingMetrics ? (
+                  <div className="space-y-2">
+                    <div className="h-8 w-20 bg-slate-200 rounded animate-pulse" />
+                    <div className="h-3 w-32 bg-slate-200 rounded animate-pulse" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="text-2xl font-bold" data-testid="value-scheduled-posts">{metrics.scheduledPosts}</div>
+                    <p className="text-xs text-muted-foreground">In queue</p>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Chat Prompts Card */}
+          <Card className="mb-6" data-testid="prompts-card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MessageSquare className="w-5 h-5" />
+                Chat Prompts (Read-Only)
+              </CardTitle>
+              <CardDescription>
+                View AI chat scenarios configured for your dealership
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoadingPrompts ? (
+                <div className="space-y-2">
+                  <div className="h-12 bg-slate-200 rounded animate-pulse" />
+                  <div className="h-12 bg-slate-200 rounded animate-pulse" />
+                  <div className="h-12 bg-slate-200 rounded animate-pulse" />
+                </div>
+              ) : chatPrompts.length > 0 ? (
+                <Accordion type="single" collapsible>
+                  {chatPrompts.map((prompt) => (
+                    <AccordionItem 
+                      key={prompt.id} 
+                      value={prompt.scenario}
+                      data-testid={`prompt-${prompt.scenario}`}
+                    >
+                      <AccordionTrigger className="text-left">
+                        {formatScenario(prompt.scenario)}
+                      </AccordionTrigger>
+                      <AccordionContent>
+                        <div className="text-sm text-slate-600 whitespace-pre-wrap">
+                          {prompt.greeting}
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  ))}
+                </Accordion>
+              ) : (
+                <div className="text-center py-8 text-slate-500">
+                  <MessageSquare className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                  <p className="text-sm">No chat prompts configured yet</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Settings Card */}
           <Card className="mb-6">

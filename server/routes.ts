@@ -162,7 +162,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         defaultCurrency,
         masterAdminEmail, 
         masterAdminName, 
-        masterAdminPassword 
+        masterAdminPassword,
+        // API Keys (optional)
+        openaiApiKey,
+        marketcheckKey,
+        apifyToken,
+        apifyActorId,
+        geminiApiKey,
+        ghlApiKey,
+        ghlLocationId,
+        facebookAppId,
+        facebookAppSecret,
       } = req.body;
       
       // Validate required fields
@@ -198,7 +208,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         defaultCurrency,
         masterAdminEmail,
         masterAdminName,
-        masterAdminPassword
+        masterAdminPassword,
+        // API Keys
+        openaiApiKey,
+        marketcheckKey,
+        apifyToken,
+        apifyActorId,
+        geminiApiKey,
+        ghlApiKey,
+        ghlLocationId,
+        facebookAppId,
+        facebookAppSecret,
       });
       
       // Log audit action
