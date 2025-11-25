@@ -1,27 +1,44 @@
 import OpenAI from "openai";
 import { db } from "./db";
-import { aiPromptTemplates } from "@shared/schema";
+import { aiPromptTemplates, dealershipApiKeys } from "@shared/schema";
 import { eq } from "drizzle-orm";
-
-// This is using Replit's AI Integrations service, which provides OpenAI-compatible API access without requiring your own OpenAI API key.
-const openai = new OpenAI({
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY
-});
+import { storage } from "./storage";
 
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
 }
 
+async function getOpenAIClient(dealershipId: number): Promise<OpenAI> {
+  // Try to get dealership-specific API key
+  const apiKeys = await storage.getDealershipApiKeys(dealershipId);
+  
+  if (apiKeys?.openaiApiKey) {
+    // Use dealership's own OpenAI API key
+    return new OpenAI({
+      apiKey: apiKeys.openaiApiKey
+    });
+  }
+  
+  // Fallback to Replit's AI Integrations service
+  return new OpenAI({
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY
+  });
+}
+
 export async function generateChatResponse(
   messages: ChatMessage[],
+  dealershipId: number,
+  scenario: string = 'general',
   vehicleContext?: string
 ): Promise<string> {
   try {
-    const systemMessage: ChatMessage = {
-      role: "system",
-      content: `You are an expert car sales consultant for Olympic Auto Group, which operates three dealerships in Vancouver: Olympic Hyundai Vancouver, Boundary Hyundai Vancouver, and Kia Vancouver. You are professional, friendly, and focused on helping customers find their perfect vehicle.
+    // Load the active prompt for this dealership and scenario
+    const promptData = await storage.getActivePromptForScenario(dealershipId, scenario);
+    
+    // If no custom prompt, use a default system message
+    let systemContent = `You are an expert car sales consultant. You are professional, friendly, and focused on helping customers find their perfect vehicle.
 
 ${vehicleContext ? `Current vehicle being discussed: ${vehicleContext}` : ""}
 
@@ -33,8 +50,23 @@ Your goals:
 - Guide customers through the financing process
 - Provide information about warranties and service plans
 
-Always be helpful, concise, and action-oriented. If you don't have specific information, offer to connect the customer with a sales representative.`
+Always be helpful, concise, and action-oriented. If you don't have specific information, offer to connect the customer with a sales representative.`;
+
+    if (promptData) {
+      // Use the database prompt with vehicle context if available
+      systemContent = promptData.systemPrompt;
+      if (vehicleContext) {
+        systemContent += `\n\nCurrent vehicle being discussed: ${vehicleContext}`;
+      }
+    }
+
+    const systemMessage: ChatMessage = {
+      role: "system",
+      content: systemContent
     };
+
+    // Get the appropriate OpenAI client (dealership-specific or fallback)
+    const openai = await getOpenAIClient(dealershipId);
 
     const response = await openai.chat.completions.create({
       model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user

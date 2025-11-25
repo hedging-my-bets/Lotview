@@ -173,8 +173,10 @@ export interface IStorage {
   // Chat prompts (Multi-Tenant)
   getChatPrompts(dealershipId: number): Promise<ChatPrompt[]>;
   getChatPromptByScenario(scenario: string, dealershipId: number): Promise<ChatPrompt | undefined>;
+  getActivePromptForScenario(dealershipId: number, scenario: string): Promise<ChatPrompt | undefined>;
   saveChatPrompt(prompt: InsertChatPrompt): Promise<ChatPrompt>;
   updateChatPrompt(scenario: string, dealershipId: number, prompt: Partial<InsertChatPrompt>): Promise<ChatPrompt | undefined>;
+  updateChatPromptById(id: number, dealershipId: number, prompt: Partial<InsertChatPrompt>): Promise<ChatPrompt | undefined>;
   
   // Admin
   getAdminConfig(): Promise<AdminConfig | undefined>;
@@ -644,11 +646,34 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
+  async getActivePromptForScenario(dealershipId: number, scenario: string): Promise<ChatPrompt | undefined> {
+    // REQUIRED: Filter by dealership to prevent cross-tenant access
+    const result = await db.select().from(chatPrompts)
+      .where(and(
+        eq(chatPrompts.dealershipId, dealershipId),
+        eq(chatPrompts.scenario, scenario),
+        eq(chatPrompts.isActive, true)
+      ))
+      .limit(1);
+    return result[0];
+  }
+
   async updateChatPrompt(scenario: string, dealershipId: number, prompt: Partial<InsertChatPrompt>): Promise<ChatPrompt | undefined> {
     // REQUIRED: Only update prompts for this dealership
     const result = await db.update(chatPrompts).set(prompt)
       .where(and(
         eq(chatPrompts.scenario, scenario),
+        eq(chatPrompts.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+
+  async updateChatPromptById(id: number, dealershipId: number, prompt: Partial<InsertChatPrompt>): Promise<ChatPrompt | undefined> {
+    // REQUIRED: Filter by dealership to prevent cross-tenant access
+    const result = await db.update(chatPrompts).set(prompt)
+      .where(and(
+        eq(chatPrompts.id, id),
         eq(chatPrompts.dealershipId, dealershipId)
       ))
       .returning();
