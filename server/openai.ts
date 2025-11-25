@@ -150,7 +150,7 @@ Requirements:
 Write the description now:`;
 }
 
-export async function generateVehicleDescription(vehicle: VehicleData): Promise<string> {
+export async function generateVehicleDescription(vehicle: VehicleData, dealershipId: number = 1): Promise<string> {
   try {
     const badgesText = vehicle.badges.length > 0 ? vehicle.badges.join(', ') : 'none';
     const fullContentSection = vehicle.fullPageContent 
@@ -176,7 +176,10 @@ export async function generateVehicleDescription(vehicle: VehicleData): Promise<
       .replace(/\{\{LOCATION\}\}/g, vehicle.location)
       .replace(/\{\{FULL_CONTENT\}\}/g, fullContentSection);
 
-    const response = await openai.chat.completions.create({
+    // Get the appropriate OpenAI client
+    const openaiClient = await getOpenAIClient(dealershipId);
+
+    const response = await openaiClient.chat.completions.create({
       model: "gpt-5",
       messages: [
         {
