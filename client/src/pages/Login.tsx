@@ -38,7 +38,9 @@ export default function Login() {
         });
 
         // Redirect based on role
-        if (data.user.role === 'master') {
+        if (data.user.role === 'super_admin') {
+          setLocation('/super-admin');
+        } else if (data.user.role === 'master') {
           setLocation('/dashboard');
         } else if (data.user.role === 'manager') {
           setLocation('/manager');
