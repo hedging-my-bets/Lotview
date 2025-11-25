@@ -11,6 +11,13 @@ export const dealerships = pgTable("dealerships", {
   name: text("name").notNull(), // e.g., "Olympic Auto Group"
   slug: text("slug").notNull().unique(), // URL-safe identifier (e.g., "olympic-auto")
   subdomain: text("subdomain").unique(), // For subdomain routing (e.g., "olympic")
+  address: text("address"), // Street address
+  city: text("city"), // City
+  province: text("province"), // Province/State (e.g., "BC")
+  postalCode: text("postal_code"), // Postal/ZIP code
+  phone: text("phone"), // Contact phone number
+  timezone: text("timezone").default("America/Vancouver"), // Timezone for scheduling
+  defaultCurrency: text("default_currency").default("CAD"), // Default currency code
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
