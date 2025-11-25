@@ -1,10 +1,87 @@
-import { pgTable, text, integer, serial, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, serial, timestamp, boolean, uuid } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { sql } from "drizzle-orm";
+
+// ====== MULTI-TENANT CORE TABLES ======
+
+// Dealerships table - Each dealership is a tenant
+export const dealerships = pgTable("dealerships", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(), // e.g., "Olympic Auto Group"
+  slug: text("slug").notNull().unique(), // URL-safe identifier (e.g., "olympic-auto")
+  subdomain: text("subdomain").unique(), // For subdomain routing (e.g., "olympic")
+  logo: text("logo"), // Logo URL
+  brandColors: text("brand_colors"), // JSON object with primary/secondary colors
+  status: text("status").notNull().default('active'), // active, suspended, cancelled
+  trialEndsAt: timestamp("trial_ends_at"), // 14-day trial end date
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertDealershipSchema = createInsertSchema(dealerships).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertDealership = z.infer<typeof insertDealershipSchema>;
+export type Dealership = typeof dealerships.$inferSelect;
+
+// Dealership subscriptions - Billing and plan management
+export const dealershipSubscriptions = pgTable("dealership_subscriptions", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  plan: text("plan").notNull().default('starter'), // starter, professional, enterprise
+  status: text("status").notNull().default('trial'), // trial, active, past_due, cancelled
+  currentPeriodEnd: timestamp("current_period_end"), // When current billing period ends
+  stripeCustomerId: text("stripe_customer_id"), // Stripe customer ID
+  stripeSubscriptionId: text("stripe_subscription_id"), // Stripe subscription ID
+  monthlyPrice: integer("monthly_price"), // Price in cents
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertDealershipSubscriptionSchema = createInsertSchema(dealershipSubscriptions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertDealershipSubscription = z.infer<typeof insertDealershipSubscriptionSchema>;
+export type DealershipSubscription = typeof dealershipSubscriptions.$inferSelect;
+
+// Dealership API keys - Master user manages these per dealership
+export const dealershipApiKeys = pgTable("dealership_api_keys", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  marketcheckKey: text("marketcheck_key"), // MarketCheck API key
+  apifyToken: text("apify_token"), // Apify API token
+  apifyActorId: text("apify_actor_id"), // Apify actor ID for AutoTrader scraper
+  geminiApiKey: text("gemini_api_key"), // Google Gemini Veo API key
+  ghlApiKey: text("ghl_api_key"), // GoHighLevel API key
+  ghlLocationId: text("ghl_location_id"), // GoHighLevel location/sub-account ID
+  facebookAppId: text("facebook_app_id"), // Facebook App ID (shared or per-dealership)
+  facebookAppSecret: text("facebook_app_secret"), // Facebook App Secret
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertDealershipApiKeysSchema = createInsertSchema(dealershipApiKeys).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertDealershipApiKeys = z.infer<typeof insertDealershipApiKeysSchema>;
+export type DealershipApiKeys = typeof dealershipApiKeys.$inferSelect;
+
+// ====== APPLICATION TABLES (Multi-Tenant) ======
 
 // Vehicles table
 export const vehicles = pgTable("vehicles", {
   id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
   year: integer("year").notNull(),
   make: text("make").notNull(),
   model: text("model").notNull(),
@@ -38,6 +115,7 @@ export type Vehicle = typeof vehicles.$inferSelect;
 // View tracking table
 export const vehicleViews = pgTable("vehicle_views", {
   id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
   vehicleId: integer("vehicle_id").notNull().references(() => vehicles.id),
   sessionId: text("session_id").notNull(), // For remarketing tracking
   viewedAt: timestamp("viewed_at").defaultNow().notNull(),
@@ -51,9 +129,10 @@ export const insertVehicleViewSchema = createInsertSchema(vehicleViews).omit({
 export type InsertVehicleView = z.infer<typeof insertVehicleViewSchema>;
 export type VehicleView = typeof vehicleViews.$inferSelect;
 
-// Facebook pages connected by sales team
+// Facebook pages connected by sales team (LEGACY - being replaced by facebookAccounts)
 export const facebookPages = pgTable("facebook_pages", {
   id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
   pageName: text("page_name").notNull(),
   pageId: text("page_id").notNull().unique(),
   accessToken: text("access_token"), // Optional - for future OAuth integration
@@ -70,9 +149,10 @@ export const insertFacebookPageSchema = createInsertSchema(facebookPages).omit({
 export type InsertFacebookPage = z.infer<typeof insertFacebookPageSchema>;
 export type FacebookPage = typeof facebookPages.$inferSelect;
 
-// Priority inventory for each Facebook page
+// Priority inventory for each Facebook page (LEGACY - being replaced by postingQueue)
 export const pagePriorityVehicles = pgTable("page_priority_vehicles", {
   id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
   pageId: integer("page_id").notNull().references(() => facebookPages.id),
   vehicleId: integer("vehicle_id").notNull().references(() => vehicles.id),
   priority: integer("priority").notNull(), // Order for posting
@@ -85,9 +165,10 @@ export const insertPagePriorityVehicleSchema = createInsertSchema(pagePriorityVe
 export type InsertPagePriorityVehicle = z.infer<typeof insertPagePriorityVehicleSchema>;
 export type PagePriorityVehicle = typeof pagePriorityVehicles.$inferSelect;
 
-// GoHighLevel configuration
+// GoHighLevel configuration (LEGACY - being moved to dealershipApiKeys)
 export const ghlConfig = pgTable("ghl_config", {
   id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
   apiKey: text("api_key").notNull(), // GHL API access token
   locationId: text("location_id").notNull(), // GHL location ID
   isActive: boolean("is_active").notNull().default(true),
@@ -105,6 +186,7 @@ export type GhlConfig = typeof ghlConfig.$inferSelect;
 // GHL Webhook configuration for SMS handoff
 export const ghlWebhookConfig = pgTable("ghl_webhook_config", {
   id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
   webhookUrl: text("webhook_url").notNull(), // GHL inbound webhook URL
   webhookName: text("webhook_name").notNull(), // Descriptive name
   isActive: boolean("is_active").notNull().default(true),
@@ -122,6 +204,7 @@ export type GhlWebhookConfig = typeof ghlWebhookConfig.$inferSelect;
 // AI prompt templates for vehicle descriptions
 export const aiPromptTemplates = pgTable("ai_prompt_templates", {
   id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
   name: text("name").notNull(), // e.g., "Vehicle Description", "Short Description"
   promptText: text("prompt_text").notNull(), // The actual ChatGPT prompt
   isActive: boolean("is_active").notNull().default(true),
@@ -141,6 +224,7 @@ export type AiPromptTemplate = typeof aiPromptTemplates.$inferSelect;
 // Chat conversations for analytics and training
 export const chatConversations = pgTable("chat_conversations", {
   id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
   category: text("category").notNull(), // 'test-drive', 'get-approved', 'value-trade', 'reserve', 'general'
   vehicleId: integer("vehicle_id").references(() => vehicles.id),
   vehicleName: text("vehicle_name"), // e.g., "2024 Toyota Camry"
@@ -164,7 +248,8 @@ export type ChatConversation = typeof chatConversations.$inferSelect;
 // Chat prompts for different scenarios
 export const chatPrompts = pgTable("chat_prompts", {
   id: serial("id").primaryKey(),
-  scenario: text("scenario").notNull().unique(), // 'test-drive', 'get-approved', 'value-trade', 'reserve', 'general'
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  scenario: text("scenario").notNull(), // 'test-drive', 'get-approved', 'value-trade', 'reserve', 'general'
   systemPrompt: text("system_prompt").notNull(), // The system/instruction prompt for ChatGPT
   greeting: text("greeting").notNull(), // Initial greeting message
   isActive: boolean("is_active").notNull().default(true),
@@ -182,6 +267,7 @@ export type ChatPrompt = typeof chatPrompts.$inferSelect;
 // Users table with role-based access
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").references(() => dealerships.id, { onDelete: 'cascade' }), // NULL for master users who manage all dealerships
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   name: text("name").notNull(),
@@ -219,6 +305,7 @@ export type AdminConfig = typeof adminConfig.$inferSelect;
 // Financing rules - Credit score tiers
 export const creditScoreTiers = pgTable("credit_score_tiers", {
   id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
   tierName: text("tier_name").notNull(), // e.g., "Excellent", "Good", "Fair", "Poor"
   minScore: integer("min_score").notNull(),
   maxScore: integer("max_score").notNull(),
@@ -240,6 +327,7 @@ export type CreditScoreTier = typeof creditScoreTiers.$inferSelect;
 // Financing rules - Model year term eligibility
 export const modelYearTerms = pgTable("model_year_terms", {
   id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
   minModelYear: integer("min_model_year").notNull(), // e.g., 2020
   maxModelYear: integer("max_model_year").notNull(), // e.g., 2024
   availableTerms: text("available_terms").array().notNull(), // e.g., ["36", "48", "60", "72", "84"]
@@ -348,6 +436,7 @@ export type PostingSchedule = typeof postingSchedule.$inferSelect;
 // Remarketing vehicles - Master user selects up to 20 vehicles for remarketing campaigns
 export const remarketingVehicles = pgTable("remarketing_vehicles", {
   id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
   vehicleId: integer("vehicle_id").notNull().references(() => vehicles.id, { onDelete: 'cascade' }),
   budgetPriority: integer("budget_priority").notNull(), // 1-5 scale (5 = highest priority)
   isActive: boolean("is_active").notNull().default(true),
@@ -365,6 +454,7 @@ export type RemarketingVehicle = typeof remarketingVehicles.$inferSelect;
 // PBS DMS Integration Configuration
 export const pbsConfig = pgTable("pbs_config", {
   id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
   partnerId: text("partner_id").notNull(), // PBS Partner ID
   username: text("username").notNull(), // PBS API username
   password: text("password").notNull(), // PBS API password (encrypted)
@@ -388,6 +478,7 @@ export type PbsConfig = typeof pbsConfig.$inferSelect;
 // PBS Webhook Events Log
 export const pbsWebhookEvents = pgTable("pbs_webhook_events", {
   id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
   eventType: text("event_type").notNull(), // e.g., 'customer.created', 'vehicle.updated', 'appointment.scheduled'
   eventId: text("event_id").notNull(), // PBS event ID
   payload: text("payload").notNull(), // JSON payload from PBS
@@ -427,8 +518,9 @@ export type ManagerSettings = typeof managerSettings.$inferSelect;
 // Market Listings Cache (scraped from AutoTrader, Kijiji, etc.)
 export const marketListings = pgTable("market_listings", {
   id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
   externalId: text("external_id").notNull(), // Unique ID from source platform
-  source: text("source").notNull(), // 'autotrader', 'kijiji', 'facebook'
+  source: text("source").notNull(), // 'marketcheck', 'apify', 'autotrader_scraper'
   listingType: text("listing_type").notNull(), // 'dealer', 'private'
   year: integer("year").notNull(),
   make: text("make").notNull(),

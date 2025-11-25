@@ -230,11 +230,33 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
           }
         }
         
-        // Extract kilometers
+        // Extract kilometers with multiple patterns
         let odometer = 0;
-        const kmMatch = cardText.match(/(\d+[,\d]*)\s*km/i);
-        if (kmMatch) {
-          odometer = parseInt(kmMatch[1].replace(/,/g, ''));
+        // Try multiple patterns for odometer extraction
+        const odometerPatterns = [
+          /(\d+[,\d]*)\s*km/i,                    // Standard: "12,345 km"
+          /Odometer[:\s]+(\d+[,\d]*)/i,           // Label format: "Odometer: 12345"
+          /(\d+[,\d]*)\s*kilometers/i,            // Full word
+          /mileage[:\s]+(\d+[,\d]*)/i,            // Mileage label
+          /km[:\s]+(\d+[,\d]*)/i,                 // KM label first
+        ];
+        
+        for (const pattern of odometerPatterns) {
+          const match = cardText.match(pattern);
+          if (match) {
+            odometer = parseInt(match[1].replace(/,/g, ''));
+            break;
+          }
+        }
+        
+        // Also try from odometer element with data attributes
+        const odometerEl = card.querySelector('[data-field="odometer"], [data-field="mileage"], .odometer, .mileage');
+        if (odometerEl && odometer === 0) {
+          const odometerText = odometerEl.textContent || odometerEl.getAttribute('data-value') || '';
+          const odometerMatch = odometerText.match(/(\d+[,\d]*)/);
+          if (odometerMatch) {
+            odometer = parseInt(odometerMatch[1].replace(/,/g, ''));
+          }
         }
         
         // Extract body style
@@ -307,18 +329,26 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
         
         // Extract detailed information
         const detailData = await detailPage.evaluate(() => {
-          // Extract all images from data-gallery JSON
+          // Extract all images with comprehensive fallback strategies
           const images: string[] = [];
+          
+          // Strategy 1: Extract from data-gallery JSON attribute
           const galleryEl = document.querySelector('[data-gallery]');
           if (galleryEl) {
             try {
               const galleryData = JSON.parse(galleryEl.getAttribute('data-gallery') || '[]');
               if (Array.isArray(galleryData)) {
                 galleryData.forEach((item: any) => {
-                  if (item.url || item.src) {
-                    const url = item.url || item.src;
-                    // Get high-res version
-                    const highResUrl = url.replace('-420x315', '-1024x786').replace('-300x225', '-1024x786');
+                  if (item.url || item.src || item.image) {
+                    const url = item.url || item.src || item.image;
+                    // Get high-res version - try multiple resolution replacements
+                    let highResUrl = url
+                      .replace('-420x315', '-1024x786')
+                      .replace('-300x225', '-1024x786')
+                      .replace('-640x480', '-1024x786')
+                      .replace('/thumbs/', '/photos/')
+                      .replace('/small/', '/large/');
+                    
                     if (highResUrl && !images.includes(highResUrl)) {
                       images.push(highResUrl);
                     }
@@ -330,13 +360,71 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
             }
           }
           
-          // Fallback to img tags if no gallery data
+          // Strategy 2: Look for image gallery container with specific classes
+          if (images.length === 0) {
+            const galleryContainers = document.querySelectorAll('.vehicle-gallery, .image-gallery, .photos-container, [data-images]');
+            galleryContainers.forEach(container => {
+              const imgs = container.querySelectorAll('img');
+              imgs.forEach(img => {
+                const src = img.src || img.getAttribute('data-src') || img.getAttribute('data-lazy') || '';
+                if (src && src.length > 10) {
+                  const highResSrc = src
+                    .replace('-420x315', '-1024x786')
+                    .replace('-300x225', '-1024x786')
+                    .replace('-640x480', '-1024x786')
+                    .replace('/thumbs/', '/photos/')
+                    .replace('/small/', '/large/');
+                  if (highResSrc && !images.includes(highResSrc)) {
+                    images.push(highResSrc);
+                  }
+                }
+              });
+            });
+          }
+          
+          // Strategy 3: Extract from data-images attribute (another common pattern)
+          if (images.length === 0) {
+            const dataImagesEl = document.querySelector('[data-images]');
+            if (dataImagesEl) {
+              try {
+                const imagesData = JSON.parse(dataImagesEl.getAttribute('data-images') || '[]');
+                if (Array.isArray(imagesData)) {
+                  imagesData.forEach((url: string) => {
+                    const highResUrl = url
+                      .replace('-420x315', '-1024x786')
+                      .replace('-300x225', '-1024x786');
+                    if (highResUrl && !images.includes(highResUrl)) {
+                      images.push(highResUrl);
+                    }
+                  });
+                }
+              } catch (e) {
+                console.error('Error parsing data-images:', e);
+              }
+            }
+          }
+          
+          // Strategy 4: Fallback to all vehicle/product images on page
           if (images.length === 0) {
             const imgElements = document.querySelectorAll('img');
             imgElements.forEach(img => {
-              const src = img.src || img.getAttribute('data-src') || '';
-              if (src.includes('photomanager') || src.includes('autotrader') || src.includes('photos')) {
-                const highResSrc = src.replace('-420x315', '-1024x786').replace('-300x225', '-1024x786');
+              const src = img.src || img.getAttribute('data-src') || img.getAttribute('data-lazy') || '';
+              // Filter to vehicle-related images only
+              if (src && (
+                src.includes('photomanager') || 
+                src.includes('autotrader') || 
+                src.includes('photos') ||
+                src.includes('vehicle') ||
+                src.includes('car') ||
+                img.alt?.toLowerCase().includes('vehicle') ||
+                img.alt?.toLowerCase().includes('car')
+              )) {
+                const highResSrc = src
+                  .replace('-420x315', '-1024x786')
+                  .replace('-300x225', '-1024x786')
+                  .replace('-640x480', '-1024x786')
+                  .replace('/thumbs/', '/photos/')
+                  .replace('/small/', '/large/');
                 if (highResSrc && !images.includes(highResSrc)) {
                   images.push(highResSrc);
                 }
@@ -344,17 +432,72 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
             });
           }
           
-          // Extract description from h1
-          const h1 = document.querySelector('h1');
-          let description = h1?.textContent?.trim() || '';
+          // Log image extraction results for debugging
+          console.log(`  Found ${images.length} images for vehicle`)
           
-          // Extract full page content for AI description generation
+          // Extract description with multiple strategies
+          let description = '';
+          
+          // Strategy 1: Look for dedicated description sections
+          const descriptionSelectors = [
+            '.vehicle-description',
+            '.vehicle-overview',
+            '.description',
+            '[data-field="description"]',
+            '.product-description',
+            '.car-description'
+          ];
+          
+          for (const selector of descriptionSelectors) {
+            const descEl = document.querySelector(selector);
+            if (descEl && descEl.textContent && descEl.textContent.trim().length > 50) {
+              description = descEl.textContent.trim();
+              break;
+            }
+          }
+          
+          // Strategy 2: Look for heading + features/specs
+          if (!description || description.length < 50) {
+            const h1 = document.querySelector('h1');
+            let descParts: string[] = [];
+            
+            if (h1?.textContent) {
+              descParts.push(h1.textContent.trim());
+            }
+            
+            // Extract features list
+            const features: string[] = [];
+            const featureElements = document.querySelectorAll('.vehicle-features li, .features-list li, [data-field="features"] li');
+            featureElements.forEach((el, idx) => {
+              if (idx < 8) { // Limit to 8 features for description
+                const text = el.textContent?.trim();
+                if (text && text.length > 2 && text.length < 100) {
+                  features.push(text);
+                }
+              }
+            });
+            
+            if (features.length > 0) {
+              descParts.push('Features: ' + features.join(', '));
+            }
+            
+            description = descParts.join(' | ');
+          }
+          
+          // Strategy 3: Fallback to basic info from title/heading
+          if (!description || description.length < 30) {
+            const titleEl = document.querySelector('title, h1, h2');
+            description = titleEl?.textContent?.trim() || '';
+          }
+          
+          // Extract full page content for AI analysis/processing
           let fullPageContent = '';
           const contentSelectors = [
             '.vehicle-description',
             '.vehicle-details',
             '.vehicle-specs',
             '.vehicle-features',
+            '.vehicle-overview',
             '[data-field]',
             '.specs-list',
             '.features-list',
@@ -367,7 +510,7 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
             const elements = document.querySelectorAll(selector);
             elements.forEach(el => {
               const text = el.textContent?.trim();
-              if (text && text.length > 20) {
+              if (text && text.length > 20 && text.length < 2000) {
                 fullPageContent += text + '\n\n';
               }
             });
@@ -377,6 +520,12 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
           if (fullPageContent.length < 100) {
             const allText = document.body.innerText;
             fullPageContent = allText.slice(0, 5000); // Limit to 5000 chars
+          }
+          
+          // Clean up description (remove extra whitespace, newlines)
+          description = description.replace(/\s+/g, ' ').trim();
+          if (description.length > 500) {
+            description = description.slice(0, 497) + '...';
           }
           
           // Extract VIN from data-field attribute

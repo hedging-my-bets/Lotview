@@ -1,8 +1,7 @@
 import { FilterState } from "@/lib/types";
-import { SlidersHorizontal, MapPin, CarFront, DollarSign, Check, Building2 } from "lucide-react";
+import { SlidersHorizontal, CarFront, DollarSign, Check, Building2 } from "lucide-react";
 
-const LOCATIONS = ["Vancouver", "Burnaby", "Richmond"];
-const BODY_STYLES = ["SUV", "Truck", "Sedan", "Coupe", "Hatchback"];
+const BODY_STYLES = ["SUV", "Truck", "Sedan"];
 const DEALERSHIPS = ["Olympic Hyundai Vancouver", "Boundary Hyundai Vancouver", "Kia Vancouver"];
 import { Slider } from "@/components/ui/slider";
 
@@ -16,11 +15,6 @@ export function InventorySidebar({ filters, setFilters }: InventorySidebarProps)
   const handleTypeChange = (type: string) => {
     const newType = filters.type === type ? 'all' : type;
     setFilters({ ...filters, type: newType });
-  };
-
-  const handleLocationChange = (loc: string) => {
-    const newLoc = filters.location === loc ? 'all' : loc;
-    setFilters({ ...filters, location: newLoc });
   };
 
   const handleDealershipChange = (dealer: string) => {
@@ -67,43 +61,6 @@ export function InventorySidebar({ filters, setFilters }: InventorySidebarProps)
                   onChange={() => handleDealershipChange(dealer)}
                 />
                 <span className={`text-sm font-medium transition ${filters.dealership === dealer ? 'text-primary' : 'text-slate-600 group-hover:text-primary'}`}>{dealer}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        {/* Location Filter */}
-        <div className="mb-8">
-          <p className="text-xs font-bold text-slate-400 uppercase mb-3 flex items-center gap-2">
-            <MapPin className="w-3 h-3" /> City
-          </p>
-          <div className="space-y-2">
-            <label className="flex items-center gap-3 cursor-pointer group">
-              <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${filters.location === 'all' ? 'bg-primary border-primary text-white' : 'border-slate-300 bg-white'}`}>
-                {filters.location === 'all' && <Check className="w-3 h-3" />}
-              </div>
-              <input 
-                type="radio" 
-                name="location" 
-                className="hidden" 
-                checked={filters.location === 'all'} 
-                onChange={() => setFilters({ ...filters, location: 'all' })}
-              />
-              <span className={`text-sm font-medium transition ${filters.location === 'all' ? 'text-primary' : 'text-slate-600 group-hover:text-primary'}`}>All Cities</span>
-            </label>
-            {LOCATIONS.map(loc => (
-               <label key={loc} className="flex items-center gap-3 cursor-pointer group">
-                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${filters.location === loc ? 'bg-primary border-primary text-white' : 'border-slate-300 bg-white'}`}>
-                  {filters.location === loc && <Check className="w-3 h-3" />}
-                </div>
-                <input 
-                  type="radio" 
-                  name="location" 
-                  className="hidden" 
-                  checked={filters.location === loc} 
-                  onChange={() => handleLocationChange(loc)}
-                />
-                <span className={`text-sm font-medium transition ${filters.location === loc ? 'text-primary' : 'text-slate-600 group-hover:text-primary'}`}>{loc}</span>
               </label>
             ))}
           </div>

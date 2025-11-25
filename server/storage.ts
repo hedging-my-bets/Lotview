@@ -1,5 +1,8 @@
 import { db } from "./db";
 import { 
+  dealerships,
+  dealershipSubscriptions,
+  dealershipApiKeys,
   vehicles, 
   vehicleViews, 
   facebookPages,
@@ -18,6 +21,12 @@ import {
   postingQueue,
   postingSchedule,
   remarketingVehicles,
+  type Dealership,
+  type InsertDealership,
+  type DealershipSubscription,
+  type InsertDealershipSubscription,
+  type DealershipApiKeys,
+  type InsertDealershipApiKeys,
   type Vehicle, 
   type InsertVehicle,
   type VehicleView,
@@ -70,17 +79,37 @@ import {
 import { eq, desc, sql, and, gte, lte } from "drizzle-orm";
 
 export interface IStorage {
-  // Vehicle operations
-  getVehicles(): Promise<Vehicle[]>;
-  getVehicleById(id: number): Promise<Vehicle | undefined>;
-  createVehicle(vehicle: InsertVehicle): Promise<Vehicle>;
-  updateVehicle(id: number, vehicle: Partial<InsertVehicle>): Promise<Vehicle | undefined>;
-  deleteVehicle(id: number): Promise<boolean>;
+  // ====== DEALERSHIP MANAGEMENT ======
+  getDealership(id: number): Promise<Dealership | undefined>;
+  getDealershipBySlug(slug: string): Promise<Dealership | undefined>;
+  getDealershipBySubdomain(subdomain: string): Promise<Dealership | undefined>;
+  getAllDealerships(): Promise<Dealership[]>;
+  createDealership(dealership: InsertDealership): Promise<Dealership>;
+  updateDealership(id: number, dealership: Partial<InsertDealership>): Promise<Dealership | undefined>;
+  deleteDealership(id: number): Promise<boolean>;
   
-  // View tracking
-  trackVehicleView(view: InsertVehicleView): Promise<VehicleView>;
-  getVehicleViews(vehicleId: number, hours?: number): Promise<number>;
-  getAllVehicleViews(hours?: number): Promise<Map<number, number>>;
+  // Dealership API keys
+  getDealershipApiKeys(dealershipId: number): Promise<DealershipApiKeys | undefined>;
+  saveDealershipApiKeys(keys: InsertDealershipApiKeys): Promise<DealershipApiKeys>;
+  updateDealershipApiKeys(dealershipId: number, keys: Partial<InsertDealershipApiKeys>): Promise<DealershipApiKeys | undefined>;
+  
+  // Dealership subscriptions
+  getDealershipSubscription(dealershipId: number): Promise<DealershipSubscription | undefined>;
+  createDealershipSubscription(subscription: InsertDealershipSubscription): Promise<DealershipSubscription>;
+  updateDealershipSubscription(dealershipId: number, subscription: Partial<InsertDealershipSubscription>): Promise<DealershipSubscription | undefined>;
+  
+  // ====== VEHICLE OPERATIONS (Multi-Tenant) ======
+  // dealershipId is REQUIRED for all multi-tenant operations to ensure data isolation
+  getVehicles(dealershipId: number): Promise<Vehicle[]>;
+  getVehicleById(id: number, dealershipId: number): Promise<Vehicle | undefined>;
+  createVehicle(vehicle: InsertVehicle): Promise<Vehicle>;
+  updateVehicle(id: number, vehicle: Partial<InsertVehicle>, dealershipId: number): Promise<Vehicle | undefined>;
+  deleteVehicle(id: number, dealershipId: number): Promise<boolean>;
+  
+  // View tracking (Multi-Tenant)
+  trackVehicleView(view: InsertVehicleView): Promise<VehicleView>; // Must include dealershipId
+  getVehicleViews(vehicleId: number, dealershipId: number, hours?: number): Promise<number>; // REQUIRED filtering
+  getAllVehicleViews(dealershipId: number, hours?: number): Promise<Map<number, number>>; // REQUIRED filtering
   
   // Facebook pages
   getFacebookPages(): Promise<FacebookPage[]>;
@@ -101,11 +130,11 @@ export interface IStorage {
   // AI prompt templates
   saveAIPromptTemplate(template: InsertAiPromptTemplate): Promise<AiPromptTemplate>;
   
-  // Chat conversations
-  saveChatConversation(conversation: InsertChatConversation): Promise<ChatConversation>;
-  getAllConversations(category?: string): Promise<ChatConversation[]>;
-  getConversationById(id: number): Promise<ChatConversation | undefined>;
-  updateConversationHandoff(id: number, data: { handoffRequested?: boolean; handoffPhone?: string; handoffSent?: boolean; handoffSentAt?: Date }): Promise<ChatConversation | undefined>;
+  // Chat conversations (Multi-Tenant)
+  saveChatConversation(conversation: InsertChatConversation): Promise<ChatConversation>; // Must include dealershipId
+  getAllConversations(dealershipId: number, category?: string): Promise<ChatConversation[]>; // REQUIRED filtering
+  getConversationById(id: number, dealershipId: number): Promise<ChatConversation | undefined>; // REQUIRED filtering
+  updateConversationHandoff(id: number, dealershipId: number, data: { handoffRequested?: boolean; handoffPhone?: string; handoffSent?: boolean; handoffSentAt?: Date }): Promise<ChatConversation | undefined>;
   
   // Chat prompts
   getChatPrompts(): Promise<ChatPrompt[]>;
@@ -117,12 +146,12 @@ export interface IStorage {
   getAdminConfig(): Promise<AdminConfig | undefined>;
   setAdminPassword(passwordHash: string): Promise<AdminConfig>;
   
-  // User management
-  getUserByEmail(email: string): Promise<User | undefined>;
-  getUserById(id: number): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
-  updateUser(id: number, user: Partial<InsertUser>): Promise<User | undefined>;
-  getAllUsers(): Promise<User[]>;
+  // User management (Multi-Tenant)
+  getUserByEmail(email: string, dealershipId?: number): Promise<User | undefined>; // dealershipId optional for auth lookup
+  getUserById(id: number, dealershipId?: number): Promise<User | undefined>;
+  createUser(user: InsertUser): Promise<User>; // Must include dealershipId in user data
+  updateUser(id: number, user: Partial<InsertUser>, dealershipId?: number): Promise<User | undefined>;
+  getAllUsers(dealershipId: number): Promise<User[]>; // REQUIRED: only get users from specific dealership
   getUsersByRole(role: string): Promise<User[]>;
   
   // Financing rules - Credit score tiers
@@ -167,12 +196,12 @@ export interface IStorage {
   createPostingSchedule(schedule: InsertPostingSchedule): Promise<PostingSchedule>;
   updatePostingSchedule(userId: number, schedule: Partial<InsertPostingSchedule>): Promise<PostingSchedule | undefined>;
   
-  // Remarketing Vehicles
-  getRemarketingVehicles(): Promise<RemarketingVehicle[]>;
-  addRemarketingVehicle(vehicle: InsertRemarketingVehicle): Promise<RemarketingVehicle>;
-  updateRemarketingVehicle(id: number, vehicle: Partial<InsertRemarketingVehicle>): Promise<RemarketingVehicle | undefined>;
-  removeRemarketingVehicle(id: number): Promise<boolean>;
-  getRemarketingVehicleCount(): Promise<number>;
+  // Remarketing Vehicles (Multi-Tenant)
+  getRemarketingVehicles(dealershipId: number): Promise<RemarketingVehicle[]>; // REQUIRED filtering
+  addRemarketingVehicle(vehicle: InsertRemarketingVehicle): Promise<RemarketingVehicle>; // Must include dealershipId
+  updateRemarketingVehicle(id: number, dealershipId: number, vehicle: Partial<InsertRemarketingVehicle>): Promise<RemarketingVehicle | undefined>;
+  removeRemarketingVehicle(id: number, dealershipId: number): Promise<boolean>;
+  getRemarketingVehicleCount(dealershipId: number): Promise<number>; // REQUIRED filtering
   
   // PBS DMS Integration
   getPbsConfig(): Promise<PbsConfig | undefined>;
@@ -202,52 +231,169 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
-  // Vehicle operations
-  async getVehicles(): Promise<Vehicle[]> {
-    return await db.select().from(vehicles).orderBy(desc(vehicles.createdAt));
+  // ====== DEALERSHIP MANAGEMENT ======
+  async getDealership(id: number): Promise<Dealership | undefined> {
+    const result = await db.select().from(dealerships).where(eq(dealerships.id, id)).limit(1);
+    return result[0];
   }
 
-  async getVehicleById(id: number): Promise<Vehicle | undefined> {
-    const result = await db.select().from(vehicles).where(eq(vehicles.id, id)).limit(1);
+  async getDealershipBySlug(slug: string): Promise<Dealership | undefined> {
+    const result = await db.select().from(dealerships).where(eq(dealerships.slug, slug)).limit(1);
+    return result[0];
+  }
+
+  async getDealershipBySubdomain(subdomain: string): Promise<Dealership | undefined> {
+    const result = await db.select().from(dealerships).where(eq(dealerships.subdomain, subdomain)).limit(1);
+    return result[0];
+  }
+
+  async getAllDealerships(): Promise<Dealership[]> {
+    return await db.select().from(dealerships).orderBy(dealerships.name);
+  }
+
+  async createDealership(dealership: InsertDealership): Promise<Dealership> {
+    const result = await db.insert(dealerships).values(dealership).returning();
+    return result[0];
+  }
+
+  async updateDealership(id: number, dealership: Partial<InsertDealership>): Promise<Dealership | undefined> {
+    const result = await db.update(dealerships).set({ ...dealership, updatedAt: new Date() }).where(eq(dealerships.id, id)).returning();
+    return result[0];
+  }
+
+  async deleteDealership(id: number): Promise<boolean> {
+    await db.delete(dealerships).where(eq(dealerships.id, id));
+    return true;
+  }
+
+  // Dealership API keys
+  async getDealershipApiKeys(dealershipId: number): Promise<DealershipApiKeys | undefined> {
+    const result = await db.select().from(dealershipApiKeys).where(eq(dealershipApiKeys.dealershipId, dealershipId)).limit(1);
+    return result[0];
+  }
+
+  async saveDealershipApiKeys(keys: InsertDealershipApiKeys): Promise<DealershipApiKeys> {
+    // Check if keys already exist for this dealership
+    const existing = await this.getDealershipApiKeys(keys.dealershipId);
+    
+    if (existing) {
+      // Update existing keys
+      const result = await db.update(dealershipApiKeys)
+        .set({ ...keys, updatedAt: new Date() })
+        .where(eq(dealershipApiKeys.dealershipId, keys.dealershipId))
+        .returning();
+      return result[0];
+    } else {
+      // Create new keys
+      const result = await db.insert(dealershipApiKeys).values(keys).returning();
+      return result[0];
+    }
+  }
+
+  async updateDealershipApiKeys(dealershipId: number, keys: Partial<InsertDealershipApiKeys>): Promise<DealershipApiKeys | undefined> {
+    const result = await db.update(dealershipApiKeys)
+      .set({ ...keys, updatedAt: new Date() })
+      .where(eq(dealershipApiKeys.dealershipId, dealershipId))
+      .returning();
+    return result[0];
+  }
+
+  // Dealership subscriptions
+  async getDealershipSubscription(dealershipId: number): Promise<DealershipSubscription | undefined> {
+    const result = await db.select().from(dealershipSubscriptions).where(eq(dealershipSubscriptions.dealershipId, dealershipId)).limit(1);
+    return result[0];
+  }
+
+  async createDealershipSubscription(subscription: InsertDealershipSubscription): Promise<DealershipSubscription> {
+    const result = await db.insert(dealershipSubscriptions).values(subscription).returning();
+    return result[0];
+  }
+
+  async updateDealershipSubscription(dealershipId: number, subscription: Partial<InsertDealershipSubscription>): Promise<DealershipSubscription | undefined> {
+    const result = await db.update(dealershipSubscriptions)
+      .set({ ...subscription, updatedAt: new Date() })
+      .where(eq(dealershipSubscriptions.dealershipId, dealershipId))
+      .returning();
+    return result[0];
+  }
+
+  // ====== VEHICLE OPERATIONS (Multi-Tenant) ======
+  // All operations enforce dealership isolation for security
+  async getVehicles(dealershipId: number): Promise<Vehicle[]> {
+    return await db.select().from(vehicles)
+      .where(eq(vehicles.dealershipId, dealershipId))
+      .orderBy(desc(vehicles.createdAt));
+  }
+
+  async getVehicleById(id: number, dealershipId: number): Promise<Vehicle | undefined> {
+    const result = await db.select().from(vehicles)
+      .where(and(
+        eq(vehicles.id, id), 
+        eq(vehicles.dealershipId, dealershipId)
+      ))
+      .limit(1);
     return result[0];
   }
 
   async createVehicle(vehicle: InsertVehicle): Promise<Vehicle> {
+    // Ensure dealershipId is set - it's required in schema
+    if (!vehicle.dealershipId) {
+      throw new Error('dealershipId is required when creating a vehicle');
+    }
     const result = await db.insert(vehicles).values(vehicle).returning();
     return result[0];
   }
 
-  async updateVehicle(id: number, vehicle: Partial<InsertVehicle>): Promise<Vehicle | undefined> {
-    const result = await db.update(vehicles).set(vehicle).where(eq(vehicles.id, id)).returning();
+  async updateVehicle(id: number, vehicle: Partial<InsertVehicle>, dealershipId: number): Promise<Vehicle | undefined> {
+    // Only update vehicles belonging to this dealership
+    const result = await db.update(vehicles)
+      .set(vehicle)
+      .where(and(
+        eq(vehicles.id, id),
+        eq(vehicles.dealershipId, dealershipId)
+      ))
+      .returning();
     return result[0];
   }
 
-  async deleteVehicle(id: number): Promise<boolean> {
-    const result = await db.delete(vehicles).where(eq(vehicles.id, id));
+  async deleteVehicle(id: number, dealershipId: number): Promise<boolean> {
+    // Only delete vehicles belonging to this dealership
+    await db.delete(vehicles).where(and(
+      eq(vehicles.id, id),
+      eq(vehicles.dealershipId, dealershipId)
+    ));
     return true;
   }
 
-  // View tracking
+  // ====== VIEW TRACKING (Multi-Tenant - CRITICAL for analytics security) ======
   async trackVehicleView(view: InsertVehicleView): Promise<VehicleView> {
+    // Validate dealershipId is present before insert
+    if (!view.dealershipId) {
+      throw new Error('dealershipId is required when tracking vehicle views');
+    }
     const result = await db.insert(vehicleViews).values(view).returning();
     return result[0];
   }
 
-  async getVehicleViews(vehicleId: number, hours: number = 24): Promise<number> {
+  async getVehicleViews(vehicleId: number, dealershipId: number, hours: number = 24): Promise<number> {
+    // CRITICAL: Join with vehicles table to enforce dealership isolation
     const cutoffTime = new Date(Date.now() - hours * 60 * 60 * 1000);
     const result = await db
       .select({ count: sql<number>`count(*)` })
       .from(vehicleViews)
+      .innerJoin(vehicles, eq(vehicleViews.vehicleId, vehicles.id))
       .where(
         and(
           eq(vehicleViews.vehicleId, vehicleId),
+          eq(vehicles.dealershipId, dealershipId), // ENFORCE dealership filtering
           sql`${vehicleViews.viewedAt} >= ${cutoffTime}`
         )
       );
     return Number(result[0]?.count || 0);
   }
   
-  async getAllVehicleViews(hours: number = 24): Promise<Map<number, number>> {
+  async getAllVehicleViews(dealershipId: number, hours: number = 24): Promise<Map<number, number>> {
+    // CRITICAL: Only return views for vehicles belonging to this dealership
     const cutoffTime = new Date(Date.now() - hours * 60 * 60 * 1000);
     const result = await db
       .select({
@@ -255,7 +401,11 @@ export class DatabaseStorage implements IStorage {
         count: sql<number>`count(*)`
       })
       .from(vehicleViews)
-      .where(sql`${vehicleViews.viewedAt} >= ${cutoffTime}`)
+      .innerJoin(vehicles, eq(vehicleViews.vehicleId, vehicles.id))
+      .where(and(
+        eq(vehicles.dealershipId, dealershipId), // ENFORCE dealership filtering
+        sql`${vehicleViews.viewedAt} >= ${cutoffTime}`
+      ))
       .groupBy(vehicleViews.vehicleId);
     
     const viewsMap = new Map<number, number>();
@@ -338,26 +488,47 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  // Chat conversations
+  // ====== CHAT CONVERSATIONS (Multi-Tenant) ======
   async saveChatConversation(conversation: InsertChatConversation): Promise<ChatConversation> {
+    // Validate dealershipId is present before insert
+    if (!conversation.dealershipId) {
+      throw new Error('dealershipId is required when creating a chat conversation');
+    }
     const result = await db.insert(chatConversations).values(conversation).returning();
     return result[0];
   }
 
-  async getAllConversations(category?: string): Promise<ChatConversation[]> {
-    if (category) {
-      return await db.select().from(chatConversations).where(eq(chatConversations.category, category)).orderBy(desc(chatConversations.createdAt));
-    }
-    return await db.select().from(chatConversations).orderBy(desc(chatConversations.createdAt));
+  async getAllConversations(dealershipId: number, category?: string): Promise<ChatConversation[]> {
+    // REQUIRED: Only return conversations from specific dealership
+    const conditions = category
+      ? and(eq(chatConversations.dealershipId, dealershipId), eq(chatConversations.category, category))
+      : eq(chatConversations.dealershipId, dealershipId);
+    
+    return await db.select().from(chatConversations)
+      .where(conditions)
+      .orderBy(desc(chatConversations.createdAt));
   }
 
-  async getConversationById(id: number): Promise<ChatConversation | undefined> {
-    const result = await db.select().from(chatConversations).where(eq(chatConversations.id, id)).limit(1);
+  async getConversationById(id: number, dealershipId: number): Promise<ChatConversation | undefined> {
+    // REQUIRED: Filter by dealership to prevent cross-tenant access
+    const result = await db.select().from(chatConversations)
+      .where(and(
+        eq(chatConversations.id, id),
+        eq(chatConversations.dealershipId, dealershipId)
+      ))
+      .limit(1);
     return result[0];
   }
 
-  async updateConversationHandoff(id: number, data: { handoffRequested?: boolean; handoffPhone?: string; handoffSent?: boolean; handoffSentAt?: Date }): Promise<ChatConversation | undefined> {
-    const result = await db.update(chatConversations).set(data).where(eq(chatConversations.id, id)).returning();
+  async updateConversationHandoff(id: number, dealershipId: number, data: { handoffRequested?: boolean; handoffPhone?: string; handoffSent?: boolean; handoffSentAt?: Date }): Promise<ChatConversation | undefined> {
+    // REQUIRED: Only update conversations from this dealership
+    const result = await db.update(chatConversations)
+      .set(data)
+      .where(and(
+        eq(chatConversations.id, id),
+        eq(chatConversations.dealershipId, dealershipId)
+      ))
+      .returning();
     return result[0];
   }
 
@@ -395,32 +566,57 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  // User management
-  async getUserByEmail(email: string): Promise<User | undefined> {
-    const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  // ====== USER MANAGEMENT (Multi-Tenant) ======
+  async getUserByEmail(email: string, dealershipId?: number): Promise<User | undefined> {
+    // dealershipId is optional for authentication - we need to find user first, then check dealership
+    // If dealershipId is provided, filter by it; otherwise allow login and check access separately
+    const conditions = dealershipId 
+      ? and(eq(users.email, email), eq(users.dealershipId, dealershipId))
+      : eq(users.email, email);
+    
+    const result = await db.select().from(users).where(conditions).limit(1);
     return result[0];
   }
 
-  async getUserById(id: number): Promise<User | undefined> {
-    const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  async getUserById(id: number, dealershipId?: number): Promise<User | undefined> {
+    // Allow looking up user by ID with optional dealership filtering
+    // Master users (dealershipId = null) can access any user
+    const conditions = dealershipId
+      ? and(eq(users.id, id), eq(users.dealershipId, dealershipId))
+      : eq(users.id, id);
+    
+    const result = await db.select().from(users).where(conditions).limit(1);
     return result[0];
   }
 
   async createUser(user: InsertUser): Promise<User> {
+    // Ensure dealershipId is set for non-master users
+    if (!user.dealershipId && user.role !== 'master') {
+      throw new Error('dealershipId is required when creating a non-master user');
+    }
     const result = await db.insert(users).values(user).returning();
     return result[0];
   }
 
-  async updateUser(id: number, user: Partial<InsertUser>): Promise<User | undefined> {
-    const result = await db.update(users).set(user).where(eq(users.id, id)).returning();
+  async updateUser(id: number, user: Partial<InsertUser>, dealershipId?: number): Promise<User | undefined> {
+    // If dealershipId is provided, only update users from that dealership
+    const conditions = dealershipId
+      ? and(eq(users.id, id), eq(users.dealershipId, dealershipId))
+      : eq(users.id, id);
+    
+    const result = await db.update(users).set(user).where(conditions).returning();
     return result[0];
   }
 
-  async getAllUsers(): Promise<User[]> {
-    return await db.select().from(users).orderBy(desc(users.createdAt));
+  async getAllUsers(dealershipId: number): Promise<User[]> {
+    // REQUIRED: only return users from specific dealership
+    return await db.select().from(users)
+      .where(eq(users.dealershipId, dealershipId))
+      .orderBy(desc(users.createdAt));
   }
 
   async getUsersByRole(role: string): Promise<User[]> {
+    // TODO: Add dealershipId parameter to filter by dealership
     return await db.select().from(users).where(eq(users.role, role)).orderBy(desc(users.createdAt));
   }
 
@@ -611,43 +807,64 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  // Remarketing Vehicles
-  async getRemarketingVehicles(): Promise<RemarketingVehicle[]> {
+  // ====== REMARKETING VEHICLES (Multi-Tenant) ======
+  async getRemarketingVehicles(dealershipId: number): Promise<RemarketingVehicle[]> {
+    // REQUIRED: Only return remarketing vehicles from specific dealership
     return await db
       .select()
       .from(remarketingVehicles)
-      .where(eq(remarketingVehicles.isActive, true))
+      .where(and(
+        eq(remarketingVehicles.dealershipId, dealershipId),
+        eq(remarketingVehicles.isActive, true)
+      ))
       .orderBy(desc(remarketingVehicles.budgetPriority));
   }
 
   async addRemarketingVehicle(vehicle: InsertRemarketingVehicle): Promise<RemarketingVehicle> {
+    // Validate dealershipId is present before insert
+    if (!vehicle.dealershipId) {
+      throw new Error('dealershipId is required when adding a remarketing vehicle');
+    }
     const result = await db.insert(remarketingVehicles).values(vehicle).returning();
     return result[0];
   }
 
-  async updateRemarketingVehicle(id: number, vehicle: Partial<InsertRemarketingVehicle>): Promise<RemarketingVehicle | undefined> {
+  async updateRemarketingVehicle(id: number, dealershipId: number, vehicle: Partial<InsertRemarketingVehicle>): Promise<RemarketingVehicle | undefined> {
+    // REQUIRED: Only update remarketing vehicles from this dealership
     const result = await db
       .update(remarketingVehicles)
       .set(vehicle)
-      .where(eq(remarketingVehicles.id, id))
+      .where(and(
+        eq(remarketingVehicles.id, id),
+        eq(remarketingVehicles.dealershipId, dealershipId)
+      ))
       .returning();
     return result[0];
   }
 
-  async removeRemarketingVehicle(id: number): Promise<boolean> {
+  async removeRemarketingVehicle(id: number, dealershipId: number): Promise<boolean> {
+    // REQUIRED: Soft delete only for this dealership
     const result = await db
       .update(remarketingVehicles)
       .set({ isActive: false })
-      .where(and(eq(remarketingVehicles.id, id), eq(remarketingVehicles.isActive, true)))
+      .where(and(
+        eq(remarketingVehicles.id, id),
+        eq(remarketingVehicles.dealershipId, dealershipId),
+        eq(remarketingVehicles.isActive, true)
+      ))
       .returning();
     return result.length > 0;
   }
 
-  async getRemarketingVehicleCount(): Promise<number> {
+  async getRemarketingVehicleCount(dealershipId: number): Promise<number> {
+    // REQUIRED: Count only for specific dealership
     const result = await db
       .select({ count: sql<number>`count(*)` })
       .from(remarketingVehicles)
-      .where(eq(remarketingVehicles.isActive, true));
+      .where(and(
+        eq(remarketingVehicles.dealershipId, dealershipId),
+        eq(remarketingVehicles.isActive, true)
+      ));
     return Number(result[0]?.count || 0);
   }
 
