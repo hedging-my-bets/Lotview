@@ -136,11 +136,11 @@ export interface IStorage {
   getConversationById(id: number, dealershipId: number): Promise<ChatConversation | undefined>; // REQUIRED filtering
   updateConversationHandoff(id: number, dealershipId: number, data: { handoffRequested?: boolean; handoffPhone?: string; handoffSent?: boolean; handoffSentAt?: Date }): Promise<ChatConversation | undefined>;
   
-  // Chat prompts
-  getChatPrompts(): Promise<ChatPrompt[]>;
-  getChatPromptByScenario(scenario: string): Promise<ChatPrompt | undefined>;
+  // Chat prompts (Multi-Tenant)
+  getChatPrompts(dealershipId: number): Promise<ChatPrompt[]>;
+  getChatPromptByScenario(scenario: string, dealershipId: number): Promise<ChatPrompt | undefined>;
   saveChatPrompt(prompt: InsertChatPrompt): Promise<ChatPrompt>;
-  updateChatPrompt(scenario: string, prompt: Partial<InsertChatPrompt>): Promise<ChatPrompt | undefined>;
+  updateChatPrompt(scenario: string, dealershipId: number, prompt: Partial<InsertChatPrompt>): Promise<ChatPrompt | undefined>;
   
   // Admin
   getAdminConfig(): Promise<AdminConfig | undefined>;
@@ -436,6 +436,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async setPagePriorityVehicles(pageId: number, vehicleIds: number[]): Promise<void> {
+    // LEGACY/DEPRECATED: Page priority vehicles are being replaced by remarketing system
+    // TODO: Multi-tenant - hardcoded dealershipId for single-dealership
+    const dealershipId = 1;
+    
     // Delete existing priorities
     await db.delete(pagePriorityVehicles).where(eq(pagePriorityVehicles.pageId, pageId));
     
@@ -443,6 +447,7 @@ export class DatabaseStorage implements IStorage {
     if (vehicleIds.length > 0) {
       await db.insert(pagePriorityVehicles).values(
         vehicleIds.map((vehicleId, index) => ({
+          dealershipId,
           pageId,
           vehicleId,
           priority: index + 1
@@ -532,23 +537,44 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  // Chat prompts
-  async getChatPrompts(): Promise<ChatPrompt[]> {
-    return await db.select().from(chatPrompts).where(eq(chatPrompts.isActive, true));
+  // Chat prompts (Multi-Tenant)
+  async getChatPrompts(dealershipId: number): Promise<ChatPrompt[]> {
+    // REQUIRED: Filter by dealership to prevent cross-tenant access
+    return await db.select().from(chatPrompts)
+      .where(and(
+        eq(chatPrompts.isActive, true),
+        eq(chatPrompts.dealershipId, dealershipId)
+      ));
   }
 
-  async getChatPromptByScenario(scenario: string): Promise<ChatPrompt | undefined> {
-    const result = await db.select().from(chatPrompts).where(eq(chatPrompts.scenario, scenario)).limit(1);
+  async getChatPromptByScenario(scenario: string, dealershipId: number): Promise<ChatPrompt | undefined> {
+    // REQUIRED: Filter by dealership to prevent cross-tenant access
+    const result = await db.select().from(chatPrompts)
+      .where(and(
+        eq(chatPrompts.scenario, scenario),
+        eq(chatPrompts.dealershipId, dealershipId)
+      ))
+      .limit(1);
     return result[0];
   }
 
   async saveChatPrompt(prompt: InsertChatPrompt): Promise<ChatPrompt> {
+    // Validate dealershipId is present before insert
+    if (!prompt.dealershipId) {
+      throw new Error('dealershipId is required when creating chat prompts');
+    }
     const result = await db.insert(chatPrompts).values(prompt).returning();
     return result[0];
   }
 
-  async updateChatPrompt(scenario: string, prompt: Partial<InsertChatPrompt>): Promise<ChatPrompt | undefined> {
-    const result = await db.update(chatPrompts).set(prompt).where(eq(chatPrompts.scenario, scenario)).returning();
+  async updateChatPrompt(scenario: string, dealershipId: number, prompt: Partial<InsertChatPrompt>): Promise<ChatPrompt | undefined> {
+    // REQUIRED: Only update prompts for this dealership
+    const result = await db.update(chatPrompts).set(prompt)
+      .where(and(
+        eq(chatPrompts.scenario, scenario),
+        eq(chatPrompts.dealershipId, dealershipId)
+      ))
+      .returning();
     return result[0];
   }
 
@@ -1111,38 +1137,38 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  // ====== MANAGER SETTINGS (Multi-Tenant) ======
+  // ====== MANAGER SETTINGS (Multi-Tenant via User) ======
   async getManagerSettings(userId: number, dealershipId: number): Promise<ManagerSettings | undefined> {
-    // REQUIRED: Validate user belongs to dealership
+    // Multi-tenant through user - verify user belongs to dealership first, then get settings
+    const user = await this.getUserById(userId, dealershipId);
+    if (!user) {
+      return undefined; // User doesn't belong to this dealership
+    }
+    
     const result = await db
       .select()
       .from(managerSettings)
-      .where(and(
-        eq(managerSettings.userId, userId),
-        eq(managerSettings.dealershipId, dealershipId)
-      ))
+      .where(eq(managerSettings.userId, userId))
       .limit(1);
     return result[0];
   }
 
   async createManagerSettings(settings: InsertManagerSettings): Promise<ManagerSettings> {
-    // Validate dealershipId is present before insert
-    if (!settings.dealershipId) {
-      throw new Error('dealershipId is required when creating manager settings');
-    }
     const result = await db.insert(managerSettings).values(settings).returning();
     return result[0];
   }
 
   async updateManagerSettings(userId: number, dealershipId: number, settings: Partial<InsertManagerSettings>): Promise<ManagerSettings | undefined> {
-    // REQUIRED: Only update settings for this user in this dealership
+    // Multi-tenant through user - verify user belongs to dealership first
+    const user = await this.getUserById(userId, dealershipId);
+    if (!user) {
+      return undefined; // User doesn't belong to this dealership
+    }
+    
     const result = await db
       .update(managerSettings)
       .set({ ...settings, updatedAt: new Date() })
-      .where(and(
-        eq(managerSettings.userId, userId),
-        eq(managerSettings.dealershipId, dealershipId)
-      ))
+      .where(eq(managerSettings.userId, userId))
       .returning();
     return result[0];
   }

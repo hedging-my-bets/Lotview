@@ -26,7 +26,7 @@ const oauthStateStore = new Map<string, { userId: number; accountId: number; exp
 // Clean up expired states every hour
 setInterval(() => {
   const now = Date.now();
-  for (const [state, data] of oauthStateStore.entries()) {
+  for (const [state, data] of Array.from(oauthStateStore.entries())) {
     if (data.expiresAt < now) {
       oauthStateStore.delete(state);
     }
@@ -1327,14 +1327,14 @@ Format your response in clear sections with actionable recommendations.`;
       
       // Verify ownership of foreign key references
       if (validated.data.facebookAccountId) {
-        const account = await storage.getFacebookAccountById(validated.data.facebookAccountId, dealershipId);
+        const account = await storage.getFacebookAccountById(validated.data.facebookAccountId, userId, dealershipId);
         if (!account || account.userId !== userId) {
           return res.status(403).json({ error: "Facebook account not found or access denied" });
         }
       }
       
       if (validated.data.templateId) {
-        const template = await storage.getAdTemplateById(validated.data.templateId, dealershipId);
+        const template = await storage.getAdTemplateById(validated.data.templateId, userId, dealershipId);
         if (!template || template.userId !== userId) {
           return res.status(403).json({ error: "Ad template not found or access denied" });
         }
@@ -1372,14 +1372,14 @@ Format your response in clear sections with actionable recommendations.`;
       
       // Verify ownership of foreign key references if being updated
       if (validated.data.facebookAccountId) {
-        const account = await storage.getFacebookAccountById(validated.data.facebookAccountId, dealershipId);
+        const account = await storage.getFacebookAccountById(validated.data.facebookAccountId, userId, dealershipId);
         if (!account || account.userId !== userId) {
           return res.status(403).json({ error: "Facebook account not found or access denied" });
         }
       }
       
       if (validated.data.templateId) {
-        const template = await storage.getAdTemplateById(validated.data.templateId, dealershipId);
+        const template = await storage.getAdTemplateById(validated.data.templateId, userId, dealershipId);
         if (!template || template.userId !== userId) {
           return res.status(403).json({ error: "Ad template not found or access denied" });
         }
@@ -1484,7 +1484,7 @@ Format your response in clear sections with actionable recommendations.`;
       // TODO: Multi-tenant - use req.dealershipId when middleware is applied
       const dealershipId = 1;
       
-      const account = await storage.getFacebookAccountById(accountId, dealershipId);
+      const account = await storage.getFacebookAccountById(accountId, userId, dealershipId);
       if (!account || account.userId !== userId) {
         return res.status(404).json({ error: "Account not found or access denied" });
       }
@@ -1545,7 +1545,9 @@ Format your response in clear sections with actionable recommendations.`;
 
       const { accountId, userId } = stateData;
       
-      const account = await storage.getFacebookAccountById(accountId, userId);
+      // TODO: Multi-tenant - need dealershipId from stateData for OAuth callback
+      const dealershipId = 1;
+      const account = await storage.getFacebookAccountById(accountId, userId, dealershipId);
       if (!account) {
         return res.status(403).send(`
           <html>
@@ -1565,7 +1567,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       const expiresAt = new Date(Date.now() + longLivedToken.expiresIn * 1000);
       
-      await storage.updateFacebookAccount(accountId, userId, {
+      await storage.updateFacebookAccount(accountId, userId, dealershipId, {
         accessToken: longLivedToken.accessToken,
         facebookUserId: userInfo.id,
         tokenExpiresAt: expiresAt,
@@ -1600,25 +1602,28 @@ Format your response in clear sections with actionable recommendations.`;
   // Manually post a vehicle to Facebook Marketplace
   app.post("/api/facebook/post/:queueId", authMiddleware, requireRole("salesperson"), async (req, res) => {
     try {
+      const authReq = req as AuthRequest;
       const queueId = parseInt(req.params.queueId);
-      const userId = req.user!.id;
+      const userId = authReq.user!.id;
+      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
+      const dealershipId = 1;
       
-      const queueItem = (await storage.getPostingQueueByUser(userId)).find(item => item.id === queueId);
+      const queueItem = (await storage.getPostingQueueByUser(userId, dealershipId)).find(item => item.id === queueId);
       
       if (!queueItem) {
         return res.status(404).json({ error: "Queue item not found" });
       }
       
-      const vehicle = await storage.getVehicleById(queueItem.vehicleId);
+      const vehicle = await storage.getVehicleById(queueItem.vehicleId, dealershipId);
       if (!vehicle) {
         return res.status(404).json({ error: "Vehicle not found" });
       }
       
       let account;
       if (queueItem.facebookAccountId) {
-        account = await storage.getFacebookAccountById(queueItem.facebookAccountId, userId);
+        account = await storage.getFacebookAccountById(queueItem.facebookAccountId, userId, dealershipId);
       } else {
-        const accounts = await storage.getFacebookAccountsByUser(userId);
+        const accounts = await storage.getFacebookAccountsByUser(userId, dealershipId);
         account = accounts[0];
       }
       
@@ -1628,9 +1633,9 @@ Format your response in clear sections with actionable recommendations.`;
       
       let template;
       if (queueItem.templateId) {
-        template = await storage.getAdTemplateById(queueItem.templateId, userId);
+        template = await storage.getAdTemplateById(queueItem.templateId, userId, dealershipId);
       } else {
-        const templates = await storage.getAdTemplatesByUser(userId);
+        const templates = await storage.getAdTemplatesByUser(userId, dealershipId);
         template = templates.find(t => t.isDefault) || templates[0];
       }
       
@@ -1638,7 +1643,7 @@ Format your response in clear sections with actionable recommendations.`;
         return res.status(400).json({ error: "No ad template found" });
       }
       
-      await storage.updatePostingQueueItem(queueId, userId, { status: 'posting' });
+      await storage.updatePostingQueueItem(queueId, userId, dealershipId, { status: 'posting' });
       
       try {
         const { postId } = await facebookService.postToMarketplace(
@@ -1650,7 +1655,7 @@ Format your response in clear sections with actionable recommendations.`;
           }
         );
         
-        await storage.updatePostingQueueItem(queueId, userId, {
+        await storage.updatePostingQueueItem(queueId, userId, dealershipId, {
           status: 'posted',
           facebookPostId: postId,
           postedAt: new Date()
@@ -1659,7 +1664,7 @@ Format your response in clear sections with actionable recommendations.`;
         res.json({ success: true, postId });
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        await storage.updatePostingQueueItem(queueId, userId, {
+        await storage.updatePostingQueueItem(queueId, userId, dealershipId, {
           status: 'failed',
           errorMessage
         });
@@ -1830,7 +1835,7 @@ Format your response in clear sections with actionable recommendations.`;
         meta: {
           dataSource: 'external_market',
           totalListings: marketListings.length,
-          sources: [...new Set(marketListings.map(l => l.source))],
+          sources: Array.from(new Set(marketListings.map(l => l.source))),
           sourceBreakdown,
           searchRadius: searchRadiusKm,
           postalCode: searchPostalCode,
@@ -1852,9 +1857,11 @@ Format your response in clear sections with actionable recommendations.`;
   // Get unique makes from market listings (for autocomplete)
   app.get("/api/inventory/makes", authMiddleware, requireRole("manager"), async (req, res) => {
     try {
+      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
+      const dealershipId = 1;
       // Get all market listings to populate makes
-      const marketListings = await storage.getMarketListings({});
-      const makes = [...new Set(marketListings.map(v => v.make))].filter(Boolean).sort();
+      const marketListings = await storage.getMarketListings(dealershipId, {});
+      const makes = Array.from(new Set(marketListings.map(v => v.make))).filter(Boolean).sort();
       res.json(makes);
     } catch (error) {
       console.error("Error fetching makes:", error);
@@ -1865,14 +1872,16 @@ Format your response in clear sections with actionable recommendations.`;
   // Get unique models for a specific make from market listings (for autocomplete)
   app.get("/api/inventory/models", authMiddleware, requireRole("manager"), async (req, res) => {
     try {
+      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
+      const dealershipId = 1;
       const { make } = req.query;
-      const marketListings = await storage.getMarketListings({});
+      const marketListings = await storage.getMarketListings(dealershipId, {});
       
       let models;
       if (make) {
-        models = [...new Set(marketListings.filter(v => v.make === make).map(v => v.model))].filter(Boolean).sort();
+        models = Array.from(new Set(marketListings.filter(v => v.make === make).map(v => v.model))).filter(Boolean).sort();
       } else {
-        models = [...new Set(marketListings.map(v => v.model))].filter(Boolean).sort();
+        models = Array.from(new Set(marketListings.map(v => v.model))).filter(Boolean).sort();
       }
       
       res.json(models);
@@ -1892,11 +1901,11 @@ Format your response in clear sections with actionable recommendations.`;
       
       let trims;
       if (make && model) {
-        trims = [...new Set(marketListings.filter(v => v.make === make && v.model === model).map(v => v.trim))].filter(Boolean).sort();
+        trims = Array.from(new Set(marketListings.filter(v => v.make === make && v.model === model).map(v => v.trim))).filter(Boolean).sort();
       } else if (make) {
-        trims = [...new Set(marketListings.filter(v => v.make === make).map(v => v.trim))].filter(Boolean).sort();
+        trims = Array.from(new Set(marketListings.filter(v => v.make === make).map(v => v.trim))).filter(Boolean).sort();
       } else {
-        trims = [...new Set(marketListings.map(v => v.trim))].filter(Boolean).sort();
+        trims = Array.from(new Set(marketListings.map(v => v.trim))).filter(Boolean).sort();
       }
       
       res.json(trims);
@@ -2288,10 +2297,12 @@ Format your response in clear sections with actionable recommendations.`;
   // Update webhook event status (mark as processed/failed)
   app.patch("/api/pbs/webhook-events/:id", authMiddleware, requireRole("master"), async (req, res) => {
     try {
+      // TODO: Multi-tenant - use req.dealershipId when middleware is applied
+      const dealershipId = 1;
       const id = parseInt(req.params.id);
       const { status, errorMessage } = req.body;
       
-      const event = await storage.updatePbsWebhookEvent(id, {
+      const event = await storage.updatePbsWebhookEvent(id, dealershipId, {
         status,
         errorMessage,
         processedAt: status === 'processed' ? new Date() : undefined
