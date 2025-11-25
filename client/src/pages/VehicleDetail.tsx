@@ -5,7 +5,7 @@ import { Navbar } from "@/components/Navbar";
 import { ChatBot } from "@/components/ChatBot";
 import { getVehicleById, trackVehicleView } from "@/lib/api";
 import { FINANCE_TERMS, calculateMonthlyPayment, type FinanceTerm } from "@/lib/types";
-import { ArrowLeft, Calendar, CheckCircle2, MapPin, Gauge, Flame, Share2, Heart, ChevronLeft, ChevronRight, DollarSign, Car } from "lucide-react";
+import { ArrowLeft, Calendar, CheckCircle2, MapPin, Gauge, Flame, Share2, Heart, ChevronLeft, ChevronRight, DollarSign, Car, FileText, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { usePayment } from "@/contexts/PaymentContext";
@@ -362,6 +362,41 @@ export default function VehicleDetail() {
                     <p className="font-bold text-slate-700">{car.views} people viewing</p>
                   </div>
                 </div>
+                {car.vin && (
+                  <div className="flex items-center gap-3 col-span-2">
+                    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-400 shadow-sm"><FileText className="w-5 h-5" /></div>
+                    <div>
+                      <p className="text-xs text-slate-400 font-bold uppercase">VIN</p>
+                      <p className="font-bold text-slate-700 font-mono text-sm">{car.vin}</p>
+                    </div>
+                  </div>
+                )}
+                {car.stockNumber && (
+                  <div className="flex items-center gap-3 col-span-2">
+                    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-400 shadow-sm"><FileText className="w-5 h-5" /></div>
+                    <div>
+                      <p className="text-xs text-slate-400 font-bold uppercase">Stock #</p>
+                      <p className="font-bold text-slate-700">{car.stockNumber}</p>
+                    </div>
+                  </div>
+                )}
+                {car.carfaxUrl && (
+                  <div className="flex items-center gap-3 col-span-2">
+                    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-green-600 shadow-sm"><FileText className="w-5 h-5" /></div>
+                    <div className="flex-1">
+                      <p className="text-xs text-slate-400 font-bold uppercase mb-1">Vehicle History</p>
+                      <a 
+                        href={car.carfaxUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 text-sm font-bold text-green-600 hover:text-green-700 transition"
+                        data-testid="link-carfax-report"
+                      >
+                        View CARFAX Report <ExternalLink className="w-4 h-4" />
+                      </a>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="bg-primary/5 border border-primary/10 p-6 rounded-xl mb-4">
