@@ -336,6 +336,37 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
         
         // Extract detailed information
         const detailData = await detailPage.evaluate(() => {
+          // Extract odometer from detail page specs
+          let odometer = 0;
+          const odometerPatterns = [
+            /(\d+[,\d]*)\s*km/i,
+            /Odometer[:\s]+(\d+[,\d]*)/i,
+            /(\d+[,\d]*)\s*kilometers/i,
+            /mileage[:\s]+(\d+[,\d]*)/i,
+          ];
+          
+          // Try to find odometer in the full page text
+          const pageText = document.body.textContent || '';
+          for (const pattern of odometerPatterns) {
+            const match = pageText.match(pattern);
+            if (match) {
+              odometer = parseInt(match[1].replace(/,/g, ''));
+              break;
+            }
+          }
+          
+          // Also try from odometer element with data attributes
+          if (odometer === 0) {
+            const odometerEl = document.querySelector('[data-field="odometer"], [data-field="mileage"], .odometer, .mileage, .km');
+            if (odometerEl) {
+              const odometerText = odometerEl.textContent || odometerEl.getAttribute('data-value') || '';
+              const odometerMatch = odometerText.match(/(\d+[,\d]*)/);
+              if (odometerMatch) {
+                odometer = parseInt(odometerMatch[1].replace(/,/g, ''));
+              }
+            }
+          }
+          
           // Extract all images with comprehensive fallback strategies
           const images: string[] = [];
           
@@ -368,13 +399,13 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
           }
           
           // Strategy 2: Look for image gallery container with specific classes
-          if (images.length === 0) {
-            const galleryContainers = document.querySelectorAll('.vehicle-gallery, .image-gallery, .photos-container, [data-images]');
+          if (images.length < 5) {
+            const galleryContainers = document.querySelectorAll('.vehicle-gallery, .image-gallery, .photos-container, .gallery, .slider, .carousel, [data-images], [class*="photo"], [class*="image"]');
             galleryContainers.forEach(container => {
               const imgs = container.querySelectorAll('img');
               imgs.forEach(img => {
-                const src = img.src || img.getAttribute('data-src') || img.getAttribute('data-lazy') || '';
-                if (src && src.length > 10) {
+                const src = img.src || img.getAttribute('data-src') || img.getAttribute('data-lazy') || img.getAttribute('data-lazy-src') || '';
+                if (src && src.length > 10 && !src.includes('logo') && !src.includes('icon') && !src.includes('carfax')) {
                   const highResSrc = src
                     .replace('-420x315', '-1024x786')
                     .replace('-300x225', '-1024x786')
@@ -412,27 +443,30 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
           }
           
           // Strategy 4: Fallback to all vehicle/product images on page
-          if (images.length === 0) {
+          if (images.length < 5) {
             const imgElements = document.querySelectorAll('img');
             imgElements.forEach(img => {
-              const src = img.src || img.getAttribute('data-src') || img.getAttribute('data-lazy') || '';
-              // Filter to vehicle-related images only
+              const src = img.src || img.getAttribute('data-src') || img.getAttribute('data-lazy') || img.getAttribute('data-lazy-src') || '';
+              // Filter to vehicle-related images only, exclude logos/icons
               if (src && (
                 src.includes('photomanager') || 
                 src.includes('autotrader') || 
                 src.includes('photos') ||
                 src.includes('vehicle') ||
                 src.includes('car') ||
+                src.includes('.jpg') ||
+                src.includes('.jpeg') ||
+                src.includes('.png') ||
                 img.alt?.toLowerCase().includes('vehicle') ||
                 img.alt?.toLowerCase().includes('car')
-              )) {
+              ) && !src.includes('logo') && !src.includes('icon') && !src.includes('carfax') && !src.includes('.svg')) {
                 const highResSrc = src
                   .replace('-420x315', '-1024x786')
                   .replace('-300x225', '-1024x786')
                   .replace('-640x480', '-1024x786')
                   .replace('/thumbs/', '/photos/')
                   .replace('/small/', '/large/');
-                if (highResSrc && !images.includes(highResSrc)) {
+                if (highResSrc && !images.includes(highResSrc) && highResSrc.length > 20) {
                   images.push(highResSrc);
                 }
               }
@@ -588,15 +622,26 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
             }
           }
           
-          // Strategy 4: Search all links for carfax.com URLs
+          // Strategy 4: Search all links for carfax.com URLs with VIN-specific reports
           if (!carfaxUrl) {
             const allLinks = Array.from(document.querySelectorAll('a[href]')) as HTMLAnchorElement[];
             for (const link of allLinks) {
-              if (link.href && (link.href.includes('carfax.com') || link.href.includes('carfax.ca'))) {
-                carfaxUrl = link.href;
-                break;
+              if (link.href && (link.href.includes('carfax.com') || link.href.href.includes('carfax.ca'))) {
+                // Prioritize VIN-specific URLs over homepage
+                if (link.href.includes('/vehicle/') || link.href.includes('/vhr/') || link.href.includes('vin=')) {
+                  carfaxUrl = link.href;
+                  break;
+                } else if (!carfaxUrl) {
+                  // Store homepage as fallback, but keep looking for VIN-specific URL
+                  carfaxUrl = link.href;
+                }
               }
             }
+          }
+          
+          // Filter out generic Carfax homepage URLs - prefer no URL over homepage
+          if (carfaxUrl && (carfaxUrl === 'https://www.carfax.ca/' || carfaxUrl === 'https://www.carfax.com/' || carfaxUrl === 'https://carfax.ca/' || carfaxUrl === 'https://carfax.com/')) {
+            carfaxUrl = '';
           }
           
           // Extract body style from specs
@@ -615,7 +660,8 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
             vin,
             stockNumber,
             carfaxUrl,
-            bodyStyle
+            bodyStyle,
+            odometer
           };
         });
         
@@ -626,6 +672,9 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
         // Use detail images if available, otherwise fall back to primary image
         const finalImages = detailData.images.length > 0 ? detailData.images : [v.primaryImage];
         
+        // Use detail page odometer if found, otherwise fall back to card extraction
+        const finalOdometer = detailData.odometer > 0 ? detailData.odometer : v.odometer;
+        
         scrapedVehicles.push({
           year: v.year,
           make: v.make,
@@ -633,7 +682,7 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
           trim: v.trim,
           type,
           price: v.price,
-          odometer: v.odometer,
+          odometer: finalOdometer,
           images: finalImages,
           badges,
           location: v.location,
