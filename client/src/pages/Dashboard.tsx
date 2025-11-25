@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { MessageSquare, Settings, Sparkles, Users, LogOut, DollarSign, Plus, Edit2, Trash2, Target, Webhook, Star, X, Key } from "lucide-react";
+import { MessageSquare, Settings, Sparkles, Users, LogOut, DollarSign, Plus, Edit2, Trash2, Target, Webhook, Star, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -156,19 +156,6 @@ export default function Dashboard() {
     greeting: "",
   });
 
-  // API Keys state
-  const [apiKeys, setApiKeys] = useState({
-    openaiApiKey: "",
-    marketCheckApiKey: "",
-    apifyToken: "",
-    apifyActorId: "",
-    geminiApiKey: "",
-    goHighLevelApiKey: "",
-    goHighLevelLocationId: "",
-    facebookAppId: "",
-    facebookAppSecret: "",
-  });
-
   const scenarios = [
     { value: "test-drive", label: "Test Drive" },
     { value: "get-approved", label: "Get Approved" },
@@ -212,7 +199,6 @@ export default function Dashboard() {
       await loadPbsConfig(token);
       await loadWebhookEvents(token);
       await loadChatPrompts(token);
-      await loadApiKeys(token);
     } catch (error) {
       console.error("Auth check failed:", error);
       setLocation('/login');
@@ -436,76 +422,6 @@ export default function Dashboard() {
       }
     } catch (error) {
       console.error("Failed to load chat prompts:", error);
-    }
-  };
-
-  const loadApiKeys = async (token: string) => {
-    try {
-      const response = await fetch('/api/dealership-api-keys', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setApiKeys({
-          openaiApiKey: data.openaiApiKey || "",
-          marketCheckApiKey: data.marketCheckApiKey || "",
-          apifyToken: data.apifyToken || "",
-          apifyActorId: data.apifyActorId || "",
-          geminiApiKey: data.geminiApiKey || "",
-          goHighLevelApiKey: data.goHighLevelApiKey || "",
-          goHighLevelLocationId: data.goHighLevelLocationId || "",
-          facebookAppId: data.facebookAppId || "",
-          facebookAppSecret: data.facebookAppSecret || "",
-        });
-      }
-    } catch (error) {
-      console.error("Failed to load API keys:", error);
-    }
-  };
-
-  const handleSaveApiKeys = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const token = localStorage.getItem('auth_token');
-    if (!token) return;
-
-    const payload: any = {};
-    Object.entries(apiKeys).forEach(([key, value]) => {
-      if (value && !value.startsWith('****')) {
-        payload[key] = value;
-      }
-    });
-
-    try {
-      const response = await fetch('/api/dealership-api-keys', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (response.ok) {
-        toast({
-          title: "API Keys Saved",
-          description: "Your API keys have been updated successfully",
-        });
-        await loadApiKeys(token);
-      } else {
-        const error = await response.json();
-        toast({
-          title: "Error",
-          description: error.error || "Failed to save API keys",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to save API keys",
-        variant: "destructive",
-      });
     }
   };
 
@@ -944,7 +860,7 @@ export default function Dashboard() {
           </div>
 
           <Tabs defaultValue="users" className="w-full">
-            <TabsList className="grid w-full grid-cols-8 mb-8">
+            <TabsList className="grid w-full grid-cols-7 mb-8">
               <TabsTrigger value="users" className="flex items-center gap-2" data-testid="tab-users">
                 <Users className="w-4 h-4" />
                 <span className="hidden sm:inline">Users</span>
@@ -960,10 +876,6 @@ export default function Dashboard() {
               <TabsTrigger value="webhooks" className="flex items-center gap-2" data-testid="tab-webhooks">
                 <Webhook className="w-4 h-4" />
                 <span className="hidden sm:inline">Webhooks</span>
-              </TabsTrigger>
-              <TabsTrigger value="api-keys" className="flex items-center gap-2" data-testid="tab-api-keys">
-                <Key className="w-4 h-4" />
-                <span className="hidden sm:inline">API Keys</span>
               </TabsTrigger>
               <TabsTrigger value="chat-prompts" className="flex items-center gap-2" data-testid="tab-chat-prompts">
                 <MessageSquare className="w-4 h-4" />
@@ -1865,140 +1777,6 @@ export default function Dashboard() {
                   </CardContent>
                 </Card>
               </div>
-            </TabsContent>
-
-            <TabsContent value="api-keys">
-              <Card>
-                <CardHeader>
-                  <CardTitle>API Keys Management</CardTitle>
-                  <CardDescription>
-                    Configure API keys for third-party integrations
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <p className="text-sm text-yellow-800">
-                      <strong>Security Note:</strong> For security, existing API keys are masked (only last 4 characters shown).
-                      To update a key, enter the full new key. Leave fields empty to keep existing values.
-                    </p>
-                  </div>
-                  
-                  <form onSubmit={handleSaveApiKeys} className="space-y-4">
-                    <div>
-                      <Label htmlFor="openaiApiKey">OpenAI API Key</Label>
-                      <Input
-                        id="openaiApiKey"
-                        type="password"
-                        value={apiKeys.openaiApiKey}
-                        onChange={(e) => setApiKeys({ ...apiKeys, openaiApiKey: e.target.value })}
-                        placeholder="sk-..."
-                        data-testid="input-openai-api-key"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="marketCheckApiKey">MarketCheck API Key</Label>
-                      <Input
-                        id="marketCheckApiKey"
-                        type="password"
-                        value={apiKeys.marketCheckApiKey}
-                        onChange={(e) => setApiKeys({ ...apiKeys, marketCheckApiKey: e.target.value })}
-                        placeholder="Enter MarketCheck API key"
-                        data-testid="input-marketcheck-api-key"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="apifyToken">Apify Token</Label>
-                      <Input
-                        id="apifyToken"
-                        type="password"
-                        value={apiKeys.apifyToken}
-                        onChange={(e) => setApiKeys({ ...apiKeys, apifyToken: e.target.value })}
-                        placeholder="Enter Apify token"
-                        data-testid="input-apify-token"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="apifyActorId">Apify Actor ID</Label>
-                      <Input
-                        id="apifyActorId"
-                        type="text"
-                        value={apiKeys.apifyActorId}
-                        onChange={(e) => setApiKeys({ ...apiKeys, apifyActorId: e.target.value })}
-                        placeholder="Enter Apify Actor ID"
-                        data-testid="input-apify-actor-id"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="geminiApiKey">Gemini API Key</Label>
-                      <Input
-                        id="geminiApiKey"
-                        type="password"
-                        value={apiKeys.geminiApiKey}
-                        onChange={(e) => setApiKeys({ ...apiKeys, geminiApiKey: e.target.value })}
-                        placeholder="Enter Gemini API key"
-                        data-testid="input-gemini-api-key"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="goHighLevelApiKey">GoHighLevel API Key</Label>
-                      <Input
-                        id="goHighLevelApiKey"
-                        type="password"
-                        value={apiKeys.goHighLevelApiKey}
-                        onChange={(e) => setApiKeys({ ...apiKeys, goHighLevelApiKey: e.target.value })}
-                        placeholder="Enter GoHighLevel API key"
-                        data-testid="input-gohighlevel-api-key"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="goHighLevelLocationId">GoHighLevel Location ID</Label>
-                      <Input
-                        id="goHighLevelLocationId"
-                        type="text"
-                        value={apiKeys.goHighLevelLocationId}
-                        onChange={(e) => setApiKeys({ ...apiKeys, goHighLevelLocationId: e.target.value })}
-                        placeholder="Enter GoHighLevel Location ID"
-                        data-testid="input-gohighlevel-location-id"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="facebookAppId">Facebook App ID</Label>
-                      <Input
-                        id="facebookAppId"
-                        type="text"
-                        value={apiKeys.facebookAppId}
-                        onChange={(e) => setApiKeys({ ...apiKeys, facebookAppId: e.target.value })}
-                        placeholder="Enter Facebook App ID"
-                        data-testid="input-facebook-app-id"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="facebookAppSecret">Facebook App Secret</Label>
-                      <Input
-                        id="facebookAppSecret"
-                        type="password"
-                        value={apiKeys.facebookAppSecret}
-                        onChange={(e) => setApiKeys({ ...apiKeys, facebookAppSecret: e.target.value })}
-                        placeholder="Enter Facebook App Secret"
-                        data-testid="input-facebook-app-secret"
-                      />
-                    </div>
-
-                    <Button type="submit" className="w-full" data-testid="button-save-api-keys">
-                      <Key className="w-4 h-4 mr-2" />
-                      Save API Keys
-                    </Button>
-                  </form>
-                </CardContent>
-              </Card>
             </TabsContent>
 
             <TabsContent value="conversations">
