@@ -87,6 +87,21 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (November 25, 2024)
 
+### Vehicle Detail Enhancements (Latest)
+- **Interactive Share & Like Buttons**: 
+  - Share button uses Web Share API with clipboard fallback
+  - Like button saves favorites to localStorage with visual feedback
+  - Heart icon fills red when liked, shows toast notifications
+- **Carfax Integration**: 
+  - Added `carfaxUrl` field to vehicles schema
+  - Displays Carfax link in vehicle details page with external link icon
+  - Shows VIN and Stock Number in vehicle info grid
+  - Template variable `{carfaxUrl}` available for Facebook post descriptions
+- **Facebook Multi-Image Posting**: 
+  - Updated Facebook Marketplace posting to include ALL vehicle images
+  - Previously only posted first image, now posts entire gallery
+  - Supports Facebook's multi-image format (`images[0][url]`, `images[1][url]`, etc.)
+
 ### Enhanced Security Model - API Key Management
 - **SuperAdmin Exclusive Control**: API Keys tab removed from Master Dashboard - only SuperAdmin can manage API keys
 - **Comprehensive Onboarding**: SuperAdmin dealership creation wizard now captures ALL API keys during setup:
