@@ -86,12 +86,189 @@ function detectBadges(text: string): string[] {
 
 async function scrapeCarGurusVehicleDetail(page: any, listingUrl: string, dealershipName: string, dealershipId: number, location: string): Promise<CarGurusVehicle | null> {
   try {
-    await page.goto(listingUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Extract listing ID from URL for validation
+    const listingIdMatch = listingUrl.match(/\/(\d+)$/);
+    const listingId = listingIdMatch ? listingIdMatch[1] : null;
     
-    // Extract complete vehicle data from Next.js JSON payload
+    // Inject XHR/fetch hook to capture JSON responses
+    await page.evaluateOnNewDocument(() => {
+      (window as any).__cargurusData = null;
+      const originalFetch = window.fetch;
+      window.fetch = async (...args) => {
+        const response = await originalFetch(...args);
+        const url = typeof args[0] === 'string' ? args[0] : args[0].url;
+        
+        if (url.includes('listing') || url.includes('vehicle') || url.includes('detail') || url.includes('inventory')) {
+          try {
+            const clone = response.clone();
+            const json = await clone.json();
+            if (json && (json.listing || json.listingDetail || json.data || json.vin)) {
+              (window as any).__cargurusData = json;
+            }
+          } catch (e) {
+            // Not JSON
+          }
+        }
+        return response;
+      };
+    });
+    
+    await page.goto(listingUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+    await new Promise(resolve => setTimeout(resolve, 3000)); // Extra time for XHR to complete
+    
+    // Try to retrieve intercepted data from injected hook
+    let listingApiData = await page.evaluate(() => (window as any).__cargurusData);
+    
+    // If no intercepted data, try deep __NEXT_DATA__ search
+    if (!listingApiData) {
+      listingApiData = await page.evaluate(() => {
+        try {
+          const nextDataScript = document.querySelector('script#__NEXT_DATA__');
+          if (nextDataScript && nextDataScript.textContent) {
+            const nextData = JSON.parse(nextDataScript.textContent);
+            
+            // Deep search for listing data in various possible locations
+            const possiblePaths = [
+              nextData?.props?.pageProps?.listing,
+              nextData?.props?.pageProps?.listingDetail,
+              nextData?.props?.pageProps?.initialState?.listing,
+              nextData?.props?.pageProps?.data?.listing,
+            ];
+            
+            // Also search apolloState if present
+            if (nextData?.props?.pageProps?.apolloState) {
+              const apolloState = nextData.props.pageProps.apolloState;
+              for (const key in apolloState) {
+                if (apolloState[key] && (apolloState[key].vin || apolloState[key].dealerPrice || apolloState[key].photos)) {
+                  possiblePaths.push(apolloState[key]);
+                }
+              }
+            }
+            
+            // Find first valid listing object
+            for (const listing of possiblePaths) {
+              if (listing && (listing.vin || listing.year || listing.make)) {
+                return listing;
+              }
+            }
+          }
+        } catch (e) {
+          // JSON parse failed
+        }
+        return null;
+      });
+    }
+    
+    // PRIMARY STRATEGY: Use intercepted/extracted API data
+    if (listingApiData) {
+      const listing = listingApiData.listing || listingApiData.listingDetail || listingApiData.data || listingApiData;
+      
+      const vehicleData: any = {
+        _extractionMethod: 'API',
+        year: listing.year || parseInt(listing.modelYear),
+        make: listing.make || listing.makeName,
+        model: listing.model || listing.modelName,
+        trim: listing.trim || listing.trimName || 'Base',
+        price: listing.dealerPrice || listing.price || listing.askingPrice || 0,
+        odometer: listing.mileage || listing.odometer || 0,
+        vin: listing.vin || null,
+        stockNumber: listing.stockNumber || listing.stock || null,
+        dealRating: listing.dealRating || listing.dealBadge || null,
+        description: listing.description || listing.sellerComments || '',
+        images: []
+      };
+      
+      // Extract images from various possible nested structures
+      const images: string[] = [];
+      const photoSources = [
+        listing.media?.photoGallery?.photos,
+        listing.photos,
+        listing.pictureUrls,
+        listing.images
+      ];
+      
+      for (const source of photoSources) {
+        if (Array.isArray(source) && source.length > 0) {
+          source.forEach((photo: any) => {
+            let imgUrl = '';
+            if (typeof photo === 'string') {
+              imgUrl = photo;
+            } else if (photo.url) {
+              imgUrl = photo.url;
+            } else if (photo.pictureUrl) {
+              imgUrl = photo.pictureUrl;
+            }
+            
+            if (imgUrl && imgUrl.includes('cargurus.com/images/forsale/')) {
+              const cleanUrl = imgUrl.split('?')[0];
+              const fullUrl = cleanUrl + '?io=true&width=1024&height=768&fit=bounds&format=jpg&auto=webp';
+              if (!images.includes(fullUrl)) {
+                images.push(fullUrl);
+              }
+            }
+          });
+          
+          if (images.length > 0) break; // Found images, stop looking
+        }
+      }
+      
+      vehicleData.images = images;
+      
+      // ASSERTIONS: Validate data quality before saving
+      const priceValid = vehicleData.price >= 1000 && vehicleData.price <= 200000;
+      const hasMinimumImages = images.length >= 8; // Relaxed from 15-20 to 8 for initial testing
+      const hasBasicData = vehicleData.year && vehicleData.make && vehicleData.model;
+      
+      if (!hasBasicData) {
+        console.log(`    ✗ Missing basic data (year/make/model) - skipping`);
+        return null;
+      }
+      
+      if (!priceValid) {
+        console.log(`    ✗ Price $${vehicleData.price} out of range [1k-200k] - skipping`);
+        return null;
+      }
+      
+      if (!hasMinimumImages) {
+        console.log(`    ⚠ Only ${images.length} images (target: 8+) - saving anyway`);
+      }
+      
+      // If stock number missing, generate from listing ID
+      if (!vehicleData.stockNumber && listingId) {
+        vehicleData.stockNumber = `CG-${listingId}`;
+      }
+      
+      console.log(`    ✓ JSON extraction: ${vehicleData.year} ${vehicleData.make} ${vehicleData.model} - $${vehicleData.price} - ${images.length} images - ${vehicleData.stockNumber || 'NO_STOCK'}`);
+      
+      const vehicle: CarGurusVehicle = {
+        year: vehicleData.year,
+        make: vehicleData.make,
+        model: vehicleData.model,
+        trim: vehicleData.trim,
+        type: determineBodyType(vehicleData.description, vehicleData.model),
+        price: vehicleData.price,
+        odometer: vehicleData.odometer,
+        images: vehicleData.images,
+        badges: detectBadges(vehicleData.description),
+        location,
+        dealership: dealershipName,
+        dealershipId,
+        description: vehicleData.description || `${vehicleData.year} ${vehicleData.make} ${vehicleData.model} ${vehicleData.trim}`,
+        vin: vehicleData.vin,
+        stockNumber: vehicleData.stockNumber,
+        carfaxUrl: null, // Not available in CarGurus API data
+        dealRating: vehicleData.dealRating,
+        cargurusPrice: vehicleData.price,
+        cargurusUrl: listingUrl
+      };
+      
+      return vehicle;
+    }
+    
+    // FALLBACK: Extract from page DOM/JSON
+    console.log(`    ⚠ No API data, falling back to page extraction for ${listingUrl}`);
     const vehicleData = await page.evaluate((url: string) => {
-      const data: any = {};
+      const data: any = { _extractionMethod: 'DOM' };
       
       // PRIMARY STRATEGY: Parse Next.js JSON payload (most reliable)
       try {
@@ -101,6 +278,8 @@ async function scrapeCarGurusVehicleDetail(page: any, listingUrl: string, dealer
           const listing = nextData?.props?.pageProps?.listing || nextData?.props?.pageProps?.listingDetail;
           
           if (listing) {
+            data._extractionMethod = 'JSON';
+            
             // Extract year, make, model, trim from structured data
             data.year = listing.year || parseInt(listing.modelYear);
             data.make = listing.make || listing.makeName;
@@ -151,12 +330,11 @@ async function scrapeCarGurusVehicleDetail(page: any, listingUrl: string, dealer
             // Extract description
             data.description = listing.description || listing.sellerComments || '';
             
-            console.log('✓ Extracted from JSON payload:', data);
             return data;
           }
         }
       } catch (e) {
-        console.log('⚠ JSON parsing failed, falling back to DOM extraction');
+        data._jsonError = String(e);
       }
       
       // FALLBACK: DOM extraction (less reliable, kept for backwards compatibility)
@@ -433,6 +611,16 @@ async function scrapeCarGurusVehicleDetail(page: any, listingUrl: string, dealer
       
       return data;
     }, listingUrl);
+    
+    // Log extraction method used
+    if (vehicleData._extractionMethod === 'JSON') {
+      console.log(`    ✓ Extracted from JSON payload: ${vehicleData.year} ${vehicleData.make} ${vehicleData.model} - $${vehicleData.price} - ${vehicleData.images?.length || 0} images`);
+    } else {
+      console.log(`    ⚠ Used DOM extraction (JSON failed): ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}`);
+      if (vehicleData._jsonError) {
+        console.log(`      Error: ${vehicleData._jsonError}`);
+      }
+    }
     
     // Validate required fields
     if (!vehicleData.year || !vehicleData.make || !vehicleData.model || !vehicleData.price) {
