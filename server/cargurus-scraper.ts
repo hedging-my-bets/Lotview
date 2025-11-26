@@ -314,12 +314,6 @@ async function scrapeCarGurusDealerPage(
       previousHeight = currentHeight;
     }
     
-    // DEBUG: Save HTML to file to see what Puppeteer sees
-    const html = await page.content();
-    const fs = await import('fs');
-    fs.writeFileSync(`/tmp/cargurus-${dealershipId}.html`, html);
-    console.log(`  [DEBUG] Saved HTML to /tmp/cargurus-${dealershipId}.html`);
-    
     // Extract all vehicle data directly from listing cards (no need to visit detail pages!)
     const extractedVehicles = await page.evaluate((dealerName, dealershipId, location) => {
       const results: any[] = [];

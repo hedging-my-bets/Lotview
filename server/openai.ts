@@ -127,30 +127,27 @@ async function getActivePromptTemplate(dealershipId: number): Promise<string> {
   }
   
   // Default fallback prompt
-  return `Create a compelling, professional vehicle description for a Canadian automotive dealership (Olympic Auto Group in Vancouver, BC).
-
-Vehicle Details:
-- {{YEAR}} {{MAKE}} {{MODEL}} {{TRIM}}
-- Type: {{TYPE}}
-- Price: ${{PRICE}} CAD
-- Odometer: {{ODOMETER}} km
-- Badges/Features: {{BADGES}}
-- Location: {{DEALERSHIP}}, {{LOCATION}}
-{{FULL_CONTENT}}
-
-Requirements:
-- Write 2-3 compelling paragraphs (150-200 words total)
-- Highlight key features, benefits, and value proposition
-- Use Canadian automotive market language and terminology
-- Emphasize quality, reliability, and value
-- Include emotional appeal and lifestyle benefits
-- Mention financing availability and dealership reputation
-- Use professional, enthusiastic tone
-- Focus on what makes THIS vehicle special
-- DO NOT use placeholder text or generic templates
-- DO NOT mention things not in the vehicle details
-
-Write the description now:`;
+  return 'Create a compelling, professional vehicle description for a Canadian automotive dealership (Olympic Auto Group in Vancouver, BC).\n\n' +
+    'Vehicle Details:\n' +
+    '- {{YEAR}} {{MAKE}} {{MODEL}} {{TRIM}}\n' +
+    '- Type: {{TYPE}}\n' +
+    '- Price: ${{PRICE}} CAD\n' +
+    '- Odometer: {{ODOMETER}} km\n' +
+    '- Badges/Features: {{BADGES}}\n' +
+    '- Location: {{DEALERSHIP}}, {{LOCATION}}\n' +
+    '{{FULL_CONTENT}}\n\n' +
+    'Requirements:\n' +
+    '- Write 2-3 compelling paragraphs (150-200 words total)\n' +
+    '- Highlight key features, benefits, and value proposition\n' +
+    '- Use Canadian automotive market language and terminology\n' +
+    '- Emphasize quality, reliability, and value\n' +
+    '- Include emotional appeal and lifestyle benefits\n' +
+    '- Mention financing availability and dealership reputation\n' +
+    '- Use professional, enthusiastic tone\n' +
+    '- Focus on what makes THIS vehicle special\n' +
+    '- DO NOT use placeholder text or generic templates\n' +
+    '- DO NOT mention things not in the vehicle details\n\n' +
+    'Write the description now:';
 }
 
 export async function generateVehicleDescription(vehicle: VehicleData, dealershipId: number = 1): Promise<string> {
@@ -195,7 +192,7 @@ export async function generateVehicleDescription(vehicle: VehicleData, dealershi
         }
       ],
       max_completion_tokens: 400,
-      temperature: 0.8,
+      temperature: 1,
     });
 
     const description = response.choices[0]?.message?.content?.trim();
