@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Navbar } from "@/components/Navbar";
@@ -11,6 +11,7 @@ import { Loader2 } from "lucide-react";
 import { usePayment } from "@/contexts/PaymentContext";
 import { useChat } from "@/contexts/ChatContext";
 import { trackVehicleView as trackGTMVehicleView, trackCTAClick, trackPaymentCalculation } from "@/lib/tracking";
+import useEmblaCarousel from 'embla-carousel-react';
 
 export default function VehicleDetail() {
   const [match, params] = useRoute("/vehicle/:id");
@@ -22,6 +23,7 @@ export default function VehicleDetail() {
   const [selectedTerm, setSelectedTerm] = useState<FinanceTerm>(84);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isLiked, setIsLiked] = useState(false);
+  const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true });
 
   const vehicleId = Number(params?.id);
   
@@ -168,17 +170,25 @@ export default function VehicleDetail() {
 
   const monthlyPayment = calculateMonthlyPayment(car.price, selectedTerm, downPayment, apr);
 
-  const nextImage = () => {
-    if (car && car.images.length > 0) {
-      setCurrentImageIndex((prev) => (prev + 1) % car.images.length);
-    }
-  };
+  const scrollPrev = useCallback(() => {
+    if (emblaApi) emblaApi.scrollPrev();
+  }, [emblaApi]);
 
-  const prevImage = () => {
-    if (car && car.images.length > 0) {
-      setCurrentImageIndex((prev) => (prev - 1 + car.images.length) % car.images.length);
-    }
-  };
+  const scrollNext = useCallback(() => {
+    if (emblaApi) emblaApi.scrollNext();
+  }, [emblaApi]);
+
+  const onSelect = useCallback(() => {
+    if (!emblaApi) return;
+    setCurrentImageIndex(emblaApi.selectedScrollSnap());
+  }, [emblaApi]);
+
+  useEffect(() => {
+    if (!emblaApi) return;
+    onSelect();
+    emblaApi.on('select', onSelect);
+    emblaApi.on('reInit', onSelect);
+  }, [emblaApi, onSelect]);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -195,16 +205,24 @@ export default function VehicleDetail() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Left Column: Full Carousel */}
           <div className="space-y-4">
-            {/* Main Carousel */}
+            {/* Main Carousel - Swipeable */}
             <div className="aspect-[4/3] rounded-2xl overflow-hidden shadow-lg relative group">
-              <img 
-                src={car.images[currentImageIndex] || '/placeholder-car.jpg'} 
-                alt={`${car.model} - Image ${currentImageIndex + 1}`} 
-                className="w-full h-full object-cover transition-all duration-300" 
-              />
+              <div className="overflow-hidden h-full" ref={emblaRef}>
+                <div className="flex h-full">
+                  {car.images.map((img, index) => (
+                    <div key={index} className="flex-[0_0_100%] min-w-0">
+                      <img 
+                        src={img || '/placeholder-car.jpg'} 
+                        alt={`${car.model} - Image ${index + 1}`} 
+                        className="w-full h-full object-cover" 
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
               
               {/* Dealership Badge */}
-              <div className="absolute top-4 left-4">
+              <div className="absolute top-4 left-4 z-10">
                 <span className="bg-primary text-white text-sm font-bold px-4 py-2 rounded-full shadow-lg flex items-center gap-2">
                   <MapPin className="w-4 h-4" />
                   {car.dealership}
@@ -213,14 +231,14 @@ export default function VehicleDetail() {
 
               {/* CarGurus Deal Rating Badge */}
               {car.dealRating && (
-                <div className="absolute top-4 left-4 mt-12">
+                <div className="absolute top-4 left-4 mt-12 z-10">
                   <span className="bg-green-500 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-lg">
                     {car.dealRating}
                   </span>
                 </div>
               )}
 
-              <div className="absolute top-4 right-4 flex gap-2">
+              <div className="absolute top-4 right-4 flex gap-2 z-10">
                 <button 
                   onClick={handleLike}
                   className={`p-2 bg-white/90 backdrop-blur rounded-full transition shadow-sm ${
@@ -239,19 +257,19 @@ export default function VehicleDetail() {
                 </button>
               </div>
 
-              {/* Carousel Navigation */}
+              {/* Carousel Navigation - Always Visible on Mobile */}
               {car.images.length > 1 && (
                 <>
                   <button
-                    onClick={prevImage}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-slate-900 opacity-0 group-hover:opacity-100 transition shadow-lg hover:scale-110"
+                    onClick={scrollPrev}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-slate-900 md:opacity-0 md:group-hover:opacity-100 transition shadow-lg hover:scale-110 z-10"
                     data-testid="button-prev-image"
                   >
                     <ChevronLeft className="w-6 h-6" />
                   </button>
                   <button
-                    onClick={nextImage}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-slate-900 opacity-0 group-hover:opacity-100 transition shadow-lg hover:scale-110"
+                    onClick={scrollNext}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-slate-900 md:opacity-0 md:group-hover:opacity-100 transition shadow-lg hover:scale-110 z-10"
                     data-testid="button-next-image"
                   >
                     <ChevronRight className="w-6 h-6" />
@@ -261,11 +279,11 @@ export default function VehicleDetail() {
 
               {/* Image Indicators */}
               {car.images.length > 1 && (
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5">
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
                   {car.images.map((_, i) => (
                     <button
                       key={i}
-                      onClick={() => setCurrentImageIndex(i)}
+                      onClick={() => emblaApi?.scrollTo(i)}
                       className={`h-1.5 rounded-full transition-all ${
                         i === currentImageIndex ? 'w-6 bg-white' : 'w-1.5 bg-white/50'
                       }`}

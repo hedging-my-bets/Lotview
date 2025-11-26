@@ -128,13 +128,37 @@ async function scrapeCarGurusVehicleDetail(page: any, listingUrl: string, dealer
         }
       }
       
-      // Extract price
-      const priceEl = document.querySelector('[class*="price"]');
-      const priceText = priceEl?.textContent || '';
-      const priceMatch = priceText.match(/\$([0-9,]+)/);
-      if (priceMatch) {
-        data.price = parseInt(priceMatch[1].replace(/,/g, ''));
+      // Extract price - look for Cash Price or List Price (not monthly payment)
+      let price = 0;
+      
+      // Strategy 1: Look for "Cash Price" or "List Price" labels
+      const priceLabels = Array.from(document.querySelectorAll('*')).filter(el => {
+        const text = el.textContent?.toLowerCase() || '';
+        return text.includes('cash price') || text.includes('list price') || text.includes('dealer price');
+      });
+      
+      for (const label of priceLabels) {
+        const labelText = label.textContent || '';
+        const priceMatch = labelText.match(/\$([0-9,]+)/);
+        if (priceMatch) {
+          const foundPrice = parseInt(priceMatch[1].replace(/,/g, ''));
+          if (foundPrice > 1000 && foundPrice > price) { // Must be > $1000 and take highest
+            price = foundPrice;
+          }
+        }
       }
+      
+      // Strategy 2: If no labeled price found, find all dollar amounts and take the largest (likely the vehicle price)
+      if (price === 0) {
+        const allText = document.body.textContent || '';
+        const allPrices = allText.match(/\$([0-9,]+)/g) || [];
+        const numericPrices = allPrices.map(p => parseInt(p.replace(/[$,]/g, ''))).filter(p => p > 5000 && p < 200000);
+        if (numericPrices.length > 0) {
+          price = Math.max(...numericPrices);
+        }
+      }
+      
+      data.price = price;
       
       // Extract mileage/odometer
       const mileageEl = document.querySelector('[class*="mileage"], [class*="Mileage"]');
@@ -161,8 +185,16 @@ async function scrapeCarGurusVehicleDetail(page: any, listingUrl: string, dealer
       );
       if (stockEl) {
         const stockMatch = stockEl.textContent?.match(/Stock[#:\s]+([A-Z0-9-]+)/i);
-        if (stockMatch) {
+        if (stockMatch && stockMatch[1] && stockMatch[1].toLowerCase() !== 'number') {
           data.stockNumber = stockMatch[1];
+        }
+      }
+      
+      // Fallback: Generate stock number from listing URL if not found
+      if (!data.stockNumber) {
+        const listingIdMatch = window.location.href.match(/link\/(\d+)/);
+        if (listingIdMatch) {
+          data.stockNumber = 'CG-' + listingIdMatch[1];
         }
       }
       
