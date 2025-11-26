@@ -406,13 +406,19 @@ async function scrapeCarGurusDealerPage(
             }
           }
           
-          // Extract listing URL
+          // Extract listing ID from href
+          // CarGurus uses hash-based routing: #listing=123456789/make/model
           const linkEl = listing.querySelector('a[href*="listing="]');
           if (linkEl) {
             const href = linkEl.getAttribute('href') || '';
-            const fullUrl = href.startsWith('http') ? href : 'https://www.cargurus.ca' + href;
-            if (fullUrl && !urls.includes(fullUrl)) {
-              urls.push(fullUrl);
+            const listingMatch = href.match(/listing=(\d+)/);
+            if (listingMatch) {
+              const listingId = listingMatch[1];
+              // Construct proper CarGurus detail page URL
+              const fullUrl = `https://www.cargurus.ca/Cars/link/${listingId}`;
+              if (!urls.includes(fullUrl)) {
+                urls.push(fullUrl);
+              }
             }
           }
         } catch (e) {
@@ -431,10 +437,18 @@ async function scrapeCarGurusDealerPage(
     
     for (let i = 0; i < vehicleUrls.length; i++) {
       const url = vehicleUrls[i];
-      console.log(`  [${i + 1}/${vehicleUrls.length}] Scraping ${url.split('/').pop()?.substring(0, 20)}...`);
+      console.log(`  [${i + 1}/${vehicleUrls.length}] Scraping ${url.split('/').pop()?.substring(0, 30)}...`);
       
       try {
-        const vehicle = await scrapeCarGurusVehicleDetail(page, url, dealerName, dealershipId, location);
+        // Create a new page for each detail scrape to avoid detached frame errors
+        const detailPage = await browser.newPage();
+        await detailPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        
+        const vehicle = await scrapeCarGurusVehicleDetail(detailPage, url, dealerName, dealershipId, location);
+        
+        // Close the detail page to free resources
+        await detailPage.close();
+        
         if (vehicle) {
           vehicles.push(vehicle);
           successCount++;
