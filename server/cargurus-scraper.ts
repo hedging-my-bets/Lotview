@@ -280,11 +280,24 @@ async function scrapeCarGurusDealerPage(
     
     await page.goto(dealerUrl, { waitUntil: 'networkidle2', timeout: 30000 });
     
-    // Wait for listings to load
+    // Wait for React app to render the listings
+    // CarGurus uses React to dynamically load content - we need to wait for it
+    console.log('  Waiting for React to render listings...');
     try {
-      await page.waitForSelector('a[href*="/Cars/"]', { timeout: 10000 });
+      // Wait for specific text that only appears when listings are loaded
+      await page.waitForFunction(
+        () => {
+          const bodyText = document.body.textContent || '';
+          // Check if the page has loaded listing content (price, km, year patterns)
+          return bodyText.includes('$') && 
+                 bodyText.includes('km') && 
+                 /\d{4}\s+(Toyota|Honda|Hyundai|Kia|Mazda|Nissan|Ford|Chevrolet|Dodge|GMC|RAM|Jeep|Chrysler|Buick|Cadillac|Lincoln|Volkswagen|Audi|BMW|Mercedes|Lexus|Tesla|Subaru|Mitsubishi|Acura|Infiniti)/i.test(bodyText);
+        },
+        { timeout: 20000 }
+      );
+      console.log('  ✓ React content loaded');
     } catch (e) {
-      console.log(`  No listings found for ${dealerName}`);
+      console.log(`  ⚠ Timeout waiting for listings to load for ${dealerName}`);
       await browser.close();
       return vehicles;
     }
@@ -301,52 +314,167 @@ async function scrapeCarGurusDealerPage(
       previousHeight = currentHeight;
     }
     
-    // Extract all vehicle listing URLs (USED vehicles only)
-    const listingUrls = await page.evaluate(() => {
-      const urls: string[] = [];
-      const links = document.querySelectorAll('a[href*="/Cars/listing="]');
+    // DEBUG: Save HTML to file to see what Puppeteer sees
+    const html = await page.content();
+    const fs = await import('fs');
+    fs.writeFileSync(`/tmp/cargurus-${dealershipId}.html`, html);
+    console.log(`  [DEBUG] Saved HTML to /tmp/cargurus-${dealershipId}.html`);
+    
+    // Extract all vehicle data directly from listing cards (no need to visit detail pages!)
+    const extractedVehicles = await page.evaluate((dealerName, dealershipId, location) => {
+      const results: any[] = [];
       
-      links.forEach(link => {
-        const href = link.getAttribute('href');
-        if (!href) return;
-        
-        // Check if it's a USED vehicle (exclude new)
-        const card = link.closest('[class*="listing"], [class*="result"], [class*="card"]');
-        const cardText = card?.textContent?.toLowerCase() || '';
-        
-        // Skip if marked as "New"
-        if (cardText.includes('new arrival') || cardText.includes('brand new')) {
-          // Check more specifically for "New" vs "Used" badge
-          const conditionMatch = cardText.match(/\b(new|used)\b/i);
-          if (conditionMatch && conditionMatch[1].toLowerCase() === 'new') {
-            return; // Skip new vehicles
+      // Find all listing cards - they contain most of the data we need
+      const listings = document.querySelectorAll('[class*="listing"], article, [data-testid*="listing"]');
+      
+      listings.forEach(listing => {
+        try {
+          const text = listing.textContent || '';
+          
+          // Skip new vehicles - only scrape USED
+          if (text.match(/\bnew\b/i) && !text.match(/\bused\b/i)) {
+            // Check if this is explicitly a "New" vehicle (not just "new arrival")
+            if (text.toLowerCase().includes('new vehicle') || text.toLowerCase().includes('brand new')) {
+              return;
+            }
           }
-        }
-        
-        const fullUrl = href.startsWith('http') ? href : 'https://www.cargurus.ca' + href;
-        if (!urls.includes(fullUrl)) {
-          urls.push(fullUrl);
+          
+          // Extract year, make, model from the title
+          const titleEl = listing.querySelector('h4, h3, h2, [class*="title"]');
+          const title = titleEl?.textContent?.trim() || '';
+          
+          // Parse title like "2022 Toyota Corolla"
+          const titleMatch = title.match(/(\d{4})\s+([A-Za-z-]+)\s+(.+)/);
+          if (!titleMatch) return; // Skip if can't parse title
+          
+          const year = parseInt(titleMatch[1]);
+          const make = titleMatch[2];
+          const modelAndTrim = titleMatch[3];
+          
+          // Split model and trim
+          const modelParts = modelAndTrim.split(/\s+/);
+          const model = modelParts[0];
+          const trim = modelParts.slice(1).join(' ') || 'Base';
+          
+          // Extract price
+          const priceEl = listing.querySelector('[class*="price"]');
+          const priceText = priceEl?.textContent || '';
+          const priceMatch = priceText.match(/\$([0-9,]+)/);
+          if (!priceMatch) return; // Skip if no price
+          const price = parseInt(priceMatch[1].replace(/,/g, ''));
+          
+          // Extract mileage/km
+          const mileageText = text;
+          const mileageMatch = mileageText.match(/([0-9,]+)\s*km/i);
+          const odometer = mileageMatch ? parseInt(mileageMatch[1].replace(/,/g, '')) : 0;
+          
+          // Extract deal rating
+          let dealRating: string | undefined;
+          if (text.includes('Great Deal')) dealRating = 'Great Deal';
+          else if (text.includes('Good Deal')) dealRating = 'Good Deal';
+          else if (text.includes('Fair Deal')) dealRating = 'Fair Deal';
+          else if (text.includes('High Price')) dealRating = 'High Price';
+          else if (text.includes('Overpriced')) dealRating = 'Overpriced';
+          
+          // Extract VIN and Stock Number
+          const vinMatch = text.match(/VIN[:\s]+([A-HJ-NPR-Z0-9]{17})/i);
+          const vin = vinMatch ? vinMatch[1] : undefined;
+          
+          const stockMatch = text.match(/Stock\s*#[:\s]*([A-Z0-9-]+)/i);
+          const stockNumber = stockMatch ? stockMatch[1] : undefined;
+          
+          // Extract ALL images from the listing
+          const images: string[] = [];
+          const imgElements = listing.querySelectorAll('img');
+          imgElements.forEach(img => {
+            let src = img.getAttribute('src') || '';
+            // Convert to full size image
+            src = src.replace('_thumb', '').replace('_small', '').replace('_medium', '');
+            // Add width/height parameters for better quality
+            if (src && src.includes('homenetiol.com')) {
+              // Remove existing params and add high-res params
+              src = src.split('?')[0] + '?width=1280&height=960&fit=bounds&format=jpg';
+            }
+            if (src && !images.includes(src) && !src.includes('logo') && !src.includes('icon') && src.includes('http')) {
+              images.push(src);
+            }
+          });
+          
+          // Extract listing URL
+          const linkEl = listing.querySelector('a[href*="listing="]');
+          const href = linkEl?.getAttribute('href') || '';
+          const cargurusUrl = href.startsWith('http') ? href : 'https://www.cargurus.ca' + href;
+          
+          // Build description from available info
+          let description = `${year} ${make} ${model} ${trim}`;
+          
+          // Extract features if available
+          const features: string[] = [];
+          const featureEls = listing.querySelectorAll('[class*="feature"]');
+          featureEls.forEach(el => {
+            const featureText = el.textContent?.trim();
+            if (featureText && featureText.length < 100) {
+              features.push(featureText);
+            }
+          });
+          
+          if (features.length > 0) {
+            description += '. Features: ' + features.join(', ');
+          }
+          
+          results.push({
+            year,
+            make,
+            model,
+            trim,
+            price,
+            odometer,
+            images,
+            dealRating,
+            vin,
+            stockNumber,
+            cargurusUrl,
+            description,
+            dealership: dealerName,
+            dealershipId,
+            location
+          });
+          
+        } catch (e) {
+          console.error('Error parsing listing:', e);
         }
       });
       
-      return urls;
+      return results;
+    }, dealerName, dealershipId, location);
+    
+    console.log(`  Found ${extractedVehicles.length} USED vehicle listings`);
+    
+    // Convert extracted data to CarGurusVehicle objects
+    extractedVehicles.forEach((data: any) => {
+      const vehicle: CarGurusVehicle = {
+        year: data.year,
+        make: data.make,
+        model: data.model,
+        trim: data.trim,
+        type: determineBodyType(data.description, data.model),
+        price: data.price,
+        odometer: data.odometer,
+        images: data.images,
+        badges: detectBadges(data.description),
+        location: data.location,
+        dealership: data.dealership,
+        dealershipId: data.dealershipId,
+        description: data.description,
+        vin: data.vin,
+        stockNumber: data.stockNumber,
+        dealRating: data.dealRating,
+        cargurusPrice: data.price,
+        cargurusUrl: data.cargurusUrl
+      };
+      
+      vehicles.push(vehicle);
     });
-    
-    console.log(`  Found ${listingUrls.length} USED vehicle listings`);
-    
-    // Scrape each vehicle detail page
-    for (let i = 0; i < listingUrls.length; i++) {
-      const url = listingUrls[i];
-      console.log(`  Scraping ${i + 1}/${listingUrls.length}: ${url.substring(0, 80)}...`);
-      
-      const vehicle = await scrapeCarGurusVehicleDetail(page, url, dealerName, dealershipId, location);
-      if (vehicle) {
-        vehicles.push(vehicle);
-      }
-      
-      // Delay between requests
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
     
     console.log(`  ✓ Successfully scraped ${vehicles.length} vehicles for ${dealerName}`);
     
