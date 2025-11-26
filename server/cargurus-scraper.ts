@@ -128,33 +128,69 @@ async function scrapeCarGurusVehicleDetail(page: any, listingUrl: string, dealer
         }
       }
       
-      // Extract price - look for Cash Price or List Price (not monthly payment)
+      // Extract price - CRITICAL: avoid monthly payments, target cash/dealer price only
       let price = 0;
       
-      // Strategy 1: Look for "Cash Price" or "List Price" labels
-      const priceLabels = Array.from(document.querySelectorAll('*')).filter(el => {
-        const text = el.textContent?.toLowerCase() || '';
-        return text.includes('cash price') || text.includes('list price') || text.includes('dealer price');
-      });
+      // Strategy 1: Look for specific price container elements (CarGurus uses specific classes for dealer price)
+      const priceSelectors = [
+        '[class*="dealerPrice"]',
+        '[class*="DealerPrice"]', 
+        '[class*="price-value"]',
+        '[class*="PriceValue"]',
+        '[data-testid*="price"]'
+      ];
       
-      for (const label of priceLabels) {
-        const labelText = label.textContent || '';
-        const priceMatch = labelText.match(/\$([0-9,]+)/);
-        if (priceMatch) {
-          const foundPrice = parseInt(priceMatch[1].replace(/,/g, ''));
-          if (foundPrice > 1000 && foundPrice > price) { // Must be > $1000 and take highest
-            price = foundPrice;
+      for (const selector of priceSelectors) {
+        const priceEl = document.querySelector(selector);
+        if (priceEl) {
+          const priceText = priceEl.textContent || '';
+          const priceMatch = priceText.match(/\$([0-9,]+)/);
+          if (priceMatch) {
+            const foundPrice = parseInt(priceMatch[1].replace(/,/g, ''));
+            if (foundPrice > 5000 && foundPrice < 200000) { // Reasonable vehicle price range
+              price = foundPrice;
+              break;
+            }
           }
         }
       }
       
-      // Strategy 2: If no labeled price found, find all dollar amounts and take the largest (likely the vehicle price)
+      // Strategy 2: Look for text near "Dealer" or "List" (but exclude "per month" / "mo")
+      if (price === 0) {
+        const allElements = Array.from(document.querySelectorAll('*'));
+        for (const el of allElements) {
+          const text = el.textContent?.toLowerCase() || '';
+          // Look for dealer/list price but exclude monthly payment indicators
+          if ((text.includes('dealer') || text.includes('list')) && 
+              !text.includes('per month') && 
+              !text.includes('/mo') &&
+              !text.includes('payment')) {
+            const priceMatch = text.match(/\$([0-9,]+)/);
+            if (priceMatch) {
+              const foundPrice = parseInt(priceMatch[1].replace(/,/g, ''));
+              if (foundPrice > 10000 && foundPrice < 200000) { // Must be at least $10k for used car
+                price = foundPrice;
+                break;
+              }
+            }
+          }
+        }
+      }
+      
+      // Strategy 3: Find the SECOND-largest dollar amount (first is often monthly, second is often cash price)
       if (price === 0) {
         const allText = document.body.textContent || '';
         const allPrices = allText.match(/\$([0-9,]+)/g) || [];
-        const numericPrices = allPrices.map(p => parseInt(p.replace(/[$,]/g, ''))).filter(p => p > 5000 && p < 200000);
-        if (numericPrices.length > 0) {
-          price = Math.max(...numericPrices);
+        const numericPrices = allPrices
+          .map(p => parseInt(p.replace(/[$,]/g, '')))
+          .filter(p => p > 10000 && p < 200000) // Realistic used car prices
+          .sort((a, b) => b - a); // Sort descending
+        
+        // Take second-largest if exists, otherwise first (largest)
+        if (numericPrices.length >= 2) {
+          price = numericPrices[1]; // Second-largest (likely cash price)
+        } else if (numericPrices.length === 1) {
+          price = numericPrices[0];
         }
       }
       
@@ -209,24 +245,46 @@ async function scrapeCarGurusVehicleDetail(page: any, listingUrl: string, dealer
         else if (dealText.includes('Overpriced')) data.dealRating = 'Overpriced';
       }
       
-      // Extract ALL images from gallery - comprehensive extraction
+      // Extract ALL images from gallery - comprehensive extraction with strict filtering
       const images: string[] = [];
+      const imageBaseUrls = new Set<string>(); // Track base URLs to avoid duplicates
       
       // Strategy 1: Look for all img elements with CarGurus image URLs
       const allImages = document.querySelectorAll('img');
       allImages.forEach((img) => {
         let src = img.getAttribute('src') || img.getAttribute('data-src') || '';
         
-        // Only process CarGurus image URLs
-        if (src && src.includes('cargurus.com/images/')) {
-          // Convert to full resolution
-          src = src.replace(/_thumb|_small|_medium/g, '');
-          src = src.replace(/\?.*$/, ''); // Remove query params
-          src = src + '?io=true&width=1024&height=768&fit=bounds&format=jpg&auto=webp';
+        // Only process CarGurus vehicle image URLs
+        if (src && src.includes('cargurus.com/images/forsale/')) {
+          // Extract base URL (before resolution params)
+          const baseUrl = src.split('?')[0].replace(/_thumb|_small|_medium|_\d+x\d+/g, '');
           
-          // Exclude logos, icons, badges
-          if (!src.includes('logo') && !src.includes('icon') && !src.includes('badge') && !images.includes(src)) {
-            images.push(src);
+          // Skip if we already have this image (different resolution of same photo)
+          if (imageBaseUrls.has(baseUrl)) {
+            return;
+          }
+          
+          // Get image dimensions to filter out logos/watermarks (typically smaller)
+          const width = img.naturalWidth || img.width || 0;
+          const height = img.naturalHeight || img.height || 0;
+          
+          // Exclude small images (logos/watermarks are usually < 300px wide)
+          // Exclude images with "logo", "icon", "badge", "watermark" in URL
+          const isValidVehicleImage = 
+            width >= 300 && // Minimum width for vehicle photos
+            !src.includes('logo') &&
+            !src.includes('icon') &&
+            !src.includes('badge') &&
+            !src.includes('watermark') &&
+            !src.includes('dealer') &&
+            !baseUrl.includes('logo') &&
+            !baseUrl.includes('icon');
+          
+          if (isValidVehicleImage) {
+            // Add full-resolution version
+            const fullSrc = baseUrl + '?io=true&width=1024&height=768&fit=bounds&format=jpg&auto=webp';
+            images.push(fullSrc);
+            imageBaseUrls.add(baseUrl);
           }
         }
       });
@@ -235,25 +293,17 @@ async function scrapeCarGurusVehicleDetail(page: any, listingUrl: string, dealer
       const elementsWithData = document.querySelectorAll('[data-image], [data-photo], [data-src]');
       elementsWithData.forEach((el) => {
         const src = el.getAttribute('data-image') || el.getAttribute('data-photo') || el.getAttribute('data-src') || '';
-        if (src && src.includes('cargurus.com/images/') && !images.includes(src)) {
-          const fullSrc = src + '?io=true&width=1024&height=768&fit=bounds&format=jpg&auto=webp';
-          if (!fullSrc.includes('logo') && !fullSrc.includes('icon')) {
+        if (src && src.includes('cargurus.com/images/forsale/')) {
+          const baseUrl = src.split('?')[0].replace(/_thumb|_small|_medium|_\d+x\d+/g, '');
+          
+          if (!imageBaseUrls.has(baseUrl) && 
+              !src.includes('logo') && 
+              !src.includes('icon') &&
+              !src.includes('watermark') &&
+              !src.includes('dealer')) {
+            const fullSrc = baseUrl + '?io=true&width=1024&height=768&fit=bounds&format=jpg&auto=webp';
             images.push(fullSrc);
-          }
-        }
-      });
-      
-      // Strategy 3: Look in background images
-      const allElements = document.querySelectorAll('*');
-      allElements.forEach((el) => {
-        const bgImage = window.getComputedStyle(el).backgroundImage;
-        if (bgImage && bgImage.includes('cargurus.com/images/')) {
-          const urlMatch = bgImage.match(/url\(["']?([^"')]+)["']?\)/);
-          if (urlMatch && urlMatch[1] && !images.includes(urlMatch[1])) {
-            const src = urlMatch[1] + '?io=true&width=1024&height=768&fit=bounds&format=jpg&auto=webp';
-            if (!src.includes('logo') && !src.includes('icon')) {
-              images.push(src);
-            }
+            imageBaseUrls.add(baseUrl);
           }
         }
       });
