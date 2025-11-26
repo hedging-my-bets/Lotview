@@ -787,74 +787,35 @@ async function scrapeInventoryPage(inventoryUrl: string, dealershipName: string,
 }
 
 export async function scrapeAllDealerships(): Promise<number> {
-  console.log('Starting comprehensive inventory scrape from individual dealerships...');
+  console.log('Starting comprehensive inventory scrape...');
   
   try {
-    // Scrape each dealership separately (better data quality - includes Carfax URLs and full image galleries)
-    const allScrapedVehicles: ScrapedVehicle[] = [];
+    // PRIMARY SOURCE: Scrape CarGurus for complete vehicle data (20+ photos, clean data, deal ratings)
+    console.log('\n=== USING CARGURUS AS PRIMARY DATA SOURCE ===\n');
+    let cargurusVehicles: ScrapedVehicle[] = [];
     
-    for (let i = 0; i < DEALERSHIP_URLS.length; i++) {
-      const dealership = DEALERSHIP_URLS[i];
-      console.log(`\n[${i + 1}/${DEALERSHIP_URLS.length}] Scraping ${dealership.name}...`);
-      
-      try {
-        const vehicles = await scrapeInventoryPage(dealership.url, dealership.name, dealership.dealershipId, dealership.location);
-        console.log(`✓ Scraped ${vehicles.length} vehicles from ${dealership.name}`);
-        allScrapedVehicles.push(...vehicles);
-      } catch (error) {
-        console.error(`✗ Failed to scrape ${dealership.name}:`, error);
-        // Continue to next dealership even if one fails
-      }
+    try {
+      cargurusVehicles = await scrapeAllCarGurusDealers();
+      console.log(`✓ Scraped ${cargurusVehicles.length} vehicles from CarGurus`);
+    } catch (error) {
+      console.error('✗ CarGurus scraping failed:', error);
+      throw error; // CarGurus is now primary source, so fail if it fails
     }
     
-    if (allScrapedVehicles.length === 0) {
-      console.log('⚠ No vehicles scraped from any dealership');
+    if (cargurusVehicles.length === 0) {
+      console.log('⚠ No vehicles scraped from CarGurus');
       return 0;
     }
     
-    console.log(`\n✓ Total scraped: ${allScrapedVehicles.length} vehicles from ${DEALERSHIP_URLS.length} dealerships`);
+    console.log(`\n✓ Total scraped: ${cargurusVehicles.length} vehicles from CarGurus`);
     
-    // Scrape CarGurus for deal ratings and market data
-    console.log('\nScraping CarGurus for market data...');
-    let cargurusData: Map<string, any> | null = null;
-    
-    try {
-      cargurusData = await scrapeAllCarGurusDealers();
-      console.log(`✓ Scraped ${cargurusData.size} listings from CarGurus`);
-    } catch (error) {
-      console.error('⚠ CarGurus scraping failed (continuing with dealership data only):', error);
-    }
-    
-    // Merge CarGurus data with dealership inventory by VIN
-    let mergedCount = 0;
-    const vehiclesWithCarGurusData = allScrapedVehicles.map(vehicle => {
-      if (vehicle.vin && cargurusData) {
-        // Normalize VIN for matching
-        const normalizedVin = vehicle.vin.trim().toUpperCase();
-        if (cargurusData.has(normalizedVin)) {
-          const cgData = cargurusData.get(normalizedVin);
-          mergedCount++;
-          return {
-            ...vehicle,
-            vin: normalizedVin, // Use normalized VIN
-            cargurusPrice: cgData.cargurusPrice,
-            cargurusUrl: cgData.cargurusUrl,
-            dealRating: cgData.dealRating
-          };
-        }
-        // Return with normalized VIN even if no CarGurus match
-        return {
-          ...vehicle,
-          vin: normalizedVin
-        };
-      }
-      return vehicle;
-    });
+    // No need to merge - CarGurus data is complete and already has all fields
+    const allScrapedVehicles = cargurusVehicles;
     
     // Generate AI-powered descriptions for all vehicles
-    console.log('Generating AI-powered vehicle descriptions...');
+    console.log('\nGenerating AI-powered vehicle descriptions...');
     const vehiclesWithDescriptions = await Promise.all(
-      vehiclesWithCarGurusData.map(async (vehicle) => {
+      allScrapedVehicles.map(async (vehicle) => {
         try {
           const aiDescription = await generateVehicleDescription({
             year: vehicle.year,
@@ -885,10 +846,6 @@ export async function scrapeAllDealerships(): Promise<number> {
     
     console.log(`✓ Generated AI descriptions for ${vehiclesWithDescriptions.length} vehicles`);
     
-    if (mergedCount > 0) {
-      console.log(`✓ Merged CarGurus data for ${mergedCount}/${allScrapedVehicles.length} vehicles`);
-    }
-    
     // Save to database
     console.log('\nSaving to database...');
     
@@ -898,11 +855,11 @@ export async function scrapeAllDealerships(): Promise<number> {
     // Insert new inventory
     await db.insert(vehicles).values(vehiclesWithDescriptions);
     
-    console.log(`\n✓ Successfully scraped and saved ${vehiclesWithDescriptions.length} vehicles`);
+    console.log(`\n✓ Successfully scraped and saved ${vehiclesWithDescriptions.length} vehicles from CarGurus`);
     console.log(`  - Olympic Hyundai: ${allScrapedVehicles.filter(v => v.dealershipId === 1).length} vehicles`);
     console.log(`  - Boundary Hyundai: ${allScrapedVehicles.filter(v => v.dealershipId === 2).length} vehicles`);
     console.log(`  - Kia Vancouver: ${allScrapedVehicles.filter(v => v.dealershipId === 3).length} vehicles`);
-    console.log(`  - CarGurus matches: ${mergedCount} vehicles`);
+    console.log(`  - All vehicles include deal ratings and 20+ photos`);
     console.log(`  - AI descriptions: ${vehiclesWithDescriptions.length} vehicles`);
     
     return vehiclesWithDescriptions.length;
