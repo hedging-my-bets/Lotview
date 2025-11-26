@@ -339,7 +339,7 @@ async function scrapeCarGurusVehicleDetail(page: any, listingUrl: string, dealer
       
       // Strategy 4: Search all links for carfax in text content
       if (!carfaxUrl) {
-        const allLinks = document.querySelectorAll('a');
+        const allLinks = Array.from(document.querySelectorAll('a'));
         for (const link of allLinks) {
           if (link.textContent?.toLowerCase().includes('carfax')) {
             carfaxUrl = link.getAttribute('href');
