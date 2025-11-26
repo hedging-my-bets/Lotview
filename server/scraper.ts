@@ -372,31 +372,6 @@ async function scrapeInventoryPage(inventoryUrl: string, dealershipName: string,
           // Extract all images - ONLY clean vehicle photos from thumbnail gallery
           const images: string[] = [];
           
-          // Helper function to filter out watermarked/branded images
-          const isCleanVehicleImage = (url: string): boolean => {
-            const lowerUrl = url.toLowerCase();
-            // Exclude obvious non-vehicle content
-            if (lowerUrl.includes('logo') || lowerUrl.includes('icon') || 
-                lowerUrl.includes('carfax') || lowerUrl.includes('.svg') ||
-                lowerUrl.includes('watermark') || lowerUrl.includes('badge')) {
-              return false;
-            }
-            return true;
-          };
-          
-          // Helper to get high-res version of image URL
-          const getHighResUrl = (url: string): string => {
-            return url
-              .replace('-420x315', '-1024x786')
-              .replace('-300x225', '-1024x786')
-              .replace('-640x480', '-1024x786')
-              .replace('-150x150', '-1024x786')
-              .replace('-100x75', '-1024x786')
-              .replace('/thumbs/', '/photos/')
-              .replace('/small/', '/large/')
-              .replace('/thumb/', '/photo/');
-          };
-          
           // Strategy 1: Target thumbnail gallery specifically (most reliable)
           // Look for thumbnail containers - these are the clickable small images below the main photo
           const thumbnailSelectors = [
@@ -414,11 +389,11 @@ async function scrapeInventoryPage(inventoryUrl: string, dealershipName: string,
             'a[href*="#photo"] img'
           ];
           
-          for (const selector of thumbnailSelectors) {
-            const thumbs = document.querySelectorAll(selector);
+          for (let s = 0; s < thumbnailSelectors.length; s++) {
+            const thumbs = document.querySelectorAll(thumbnailSelectors[s]);
             if (thumbs.length > 0) {
-              thumbs.forEach((thumb: Element) => {
-                const img = thumb as HTMLImageElement;
+              for (let t = 0; t < thumbs.length; t++) {
+                const img = thumbs[t] as HTMLImageElement;
                 // Get the full-size image URL from thumbnail's src or data attributes
                 let src = img.src || 
                          img.getAttribute('data-src') || 
@@ -436,13 +411,31 @@ async function scrapeInventoryPage(inventoryUrl: string, dealershipName: string,
                   }
                 }
                 
-                if (src && isCleanVehicleImage(src)) {
-                  const highResSrc = getHighResUrl(src);
-                  if (highResSrc && !images.includes(highResSrc) && highResSrc.length > 20) {
-                    images.push(highResSrc);
+                // Filter out watermarked/branded images
+                if (src) {
+                  const lowerSrc = src.toLowerCase();
+                  const isClean = !lowerSrc.includes('logo') && !lowerSrc.includes('icon') && 
+                                 !lowerSrc.includes('carfax') && !lowerSrc.includes('.svg') &&
+                                 !lowerSrc.includes('watermark') && !lowerSrc.includes('badge');
+                  
+                  if (isClean) {
+                    // Get high-res version
+                    const highResSrc = src
+                      .replace('-420x315', '-1024x786')
+                      .replace('-300x225', '-1024x786')
+                      .replace('-640x480', '-1024x786')
+                      .replace('-150x150', '-1024x786')
+                      .replace('-100x75', '-1024x786')
+                      .replace('/thumbs/', '/photos/')
+                      .replace('/small/', '/large/')
+                      .replace('/thumb/', '/photo/');
+                    
+                    if (highResSrc && !images.includes(highResSrc) && highResSrc.length > 20) {
+                      images.push(highResSrc);
+                    }
                   }
                 }
-              });
+              }
               // If we found thumbnails, don't continue to fallback strategies
               if (images.length > 0) break;
             }
@@ -455,17 +448,32 @@ async function scrapeInventoryPage(inventoryUrl: string, dealershipName: string,
               try {
                 const galleryData = JSON.parse(galleryEl.getAttribute('data-gallery') || '[]');
                 if (Array.isArray(galleryData)) {
-                  galleryData.forEach((item: any) => {
+                  for (let i = 0; i < galleryData.length; i++) {
+                    const item = galleryData[i];
                     if (item.url || item.src || item.image) {
                       const url = item.url || item.src || item.image;
-                      if (isCleanVehicleImage(url)) {
-                        const highResUrl = getHighResUrl(url);
+                      const lowerUrl = url.toLowerCase();
+                      const isClean = !lowerUrl.includes('logo') && !lowerUrl.includes('icon') && 
+                                     !lowerUrl.includes('carfax') && !lowerUrl.includes('.svg') &&
+                                     !lowerUrl.includes('watermark') && !lowerUrl.includes('badge');
+                      
+                      if (isClean) {
+                        const highResUrl = url
+                          .replace('-420x315', '-1024x786')
+                          .replace('-300x225', '-1024x786')
+                          .replace('-640x480', '-1024x786')
+                          .replace('-150x150', '-1024x786')
+                          .replace('-100x75', '-1024x786')
+                          .replace('/thumbs/', '/photos/')
+                          .replace('/small/', '/large/')
+                          .replace('/thumb/', '/photo/');
+                        
                         if (highResUrl && !images.includes(highResUrl)) {
                           images.push(highResUrl);
                         }
                       }
                     }
-                  });
+                  }
                 }
               } catch (e) {
                 // Silent fail - continue to next strategy
@@ -476,23 +484,40 @@ async function scrapeInventoryPage(inventoryUrl: string, dealershipName: string,
           // Strategy 3: Look for gallery containers (fallback)
           if (images.length < 3) {
             const galleryContainers = document.querySelectorAll('.vehicle-gallery, .image-gallery, .photos-container, .gallery, [data-images]');
-            galleryContainers.forEach(container => {
+            for (let c = 0; c < galleryContainers.length; c++) {
+              const container = galleryContainers[c];
               const imgs = container.querySelectorAll('img');
-              imgs.forEach((img: Element) => {
-                const imgEl = img as HTMLImageElement;
+              for (let i = 0; i < imgs.length; i++) {
+                const imgEl = imgs[i] as HTMLImageElement;
                 const src = imgEl.src || 
                            imgEl.getAttribute('data-src') || 
                            imgEl.getAttribute('data-lazy') || 
                            imgEl.getAttribute('data-lazy-src') || '';
                 
-                if (src && isCleanVehicleImage(src)) {
-                  const highResSrc = getHighResUrl(src);
-                  if (highResSrc && !images.includes(highResSrc)) {
-                    images.push(highResSrc);
+                if (src) {
+                  const lowerSrc = src.toLowerCase();
+                  const isClean = !lowerSrc.includes('logo') && !lowerSrc.includes('icon') && 
+                                 !lowerSrc.includes('carfax') && !lowerSrc.includes('.svg') &&
+                                 !lowerSrc.includes('watermark') && !lowerSrc.includes('badge');
+                  
+                  if (isClean) {
+                    const highResSrc = src
+                      .replace('-420x315', '-1024x786')
+                      .replace('-300x225', '-1024x786')
+                      .replace('-640x480', '-1024x786')
+                      .replace('-150x150', '-1024x786')
+                      .replace('-100x75', '-1024x786')
+                      .replace('/thumbs/', '/photos/')
+                      .replace('/small/', '/large/')
+                      .replace('/thumb/', '/photo/');
+                    
+                    if (highResSrc && !images.includes(highResSrc)) {
+                      images.push(highResSrc);
+                    }
                   }
                 }
-              });
-            });
+              }
+            }
           }
           
           // Log image extraction results for debugging
