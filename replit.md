@@ -72,7 +72,7 @@ Preferred communication style: Simple, everyday language.
 ## External Dependencies
 
 - **Database**: Neon Serverless PostgreSQL (`@neondatabase/serverless`).
-- **Web Scraping**: Cheerio for parsing dealership websites (Olympic Hyundai, Boundary Hyundai, Kia Vancouver).
+- **Web Scraping**: Puppeteer for scraping CarGurus listings (React-rendered content with dynamic loading). CarGurus provides 20+ photos per vehicle, deal ratings, and standardized data for Olympic Hyundai (sp459833), Boundary Hyundai (sp393663), and Kia Vancouver (sp357122).
 - **Build & Development**: Replit-specific Vite plugins, custom meta images plugin, Font Awesome CDN, Google Fonts (Inter).
 - **Authentication**: JWT, bcrypt for password hashing.
 - **Sales Manager Tools**:
@@ -87,17 +87,20 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (November 26, 2024)
 
-### Web Scraper Architecture Refactor (Latest)
-- **Individual Dealership URLs**: Scraper now processes each dealership separately using their individual websites instead of combined feed:
-  - Olympic Hyundai: `olympichyundaivancouver.com` (27 vehicles)
-  - Boundary Hyundai: `boundaryhyundai.com` (47 vehicles)
-  - Kia Vancouver: `kiavancouver.com` (79 vehicles)
-- **Benefits**: Individual URLs provide richer data quality with better Carfax URL extraction and full image galleries
-- **Enhanced Odometer Extraction**: Scraper now extracts odometer readings from vehicle detail pages instead of listing cards (fixes 113 vehicles showing 0km)
-- **Improved Carfax Detection**: 4-strategy detection system now captures vehicle-specific Carfax report URLs from detail pages
-- **Scalable Architecture**: Easy to add new dealerships by adding to `DEALERSHIP_URLS` array
+### CarGurus as Primary Data Source (Latest)
+- **Primary Data Source**: Complete pivot from dealership websites to CarGurus as the single source of truth for vehicle inventory
+  - Olympic Hyundai: CarGurus dealer ID `sp459833` (24 USED vehicles)
+  - Boundary Hyundai: CarGurus dealer ID `sp393663` (24 USED vehicles)
+  - Kia Vancouver: CarGurus dealer ID `sp357122` (24 USED vehicles)
+- **Data Quality**: CarGurus provides superior data consistency with 20+ high-quality photos per vehicle, standardized vehicle information, and deal ratings (Great Deal, Good Deal, Fair Deal, High Price, Overpriced)
+- **React-Based Scraping**: Implemented Puppeteer scraper with waitForFunction to handle CarGurus' React-rendered content - waits for JavaScript to fully load listings before extraction
+- **Listing Card Extraction**: Scrapes all vehicle data directly from listing cards without visiting individual detail pages (faster, more efficient)
+- **Extracted Data**: Year, make, model, trim, price, odometer, VIN, stock number, deal rating, full image gallery (20+ photos), CarGurus URL, and CarGurus price
+- **USED Vehicles Only**: Filtering logic excludes new vehicles - only scrapes pre-owned inventory
+- **Watermarked Images**: CarGurus images include watermarks, which is acceptable for the platform
+- **Scalable Architecture**: Easy to add new dealerships by adding to `DEALERSHIP_CONFIGS` array with dealer ID and location
 - **Error Resilience**: If one dealership fails, scraping continues for remaining dealerships
-- **Database Schema Fix**: Added `dealership_id` column to `ai_prompt_templates` table for multi-tenant AI description generation
+- **AI Description Generation**: Fixed template literal syntax issues and temperature parameter compatibility with GPT-5
 
 ### Vehicle Detail Enhancements
 - **Interactive Share & Like Buttons**: 
