@@ -89,15 +89,81 @@ async function scrapeCarGurusVehicleDetail(page: any, listingUrl: string, dealer
     await page.goto(listingUrl, { waitUntil: 'networkidle2', timeout: 30000 });
     await new Promise(resolve => setTimeout(resolve, 2000));
     
-    // Extract complete vehicle data
-    const vehicleData = await page.evaluate(() => {
+    // Extract complete vehicle data from Next.js JSON payload
+    const vehicleData = await page.evaluate((url: string) => {
       const data: any = {};
       
-      // Extract title (e.g., "2022 Toyota Corolla LE FWD")
+      // PRIMARY STRATEGY: Parse Next.js JSON payload (most reliable)
+      try {
+        const nextDataScript = document.querySelector('script#__NEXT_DATA__');
+        if (nextDataScript && nextDataScript.textContent) {
+          const nextData = JSON.parse(nextDataScript.textContent);
+          const listing = nextData?.props?.pageProps?.listing || nextData?.props?.pageProps?.listingDetail;
+          
+          if (listing) {
+            // Extract year, make, model, trim from structured data
+            data.year = listing.year || parseInt(listing.modelYear);
+            data.make = listing.make || listing.makeName;
+            data.model = listing.model || listing.modelName;
+            data.trim = listing.trim || listing.trimName || 'Base';
+            
+            // Extract price - dealerPrice is the actual cash price
+            data.price = listing.dealerPrice || listing.price || listing.askingPrice || 0;
+            
+            // Extract mileage
+            data.odometer = listing.mileage || listing.odometer || 0;
+            
+            // Extract VIN
+            data.vin = listing.vin || null;
+            
+            // Extract stock number
+            data.stockNumber = listing.stockNumber || listing.stock || null;
+            
+            // Extract deal rating
+            data.dealRating = listing.dealRating || listing.dealBadge || null;
+            
+            // Extract images from gallery (most reliable source)
+            const images: string[] = [];
+            if (listing.photos || listing.pictureUrls || listing.images) {
+              const photoArray = listing.photos || listing.pictureUrls || listing.images;
+              photoArray.forEach((photo: any) => {
+                let imgUrl = '';
+                if (typeof photo === 'string') {
+                  imgUrl = photo;
+                } else if (photo.url) {
+                  imgUrl = photo.url;
+                } else if (photo.pictureUrl) {
+                  imgUrl = photo.pictureUrl;
+                }
+                
+                if (imgUrl && imgUrl.includes('cargurus.com/images/forsale/')) {
+                  // Add full resolution version
+                  const cleanUrl = imgUrl.split('?')[0];
+                  const fullUrl = cleanUrl + '?io=true&width=1024&height=768&fit=bounds&format=jpg&auto=webp';
+                  if (!images.includes(fullUrl)) {
+                    images.push(fullUrl);
+                  }
+                }
+              });
+            }
+            data.images = images;
+            
+            // Extract description
+            data.description = listing.description || listing.sellerComments || '';
+            
+            console.log('✓ Extracted from JSON payload:', data);
+            return data;
+          }
+        }
+      } catch (e) {
+        console.log('⚠ JSON parsing failed, falling back to DOM extraction');
+      }
+      
+      // FALLBACK: DOM extraction (less reliable, kept for backwards compatibility)
       const titleEl = document.querySelector('h1, [class*="heading"]');
       let title = titleEl?.textContent?.trim() || '';
       
-      // Clean up title - remove "Learn more" and other UI junk
+      // Clean up title
       title = title.replace(/Learn\s+more.*$/i, '').trim();
       title = title.replace(/\s+about\s+this.*$/i, '').trim();
       title = title.replace(/\s+details.*$/i, '').trim();
@@ -366,12 +432,20 @@ async function scrapeCarGurusVehicleDetail(page: any, listingUrl: string, dealer
       }
       
       return data;
-    });
+    }, listingUrl);
     
     // Validate required fields
     if (!vehicleData.year || !vehicleData.make || !vehicleData.model || !vehicleData.price) {
       console.log(`  ⚠ Skipping incomplete listing: ${listingUrl}`);
       return null;
+    }
+    
+    // Validate extracted data (price sanity check)
+    if (vehicleData.price > 200000) {
+      console.log(`  ⚠ Warning: Unusually high price $${vehicleData.price} for ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}`);
+    }
+    if (vehicleData.price < 1000) {
+      console.log(`  ⚠ Warning: Unusually low price $${vehicleData.price} for ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}`);
     }
     
     // Build complete vehicle object
