@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { db } from "./db";
 import { aiPromptTemplates, dealershipApiKeys } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { storage } from "./storage";
 
 export interface ChatMessage {
@@ -110,10 +110,13 @@ interface VehicleData {
   fullPageContent?: string;
 }
 
-async function getActivePromptTemplate(): Promise<string> {
+async function getActivePromptTemplate(dealershipId: number): Promise<string> {
   try {
     const template = await db.query.aiPromptTemplates.findFirst({
-      where: eq(aiPromptTemplates.isActive, true),
+      where: and(
+        eq(aiPromptTemplates.dealershipId, dealershipId),
+        eq(aiPromptTemplates.isActive, true)
+      ),
     });
     
     if (template) {
@@ -160,7 +163,7 @@ export async function generateVehicleDescription(vehicle: VehicleData, dealershi
       : '';
     
     // Get customizable prompt template
-    const promptTemplate = await getActivePromptTemplate();
+    const promptTemplate = await getActivePromptTemplate(dealershipId);
     
     // Replace template variables
     const prompt = promptTemplate

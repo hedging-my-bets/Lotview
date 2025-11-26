@@ -26,7 +26,27 @@ interface ScrapedVehicle {
   carfaxUrl?: string;
 }
 
-const INVENTORY_URL = 'https://www.olympicautogroup.ca/vehicles/used/?st=year,desc&view=grid&sc=used&fn=Boundary%20Hyundai,Olympic%20Hyundai%20Vancouver,Kia%20Vancouver';
+// Individual dealership URLs (better data quality - includes Carfax links and full image galleries)
+const DEALERSHIP_URLS = [
+  {
+    url: 'https://www.olympichyundaivancouver.com/vehicles/used/?st=price,desc&view=grid&sc=used',
+    name: 'Olympic Hyundai Vancouver',
+    dealershipId: 1,
+    location: 'Vancouver'
+  },
+  {
+    url: 'https://www.boundaryhyundai.com/vehicles/used/?st=price,desc&view=grid&sc=used',
+    name: 'Boundary Hyundai Vancouver',
+    dealershipId: 2,
+    location: 'Burnaby'
+  },
+  {
+    url: 'https://www.kiavancouver.com/vehicles/used/?st=year,desc&view=grid&sc=used',
+    name: 'Kia Vancouver',
+    dealershipId: 3,
+    location: 'Vancouver'
+  }
+];
 
 const BADGE_KEYWORDS = {
   oneOwner: ['one owner', '1 owner', 'single owner'],
@@ -89,8 +109,8 @@ function determineBodyType(bodyStyle: string): string {
   return 'SUV'; // Default
 }
 
-async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
-  console.log('Launching browser...');
+async function scrapeInventoryPage(inventoryUrl: string, dealershipName: string, dealershipId: number, location: string): Promise<ScrapedVehicle[]> {
+  console.log(`Launching browser for ${dealershipName}...`);
   
   // Find chromium executable
   let chromiumPath = '';
@@ -122,8 +142,8 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
     
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     
-    console.log('Navigating to inventory page...');
-    await page.goto(INVENTORY_URL, {
+    console.log(`Navigating to ${dealershipName} inventory page...`);
+    await page.goto(inventoryUrl, {
       waitUntil: 'networkidle2',
       timeout: 60000
     });
@@ -167,7 +187,7 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
     
     console.log('Extracting vehicle data...');
     
-    const vehicles = await page.evaluate(() => {
+    const vehicles = await page.evaluate((dealershipName, dealershipId, location) => {
       const vehicleData: any[] = [];
       
       // Find all links that contain vehicle detail pages
@@ -206,24 +226,6 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
           trim = headingParts.slice(3).join(' ').trim();
         }
         if (!trim || trim.length === 0) trim = 'Base';
-        
-        // Determine dealership and dealershipId
-        let dealership = 'Olympic Hyundai Vancouver';
-        let dealershipId = 1;
-        let location = 'Vancouver';
-        if (cardText.includes('Boundary Hyundai')) {
-          dealership = 'Boundary Hyundai Vancouver';
-          dealershipId = 2;
-          location = 'Burnaby';
-        } else if (cardText.includes('Kia Vancouver')) {
-          dealership = 'Kia Vancouver';
-          dealershipId = 3;
-          location = 'Vancouver';
-        } else if (cardText.includes('Olympic Hyundai Vancouver')) {
-          dealership = 'Olympic Hyundai Vancouver';
-          dealershipId = 1;
-          location = 'Vancouver';
-        }
         
         // Extract price
         let price = 0;
@@ -279,8 +281,8 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
           primaryImage = img.src || img.getAttribute('data-src') || img.getAttribute('data-lazy-src') || primaryImage;
         }
         
-        // Get the detail page URL
-        const detailUrl = href.startsWith('http') ? href : `https://www.olympicautogroup.ca${href}`;
+        // Get the detail page URL (relative URLs need the domain from current location)
+        const detailUrl = href.startsWith('http') ? href : `${window.location.origin}${href}`;
         
         vehicleData.push({
           year,
@@ -292,16 +294,16 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
           odometer,
           primaryImage,
           detailUrl,
-          location,
-          dealership,
-          dealershipId,
+          location: location,
+          dealership: dealershipName,
+          dealershipId: dealershipId,
           cardText: cardText.substring(0, 500), // For badge detection
           heading
         });
       });
       
       return vehicleData;
-    });
+    }, dealershipName, dealershipId, location);
     
     console.log(`Extracted ${vehicles.length} vehicles from page`);
     console.log('Fetching detailed information for each vehicle...');
@@ -626,7 +628,7 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
           if (!carfaxUrl) {
             const allLinks = Array.from(document.querySelectorAll('a[href]')) as HTMLAnchorElement[];
             for (const link of allLinks) {
-              if (link.href && (link.href.includes('carfax.com') || link.href.href.includes('carfax.ca'))) {
+              if (link.href && (link.href.includes('carfax.com') || link.href.includes('carfax.ca'))) {
                 // Prioritize VIN-specific URLs over homepage
                 if (link.href.includes('/vehicle/') || link.href.includes('/vhr/') || link.href.includes('vin=')) {
                   carfaxUrl = link.href;
@@ -740,33 +742,47 @@ async function scrapeInventoryPage(): Promise<ScrapedVehicle[]> {
 }
 
 export async function scrapeAllDealerships(): Promise<number> {
-  console.log('Starting comprehensive inventory scrape...');
-  console.log('1/2: Scraping Olympic Auto Group...');
+  console.log('Starting comprehensive inventory scrape from individual dealerships...');
   
   try {
-    const scrapedVehicles = await scrapeInventoryPage();
+    // Scrape each dealership separately (better data quality - includes Carfax URLs and full image galleries)
+    const allScrapedVehicles: ScrapedVehicle[] = [];
     
-    if (scrapedVehicles.length === 0) {
-      console.log('⚠ No vehicles scraped from Olympic Auto Group');
+    for (let i = 0; i < DEALERSHIP_URLS.length; i++) {
+      const dealership = DEALERSHIP_URLS[i];
+      console.log(`\n[${i + 1}/${DEALERSHIP_URLS.length}] Scraping ${dealership.name}...`);
+      
+      try {
+        const vehicles = await scrapeInventoryPage(dealership.url, dealership.name, dealership.dealershipId, dealership.location);
+        console.log(`✓ Scraped ${vehicles.length} vehicles from ${dealership.name}`);
+        allScrapedVehicles.push(...vehicles);
+      } catch (error) {
+        console.error(`✗ Failed to scrape ${dealership.name}:`, error);
+        // Continue to next dealership even if one fails
+      }
+    }
+    
+    if (allScrapedVehicles.length === 0) {
+      console.log('⚠ No vehicles scraped from any dealership');
       return 0;
     }
     
-    console.log(`✓ Scraped ${scrapedVehicles.length} vehicles from Olympic Auto Group`);
+    console.log(`\n✓ Total scraped: ${allScrapedVehicles.length} vehicles from ${DEALERSHIP_URLS.length} dealerships`);
     
     // Scrape CarGurus for deal ratings and market data
-    console.log('2/2: Scraping CarGurus for market data...');
+    console.log('\nScraping CarGurus for market data...');
     let cargurusData: Map<string, any> | null = null;
     
     try {
       cargurusData = await scrapeAllCarGurusDealers();
       console.log(`✓ Scraped ${cargurusData.size} listings from CarGurus`);
     } catch (error) {
-      console.error('⚠ CarGurus scraping failed (continuing with Olympic data only):', error);
+      console.error('⚠ CarGurus scraping failed (continuing with dealership data only):', error);
     }
     
-    // Merge CarGurus data with Olympic inventory by VIN
+    // Merge CarGurus data with dealership inventory by VIN
     let mergedCount = 0;
-    const vehiclesWithCarGurusData = scrapedVehicles.map(vehicle => {
+    const vehiclesWithCarGurusData = allScrapedVehicles.map(vehicle => {
       if (vehicle.vin && cargurusData) {
         // Normalize VIN for matching
         const normalizedVin = vehicle.vin.trim().toUpperCase();
@@ -825,11 +841,11 @@ export async function scrapeAllDealerships(): Promise<number> {
     console.log(`✓ Generated AI descriptions for ${vehiclesWithDescriptions.length} vehicles`);
     
     if (mergedCount > 0) {
-      console.log(`✓ Merged CarGurus data for ${mergedCount}/${scrapedVehicles.length} vehicles`);
+      console.log(`✓ Merged CarGurus data for ${mergedCount}/${allScrapedVehicles.length} vehicles`);
     }
     
     // Save to database
-    console.log('Saving to database...');
+    console.log('\nSaving to database...');
     
     // Clear existing inventory (delete views first to avoid foreign key constraint)
     await db.execute(sql`TRUNCATE TABLE vehicle_views, vehicles RESTART IDENTITY CASCADE`);
@@ -837,8 +853,10 @@ export async function scrapeAllDealerships(): Promise<number> {
     // Insert new inventory
     await db.insert(vehicles).values(vehiclesWithDescriptions);
     
-    console.log(`✓ Successfully scraped and saved ${vehiclesWithDescriptions.length} vehicles`);
-    console.log(`  - Olympic Auto Group: ${scrapedVehicles.length} vehicles`);
+    console.log(`\n✓ Successfully scraped and saved ${vehiclesWithDescriptions.length} vehicles`);
+    console.log(`  - Olympic Hyundai: ${allScrapedVehicles.filter(v => v.dealershipId === 1).length} vehicles`);
+    console.log(`  - Boundary Hyundai: ${allScrapedVehicles.filter(v => v.dealershipId === 2).length} vehicles`);
+    console.log(`  - Kia Vancouver: ${allScrapedVehicles.filter(v => v.dealershipId === 3).length} vehicles`);
     console.log(`  - CarGurus matches: ${mergedCount} vehicles`);
     console.log(`  - AI descriptions: ${vehiclesWithDescriptions.length} vehicles`);
     

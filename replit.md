@@ -85,9 +85,21 @@ Preferred communication style: Simple, everyday language.
 - **Cron Scheduling**: Node-cron for scheduled tasks.
 - **AI/LLM**: OpenAI GPT-5 via Replit AI Integrations (fallback) or per-dealership OpenAI API keys for custom training.
 
-## Recent Changes (November 25, 2024)
+## Recent Changes (November 26, 2024)
 
-### Vehicle Detail Enhancements (Latest)
+### Web Scraper Architecture Refactor (Latest)
+- **Individual Dealership URLs**: Scraper now processes each dealership separately using their individual websites instead of combined feed:
+  - Olympic Hyundai: `olympichyundaivancouver.com` (27 vehicles)
+  - Boundary Hyundai: `boundaryhyundai.com` (47 vehicles)
+  - Kia Vancouver: `kiavancouver.com` (79 vehicles)
+- **Benefits**: Individual URLs provide richer data quality with better Carfax URL extraction and full image galleries
+- **Enhanced Odometer Extraction**: Scraper now extracts odometer readings from vehicle detail pages instead of listing cards (fixes 113 vehicles showing 0km)
+- **Improved Carfax Detection**: 4-strategy detection system now captures vehicle-specific Carfax report URLs from detail pages
+- **Scalable Architecture**: Easy to add new dealerships by adding to `DEALERSHIP_URLS` array
+- **Error Resilience**: If one dealership fails, scraping continues for remaining dealerships
+- **Database Schema Fix**: Added `dealership_id` column to `ai_prompt_templates` table for multi-tenant AI description generation
+
+### Vehicle Detail Enhancements
 - **Interactive Share & Like Buttons**: 
   - Share button uses Web Share API with clipboard fallback
   - Like button saves favorites to localStorage with visual feedback
