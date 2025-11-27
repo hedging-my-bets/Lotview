@@ -841,18 +841,18 @@ export default function Dashboard() {
       <Navbar />
       <div className="pt-28 pb-12 px-4">
         <div className="max-w-7xl mx-auto">
-          <div className="mb-8 flex items-center justify-between">
+          <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-foreground mb-2">Master Dashboard</h1>
+              <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">Master Dashboard</h1>
               <p className="text-muted-foreground">Welcome back, {user?.name}</p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               {user?.role === 'super_admin' && (
-                <Button onClick={() => setLocation('/super-admin')} variant="default" data-testid="button-super-admin">
+                <Button onClick={() => setLocation('/super-admin')} variant="default" data-testid="button-super-admin" className="w-full sm:w-auto">
                   Super Admin
                 </Button>
               )}
-              <Button onClick={handleLogout} variant="outline" data-testid="button-logout">
+              <Button onClick={handleLogout} variant="outline" data-testid="button-logout" className="w-full sm:w-auto">
                 <LogOut className="w-4 h-4 mr-2" />
                 Logout
               </Button>
@@ -860,32 +860,32 @@ export default function Dashboard() {
           </div>
 
           <Tabs defaultValue="users" className="w-full">
-            <TabsList className="grid w-full grid-cols-7 mb-8">
-              <TabsTrigger value="users" className="flex items-center gap-2" data-testid="tab-users">
+            <TabsList className="flex flex-wrap h-auto w-full gap-1 mb-8">
+              <TabsTrigger value="users" className="flex items-center gap-1 text-xs sm:text-sm px-2 sm:px-3 py-2 flex-1 sm:flex-none" data-testid="tab-users">
                 <Users className="w-4 h-4" />
                 <span className="hidden sm:inline">Users</span>
               </TabsTrigger>
-              <TabsTrigger value="financing" className="flex items-center gap-2" data-testid="tab-financing">
+              <TabsTrigger value="financing" className="flex items-center gap-1 text-xs sm:text-sm px-2 sm:px-3 py-2 flex-1 sm:flex-none" data-testid="tab-financing">
                 <DollarSign className="w-4 h-4" />
                 <span className="hidden sm:inline">Financing</span>
               </TabsTrigger>
-              <TabsTrigger value="remarketing" className="flex items-center gap-2" data-testid="tab-remarketing">
+              <TabsTrigger value="remarketing" className="flex items-center gap-1 text-xs sm:text-sm px-2 sm:px-3 py-2 flex-1 sm:flex-none" data-testid="tab-remarketing">
                 <Target className="w-4 h-4" />
                 <span className="hidden sm:inline">Remarketing</span>
               </TabsTrigger>
-              <TabsTrigger value="webhooks" className="flex items-center gap-2" data-testid="tab-webhooks">
+              <TabsTrigger value="webhooks" className="flex items-center gap-1 text-xs sm:text-sm px-2 sm:px-3 py-2 flex-1 sm:flex-none" data-testid="tab-webhooks">
                 <Webhook className="w-4 h-4" />
                 <span className="hidden sm:inline">Webhooks</span>
               </TabsTrigger>
-              <TabsTrigger value="chat-prompts" className="flex items-center gap-2" data-testid="tab-chat-prompts">
+              <TabsTrigger value="chat-prompts" className="flex items-center gap-1 text-xs sm:text-sm px-2 sm:px-3 py-2 flex-1 sm:flex-none" data-testid="tab-chat-prompts">
                 <MessageSquare className="w-4 h-4" />
-                <span className="hidden sm:inline">Chat Prompts</span>
+                <span className="hidden sm:inline">Prompts</span>
               </TabsTrigger>
-              <TabsTrigger value="conversations" className="flex items-center gap-2" data-testid="tab-conversations">
+              <TabsTrigger value="conversations" className="flex items-center gap-1 text-xs sm:text-sm px-2 sm:px-3 py-2 flex-1 sm:flex-none" data-testid="tab-conversations">
                 <MessageSquare className="w-4 h-4" />
                 <span className="hidden sm:inline">Chat</span>
               </TabsTrigger>
-              <TabsTrigger value="insights" className="flex items-center gap-2" data-testid="tab-insights">
+              <TabsTrigger value="insights" className="flex items-center gap-1 text-xs sm:text-sm px-2 sm:px-3 py-2 flex-1 sm:flex-none" data-testid="tab-insights">
                 <Sparkles className="w-4 h-4" />
                 <span className="hidden sm:inline">Insights</span>
               </TabsTrigger>
@@ -894,7 +894,7 @@ export default function Dashboard() {
             <TabsContent value="users">
               <Card>
                 <CardHeader>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
                       <CardTitle>User Management</CardTitle>
                       <CardDescription>
@@ -903,7 +903,7 @@ export default function Dashboard() {
                     </div>
                     <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
                       <DialogTrigger asChild>
-                        <Button data-testid="button-create-user">
+                        <Button data-testid="button-create-user" className="w-full sm:w-auto">
                           <Users className="w-4 h-4 mr-2" />
                           Create User
                         </Button>

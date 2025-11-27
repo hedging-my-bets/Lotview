@@ -660,19 +660,19 @@ export default function Manager() {
       <Navbar />
       <div className="pt-28 pb-12 px-4">
         <div className="max-w-7xl mx-auto">
-          <div className="mb-8 flex items-center justify-between">
+          <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-foreground mb-2">Sales Manager Dashboard</h1>
+              <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">Sales Manager Dashboard</h1>
               <p className="text-muted-foreground">Welcome back, {user?.name}</p>
             </div>
-            <Button onClick={handleLogout} variant="outline" data-testid="button-logout">
+            <Button onClick={handleLogout} variant="outline" data-testid="button-logout" className="w-full sm:w-auto">
               <LogOut className="w-4 h-4 mr-2" />
               Logout
             </Button>
           </div>
 
           {/* Metrics Cards */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
+          <div className="grid gap-4 grid-cols-2 lg:grid-cols-4 mb-6">
             <Card data-testid="metric-total-leads">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Total Leads</CardTitle>
@@ -887,20 +887,21 @@ export default function Manager() {
                 <div className="space-y-4">
                   <div>
                     <Label htmlFor="vin">Vehicle Identification Number (VIN)</Label>
-                    <div className="flex gap-2 mt-2">
+                    <div className="flex flex-col sm:flex-row gap-2 mt-2">
                       <Input
                         id="vin"
                         placeholder="Enter 17-character VIN"
                         value={vin}
                         onChange={(e) => setVin(e.target.value.toUpperCase())}
                         maxLength={17}
-                        className="font-mono"
+                        className="font-mono flex-1"
                         data-testid="input-vin"
                       />
                       <Button 
                         onClick={handleVinDecode}
                         disabled={vin.length !== 17 || isDecoding}
                         data-testid="button-decode-vin"
+                        className="w-full sm:w-auto"
                       >
                         {isDecoding ? (
                           <>

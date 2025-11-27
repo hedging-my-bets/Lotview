@@ -143,12 +143,12 @@ export default function Admin() {
       <Navbar />
       <div className="pt-28 pb-12 px-4">
         <div className="max-w-7xl mx-auto">
-          <div className="mb-8 flex items-center justify-between">
+          <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-foreground mb-2">Admin Dashboard</h1>
+              <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">Admin Dashboard</h1>
               <p className="text-muted-foreground">Manage chat conversations and AI settings</p>
             </div>
-            <Button onClick={handleLogout} variant="outline" data-testid="button-logout">
+            <Button onClick={handleLogout} variant="outline" data-testid="button-logout" className="w-full sm:w-auto">
               <LogOut className="w-4 h-4 mr-2" />
               Logout
             </Button>
@@ -156,7 +156,7 @@ export default function Admin() {
 
           {/* Role Navigation Cards - Only show for master users */}
           {isMasterUser && (
-            <div className="grid md:grid-cols-3 gap-4 mb-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-8">
               <Card 
                 className="cursor-pointer hover:shadow-lg transition-shadow" 
                 onClick={() => setLocation('/admin')}

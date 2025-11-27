@@ -452,41 +452,44 @@ export default function Sales() {
       <Navbar />
       <div className="pt-28 pb-12 px-4">
         <div className="max-w-7xl mx-auto">
-          <div className="mb-8 flex items-center justify-between">
+          <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-foreground mb-2">Salesperson Dashboard</h1>
+              <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">Salesperson Dashboard</h1>
               <p className="text-muted-foreground">Welcome back, {user?.name}</p>
             </div>
-            <Button onClick={handleLogout} variant="outline" data-testid="button-logout">
+            <Button onClick={handleLogout} variant="outline" data-testid="button-logout" className="w-full sm:w-auto">
               <LogOut className="w-4 h-4 mr-2" />
               Logout
             </Button>
           </div>
 
           <Tabs defaultValue="accounts" className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="accounts">
-                <Facebook className="w-4 h-4 mr-2" />
-                Accounts
+            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto">
+              <TabsTrigger value="accounts" className="text-xs sm:text-sm py-2">
+                <Facebook className="w-4 h-4 mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Accounts</span>
+                <span className="sm:hidden">Accts</span>
               </TabsTrigger>
-              <TabsTrigger value="templates">
-                <FileText className="w-4 h-4 mr-2" />
-                Templates
+              <TabsTrigger value="templates" className="text-xs sm:text-sm py-2">
+                <FileText className="w-4 h-4 mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Templates</span>
+                <span className="sm:hidden">Tmpl</span>
               </TabsTrigger>
-              <TabsTrigger value="queue">
-                <ListOrdered className="w-4 h-4 mr-2" />
+              <TabsTrigger value="queue" className="text-xs sm:text-sm py-2">
+                <ListOrdered className="w-4 h-4 mr-1 sm:mr-2" />
                 Queue
               </TabsTrigger>
-              <TabsTrigger value="schedule">
-                <Calendar className="w-4 h-4 mr-2" />
-                Schedule
+              <TabsTrigger value="schedule" className="text-xs sm:text-sm py-2">
+                <Calendar className="w-4 h-4 mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Schedule</span>
+                <span className="sm:hidden">Sched</span>
               </TabsTrigger>
             </TabsList>
 
             <TabsContent value="accounts" className="mt-6">
               <Card>
                 <CardHeader>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
                       <CardTitle>Facebook Accounts</CardTitle>
                       <CardDescription>
@@ -498,6 +501,7 @@ export default function Sales() {
                         <Button 
                           disabled={accounts.length >= 5}
                           data-testid="button-add-account"
+                          className="w-full sm:w-auto"
                         >
                           <Plus className="w-4 h-4 mr-2" />
                           Add Account

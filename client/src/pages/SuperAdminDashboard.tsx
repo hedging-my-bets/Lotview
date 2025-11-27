@@ -229,31 +229,34 @@ export default function SuperAdminDashboard() {
   }
 
   return (
-    <div className="container mx-auto p-6" data-testid="super-admin-dashboard">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="container mx-auto p-4 sm:p-6" data-testid="super-admin-dashboard">
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Super Admin Dashboard</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">Super Admin Dashboard</h1>
           <p className="text-muted-foreground">System-wide administration and configuration</p>
         </div>
-        <Button onClick={handleLogout} variant="outline" data-testid="button-logout">
+        <Button onClick={handleLogout} variant="outline" data-testid="button-logout" className="w-full sm:w-auto">
           <LogOut className="w-4 h-4 mr-2" />
           Logout
         </Button>
       </div>
 
       <Tabs defaultValue="dealerships" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="dealerships" data-testid="tab-dealerships">
-            <Building2 className="h-4 w-4 mr-2" />
-            Dealerships
+        <TabsList className="flex flex-wrap h-auto gap-1">
+          <TabsTrigger value="dealerships" data-testid="tab-dealerships" className="text-xs sm:text-sm px-2 sm:px-3 py-2">
+            <Building2 className="h-4 w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Dealerships</span>
+            <span className="sm:hidden">Dealers</span>
           </TabsTrigger>
-          <TabsTrigger value="settings" data-testid="tab-settings">
-            <Key className="h-4 w-4 mr-2" />
-            Global Settings
+          <TabsTrigger value="settings" data-testid="tab-settings" className="text-xs sm:text-sm px-2 sm:px-3 py-2">
+            <Key className="h-4 w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Global Settings</span>
+            <span className="sm:hidden">Settings</span>
           </TabsTrigger>
-          <TabsTrigger value="audit" data-testid="tab-audit">
-            <FileText className="h-4 w-4 mr-2" />
-            Audit Logs
+          <TabsTrigger value="audit" data-testid="tab-audit" className="text-xs sm:text-sm px-2 sm:px-3 py-2">
+            <FileText className="h-4 w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Audit Logs</span>
+            <span className="sm:hidden">Logs</span>
           </TabsTrigger>
         </TabsList>
 
@@ -261,7 +264,7 @@ export default function SuperAdminDashboard() {
         <TabsContent value="dealerships">
           <Card>
             <CardHeader>
-              <div className="flex justify-between items-center">
+              <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                 <div>
                   <CardTitle>Dealerships</CardTitle>
                   <CardDescription>Manage all dealerships in the system</CardDescription>
@@ -273,32 +276,34 @@ export default function SuperAdminDashboard() {
               {dealershipsLoading ? (
                 <div className="text-center py-8 text-muted-foreground">Loading dealerships...</div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Slug</TableHead>
-                      <TableHead>Subdomain</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Created</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {dealerships.map((dealership) => (
-                      <TableRow key={dealership.id} data-testid={`dealership-row-${dealership.id}`}>
-                        <TableCell className="font-medium">{dealership.name}</TableCell>
-                        <TableCell>{dealership.slug}</TableCell>
-                        <TableCell>{dealership.subdomain}</TableCell>
-                        <TableCell>
-                          <Badge variant={dealership.isActive ? "default" : "secondary"}>
-                            {dealership.isActive ? "Active" : "Inactive"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{format(new Date(dealership.createdAt), "PPP")}</TableCell>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Slug</TableHead>
+                        <TableHead>Subdomain</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Created</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {dealerships.map((dealership) => (
+                        <TableRow key={dealership.id} data-testid={`dealership-row-${dealership.id}`}>
+                          <TableCell className="font-medium">{dealership.name}</TableCell>
+                          <TableCell>{dealership.slug}</TableCell>
+                          <TableCell>{dealership.subdomain}</TableCell>
+                          <TableCell>
+                            <Badge variant={dealership.isActive ? "default" : "secondary"}>
+                              {dealership.isActive ? "Active" : "Inactive"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{format(new Date(dealership.createdAt), "PPP")}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -308,7 +313,7 @@ export default function SuperAdminDashboard() {
         <TabsContent value="settings">
           <Card>
             <CardHeader>
-              <div className="flex justify-between items-center">
+              <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                 <div>
                   <CardTitle>Global Settings</CardTitle>
                   <CardDescription>Configure system-wide API keys and settings</CardDescription>
@@ -320,6 +325,7 @@ export default function SuperAdminDashboard() {
               {settingsLoading ? (
                 <div className="text-center py-8 text-muted-foreground">Loading settings...</div>
               ) : (
+                <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -379,6 +385,7 @@ export default function SuperAdminDashboard() {
                     ))}
                   </TableBody>
                 </Table>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -395,32 +402,34 @@ export default function SuperAdminDashboard() {
               {auditLogsLoading ? (
                 <div className="text-center py-8 text-muted-foreground">Loading audit logs...</div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Timestamp</TableHead>
-                      <TableHead>User ID</TableHead>
-                      <TableHead>Action</TableHead>
-                      <TableHead>Resource</TableHead>
-                      <TableHead>Details</TableHead>
-                      <TableHead>IP Address</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {auditLogsData?.logs.map((log) => (
-                      <TableRow key={log.id} data-testid={`audit-log-${log.id}`}>
-                        <TableCell>{format(new Date(log.createdAt), "PPpp")}</TableCell>
-                        <TableCell>{log.userId}</TableCell>
-                        <TableCell>
-                          <Badge>{log.action}</Badge>
-                        </TableCell>
-                        <TableCell className="font-mono text-sm">{log.resource}</TableCell>
-                        <TableCell className="text-muted-foreground max-w-xs truncate">{log.details || "—"}</TableCell>
-                        <TableCell className="font-mono text-sm">{log.ipAddress || "—"}</TableCell>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Timestamp</TableHead>
+                        <TableHead>User ID</TableHead>
+                        <TableHead>Action</TableHead>
+                        <TableHead>Resource</TableHead>
+                        <TableHead>Details</TableHead>
+                        <TableHead>IP Address</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {auditLogsData?.logs.map((log) => (
+                        <TableRow key={log.id} data-testid={`audit-log-${log.id}`}>
+                          <TableCell>{format(new Date(log.createdAt), "PPpp")}</TableCell>
+                          <TableCell>{log.userId}</TableCell>
+                          <TableCell>
+                            <Badge>{log.action}</Badge>
+                          </TableCell>
+                          <TableCell className="font-mono text-sm">{log.resource}</TableCell>
+                          <TableCell className="text-muted-foreground max-w-xs truncate">{log.details || "—"}</TableCell>
+                          <TableCell className="font-mono text-sm">{log.ipAddress || "—"}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
             </CardContent>
           </Card>
