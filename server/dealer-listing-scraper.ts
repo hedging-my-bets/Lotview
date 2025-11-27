@@ -151,7 +151,7 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
         
         // HELPER: Check if element is in a payment context
         // CRITICAL: Only check element itself and attributes, NOT parent text (to avoid false positives)
-        const isPaymentContext = (element: Element): boolean => {
+        function isPaymentContext(element) {
           const paymentKeywords = /payment|weekly|bi-?weekly|monthly|calculator|financing|finance|per\s+month|\/mo/i;
           
           // Check element's own text content (the price value itself)
@@ -160,9 +160,9 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
             return true;
           }
           
-          // Check element's class and ID attributes (not HTML content)
-          const elementClass = element.className || '';
-          const elementId = element.id || '';
+          // Check element's class and ID attributes (use getAttribute to avoid SVG className issues)
+          const elementClass = element.getAttribute('class') || '';
+          const elementId = element.getAttribute('id') || '';
           if (paymentKeywords.test(elementClass) || paymentKeywords.test(elementId)) {
             return true;
           }
@@ -170,15 +170,15 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
           // Check parent's class and ID (but NOT parent text - that includes disclaimers)
           const parent = element.parentElement;
           if (parent) {
-            const parentClass = parent.className || '';
-            const parentId = parent.id || '';
+            const parentClass = parent.getAttribute('class') || '';
+            const parentId = parent.getAttribute('id') || '';
             if (paymentKeywords.test(parentClass) || paymentKeywords.test(parentId)) {
               return true;
             }
           }
           
           return false;
-        };
+        }
         
         // Extract VIN
         let vin: string | null = null;

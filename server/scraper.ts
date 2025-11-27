@@ -949,16 +949,16 @@ export async function scrapeAllDealerships(): Promise<number> {
             };
             
             // Merge dealer + CarGurus images with smart deduplication
-            const dealerNormalized = enrichedVehicle.images.map(url => ({ original: url, normalized: normalizeImageUrl(url) }));
-            const cgNormalized = cgMatch.images.map(url => ({ original: url, normalized: normalizeImageUrl(url) }));
+            const dealerNormalized = enrichedVehicle.images.map((url: string) => ({ original: url, normalized: normalizeImageUrl(url) }));
+            const cgNormalized = cgMatch.images.map((url: string) => ({ original: url, normalized: normalizeImageUrl(url) }));
             
             // Create a Set of normalized dealer URLs for quick lookup
-            const dealerNormalizedSet = new Set(dealerNormalized.map(img => img.normalized));
+            const dealerNormalizedSet = new Set(dealerNormalized.map((img: any) => img.normalized));
             
             // Add CarGurus images that aren't already in dealer set (by normalized URL)
             const uniqueCgImages = cgNormalized
-              .filter(img => !dealerNormalizedSet.has(img.normalized))
-              .map(img => img.original);
+              .filter((img: any) => !dealerNormalizedSet.has(img.normalized))
+              .map((img: any) => img.original);
             
             const mergedImages = [...enrichedVehicle.images, ...uniqueCgImages];
             const originalCount = enrichedVehicle.images.length;
@@ -1066,8 +1066,8 @@ export async function scrapeAllDealerships(): Promise<number> {
             model: vehicle.model,
             trim: vehicle.trim,
             type: vehicle.type,
-            price: vehicle.price,
-            odometer: vehicle.odometer,
+            price: vehicle.price!, // Safe: validated in filter above
+            odometer: vehicle.odometer!, // Safe: validated in filter above
             badges: vehicle.badges,
             dealership: vehicle.dealership,
             location: vehicle.location,
@@ -1095,8 +1095,11 @@ export async function scrapeAllDealerships(): Promise<number> {
     // Clear existing inventory (delete views first to avoid foreign key constraint)
     await db.execute(sql`TRUNCATE TABLE vehicle_views, vehicles RESTART IDENTITY CASCADE`);
     
-    // Insert new inventory
-    await db.insert(vehicles).values(vehiclesWithDescriptions);
+    // Insert new inventory (filter out any vehicles with null price/odometer)
+    const validForInsert = vehiclesWithDescriptions.filter(v => v.price !== null && v.odometer !== null);
+    if (validForInsert.length > 0) {
+      await db.insert(vehicles).values(validForInsert as any);
+    }
     
     console.log(`\n✓ Successfully scraped and saved ${vehiclesWithDescriptions.length} vehicles (DEALER-FIRST)`);
     console.log(`  - Olympic Hyundai: ${enrichedVehicles.filter(v => v.dealershipId === 1).length} vehicles`);
