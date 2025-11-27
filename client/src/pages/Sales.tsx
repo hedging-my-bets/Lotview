@@ -11,7 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { LogOut, Facebook, Plus, Trash2, Edit, FileText, ListOrdered, Calendar, Clock, GripVertical, Car } from "lucide-react";
+import { LogOut, Facebook, Plus, Trash2, Edit, FileText, ListOrdered, Calendar, Clock, GripVertical, Car, CalendarDays } from "lucide-react";
+import { PostingCalendar } from "@/components/PostingCalendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 
@@ -890,89 +891,96 @@ export default function Sales() {
             </TabsContent>
 
             <TabsContent value="schedule" className="mt-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Posting Schedule</CardTitle>
-                  <CardDescription>
-                    Configure automated posting times and intervals
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <form onSubmit={(e) => {
-                    e.preventDefault();
-                    saveScheduleMutation.mutate(scheduleForm);
-                  }} className="space-y-6">
-                    <div className="space-y-4">
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div>
-                          <Label htmlFor="startTime">Start Time</Label>
-                          <Input
-                            id="startTime"
-                            type="time"
-                            value={scheduleForm.startTime}
-                            onChange={(e) => setScheduleForm({ ...scheduleForm, startTime: e.target.value })}
-                            data-testid="input-start-time"
-                          />
-                          <p className="text-xs text-slate-500 mt-1">What time to start posting each day</p>
-                        </div>
-                        <div>
-                          <Label htmlFor="interval">Interval (minutes)</Label>
-                          <Input
-                            id="interval"
-                            type="number"
-                            min="1"
-                            value={scheduleForm.intervalMinutes}
-                            onChange={(e) => setScheduleForm({ ...scheduleForm, intervalMinutes: parseInt(e.target.value) || 60 })}
-                            data-testid="input-interval"
-                          />
-                          <p className="text-xs text-slate-500 mt-1">Time between posts</p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-lg">
-                        <Switch
-                          checked={scheduleForm.isActive}
-                          onCheckedChange={(checked) => setScheduleForm({ ...scheduleForm, isActive: checked })}
-                          data-testid="switch-schedule-active"
-                        />
-                        <div className="flex-1">
-                          <Label className="text-base">Enable Automated Posting</Label>
-                          <p className="text-sm text-slate-500">
-                            Posts will automatically go live based on your queue and schedule
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="p-4 border rounded-lg bg-blue-50 border-blue-200">
-                        <div className="flex items-start gap-3">
-                          <Clock className="w-5 h-5 text-blue-600 mt-0.5" />
+              <div className="grid gap-6 lg:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Posting Schedule</CardTitle>
+                    <CardDescription>
+                      Configure automated posting times and intervals
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <form onSubmit={(e) => {
+                      e.preventDefault();
+                      saveScheduleMutation.mutate(scheduleForm);
+                    }} className="space-y-6">
+                      <div className="space-y-4">
+                        <div className="grid gap-4 md:grid-cols-2">
                           <div>
-                            <h4 className="font-medium text-blue-900 mb-1">Schedule Preview</h4>
-                            <p className="text-sm text-blue-700">
-                              {scheduleForm.isActive ? (
-                                <>
-                                  Posting starts at <strong>{scheduleForm.startTime}</strong> with{' '}
-                                  <strong>{scheduleForm.intervalMinutes} minute</strong> intervals
-                                </>
-                              ) : (
-                                "Automated posting is currently disabled"
-                              )}
+                            <Label htmlFor="startTime">Start Time</Label>
+                            <Input
+                              id="startTime"
+                              type="time"
+                              value={scheduleForm.startTime}
+                              onChange={(e) => setScheduleForm({ ...scheduleForm, startTime: e.target.value })}
+                              data-testid="input-start-time"
+                            />
+                            <p className="text-xs text-slate-500 mt-1">What time to start posting each day</p>
+                          </div>
+                          <div>
+                            <Label htmlFor="interval">Interval (minutes)</Label>
+                            <Input
+                              id="interval"
+                              type="number"
+                              min="1"
+                              value={scheduleForm.intervalMinutes}
+                              onChange={(e) => setScheduleForm({ ...scheduleForm, intervalMinutes: parseInt(e.target.value) || 60 })}
+                              data-testid="input-interval"
+                            />
+                            <p className="text-xs text-slate-500 mt-1">Time between posts</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-lg">
+                          <Switch
+                            checked={scheduleForm.isActive}
+                            onCheckedChange={(checked) => setScheduleForm({ ...scheduleForm, isActive: checked })}
+                            data-testid="switch-schedule-active"
+                          />
+                          <div className="flex-1">
+                            <Label className="text-base">Enable Automated Posting</Label>
+                            <p className="text-sm text-slate-500">
+                              Posts will automatically go live based on your queue and schedule
                             </p>
                           </div>
                         </div>
-                      </div>
-                    </div>
 
-                    <Button 
-                      type="submit" 
-                      disabled={saveScheduleMutation.isPending}
-                      data-testid="button-save-schedule"
-                    >
-                      Save Schedule
-                    </Button>
-                  </form>
-                </CardContent>
-              </Card>
+                        <div className="p-4 border rounded-lg bg-blue-50 border-blue-200">
+                          <div className="flex items-start gap-3">
+                            <Clock className="w-5 h-5 text-blue-600 mt-0.5" />
+                            <div>
+                              <h4 className="font-medium text-blue-900 mb-1">Schedule Preview</h4>
+                              <p className="text-sm text-blue-700">
+                                {scheduleForm.isActive ? (
+                                  <>
+                                    Posting starts at <strong>{scheduleForm.startTime}</strong> with{' '}
+                                    <strong>{scheduleForm.intervalMinutes} minute</strong> intervals
+                                  </>
+                                ) : (
+                                  "Automated posting is currently disabled"
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <Button 
+                        type="submit" 
+                        disabled={saveScheduleMutation.isPending}
+                        data-testid="button-save-schedule"
+                      >
+                        Save Schedule
+                      </Button>
+                    </form>
+                  </CardContent>
+                </Card>
+                
+                <PostingCalendar 
+                  queueItems={queueItems} 
+                  schedule={scheduleForm}
+                />
+              </div>
             </TabsContent>
           </Tabs>
         </div>
