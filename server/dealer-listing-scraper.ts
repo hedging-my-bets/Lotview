@@ -230,10 +230,8 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
                   price = val;
                   priceConfidence = 'high';
                   break; // Use first valid CASH price from authoritative selector
-                } else if (val > 0 && val < 1000) {
-                  // Log suspected payment amount for debugging
-                  console.warn(`⚠ Rejected price below $1000: $${val} (likely payment amount)`);
                 }
+                // Note: Values below $1000 are ignored as likely payment amounts
               }
             }
           }
@@ -256,9 +254,8 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
                 price = val;
                 priceConfidence = 'medium';
                 break;
-              } else if (val > 0 && val < 1000) {
-                console.warn(`⚠ Rejected labeled price below $1000: $${val} (likely payment amount)`);
               }
+              // Note: Values below $1000 are ignored as likely payment amounts
             }
           }
         }
@@ -288,11 +285,7 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
             price = prices[0];
             priceConfidence = 'low';
           }
-          
-          // Log low confidence extractions for debugging
-          if (price && priceConfidence === 'low') {
-            console.warn(`⚠ Low confidence price extraction: $${price} from ${prices.length} candidates`);
-          }
+          // Note: Low confidence prices are still used but should be validated
         }
         
         // Extract odometer
@@ -466,10 +459,14 @@ async function scrapeDealerListings(dealerConfig: typeof DEALER_CONFIGS[0]): Pro
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--disable-gpu',
+      '--disable-blink-features=AutomationControlled'
     ],
   });
 
   const page = await browser.newPage();
+  
+  // Set a realistic user agent to avoid bot detection
+  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
   
   try {
     await page.goto(dealerConfig.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
