@@ -749,6 +749,9 @@ async function scrapeDealerListings(dealerConfig: typeof DEALER_CONFIGS[0]): Pro
   // Add human-like delay before navigation
   await randomDelay(500, 1500);
   
+  // Declare vehicles array outside try block so we can return partial results on error
+  let vehicles: DealerVehicleListing[] = [];
+  
   try {
     const response = await page.goto(dealerConfig.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
     
@@ -922,14 +925,54 @@ async function scrapeDealerListings(dealerConfig: typeof DEALER_CONFIGS[0]): Pro
 
     console.log(`  ✓ Found ${vdpUrls.length} VDP URLs, now extracting VIN/price/odometer...`);
     
-    // Visit each VDP to extract complete vehicle data
-    const vehicles: DealerVehicleListing[] = [];
+    // Visit each VDP to extract complete vehicle data (vehicles array declared outside try block)
     
     // Track current page - will be refreshed periodically to prevent detached frame errors
     let currentVdpPage = page;
-    const PAGE_REFRESH_INTERVAL = 10; // Refresh page every 10 vehicles to prevent frame detachment
+    
+    // Initialize backup cookies from the page that already passed Cloudflare
+    let savedCookiesBackup: any[] = [];
+    try {
+      savedCookiesBackup = await page.cookies();
+      console.log(`  ✓ Initialized cookie backup with ${savedCookiesBackup.length} cookies`);
+    } catch (e) {
+      console.log(`  ⚠ Could not get initial cookies for backup`);
+    }
+    const PAGE_REFRESH_INTERVAL = 5; // REDUCED from 10 to 5 for more stability
     
     console.log(`  Processing ${vdpUrls.length} vehicles (refreshing page every ${PAGE_REFRESH_INTERVAL} vehicles)...`);
+    
+    // Helper function to safely refresh the page
+    async function refreshPage(reason: string): Promise<void> {
+      console.log(`    🔄 ${reason}`);
+      
+      // Try to get cookies from current page, use backup if failed
+      let cookiesToRestore = savedCookiesBackup;
+      try {
+        cookiesToRestore = await currentVdpPage.cookies();
+        savedCookiesBackup = cookiesToRestore; // Update backup
+      } catch (e) {
+        console.log(`    ⚠ Could not get cookies from current page, using backup (${savedCookiesBackup.length} cookies)`);
+      }
+      
+      // Close old page (ignore errors if already closed)
+      try {
+        await currentVdpPage.close();
+      } catch (e) {
+        // Page may already be closed
+      }
+      
+      // Create fresh page
+      currentVdpPage = await browser.newPage();
+      
+      // Restore cookies and fingerprint
+      if (cookiesToRestore.length > 0) {
+        await currentVdpPage.setCookie(...cookiesToRestore);
+      }
+      await applyFingerprint(currentVdpPage, fingerprint);
+      
+      console.log(`    ✓ Page refreshed with ${cookiesToRestore.length} cookies preserved`);
+    }
     
     for (let i = 0; i < vdpUrls.length; i++) {
       const urlData = vdpUrls[i];
@@ -937,26 +980,30 @@ async function scrapeDealerListings(dealerConfig: typeof DEALER_CONFIGS[0]): Pro
       
       // Refresh page every PAGE_REFRESH_INTERVAL vehicles to prevent frame detachment
       if (i > 0 && i % PAGE_REFRESH_INTERVAL === 0) {
-        console.log(`    🔄 Refreshing page to prevent frame detachment (processed ${i} vehicles)...`);
-        
-        // Save cookies before closing page
-        const currentCookies = await currentVdpPage.cookies();
-        
-        // Close old page and create new one
-        await currentVdpPage.close();
-        currentVdpPage = await browser.newPage();
-        
-        // Restore cookies and fingerprint
-        if (currentCookies.length > 0) {
-          await currentVdpPage.setCookie(...currentCookies);
-        }
-        await applyFingerprint(currentVdpPage, fingerprint);
-        
-        console.log(`    ✓ Page refreshed with ${currentCookies.length} cookies preserved`);
+        await refreshPage(`Preventive refresh (processed ${i} vehicles)...`);
       }
       
-      // Pass the current page
-      const detailData = await scrapeVehicleDetailPage(currentVdpPage, urlData.vdpUrl);
+      // Pass the current page with frame detachment recovery
+      let detailData: VehicleDetailData;
+      try {
+        detailData = await scrapeVehicleDetailPage(currentVdpPage, urlData.vdpUrl);
+        
+        // If scrape returned empty (all retries failed), try emergency refresh
+        if (!detailData.price && detailData.images.length === 0 && !detailData.vin) {
+          console.log(`    ⚠ Empty result - attempting emergency page refresh...`);
+          await refreshPage('Emergency recovery from failed scrape');
+          detailData = await scrapeVehicleDetailPage(currentVdpPage, urlData.vdpUrl);
+        }
+      } catch (pageError: any) {
+        // Detect frame detachment and recover
+        if (pageError?.message?.includes('detached') || pageError?.message?.includes('Session closed')) {
+          console.log(`    ⚠ Frame detachment detected - emergency page refresh...`);
+          await refreshPage('Emergency recovery from frame detachment');
+          detailData = await scrapeVehicleDetailPage(currentVdpPage, urlData.vdpUrl);
+        } else {
+          throw pageError;
+        }
+      }
       
       vehicles.push({
         vin: detailData.vin,
@@ -986,12 +1033,33 @@ async function scrapeDealerListings(dealerConfig: typeof DEALER_CONFIGS[0]): Pro
     console.log(`  ✓ Successfully scraped ${vehicles.length} vehicles from ${dealerConfig.name}`);
     
     // Clean up (vdpPage is the same as page, just close the browser)
-    await browser.close();
+    try {
+      await browser.close();
+    } catch (e) {
+      // Browser may already be closed
+    }
     return vehicles;
     
   } catch (error) {
     console.error(`  ✗ Error scraping ${dealerConfig.name}:`, error);
-    await browser.close();
+    
+    // IMPORTANT: Return partial results if we have any
+    // This prevents losing 25+ successfully scraped vehicles if the browser crashes
+    if (vehicles && vehicles.length > 0) {
+      console.log(`  ⚠ Returning ${vehicles.length} partial results despite error`);
+      try {
+        await browser.close();
+      } catch (e) {
+        // Browser may already be closed
+      }
+      return vehicles;
+    }
+    
+    try {
+      await browser.close();
+    } catch (e) {
+      // Browser may already be closed
+    }
     return [];
   }
 }
