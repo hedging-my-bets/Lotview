@@ -15,7 +15,7 @@ import { triggerManualSync } from "./scheduler";
 import { testBadgeDetection } from "./scraper";
 import { generateChatResponse, type ChatMessage } from "./openai";
 
-import { authMiddleware, requireRole, generateToken, comparePassword, hashPassword, type AuthRequest } from "./auth";
+import { authMiddleware, requireRole, generateToken, comparePassword, hashPassword, verifyToken, type AuthRequest } from "./auth";
 import { requireDealership, superAdminOnly } from "./tenant-middleware";
 import { facebookService } from "./facebook-service";
 import crypto from "crypto";
@@ -2749,5 +2749,130 @@ Format your response in clear sections with actionable recommendations.`;
   });
 
   const httpServer = createServer(app);
+  
+  // ===== WEBSOCKET SERVER FOR REAL-TIME NOTIFICATIONS =====
+  const WebSocket = await import('ws');
+  const wss = new WebSocket.WebSocketServer({ server: httpServer, path: '/ws' });
+  
+  // Store connected clients by dealership with authenticated user info
+  interface AuthenticatedClient {
+    ws: WebSocket.WebSocket;
+    userId: number;
+    dealershipId: number;
+  }
+  const clientsByDealership = new Map<number, Set<AuthenticatedClient>>();
+  
+  wss.on('connection', async (ws: WebSocket.WebSocket, req) => {
+    // SECURITY: Authenticate WebSocket connection using JWT token
+    const url = new URL(req.url || '', `http://${req.headers.host}`);
+    const token = url.searchParams.get('token');
+    
+    if (!token) {
+      ws.close(4001, 'Authentication required');
+      return;
+    }
+    
+    try {
+      // Verify JWT token and get user info
+      const decoded = verifyToken(token);
+      if (!decoded || !decoded.id) {
+        ws.close(4001, 'Invalid token');
+        return;
+      }
+      
+      // Verify user is still active
+      const user = await storage.getUserById(decoded.id);
+      if (!user || !user.isActive) {
+        ws.close(4001, 'User not found or inactive');
+        return;
+      }
+      
+      // Use the dealership ID from the user's token, not from query params
+      // This ensures tenant isolation - users can only subscribe to their own dealership
+      const dealershipId = user.dealershipId || 1; // Super admins default to dealership 1
+      
+      const client: AuthenticatedClient = {
+        ws,
+        userId: user.id,
+        dealershipId,
+      };
+      
+      // Add to dealership clients
+      if (!clientsByDealership.has(dealershipId)) {
+        clientsByDealership.set(dealershipId, new Set());
+      }
+      clientsByDealership.get(dealershipId)!.add(client);
+      
+      console.log(`WebSocket client connected: user ${user.id} for dealership ${dealershipId}`);
+      
+      ws.on('close', () => {
+        clientsByDealership.get(dealershipId)?.delete(client);
+        console.log(`WebSocket client disconnected: user ${user.id} for dealership ${dealershipId}`);
+      });
+      
+      ws.on('error', (error) => {
+        console.error('WebSocket error:', error);
+      });
+    } catch (error) {
+      console.error('WebSocket authentication error:', error);
+      ws.close(4001, 'Authentication failed');
+    }
+  });
+  
+  // Notification payload schema for validation
+  const NotificationSchema = {
+    validate: (data: any): data is {
+      type: 'new_lead' | 'chat_message' | 'post_status' | 'inventory_sync' | 'system';
+      title: string;
+      message: string;
+      data?: any;
+      timestamp: string;
+    } => {
+      const validTypes = ['new_lead', 'chat_message', 'post_status', 'inventory_sync', 'system'];
+      return (
+        typeof data === 'object' &&
+        data !== null &&
+        validTypes.includes(data.type) &&
+        typeof data.title === 'string' &&
+        typeof data.message === 'string' &&
+        typeof data.timestamp === 'string'
+      );
+    }
+  };
+  
+  // Broadcast notification to all authenticated clients for a dealership
+  const broadcastNotification = (dealershipId: number, notification: {
+    type: 'new_lead' | 'chat_message' | 'post_status' | 'inventory_sync' | 'system';
+    title: string;
+    message: string;
+    data?: any;
+    timestamp: string;
+  }) => {
+    // Validate notification payload
+    if (!NotificationSchema.validate(notification)) {
+      console.error('Invalid notification payload:', notification);
+      return;
+    }
+    
+    // Validate dealership ID
+    if (typeof dealershipId !== 'number' || isNaN(dealershipId) || dealershipId < 1) {
+      console.error('Invalid dealership ID for broadcast:', dealershipId);
+      return;
+    }
+    
+    const clients = clientsByDealership.get(dealershipId);
+    if (!clients || clients.size === 0) return;
+    
+    const payload = JSON.stringify(notification);
+    clients.forEach(client => {
+      if (client.ws.readyState === WebSocket.WebSocket.OPEN) {
+        client.ws.send(payload);
+      }
+    });
+  };
+  
+  // Expose broadcast function globally for use in other routes
+  (global as any).broadcastNotification = broadcastNotification;
+  
   return httpServer;
 }
