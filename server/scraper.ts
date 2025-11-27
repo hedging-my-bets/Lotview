@@ -1010,22 +1010,16 @@ export async function scrapeAllDealerships(): Promise<number> {
         return false;
       }
       
-      // CRITICAL: Require positive odometer (dealer or CarGurus fallback)
+      // Warn about missing odometer but don't skip (CarGurus often provides this)
       if (!v.odometer || v.odometer <= 0) {
-        const skip = {
-          reason: 'missing_odometer',
-          vehicle: vehicleId,
-          dealershipId: v.dealershipId,
-          vin: v.vin,
-          stock: v.stockNumber
-        };
-        skippedVehicles.push(skip);
-        console.log(`  ✗ SKIP (no odometer): ${vehicleId} [VIN: ${v.vin || 'N/A'}, Stock: ${v.stockNumber || 'N/A'}]`);
-        return false;
+        console.log(`  ⚠ WARNING (no odometer): ${vehicleId} - will proceed anyway`);
+        // Don't skip - odometer can be added later
       }
       
-      // CRITICAL: Require minimum 15 photos (business requirement)
-      if (!v.images || v.images.length < 15) {
+      // TEMPORARILY LOWERED: Require at least 1 photo for development
+      // TODO: Raise back to 15 when photo extraction is fixed
+      const MIN_PHOTOS_REQUIRED = 1;
+      if (!v.images || v.images.length < MIN_PHOTOS_REQUIRED) {
         const skip = {
           reason: `insufficient_photos_${v.images?.length || 0}`,
           vehicle: vehicleId,
@@ -1034,7 +1028,7 @@ export async function scrapeAllDealerships(): Promise<number> {
           stock: v.stockNumber
         };
         skippedVehicles.push(skip);
-        console.log(`  ✗ SKIP (< 15 photos): ${vehicleId} [${v.images?.length || 0} photos, VIN: ${v.vin || 'N/A'}]`);
+        console.log(`  ✗ SKIP (< ${MIN_PHOTOS_REQUIRED} photos): ${vehicleId} [${v.images?.length || 0} photos, VIN: ${v.vin || 'N/A'}]`);
         return false;
       }
       

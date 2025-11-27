@@ -130,41 +130,32 @@ interface VehicleDetailData {
   stockNumber: string | null;
 }
 
-async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2): Promise<VehicleDetailData> {
-  let page = null;
-  
+// Scrape VDP using an existing page (reuses page instead of creating new ones)
+async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): Promise<VehicleDetailData> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      page = await browser.newPage();
+      // Navigate to VDP using existing page
+      await page.goto(vdpUrl, { waitUntil: 'domcontentloaded', timeout: 25000 });
       
-      // Apply fingerprint to VDP page as well (for consistency and anti-detection)
-      const fingerprint = generateRandomFingerprint();
-      await applyFingerprint(page, fingerprint);
-      
-      await page.goto(vdpUrl, { waitUntil: 'networkidle2', timeout: 20000 });
+      // Wait for the page to be fully interactive
+      await new Promise(resolve => setTimeout(resolve, 1500));
       
       // Check for Cloudflare challenge on VDP page
       const isChallenged = await isCloudflareChallenge(page);
       if (isChallenged) {
+        console.log('    ⚠ Cloudflare challenge on VDP, waiting...');
         // Wait for challenge to resolve
         for (let i = 0; i < 15; i++) {
           await new Promise(resolve => setTimeout(resolve, 2000));
           if (!(await isCloudflareChallenge(page))) {
+            console.log('    ✓ VDP challenge resolved');
             break;
           }
         }
       }
       
-      // Wait for price-related content to load (try multiple selectors)
-      const priceSelectors = '.vehicle-price, .selling-price, .sale-price, [data-field="price"], [itemprop="price"]';
-      try {
-        await page.waitForSelector(priceSelectors, { timeout: 5000 });
-      } catch (e) {
-        // Price element not found with specific selectors, continue anyway
-      }
-      
-      // Additional wait for dynamic content to render
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Wait for dynamic content to render
+      await new Promise(resolve => setTimeout(resolve, 1500));
       
       // Debug: Log that we're about to extract data
       const pageUrl = await page.url();
@@ -175,7 +166,7 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
         var pageText = document.body.textContent || '';
         
         function isPaymentContext(element) {
-          var paymentKeywords = /payment|weekly|bi-?weekly|monthly|calculator|financing|finance|per\\\\s+month|\\\\/mo/i;
+          var paymentKeywords = /payment|weekly|bi-?weekly|monthly|calculator|financing|finance|per\\s+month|\\/mo/i;
           var elementText = element.textContent || '';
           if (paymentKeywords.test(elementText)) return true;
           var elementClass = element.getAttribute('class') || '';
@@ -198,14 +189,14 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
         
         // Extract VIN (no TypeScript annotations)
         var vin = null;
-        var vinMatch = pageText.match(/VIN[:\\\\s]*([A-HJ-NPR-Z0-9]{17})/i);
+        var vinMatch = pageText.match(/VIN[:\\s]*([A-HJ-NPR-Z0-9]{17})/i);
         if (vinMatch) {
           vin = vinMatch[1].toUpperCase();
         }
         
         // Extract Stock Number
         var stockNumber = null;
-        var stockMatch = pageText.match(/stock[#\\\\s:]*([A-Z0-9-]+)/i);
+        var stockMatch = pageText.match(/stock[#\\s:]*([A-Z0-9-]+)/i);
         if (stockMatch) {
           stockNumber = stockMatch[1];
         }
@@ -247,7 +238,7 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
             // CRITICAL: Use payment context helper to reject payment widgets
             if (!isPaymentContext(priceEl)) {
               var priceText = priceEl.textContent || priceEl.getAttribute('data-value') || priceEl.getAttribute('data-price') || '';
-              var priceMatchResult = priceText.match(/\\\\$?\\\\s*([0-9,]+)/);
+              var priceMatchResult = priceText.match(/\\$?\\s*([0-9,]+)/);
               if (priceMatchResult) {
                 var priceVal = parseInt(priceMatchResult[1].replace(/,/g, ''));
                 // Realistic minimum: $1000 (excludes payment amounts like $399)
@@ -266,9 +257,9 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
         // Strategy 2: Scoped regex with label anchoring (high confidence)
         if (!price) {
           var labeledPricePatterns = [
-            /(?:Sale|Selling|Asking|Dealer|Final|Internet)\\\\s*Price[:\\\\s]*\\\\$?\\\\s*([0-9,]+)/i,
-            /Price[:\\\\s]*\\\\$?\\\\s*([0-9,]+)(?!\\\\s*(?:weekly|monthly|payment))/i,
-            /\\\\$\\\\s*([0-9,]+)\\\\s*(?:CAD|CDN|Canadian)?(?!\\\\s*(?:weekly|monthly|payment|per))/i
+            /(?:Sale|Selling|Asking|Dealer|Final|Internet)\\s*Price[:\\s]*\\$?\\s*([0-9,]+)/i,
+            /Price[:\\s]*\\$?\\s*([0-9,]+)(?!\\s*(?:weekly|monthly|payment))/i,
+            /\\$\\s*([0-9,]+)\\s*(?:CAD|CDN|Canadian)?(?!\\s*(?:weekly|monthly|payment|per))/i
           ];
           
           for (var lpi = 0; lpi < labeledPricePatterns.length; lpi++) {
@@ -291,7 +282,7 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
         // Strategy 3: Last resort - scan all prices, use median (avoid both payments and MSRP)
         // NOTE: This is unreliable and may be removed in future
         if (!price) {
-          var priceRegex = /\\\\$\\\\s*([0-9,]+)(?!\\\\s*(?:weekly|bi-?weekly|monthly|per\\\\s+month|\\\\/mo|payment))/gi;
+          var priceRegex = /\\$\\s*([0-9,]+)(?!\\s*(?:weekly|bi-?weekly|monthly|per\\s+month|\\/mo|payment))/gi;
           var priceMatch2;
           var prices = [];
           
@@ -318,7 +309,7 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
         
         // Extract odometer
         var odometer = null;
-        var odoMatch = pageText.match(/([0-9,]+)\\\\s*(km|kilometers?)/i);
+        var odoMatch = pageText.match(/([0-9,]+)\\s*(km|kilometers?)/i);
         if (odoMatch) {
           var odoVal = parseInt(odoMatch[1].replace(/,/g, ''));
           if (odoVal > 0 && odoVal < 500000) {
@@ -332,7 +323,7 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
         if (h1El) {
           var titleText = h1El.textContent || '';
           // Try to extract trim from title (usually after model name)
-          var trimMatch = titleText.match(/(?:\\\\d{4}\\\\s+[A-Za-z-]+\\\\s+[A-Za-z0-9-]+\\\\s+)([A-Za-z0-9\\\\s]+)/i);
+          var trimMatch = titleText.match(/(?:\\d{4}\\s+[A-Za-z-]+\\s+[A-Za-z0-9-]+\\s+)([A-Za-z0-9\\s]+)/i);
           if (trimMatch && trimMatch[1]) {
             trim = trimMatch[1].trim();
           }
@@ -363,62 +354,131 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
           description = 'Used vehicle. Contact dealer for more information.';
         }
         
-        // Extract images from multiple sources
+        // Extract images from multiple sources - AGGRESSIVE APPROACH
         var images = [];
         var processedUrls = {};
+        var debugImgInfo = [];
         
-        // First priority: CDN sources that typically host vehicle photos
-        var cdnPatterns = [
-          'img[src*="autotradercdn"]',
-          'img[src*="dmt.global"]',
-          'img[src*="photomanager"]',
-          'img[src*="dealercdn"]',
-          'img[src*="cloudfront"]'
-        ];
+        // Helper function to check if URL is a valid vehicle image
+        function isVehicleImage(src) {
+          if (!src || src.length < 10) return false;
+          var lower = src.toLowerCase();
+          // Skip obvious non-vehicle images
+          if (lower.indexOf('placeholder') !== -1) return false;
+          if (lower.indexOf('logo') !== -1) return false;
+          if (lower.indexOf('icon') !== -1) return false;
+          if (lower.indexOf('avatar') !== -1) return false;
+          if (lower.indexOf('spinner') !== -1) return false;
+          if (lower.indexOf('loading') !== -1) return false;
+          if (lower.indexOf('blank') !== -1) return false;
+          if (lower.indexOf('pixel') !== -1) return false;
+          if (lower.indexOf('.svg') !== -1) return false;
+          if (lower.indexOf('.gif') !== -1 && lower.indexOf('loading') !== -1) return false;
+          if (lower.indexOf('data:image') === 0 && lower.length < 200) return false; // Skip tiny base64
+          // Must be a proper image URL
+          return (src.indexOf('http') === 0 || src.indexOf('//') === 0 || src.indexOf('/') === 0);
+        }
         
-        // Second priority: Path-based selectors
-        var pathSelectors = [
-          'img[src*="/photos/"]',
-          'img[src*="/images/"]',
-          'img[src*="/inventory/"]',
-          'img[src*="/vehicle/"]'
-        ];
+        // Helper function to normalize URL
+        function normalizeUrl(src) {
+          if (src.indexOf('//') === 0) {
+            return 'https:' + src;
+          } else if (src.indexOf('/') === 0) {
+            return window.location.origin + src;
+          }
+          return src;
+        }
         
-        // Third priority: Class-based selectors
-        var classSelectors = [
-          '[class*="photo"] img',
-          '[class*="gallery"] img',
-          '[class*="slider"] img',
-          '[class*="carousel"] img',
-          'img[class*="vehicle"]',
-          'img[class*="gallery"]',
-          '.vehicle-images img'
-        ];
+        // Strategy 1: Get ALL images on the page and filter
+        var allImgElements = document.querySelectorAll('img');
+        debugImgInfo.push('Total img tags: ' + allImgElements.length);
         
-        var allSelectors = cdnPatterns.concat(pathSelectors).concat(classSelectors);
-        
-        for (var i = 0; i < allSelectors.length; i++) {
-          var selector = allSelectors[i];
-          var imgs = document.querySelectorAll(selector);
-          for (var j = 0; j < imgs.length; j++) {
-            var img = imgs[j];
-            var src = img.getAttribute('src') || img.getAttribute('data-src') || '';
-            // Skip placeholders, logos, icons, and SVGs
-            if (src && src.indexOf('placeholder') === -1 && src.indexOf('logo') === -1 && src.indexOf('icon') === -1 && !src.match(/\\\\.svg$/i)) {
-              // Convert relative URLs to absolute
-              if (src.indexOf('//') === 0) {
-                src = 'https:' + src;
-              } else if (src.indexOf('/') === 0) {
-                src = window.location.origin + src;
-              }
-              
+        for (var i = 0; i < allImgElements.length; i++) {
+          var img = allImgElements[i];
+          // Check multiple attributes for the actual image URL
+          var possibleSrcs = [
+            img.getAttribute('src'),
+            img.getAttribute('data-src'),
+            img.getAttribute('data-lazy-src'),
+            img.getAttribute('data-original'),
+            img.getAttribute('data-image'),
+            img.getAttribute('data-full-size'),
+            img.getAttribute('data-large'),
+            img.currentSrc // What the browser actually loaded
+          ];
+          
+          // Also check srcset for high-quality images
+          var srcset = img.getAttribute('srcset') || '';
+          if (srcset) {
+            var srcsetParts = srcset.split(',');
+            for (var sp = 0; sp < srcsetParts.length; sp++) {
+              var part = srcsetParts[sp].trim().split(' ')[0];
+              if (part) possibleSrcs.push(part);
+            }
+          }
+          
+          for (var ps = 0; ps < possibleSrcs.length; ps++) {
+            var src = possibleSrcs[ps];
+            if (src && isVehicleImage(src)) {
+              src = normalizeUrl(src);
               if (src.indexOf('http') === 0 && !processedUrls[src]) {
-                processedUrls[src] = true;
-                images.push(src);
+                // Additional size checks - prefer larger images
+                var imgWidth = img.naturalWidth || img.width || 0;
+                var imgHeight = img.naturalHeight || img.height || 0;
+                // Skip tiny images (likely thumbnails or icons)
+                if (imgWidth > 50 || imgHeight > 50 || imgWidth === 0) {
+                  processedUrls[src] = true;
+                  images.push(src);
+                }
               }
             }
           }
         }
+        
+        debugImgInfo.push('Images from img tags: ' + images.length);
+        
+        // Strategy 2: Look for background images in style attributes
+        var elementsWithBg = document.querySelectorAll('[style*="background"]');
+        for (var bi = 0; bi < elementsWithBg.length; bi++) {
+          var el = elementsWithBg[bi];
+          var style = el.getAttribute('style') || '';
+          var bgMatch = style.match(/url\\s*\\(\\s*['"]?([^'"\\)]+)['"]?\\s*\\)/i);
+          if (bgMatch && bgMatch[1]) {
+            var bgSrc = bgMatch[1];
+            if (isVehicleImage(bgSrc)) {
+              bgSrc = normalizeUrl(bgSrc);
+              if (bgSrc.indexOf('http') === 0 && !processedUrls[bgSrc]) {
+                processedUrls[bgSrc] = true;
+                images.push(bgSrc);
+              }
+            }
+          }
+        }
+        
+        debugImgInfo.push('After bg images: ' + images.length);
+        
+        // Strategy 3: Look for data attributes on non-img elements (common for lazy loading)
+        var dataImageEls = document.querySelectorAll('[data-image], [data-src], [data-background]');
+        for (var di2 = 0; di2 < dataImageEls.length; di2++) {
+          var dataEl = dataImageEls[di2];
+          var dataSrcs = [
+            dataEl.getAttribute('data-image'),
+            dataEl.getAttribute('data-src'),
+            dataEl.getAttribute('data-background')
+          ];
+          for (var ds = 0; ds < dataSrcs.length; ds++) {
+            var dataSrc = dataSrcs[ds];
+            if (dataSrc && isVehicleImage(dataSrc)) {
+              dataSrc = normalizeUrl(dataSrc);
+              if (dataSrc.indexOf('http') === 0 && !processedUrls[dataSrc]) {
+                processedUrls[dataSrc] = true;
+                images.push(dataSrc);
+              }
+            }
+          }
+        }
+        
+        debugImgInfo.push('After data attrs: ' + images.length);
         
         return {
           vin: vin,
@@ -429,20 +489,30 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
           description: description,
           stockNumber: stockNumber,
           pageText: pageText,
-          debug: { pageTitle: pageTitle, bodyLength: bodyLength, priceElExists: priceElExists, priceSource: priceSource, priceConfidence: priceConfidence, allImgs: allImgs, allPriceElements: allPriceElements }
+          debug: { 
+            pageTitle: pageTitle, 
+            bodyLength: bodyLength, 
+            priceElExists: priceElExists, 
+            priceSource: priceSource, 
+            priceConfidence: priceConfidence, 
+            allImgs: allImgs, 
+            allPriceElements: allPriceElements,
+            imgDebug: debugImgInfo.join(', ')
+          }
         };
       })()`);
       
       // Log debug info to help diagnose extraction issues
       if (data.debug) {
-        console.log(`    Debug: ${data.debug.bodyLength} chars, ${data.debug.allImgs} total imgs, ${data.debug.allPriceElements} price-els, extracted ${data.images.length} photos, price=$${data.price || 'null'}`);
+        console.log(`    Debug: ${data.debug.bodyLength} chars, ${data.debug.allImgs} total imgs, price=$${data.price || 'null'}`);
+        console.log(`    Images: ${data.debug.imgDebug || 'N/A'}`);
       }
       
       // Detect badges and body type from page text
       const badges = detectBadges(data.pageText);
       const type = determineBodyType(data.pageText);
       
-      if (page) await page.close().catch(() => {});
+      // Don't close the page - we're reusing it for all VDPs
       
       return {
         vin: data.vin,
@@ -458,17 +528,9 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
     } catch (error) {
       console.log(`    ✗ VDP extraction error (attempt ${attempt + 1}): ${error instanceof Error ? error.message : String(error)}`);
       
-      if (page) {
-        try {
-          await page.close();
-        } catch (closeError) {
-          // Ignore close errors
-        }
-      }
-      
       if (attempt < retries) {
         // Wait before retry with exponential backoff
-        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+        await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1)));
         continue;
       }
       
@@ -727,7 +789,11 @@ async function scrapeDealerListings(dealerConfig: typeof DEALER_CONFIGS[0]): Pro
 
     console.log(`  ✓ Found ${vdpUrls.length} VDP URLs, now extracting VIN/price/odometer...`);
     
-    await page.close();
+    // IMPORTANT: Reuse the SAME page that already solved Cloudflare challenge
+    // This preserves the cf_clearance cookie and browser fingerprint
+    // Creating a new page would require solving Cloudflare again
+    const vdpPage = page; // Reuse the same page
+    console.log(`  Reusing listing page (already has Cloudflare clearance) for VDP scraping`);
     
     // Visit each VDP to extract complete vehicle data
     const vehicles: DealerVehicleListing[] = [];
@@ -738,7 +804,8 @@ async function scrapeDealerListings(dealerConfig: typeof DEALER_CONFIGS[0]): Pro
       const urlData = vdpUrls[i];
       console.log(`  [${i + 1}/${vdpUrls.length}] Scraping ${urlData.year} ${urlData.make} ${urlData.model}...`);
       
-      const detailData = await scrapeVehicleDetailPage(browser, urlData.vdpUrl);
+      // Pass the reusable page instead of browser
+      const detailData = await scrapeVehicleDetailPage(vdpPage, urlData.vdpUrl);
       
       vehicles.push({
         vin: detailData.vin,
@@ -761,12 +828,13 @@ async function scrapeDealerListings(dealerConfig: typeof DEALER_CONFIGS[0]): Pro
       
       console.log(`    ✓ Extracted: ${detailData.images.length} photos, ${detailData.badges.length} badges, Price: $${detailData.price || 'N/A'}`);
       
-      // Small delay between requests
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Human-like delay between requests (randomized)
+      await randomDelay(800, 1500);
     }
     
     console.log(`  ✓ Successfully scraped ${vehicles.length} vehicles from ${dealerConfig.name}`);
     
+    // Clean up (vdpPage is the same as page, just close the browser)
     await browser.close();
     return vehicles;
     
