@@ -565,6 +565,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get tracking/remarketing pixel configuration (public endpoint for frontend)
+  app.get("/api/public/tracking-config", async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      
+      // Get dealership API keys which contain tracking IDs
+      const apiKeys = await storage.getDealershipApiKeys(dealershipId);
+      
+      // Return only tracking-related IDs (never expose API secrets)
+      res.json({
+        gtmContainerId: apiKeys?.gtmContainerId || null,
+        googleAnalyticsId: apiKeys?.googleAnalyticsId || null,
+        googleAdsId: apiKeys?.googleAdsId || null,
+        facebookPixelId: apiKeys?.facebookPixelId || null,
+      });
+    } catch (error) {
+      console.error("Error fetching tracking config:", error);
+      res.status(500).json({ error: "Failed to fetch tracking config" });
+    }
+  });
+
   // Create vehicle (master only)
   app.post("/api/vehicles", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
     try {

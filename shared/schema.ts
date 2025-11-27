@@ -68,6 +68,10 @@ export const dealershipApiKeys = pgTable("dealership_api_keys", {
   ghlLocationId: text("ghl_location_id"), // GoHighLevel location/sub-account ID
   facebookAppId: text("facebook_app_id"), // Facebook App ID (shared or per-dealership)
   facebookAppSecret: text("facebook_app_secret"), // Facebook App Secret
+  gtmContainerId: text("gtm_container_id"), // Google Tag Manager container ID (e.g., GTM-XXXXX)
+  googleAnalyticsId: text("google_analytics_id"), // Google Analytics 4 measurement ID (e.g., G-XXXXX)
+  googleAdsId: text("google_ads_id"), // Google Ads account ID for remarketing (e.g., AW-XXXXX)
+  facebookPixelId: text("facebook_pixel_id"), // Facebook Pixel ID for remarketing
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
