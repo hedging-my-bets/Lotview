@@ -137,81 +137,98 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
     try {
       page = await browser.newPage();
       
-      // CRITICAL: Relay browser console messages to Node.js logs
-      page.on('console', (msg: any) => {
-        const type = msg.type();
-        const text = msg.text();
-        if (type === 'warning' || type === 'warn') {
-          console.warn(`[Browser Warning] ${text}`);
-        } else if (type === 'error') {
-          console.error(`[Browser Error] ${text}`);
+      // Apply fingerprint to VDP page as well (for consistency and anti-detection)
+      const fingerprint = generateRandomFingerprint();
+      await applyFingerprint(page, fingerprint);
+      
+      await page.goto(vdpUrl, { waitUntil: 'networkidle2', timeout: 20000 });
+      
+      // Check for Cloudflare challenge on VDP page
+      const isChallenged = await isCloudflareChallenge(page);
+      if (isChallenged) {
+        // Wait for challenge to resolve
+        for (let i = 0; i < 15; i++) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          if (!(await isCloudflareChallenge(page))) {
+            break;
+          }
         }
-      });
+      }
       
-      await page.goto(vdpUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+      // Wait for price-related content to load (try multiple selectors)
+      const priceSelectors = '.vehicle-price, .selling-price, .sale-price, [data-field="price"], [itemprop="price"]';
+      try {
+        await page.waitForSelector(priceSelectors, { timeout: 5000 });
+      } catch (e) {
+        // Price element not found with specific selectors, continue anyway
+      }
       
-      // Wait a moment for images to load
+      // Additional wait for dynamic content to render
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      const data = await page.evaluate(() => {
-        const pageText = document.body.textContent || '';
+      // Debug: Log that we're about to extract data
+      const pageUrl = await page.url();
+      console.log(`    → VDP loaded: ${pageUrl}`);
+      
+      // Use page.evaluate with a string to prevent ESBuild transformation
+      const data = await page.evaluate(`(function() {
+        var pageText = document.body.textContent || '';
         
-        // HELPER: Check if element is in a payment context
-        // CRITICAL: Only check element itself and attributes, NOT parent text (to avoid false positives)
-        function isPaymentContext(element: any) {
-          const paymentKeywords = /payment|weekly|bi-?weekly|monthly|calculator|financing|finance|per\s+month|\/mo/i;
-          
-          // Check element's own text content (the price value itself)
-          const elementText = element.textContent || '';
-          if (paymentKeywords.test(elementText)) {
-            return true;
-          }
-          
-          // Check element's class and ID attributes (use getAttribute to avoid SVG className issues)
-          const elementClass = element.getAttribute('class') || '';
-          const elementId = element.getAttribute('id') || '';
-          if (paymentKeywords.test(elementClass) || paymentKeywords.test(elementId)) {
-            return true;
-          }
-          
-          // Check parent's class and ID (but NOT parent text - that includes disclaimers)
-          const parent = element.parentElement;
+        function isPaymentContext(element) {
+          var paymentKeywords = /payment|weekly|bi-?weekly|monthly|calculator|financing|finance|per\\\\s+month|\\\\/mo/i;
+          var elementText = element.textContent || '';
+          if (paymentKeywords.test(elementText)) return true;
+          var elementClass = element.getAttribute('class') || '';
+          var elementId = element.getAttribute('id') || '';
+          if (paymentKeywords.test(elementClass) || paymentKeywords.test(elementId)) return true;
+          var parent = element.parentElement;
           if (parent) {
-            const parentClass = parent.getAttribute('class') || '';
-            const parentId = parent.getAttribute('id') || '';
-            if (paymentKeywords.test(parentClass) || paymentKeywords.test(parentId)) {
-              return true;
-            }
+            var parentClass = parent.getAttribute('class') || '';
+            var parentId = parent.getAttribute('id') || '';
+            if (paymentKeywords.test(parentClass) || paymentKeywords.test(parentId)) return true;
           }
-          
           return false;
         }
         
-        // Extract VIN
-        let vin: string | null = null;
-        const vinMatch = pageText.match(/VIN[:\s]*([A-HJ-NPR-Z0-9]{17})/i);
+        var pageTitle = document.title || 'No title';
+        var bodyLength = pageText.length;
+        var priceElExists = document.querySelector('.vehicle-price') ? 'yes' : 'no';
+        var allImgs = document.querySelectorAll('img').length;
+        var allPriceElements = document.querySelectorAll('[class*="price"]').length;
+        
+        // Extract VIN (no TypeScript annotations)
+        var vin = null;
+        var vinMatch = pageText.match(/VIN[:\\\\s]*([A-HJ-NPR-Z0-9]{17})/i);
         if (vinMatch) {
           vin = vinMatch[1].toUpperCase();
         }
         
         // Extract Stock Number
-        let stockNumber: string | null = null;
-        const stockMatch = pageText.match(/stock[#\s:]*([A-Z0-9-]+)/i);
+        var stockNumber = null;
+        var stockMatch = pageText.match(/stock[#\\\\s:]*([A-Z0-9-]+)/i);
         if (stockMatch) {
           stockNumber = stockMatch[1];
         }
         
         // Extract price - target the actual selling price with high confidence
-        let price: number | null = null;
-        let priceConfidence: 'high' | 'medium' | 'low' = 'low';
+        var price = null;
+        var priceConfidence = 'low';
+        var priceSource = 'none';
         
         // Strategy 1: Target authoritative DOM nodes with dealer-specific selectors
         // NOTE: Avoid overly generic selectors like [id*="price"] that match financing widgets
-        const authoritativePriceSelectors = [
+        // IMPORTANT: Order matters - more specific selectors first
+        var authoritativePriceSelectors = [
+          // Olympic Hyundai Vancouver specific - the main selling price
+          '.price-block__price--primary',
+          '.price-block__price',
+          '.main-price',
+          // Standard dealer website patterns
           '[data-field="price"]',
           '[data-field="sellingPrice"]',
           '[data-price]',
           '[itemprop="price"]',
+          '.vehicle-price__price',
           '.vehicle-price',
           '.dealer-price',
           '.selling-price',
@@ -223,19 +240,21 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
           // Deliberately excluding generic [id*="price"] and [class*="sale-price"] to avoid matching financing calculators
         ];
         
-        for (const selector of authoritativePriceSelectors) {
-          const priceEl = document.querySelector(selector);
+        for (var pi = 0; pi < authoritativePriceSelectors.length; pi++) {
+          var priceSelector = authoritativePriceSelectors[pi];
+          var priceEl = document.querySelector(priceSelector);
           if (priceEl) {
             // CRITICAL: Use payment context helper to reject payment widgets
             if (!isPaymentContext(priceEl)) {
-              const priceText = priceEl.textContent || priceEl.getAttribute('data-value') || priceEl.getAttribute('data-price') || '';
-              const match = priceText.match(/\$?\s*([0-9,]+)/);
-              if (match) {
-                const val = parseInt(match[1].replace(/,/g, ''));
+              var priceText = priceEl.textContent || priceEl.getAttribute('data-value') || priceEl.getAttribute('data-price') || '';
+              var priceMatchResult = priceText.match(/\\\\$?\\\\s*([0-9,]+)/);
+              if (priceMatchResult) {
+                var priceVal = parseInt(priceMatchResult[1].replace(/,/g, ''));
                 // Realistic minimum: $1000 (excludes payment amounts like $399)
-                if (val >= 1000 && val <= 500000) {
-                  price = val;
+                if (priceVal >= 1000 && priceVal <= 500000) {
+                  price = priceVal;
                   priceConfidence = 'high';
+                  priceSource = priceSelector;
                   break; // Use first valid CASH price from authoritative selector
                 }
                 // Note: Values below $1000 are ignored as likely payment amounts
@@ -246,20 +265,22 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
         
         // Strategy 2: Scoped regex with label anchoring (high confidence)
         if (!price) {
-          const labeledPricePatterns = [
-            /(?:Sale|Selling|Asking|Dealer|Final|Internet)\s*Price[:\s]*\$?\s*([0-9,]+)/i,
-            /Price[:\s]*\$?\s*([0-9,]+)(?!\s*(?:weekly|monthly|payment))/i,
-            /\$\s*([0-9,]+)\s*(?:CAD|CDN|Canadian)?(?!\s*(?:weekly|monthly|payment|per))/i
+          var labeledPricePatterns = [
+            /(?:Sale|Selling|Asking|Dealer|Final|Internet)\\\\s*Price[:\\\\s]*\\\\$?\\\\s*([0-9,]+)/i,
+            /Price[:\\\\s]*\\\\$?\\\\s*([0-9,]+)(?!\\\\s*(?:weekly|monthly|payment))/i,
+            /\\\\$\\\\s*([0-9,]+)\\\\s*(?:CAD|CDN|Canadian)?(?!\\\\s*(?:weekly|monthly|payment|per))/i
           ];
           
-          for (const pattern of labeledPricePatterns) {
-            const match = pageText.match(pattern);
-            if (match) {
-              const val = parseInt(match[1].replace(/,/g, ''));
+          for (var lpi = 0; lpi < labeledPricePatterns.length; lpi++) {
+            var pattern = labeledPricePatterns[lpi];
+            var labeledMatch = pageText.match(pattern);
+            if (labeledMatch) {
+              var labeledVal = parseInt(labeledMatch[1].replace(/,/g, ''));
               // Realistic minimum: $1000 (excludes typical payment amounts)
-              if (val >= 1000 && val <= 500000) {
-                price = val;
+              if (labeledVal >= 1000 && labeledVal <= 500000) {
+                price = labeledVal;
                 priceConfidence = 'medium';
+                priceSource = 'labeled-pattern';
                 break;
               }
               // Note: Values below $1000 are ignored as likely payment amounts
@@ -270,12 +291,12 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
         // Strategy 3: Last resort - scan all prices, use median (avoid both payments and MSRP)
         // NOTE: This is unreliable and may be removed in future
         if (!price) {
-          const priceRegex = /\$\s*([0-9,]+)(?!\s*(?:weekly|bi-?weekly|monthly|per\s+month|\/mo|payment))/gi;
-          let priceMatch;
-          const prices: number[] = [];
+          var priceRegex = /\\\\$\\\\s*([0-9,]+)(?!\\\\s*(?:weekly|bi-?weekly|monthly|per\\\\s+month|\\\\/mo|payment))/gi;
+          var priceMatch2;
+          var prices = [];
           
-          while ((priceMatch = priceRegex.exec(pageText)) !== null) {
-            const val = parseInt(priceMatch[1].replace(/,/g, ''));
+          while ((priceMatch2 = priceRegex.exec(pageText)) !== null) {
+            var val = parseInt(priceMatch2[1].replace(/,/g, ''));
             // Minimum $2000 for fallback strategy (more conservative but still captures low-end inventory)
             if (val >= 2000 && val <= 500000) {
               prices.push(val);
@@ -284,8 +305,8 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
           
           // Use MEDIAN price (more robust than min/max)
           if (prices.length >= 2) {
-            prices.sort((a, b) => a - b);
-            const mid = Math.floor(prices.length / 2);
+            prices.sort(function(a, b) { return a - b; });
+            var mid = Math.floor(prices.length / 2);
             price = prices.length % 2 === 0 ? prices[mid - 1] : prices[mid];
             priceConfidence = 'low';
           } else if (prices.length === 1) {
@@ -296,30 +317,30 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
         }
         
         // Extract odometer
-        let odometer: number | null = null;
-        const odoMatch = pageText.match(/([0-9,]+)\s*(km|kilometers?)/i);
+        var odometer = null;
+        var odoMatch = pageText.match(/([0-9,]+)\\\\s*(km|kilometers?)/i);
         if (odoMatch) {
-          const val = parseInt(odoMatch[1].replace(/,/g, ''));
-          if (val > 0 && val < 500000) {
-            odometer = val;
+          var odoVal = parseInt(odoMatch[1].replace(/,/g, ''));
+          if (odoVal > 0 && odoVal < 500000) {
+            odometer = odoVal;
           }
         }
         
         // Extract trim from title/heading
-        let trim = 'Base';
-        const h1 = document.querySelector('h1');
-        if (h1) {
-          const titleText = h1.textContent || '';
+        var trim = 'Base';
+        var h1El = document.querySelector('h1');
+        if (h1El) {
+          var titleText = h1El.textContent || '';
           // Try to extract trim from title (usually after model name)
-          const trimMatch = titleText.match(/(?:\d{4}\s+[A-Za-z-]+\s+[A-Za-z0-9-]+\s+)([A-Za-z0-9\s]+)/i);
+          var trimMatch = titleText.match(/(?:\\\\d{4}\\\\s+[A-Za-z-]+\\\\s+[A-Za-z0-9-]+\\\\s+)([A-Za-z0-9\\\\s]+)/i);
           if (trimMatch && trimMatch[1]) {
             trim = trimMatch[1].trim();
           }
         }
         
         // Extract description
-        let description = '';
-        const descriptionSelectors = [
+        var description = '';
+        var descriptionSelectors = [
           '[class*="description"]',
           '[class*="details"]',
           '[class*="comments"]',
@@ -328,65 +349,94 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
           '#description'
         ];
         
-        for (const selector of descriptionSelectors) {
-          const element = document.querySelector(selector);
-          if (element && element.textContent && element.textContent.length > 50) {
-            description = element.textContent.trim();
+        for (var di = 0; di < descriptionSelectors.length; di++) {
+          var descSelector = descriptionSelectors[di];
+          var descElement = document.querySelector(descSelector);
+          if (descElement && descElement.textContent && descElement.textContent.length > 50) {
+            description = descElement.textContent.trim();
             break;
           }
         }
         
         // If no description found, create a basic one
         if (!description) {
-          description = `Used vehicle. Contact dealer for more information.`;
+          description = 'Used vehicle. Contact dealer for more information.';
         }
         
-        // Extract images
-        const images: string[] = [];
-        const imageSelectors = [
+        // Extract images from multiple sources
+        var images = [];
+        var processedUrls = {};
+        
+        // First priority: CDN sources that typically host vehicle photos
+        var cdnPatterns = [
+          'img[src*="autotradercdn"]',
+          'img[src*="dmt.global"]',
+          'img[src*="photomanager"]',
+          'img[src*="dealercdn"]',
+          'img[src*="cloudfront"]'
+        ];
+        
+        // Second priority: Path-based selectors
+        var pathSelectors = [
           'img[src*="/photos/"]',
           'img[src*="/images/"]',
           'img[src*="/inventory/"]',
-          'img[src*="/vehicle/"]',
-          'img[class*="vehicle"]',
-          'img[class*="gallery"]',
-          '.vehicle-images img',
-          '[class*="photo"] img',
-          '[class*="gallery"] img'
+          'img[src*="/vehicle/"]'
         ];
         
-        const processedUrls = new Set<string>();
-        for (const selector of imageSelectors) {
-          const imgs = document.querySelectorAll(selector);
-          imgs.forEach((img: any) => {
-            let src = img.getAttribute('src') || img.getAttribute('data-src') || '';
-            if (src && !src.includes('placeholder') && !src.includes('logo') && !src.includes('icon')) {
+        // Third priority: Class-based selectors
+        var classSelectors = [
+          '[class*="photo"] img',
+          '[class*="gallery"] img',
+          '[class*="slider"] img',
+          '[class*="carousel"] img',
+          'img[class*="vehicle"]',
+          'img[class*="gallery"]',
+          '.vehicle-images img'
+        ];
+        
+        var allSelectors = cdnPatterns.concat(pathSelectors).concat(classSelectors);
+        
+        for (var i = 0; i < allSelectors.length; i++) {
+          var selector = allSelectors[i];
+          var imgs = document.querySelectorAll(selector);
+          for (var j = 0; j < imgs.length; j++) {
+            var img = imgs[j];
+            var src = img.getAttribute('src') || img.getAttribute('data-src') || '';
+            // Skip placeholders, logos, icons, and SVGs
+            if (src && src.indexOf('placeholder') === -1 && src.indexOf('logo') === -1 && src.indexOf('icon') === -1 && !src.match(/\\\\.svg$/i)) {
               // Convert relative URLs to absolute
-              if (src.startsWith('//')) {
+              if (src.indexOf('//') === 0) {
                 src = 'https:' + src;
-              } else if (src.startsWith('/')) {
+              } else if (src.indexOf('/') === 0) {
                 src = window.location.origin + src;
               }
               
-              if (src.startsWith('http') && !processedUrls.has(src)) {
-                processedUrls.add(src);
+              if (src.indexOf('http') === 0 && !processedUrls[src]) {
+                processedUrls[src] = true;
                 images.push(src);
               }
             }
-          });
+          }
         }
         
         return {
-          vin,
-          price,
-          odometer,
-          images,
-          trim,
-          description,
-          stockNumber,
-          pageText
+          vin: vin,
+          price: price,
+          odometer: odometer,
+          images: images,
+          trim: trim,
+          description: description,
+          stockNumber: stockNumber,
+          pageText: pageText,
+          debug: { pageTitle: pageTitle, bodyLength: bodyLength, priceElExists: priceElExists, priceSource: priceSource, priceConfidence: priceConfidence, allImgs: allImgs, allPriceElements: allPriceElements }
         };
-      });
+      })()`);
+      
+      // Log debug info to help diagnose extraction issues
+      if (data.debug) {
+        console.log(`    Debug: ${data.debug.bodyLength} chars, ${data.debug.allImgs} total imgs, ${data.debug.allPriceElements} price-els, extracted ${data.images.length} photos, price=$${data.price || 'null'}`);
+      }
       
       // Detect badges and body type from page text
       const badges = detectBadges(data.pageText);
@@ -406,6 +456,8 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
         stockNumber: data.stockNumber
       };
     } catch (error) {
+      console.log(`    ✗ VDP extraction error (attempt ${attempt + 1}): ${error instanceof Error ? error.message : String(error)}`);
+      
       if (page) {
         try {
           await page.close();
@@ -421,6 +473,7 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
       }
       
       // Final attempt failed, return defaults
+      console.log(`    ✗ VDP extraction failed after ${retries + 1} attempts`);
       return {
         vin: null,
         price: null,
@@ -630,33 +683,44 @@ async function scrapeDealerListings(dealerConfig: typeof DEALER_CONFIGS[0]): Pro
 
     console.log(`  Extracting VDP URLs...`);
     
-    const vdpUrls = await page.evaluate((baseUrl) => {
-      const results: any[] = [];
-      const processedUrls = new Set<string>();
+    const vdpUrls = await page.evaluate(function(baseUrl) {
+      var results = [];
+      var processedUrls = {};
       
       // Find all vehicle detail page links
-      const links = Array.from(document.querySelectorAll('a[href*="/vehicles/2"]'));
+      var links = document.querySelectorAll('a[href*="/vehicles/2"]');
       
-      links.forEach(link => {
-        const href = link.getAttribute('href');
-        if (!href) return;
+      for (var i = 0; i < links.length; i++) {
+        var link = links[i];
+        var href = link.getAttribute('href');
+        if (!href) continue;
         
         // Filter for actual VDP URLs: /vehicles/{year}/{make}/{model}/{city}/{province}/{ID}/
-        const match = href.match(/\/vehicles\/(\d{4})\/([a-z-]+)\/([a-z0-9-]+)\/([a-z-]+)\/([a-z]+)\/(\d+)\//i);
-        if (!match) return;
+        var match = href.match(/\/vehicles\/(\d{4})\/([a-z-]+)\/([a-z0-9-]+)\/([a-z-]+)\/([a-z]+)\/(\d+)\//i);
+        if (!match) continue;
         
-        const fullUrl = href.startsWith('http') ? href : `https://${baseUrl}${href}`;
+        var fullUrl = href.indexOf('http') === 0 ? href : 'https://' + baseUrl + href;
         
-        if (processedUrls.has(fullUrl)) return;
-        processedUrls.add(fullUrl);
+        if (processedUrls[fullUrl]) continue;
+        processedUrls[fullUrl] = true;
         
         // Extract year, make, model from URL
-        const year = parseInt(match[1]);
-        const make = match[2].split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-        const model = match[3].split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        var year = parseInt(match[1]);
+        var makeParts = match[2].split('-');
+        var make = '';
+        for (var j = 0; j < makeParts.length; j++) {
+          if (j > 0) make += ' ';
+          make += makeParts[j].charAt(0).toUpperCase() + makeParts[j].slice(1);
+        }
+        var modelParts = match[3].split('-');
+        var model = '';
+        for (var k = 0; k < modelParts.length; k++) {
+          if (k > 0) model += ' ';
+          model += modelParts[k].charAt(0).toUpperCase() + modelParts[k].slice(1);
+        }
         
-        results.push({ vdpUrl: fullUrl, year, make, model });
-      });
+        results.push({ vdpUrl: fullUrl, year: year, make: make, model: model });
+      }
       
       return results;
     }, dealerConfig.domain);
