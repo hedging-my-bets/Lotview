@@ -18,6 +18,9 @@ export interface Car {
   cargurusPrice?: number | null;
   cargurusUrl?: string | null;
   dealRating?: string | null;
+  carfaxUrl?: string | null;
+  dealerVdpUrl?: string | null;
+  videoUrl?: string | null;
 }
 
 export interface FilterState {

@@ -106,6 +106,7 @@ export const vehicles = pgTable("vehicles", {
   cargurusUrl: text("cargurus_url"), // Link to CarGurus listing
   dealRating: text("deal_rating"), // CarGurus deal rating (Great Deal, Good Deal, etc.)
   carfaxUrl: text("carfax_url"), // Link to Carfax vehicle history report
+  dealerVdpUrl: text("dealer_vdp_url"), // Link to dealer's vehicle detail page
   videoUrl: text("video_url"), // Generated video URL from Gemini Veo
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

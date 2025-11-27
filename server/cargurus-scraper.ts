@@ -43,6 +43,7 @@ interface CarGurusVehicle {
   dealRating?: string; // "Great Deal", "Good Deal", etc.
   cargurusPrice?: number;
   cargurusUrl?: string;
+  dealerVdpUrl?: string; // Link to dealer's vehicle detail page
 }
 
 // Determine body type from description or model name
@@ -111,7 +112,7 @@ async function scrapeCarGurusVehicleDetail(
       const originalFetch = window.fetch;
       window.fetch = async (...args) => {
         const response = await originalFetch(...args);
-        const url = typeof args[0] === "string" ? args[0] : args[0].url;
+        const url = typeof args[0] === "string" ? args[0] : (args[0] instanceof URL ? args[0].toString() : (args[0] as Request).url);
 
         if (
           url.includes("listing") ||
@@ -302,7 +303,7 @@ async function scrapeCarGurusVehicleDetail(
           `${vehicleData.year} ${vehicleData.make} ${vehicleData.model} ${vehicleData.trim}`,
         vin: vehicleData.vin,
         stockNumber: vehicleData.stockNumber,
-        carfaxUrl: null, // Not available in CarGurus API data
+        carfaxUrl: undefined, // Not available in CarGurus API data
         dealRating: vehicleData.dealRating,
         cargurusPrice: vehicleData.price,
         cargurusUrl: listingUrl,

@@ -5,6 +5,8 @@ import { db } from './db';
 import { vehicles } from '@shared/schema';
 import { scrapeAllCarGurusDealers } from './cargurus-scraper';
 import { generateVehicleDescription } from './openai';
+import { scrapeAllDealerListings } from './dealer-listing-scraper';
+import { matchCarGurusToDealer } from './vehicle-matcher';
 
 interface ScrapedVehicle {
   year: number;
@@ -24,6 +26,7 @@ interface ScrapedVehicle {
   vin?: string;
   stockNumber?: string;
   carfaxUrl?: string;
+  dealerVdpUrl?: string;
 }
 
 // Individual dealership URLs (better data quality - includes Carfax links and full image galleries)
@@ -790,8 +793,20 @@ export async function scrapeAllDealerships(): Promise<number> {
   console.log('Starting comprehensive inventory scrape...');
   
   try {
-    // PRIMARY SOURCE: Scrape CarGurus for complete vehicle data (20+ photos, clean data, deal ratings)
-    console.log('\n=== USING CARGURUS AS PRIMARY DATA SOURCE ===\n');
+    // STEP 1: Scrape dealer listing pages for VDP URLs
+    console.log('\n=== STEP 1: SCRAPING DEALER LISTING PAGES FOR VDP URLs ===\n');
+    let dealerListings: any[] = [];
+    
+    try {
+      dealerListings = await scrapeAllDealerListings();
+      console.log(`✓ Scraped ${dealerListings.length} dealer listings with VDP URLs`);
+    } catch (error) {
+      console.error('⚠ Dealer listing scraping failed:', error);
+      // Continue without dealer VDP URLs - not critical
+    }
+    
+    // STEP 2: Scrape CarGurus for complete vehicle data (20+ photos, clean data, deal ratings)
+    console.log('\n=== STEP 2: SCRAPING CARGURUS FOR VEHICLE DATA ===\n');
     let cargurusVehicles: ScrapedVehicle[] = [];
     
     try {
@@ -807,10 +822,33 @@ export async function scrapeAllDealerships(): Promise<number> {
       return 0;
     }
     
-    console.log(`\n✓ Total scraped: ${cargurusVehicles.length} vehicles from CarGurus`);
+    // STEP 3: Match CarGurus vehicles with dealer listings to add VDP URLs
+    console.log('\n=== STEP 3: MATCHING VEHICLES TO ADD DEALER VDP URLs ===\n');
+    const vehiclesWithVdpUrls = cargurusVehicles.map((cgVehicle) => {
+      if (dealerListings.length > 0) {
+        const matchResult = matchCarGurusToDealer(cgVehicle, dealerListings);
+        
+        if (matchResult.matched && matchResult.dealerVdpUrl) {
+          console.log(`  ✓ Matched: ${cgVehicle.year} ${cgVehicle.make} ${cgVehicle.model} → ${matchResult.matchType} (${matchResult.confidence})`);
+          return {
+            ...cgVehicle,
+            dealerVdpUrl: matchResult.dealerVdpUrl,
+          };
+        } else {
+          console.log(`  ⚠ No match: ${cgVehicle.year} ${cgVehicle.make} ${cgVehicle.model} - ${matchResult.details}`);
+        }
+      }
+      
+      return cgVehicle;
+    });
+    
+    const matchedCount = vehiclesWithVdpUrls.filter(v => v.dealerVdpUrl).length;
+    console.log(`\n✓ Matched ${matchedCount}/${cargurusVehicles.length} vehicles with dealer VDP URLs (${Math.round(matchedCount / cargurusVehicles.length * 100)}%)`);
+    
+    console.log(`\n✓ Total scraped: ${vehiclesWithVdpUrls.length} vehicles from CarGurus`);
     
     // No need to merge - CarGurus data is complete and already has all fields
-    const allScrapedVehicles = cargurusVehicles;
+    const allScrapedVehicles = vehiclesWithVdpUrls;
     
     // Generate AI-powered descriptions for all vehicles
     console.log('\nGenerating AI-powered vehicle descriptions...');
