@@ -150,57 +150,111 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
           stockNumber = stockMatch[1];
         }
         
-        // Extract price - target the actual selling price, not MSRP
+        // Extract price - target the actual selling price with high confidence
         let price: number | null = null;
+        let priceConfidence: 'high' | 'medium' | 'low' = 'low';
         
-        // Strategy 1: Look for specific price elements with common selectors
-        const priceSelectors = [
+        // Strategy 1: Target authoritative DOM nodes with dealer-specific selectors
+        // NOTE: Avoid overly generic selectors like [id*="price"] that match financing widgets
+        const authoritativePriceSelectors = [
           '[data-field="price"]',
           '[data-field="sellingPrice"]',
-          '.price', '.dealer-price', '.selling-price', 
-          '.vehicle-price', '[class*="price"]'
+          '[data-price]',
+          '[itemprop="price"]',
+          '.vehicle-price',
+          '.dealer-price',
+          '.selling-price',
+          '.final-price',
+          '.sale-price',
+          '#vehicle-price',
+          '#selling-price',
+          '#dealer-price'
+          // Deliberately excluding generic [id*="price"] and [class*="sale-price"] to avoid matching financing calculators
         ];
         
-        for (const selector of priceSelectors) {
+        for (const selector of authoritativePriceSelectors) {
           const priceEl = document.querySelector(selector);
           if (priceEl) {
-            const priceText = priceEl.textContent || priceEl.getAttribute('data-value') || '';
-            const match = priceText.match(/\$?\s*([0-9,]+)/);
-            if (match) {
-              const val = parseInt(match[1].replace(/,/g, ''));
-              if (val >= 5000 && val <= 500000) {
-                price = val;
-                break; // Use first valid price found from selector
+            // Skip if element or its parents have payment-related classes/IDs
+            const elementHtml = priceEl.outerHTML || '';
+            const parentHtml = priceEl.parentElement?.outerHTML || '';
+            const isPaymentWidget = /payment|calculator|financing|finance/i.test(elementHtml + parentHtml);
+            
+            if (!isPaymentWidget) {
+              const priceText = priceEl.textContent || priceEl.getAttribute('data-value') || priceEl.getAttribute('data-price') || '';
+              // Double-check: Exclude payment-related text
+              if (!/weekly|bi-?weekly|monthly|payment|per\s+month|\/mo/i.test(priceText)) {
+                const match = priceText.match(/\$?\s*([0-9,]+)/);
+                if (match) {
+                  const val = parseInt(match[1].replace(/,/g, ''));
+                  // Realistic minimum: $1000 (excludes payment amounts like $399)
+                  if (val >= 1000 && val <= 500000) {
+                    price = val;
+                    priceConfidence = 'high';
+                    break; // Use first valid price from authoritative selector
+                  } else if (val > 0 && val < 1000) {
+                    // Log suspected payment amount for debugging
+                    console.warn(`⚠ Rejected price below $1000: $${val} (likely payment amount)`);
+                  }
+                }
               }
             }
           }
         }
         
-        // Strategy 2: If no price from selectors, search page text for "Sale Price" or "Selling Price"
+        // Strategy 2: Scoped regex with label anchoring (high confidence)
         if (!price) {
-          const salePriceMatch = pageText.match(/(?:Sale|Selling|Dealer)\s*Price[:\s]*\$?\s*([0-9,]+)/i);
-          if (salePriceMatch) {
-            const val = parseInt(salePriceMatch[1].replace(/,/g, ''));
-            if (val >= 5000 && val <= 500000) {
-              price = val;
+          const labeledPricePatterns = [
+            /(?:Sale|Selling|Asking|Dealer|Final|Internet)\s*Price[:\s]*\$?\s*([0-9,]+)/i,
+            /Price[:\s]*\$?\s*([0-9,]+)(?!\s*(?:weekly|monthly|payment))/i,
+            /\$\s*([0-9,]+)\s*(?:CAD|CDN|Canadian)?(?!\s*(?:weekly|monthly|payment|per))/i
+          ];
+          
+          for (const pattern of labeledPricePatterns) {
+            const match = pageText.match(pattern);
+            if (match) {
+              const val = parseInt(match[1].replace(/,/g, ''));
+              // Realistic minimum: $1000 (excludes typical payment amounts)
+              if (val >= 1000 && val <= 500000) {
+                price = val;
+                priceConfidence = 'medium';
+                break;
+              } else if (val > 0 && val < 1000) {
+                console.warn(`⚠ Rejected labeled price below $1000: $${val} (likely payment amount)`);
+              }
             }
           }
         }
         
-        // Strategy 3: Fallback to conservative regex (smaller prices likely to be selling price)
+        // Strategy 3: Last resort - scan all prices, use median (avoid both payments and MSRP)
+        // NOTE: This is unreliable and may be removed in future
         if (!price) {
-          const priceRegex = /\$\s*([0-9,]+)/g;
+          const priceRegex = /\$\s*([0-9,]+)(?!\s*(?:weekly|bi-?weekly|monthly|per\s+month|\/mo|payment))/gi;
           let priceMatch;
           const prices: number[] = [];
+          
           while ((priceMatch = priceRegex.exec(pageText)) !== null) {
             const val = parseInt(priceMatch[1].replace(/,/g, ''));
-            if (val >= 5000 && val <= 500000) {
+            // Minimum $2000 for fallback strategy (more conservative but still captures low-end inventory)
+            if (val >= 2000 && val <= 500000) {
               prices.push(val);
             }
           }
-          // Use the SMALLEST price in valid range (likely selling price, not MSRP)
-          if (prices.length > 0) {
-            price = Math.min(...prices);
+          
+          // Use MEDIAN price (more robust than min/max)
+          if (prices.length >= 2) {
+            prices.sort((a, b) => a - b);
+            const mid = Math.floor(prices.length / 2);
+            price = prices.length % 2 === 0 ? prices[mid - 1] : prices[mid];
+            priceConfidence = 'low';
+          } else if (prices.length === 1) {
+            price = prices[0];
+            priceConfidence = 'low';
+          }
+          
+          // Log low confidence extractions for debugging
+          if (price && priceConfidence === 'low') {
+            console.warn(`⚠ Low confidence price extraction: $${price} from ${prices.length} candidates`);
           }
         }
         

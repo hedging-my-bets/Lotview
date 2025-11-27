@@ -14,8 +14,8 @@ interface ScrapedVehicle {
   model: string;
   trim: string;
   type: string;
-  price: number;
-  odometer: number;
+  price: number | null;  // Nullable to support fallback logic
+  odometer: number | null;  // Nullable to support fallback logic
   images: string[];
   badges: string[];
   location: string;
@@ -832,14 +832,15 @@ export async function scrapeAllDealerships(): Promise<number> {
     
     const enrichedVehicles = dealerVehicles.map((dealerVehicle) => {
       // Start with dealer vehicle as base (dealer data is authoritative)
+      // CRITICAL: Keep price/odometer nullable until validation (don't default to 0)
       let enrichedVehicle: ScrapedVehicle = {
         year: dealerVehicle.year,
         make: dealerVehicle.make,
         model: dealerVehicle.model,
         trim: dealerVehicle.trim,
         type: dealerVehicle.type,
-        price: dealerVehicle.price || 0, // Dealer price is authoritative
-        odometer: dealerVehicle.odometer || 0,
+        price: dealerVehicle.price ?? null, // Keep nullable, fallback to CarGurus if needed
+        odometer: dealerVehicle.odometer ?? null, // Keep nullable, fallback to CarGurus if needed
         images: dealerVehicle.images || [],
         badges: dealerVehicle.badges || [],
         location: dealerVehicle.location,
@@ -923,20 +924,50 @@ export async function scrapeAllDealerships(): Promise<number> {
           enrichedVehicle.carfaxUrl = cgMatch.carfaxUrl || enrichedVehicle.carfaxUrl;
           
           // CRITICAL: Use CarGurus data as fallback if dealer data is missing
-          if (!dealerVehicle.price && cgMatch.price) {
-            console.log(`  ⚠ Using CarGurus price (dealer missing): ${dealerVehicle.year} ${dealerVehicle.make} ${dealerVehicle.model} - $${cgMatch.price}`);
+          if ((enrichedVehicle.price === null || enrichedVehicle.price === 0) && cgMatch.price) {
+            console.log(`  ⚠ Fallback: CarGurus price (dealer missing): ${dealerVehicle.year} ${dealerVehicle.make} ${dealerVehicle.model} - $${cgMatch.price}`);
             enrichedVehicle.price = cgMatch.price;
           }
           
-          if (!dealerVehicle.odometer && cgMatch.odometer) {
-            console.log(`  ⚠ Using CarGurus odometer (dealer missing): ${dealerVehicle.year} ${dealerVehicle.make} ${dealerVehicle.model} - ${cgMatch.odometer}km`);
+          if ((enrichedVehicle.odometer === null || enrichedVehicle.odometer === 0) && cgMatch.odometer) {
+            console.log(`  ⚠ Fallback: CarGurus odometer (dealer missing): ${dealerVehicle.year} ${dealerVehicle.make} ${dealerVehicle.model} - ${cgMatch.odometer}km`);
             enrichedVehicle.odometer = cgMatch.odometer;
           }
           
-          // Use CarGurus images as fallback if dealer has none
-          if (enrichedVehicle.images.length === 0 && cgMatch.images && cgMatch.images.length > 0) {
-            console.log(`  ⚠ Using CarGurus images (dealer missing): ${dealerVehicle.year} ${dealerVehicle.make} ${dealerVehicle.model} - ${cgMatch.images.length} photos`);
-            enrichedVehicle.images = cgMatch.images;
+          // Use CarGurus images as fallback/supplement
+          if (cgMatch.images && cgMatch.images.length > 0) {
+            // Helper to normalize image URLs (strip query params for deduplication)
+            const normalizeImageUrl = (url: string): string => {
+              try {
+                const urlObj = new URL(url);
+                // Return base URL without query params or fragments
+                return `${urlObj.origin}${urlObj.pathname}`;
+              } catch {
+                // If URL parsing fails, return original
+                return url;
+              }
+            };
+            
+            // Merge dealer + CarGurus images with smart deduplication
+            const dealerNormalized = enrichedVehicle.images.map(url => ({ original: url, normalized: normalizeImageUrl(url) }));
+            const cgNormalized = cgMatch.images.map(url => ({ original: url, normalized: normalizeImageUrl(url) }));
+            
+            // Create a Set of normalized dealer URLs for quick lookup
+            const dealerNormalizedSet = new Set(dealerNormalized.map(img => img.normalized));
+            
+            // Add CarGurus images that aren't already in dealer set (by normalized URL)
+            const uniqueCgImages = cgNormalized
+              .filter(img => !dealerNormalizedSet.has(img.normalized))
+              .map(img => img.original);
+            
+            const mergedImages = [...enrichedVehicle.images, ...uniqueCgImages];
+            const originalCount = enrichedVehicle.images.length;
+            const addedCount = uniqueCgImages.length;
+            
+            if (addedCount > 0) {
+              console.log(`  ⚠ Merged images: ${dealerVehicle.year} ${dealerVehicle.make} ${dealerVehicle.model} - ${originalCount} dealer + ${addedCount} unique CarGurus = ${mergedImages.length} total`);
+              enrichedVehicle.images = mergedImages;
+            }
           }
           
           // Log price differences > $500
@@ -960,27 +991,69 @@ export async function scrapeAllDealerships(): Promise<number> {
     
     // Validate and filter vehicles with required data
     console.log('\n=== VALIDATING VEHICLE DATA ===\n');
+    const skippedVehicles: Array<{reason: string; vehicle: string; dealershipId: number; vin?: string; stock?: string}> = [];
+    
     const validVehicles = enrichedVehicles.filter(v => {
-      if (!v.price || v.price === 0) {
-        console.log(`  ✗ Skipping (no price): ${v.year} ${v.make} ${v.model}`);
+      const vehicleId = `${v.year} ${v.make} ${v.model}`;
+      
+      // CRITICAL: Require positive price (dealer or CarGurus fallback)
+      if (!v.price || v.price <= 0) {
+        const skip = {
+          reason: 'missing_price',
+          vehicle: vehicleId,
+          dealershipId: v.dealershipId,
+          vin: v.vin,
+          stock: v.stockNumber
+        };
+        skippedVehicles.push(skip);
+        console.log(`  ✗ SKIP (no price): ${vehicleId} [VIN: ${v.vin || 'N/A'}, Stock: ${v.stockNumber || 'N/A'}]`);
         return false;
       }
-      if (!v.odometer || v.odometer === 0) {
-        console.log(`  ✗ Skipping (no odometer): ${v.year} ${v.make} ${v.model}`);
+      
+      // CRITICAL: Require positive odometer (dealer or CarGurus fallback)
+      if (!v.odometer || v.odometer <= 0) {
+        const skip = {
+          reason: 'missing_odometer',
+          vehicle: vehicleId,
+          dealershipId: v.dealershipId,
+          vin: v.vin,
+          stock: v.stockNumber
+        };
+        skippedVehicles.push(skip);
+        console.log(`  ✗ SKIP (no odometer): ${vehicleId} [VIN: ${v.vin || 'N/A'}, Stock: ${v.stockNumber || 'N/A'}]`);
         return false;
       }
-      if (!v.images || v.images.length === 0) {
-        console.log(`  ⚠ Warning (no images): ${v.year} ${v.make} ${v.model}`);
-        // Don't skip - continue with no images
+      
+      // CRITICAL: Require minimum 15 photos (business requirement)
+      if (!v.images || v.images.length < 15) {
+        const skip = {
+          reason: `insufficient_photos_${v.images?.length || 0}`,
+          vehicle: vehicleId,
+          dealershipId: v.dealershipId,
+          vin: v.vin,
+          stock: v.stockNumber
+        };
+        skippedVehicles.push(skip);
+        console.log(`  ✗ SKIP (< 15 photos): ${vehicleId} [${v.images?.length || 0} photos, VIN: ${v.vin || 'N/A'}]`);
+        return false;
       }
+      
       return true;
     });
     
-    const skippedCount = enrichedVehicles.length - validVehicles.length;
-    if (skippedCount > 0) {
-      console.log(`\n⚠ Skipped ${skippedCount} vehicles due to missing required data (price or odometer)`);
+    // Log structured metrics for skipped vehicles
+    if (skippedVehicles.length > 0) {
+      console.log(`\n⚠ SKIPPED ${skippedVehicles.length}/${enrichedVehicles.length} VEHICLES:`);
+      const reasonCounts = skippedVehicles.reduce((acc, skip) => {
+        acc[skip.reason] = (acc[skip.reason] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+      
+      Object.entries(reasonCounts).forEach(([reason, count]) => {
+        console.log(`  - ${reason}: ${count} vehicles`);
+      });
     }
-    console.log(`✓ ${validVehicles.length} vehicles ready for processing`);
+    console.log(`\n✓ ${validVehicles.length}/${enrichedVehicles.length} vehicles passed validation`);
     
     // STEP 4: Generate AI-powered descriptions for all vehicles
     console.log('\n=== STEP 4: GENERATING AI DESCRIPTIONS ===\n');
