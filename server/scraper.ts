@@ -27,6 +27,9 @@ interface ScrapedVehicle {
   stockNumber?: string;
   carfaxUrl?: string;
   dealerVdpUrl?: string;
+  dealRating?: string;
+  cargurusPrice?: number;
+  cargurusUrl?: string;
 }
 
 // Individual dealership URLs (better data quality - includes Carfax links and full image galleries)
@@ -790,70 +793,199 @@ async function scrapeInventoryPage(inventoryUrl: string, dealershipName: string,
 }
 
 export async function scrapeAllDealerships(): Promise<number> {
-  console.log('Starting comprehensive inventory scrape...');
+  console.log('Starting comprehensive inventory scrape (DEALER-FIRST APPROACH)...');
   
   try {
-    // STEP 1: Scrape dealer listing pages for VDP URLs
-    console.log('\n=== STEP 1: SCRAPING DEALER LISTING PAGES FOR VDP URLs ===\n');
-    let dealerListings: any[] = [];
+    // STEP 1: Scrape dealer websites for COMPLETE vehicle data (PRIMARY SOURCE)
+    console.log('\n=== STEP 1: SCRAPING DEALER WEBSITES FOR COMPLETE VEHICLE DATA ===\n');
+    let dealerVehicles: any[] = [];
     
     try {
-      dealerListings = await scrapeAllDealerListings();
-      console.log(`✓ Scraped ${dealerListings.length} dealer listings with VDP URLs`);
+      dealerVehicles = await scrapeAllDealerListings();
+      console.log(`✓ Scraped ${dealerVehicles.length} vehicles from dealer websites`);
+      console.log(`  - Complete data: price, photos, description, badges, trim, etc.`);
     } catch (error) {
-      console.error('⚠ Dealer listing scraping failed:', error);
-      // Continue without dealer VDP URLs - not critical
+      console.error('✗ Dealer website scraping failed:', error);
+      throw error; // Dealer data is now primary, fail if it fails
     }
     
-    // STEP 2: Scrape CarGurus for complete vehicle data (20+ photos, clean data, deal ratings)
-    console.log('\n=== STEP 2: SCRAPING CARGURUS FOR VEHICLE DATA ===\n');
-    let cargurusVehicles: ScrapedVehicle[] = [];
-    
-    try {
-      cargurusVehicles = await scrapeAllCarGurusDealers();
-      console.log(`✓ Scraped ${cargurusVehicles.length} vehicles from CarGurus`);
-    } catch (error) {
-      console.error('✗ CarGurus scraping failed:', error);
-      throw error; // CarGurus is now primary source, so fail if it fails
-    }
-    
-    if (cargurusVehicles.length === 0) {
-      console.log('⚠ No vehicles scraped from CarGurus');
+    if (dealerVehicles.length === 0) {
+      console.log('⚠ No vehicles scraped from dealer websites');
       return 0;
     }
     
-    // STEP 3: Match CarGurus vehicles with dealer listings to add VDP URLs
-    console.log('\n=== STEP 3: MATCHING VEHICLES TO ADD DEALER VDP URLs ===\n');
-    const vehiclesWithVdpUrls = cargurusVehicles.map((cgVehicle) => {
-      if (dealerListings.length > 0) {
-        const matchResult = matchCarGurusToDealer(cgVehicle, dealerListings);
+    // STEP 2: Scrape CarGurus for enrichment data (deal ratings, CarGurus price)
+    console.log('\n=== STEP 2: SCRAPING CARGURUS FOR ENRICHMENT DATA ===\n');
+    let cargurusVehicles: any[] = [];
+    
+    try {
+      cargurusVehicles = await scrapeAllCarGurusDealers();
+      console.log(`✓ Scraped ${cargurusVehicles.length} vehicles from CarGurus for enrichment`);
+    } catch (error) {
+      console.error('⚠ CarGurus scraping failed:', error);
+      // Continue without CarGurus enrichment - dealer data is still usable
+      console.log('  Continuing with dealer data only (no deal ratings)');
+    }
+    
+    // STEP 3: Match and enrich dealer vehicles with CarGurus data
+    console.log('\n=== STEP 3: ENRICHING DEALER VEHICLES WITH CARGURUS DATA ===\n');
+    
+    const enrichedVehicles = dealerVehicles.map((dealerVehicle) => {
+      // Start with dealer vehicle as base (dealer data is authoritative)
+      let enrichedVehicle: ScrapedVehicle = {
+        year: dealerVehicle.year,
+        make: dealerVehicle.make,
+        model: dealerVehicle.model,
+        trim: dealerVehicle.trim,
+        type: dealerVehicle.type,
+        price: dealerVehicle.price || 0, // Dealer price is authoritative
+        odometer: dealerVehicle.odometer || 0,
+        images: dealerVehicle.images || [],
+        badges: dealerVehicle.badges || [],
+        location: dealerVehicle.location,
+        dealership: dealerVehicle.dealershipName,
+        dealershipId: dealerVehicle.dealershipId,
+        description: dealerVehicle.description || '',
+        vin: dealerVehicle.vin || undefined,
+        stockNumber: dealerVehicle.stockNumber || undefined,
+        dealerVdpUrl: dealerVehicle.vdpUrl || undefined,
+      };
+      
+      // Try to match with CarGurus for enrichment
+      if (cargurusVehicles.length > 0) {
+        // Find matching CarGurus vehicle
+        let cgMatch = null;
         
-        if (matchResult.matched && matchResult.dealerVdpUrl) {
-          console.log(`  ✓ Matched: ${cgVehicle.year} ${cgVehicle.make} ${cgVehicle.model} → ${matchResult.matchType} (${matchResult.confidence})`);
-          return {
-            ...cgVehicle,
-            dealerVdpUrl: matchResult.dealerVdpUrl,
-          };
+        // Strategy 1: VIN matching (most reliable)
+        if (dealerVehicle.vin) {
+          cgMatch = cargurusVehicles.find(cg => 
+            cg.vin && cg.vin.toLowerCase().trim() === dealerVehicle.vin.toLowerCase().trim() &&
+            cg.dealershipId === dealerVehicle.dealershipId
+          );
+          
+          if (cgMatch) {
+            console.log(`  ✓ VIN Match: ${dealerVehicle.year} ${dealerVehicle.make} ${dealerVehicle.model}`);
+          }
+        }
+        
+        // Strategy 2: Year + Make + Model + Odometer proximity
+        if (!cgMatch) {
+          const sameDealerCgVehicles = cargurusVehicles.filter(
+            cg => cg.dealershipId === dealerVehicle.dealershipId
+          );
+          
+          const candidates = sameDealerCgVehicles.filter(cg => {
+            // Year must match
+            if (cg.year !== dealerVehicle.year) return false;
+            
+            // Make must match (normalize)
+            const cgMake = cg.make.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+            const dealerMake = dealerVehicle.make.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+            if (cgMake !== dealerMake) return false;
+            
+            // Model must match (normalize and allow partial)
+            const cgModel = cg.model.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+            const dealerModel = dealerVehicle.model.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+            if (!cgModel.includes(dealerModel) && !dealerModel.includes(cgModel)) return false;
+            
+            // Odometer within 5000km
+            if (dealerVehicle.odometer && cg.odometer) {
+              const odometerDiff = Math.abs(cg.odometer - dealerVehicle.odometer);
+              if (odometerDiff > 5000) return false;
+            }
+            
+            return true;
+          });
+          
+          if (candidates.length > 0) {
+            // Pick best match by odometer proximity
+            cgMatch = candidates.sort((a, b) => {
+              const aDiff = dealerVehicle.odometer && a.odometer 
+                ? Math.abs(a.odometer - dealerVehicle.odometer) 
+                : 999999;
+              const bDiff = dealerVehicle.odometer && b.odometer 
+                ? Math.abs(b.odometer - dealerVehicle.odometer) 
+                : 999999;
+              return aDiff - bDiff;
+            })[0];
+            
+            if (cgMatch) {
+              console.log(`  ✓ Details Match: ${dealerVehicle.year} ${dealerVehicle.make} ${dealerVehicle.model}`);
+            }
+          }
+        }
+        
+        // Enrich with CarGurus data if match found
+        if (cgMatch) {
+          enrichedVehicle.dealRating = cgMatch.dealRating;
+          enrichedVehicle.cargurusPrice = cgMatch.price;
+          enrichedVehicle.cargurusUrl = cgMatch.cargurusUrl;
+          enrichedVehicle.carfaxUrl = cgMatch.carfaxUrl || enrichedVehicle.carfaxUrl;
+          
+          // CRITICAL: Use CarGurus data as fallback if dealer data is missing
+          if (!dealerVehicle.price && cgMatch.price) {
+            console.log(`  ⚠ Using CarGurus price (dealer missing): ${dealerVehicle.year} ${dealerVehicle.make} ${dealerVehicle.model} - $${cgMatch.price}`);
+            enrichedVehicle.price = cgMatch.price;
+          }
+          
+          if (!dealerVehicle.odometer && cgMatch.odometer) {
+            console.log(`  ⚠ Using CarGurus odometer (dealer missing): ${dealerVehicle.year} ${dealerVehicle.make} ${dealerVehicle.model} - ${cgMatch.odometer}km`);
+            enrichedVehicle.odometer = cgMatch.odometer;
+          }
+          
+          // Use CarGurus images as fallback if dealer has none
+          if (enrichedVehicle.images.length === 0 && cgMatch.images && cgMatch.images.length > 0) {
+            console.log(`  ⚠ Using CarGurus images (dealer missing): ${dealerVehicle.year} ${dealerVehicle.make} ${dealerVehicle.model} - ${cgMatch.images.length} photos`);
+            enrichedVehicle.images = cgMatch.images;
+          }
+          
+          // Log price differences > $500
+          if (dealerVehicle.price && cgMatch.price) {
+            const priceDiff = Math.abs(dealerVehicle.price - cgMatch.price);
+            if (priceDiff > 500) {
+              console.log(`  ⚠ Price Difference: ${dealerVehicle.year} ${dealerVehicle.make} ${dealerVehicle.model}`);
+              console.log(`    Dealer: $${dealerVehicle.price} | CarGurus: $${cgMatch.price} | Diff: $${priceDiff}`);
+            }
+          }
         } else {
-          console.log(`  ⚠ No match: ${cgVehicle.year} ${cgVehicle.make} ${cgVehicle.model} - ${matchResult.details}`);
+          console.log(`  ⚠ No CarGurus Match: ${dealerVehicle.year} ${dealerVehicle.make} ${dealerVehicle.model}`);
         }
       }
       
-      return cgVehicle;
+      return enrichedVehicle;
     });
     
-    const matchedCount = vehiclesWithVdpUrls.filter(v => v.dealerVdpUrl).length;
-    console.log(`\n✓ Matched ${matchedCount}/${cargurusVehicles.length} vehicles with dealer VDP URLs (${Math.round(matchedCount / cargurusVehicles.length * 100)}%)`);
+    const enrichedCount = enrichedVehicles.filter(v => v.dealRating || v.cargurusPrice).length;
+    console.log(`\n✓ Enriched ${enrichedCount}/${dealerVehicles.length} vehicles with CarGurus data (${Math.round(enrichedCount / dealerVehicles.length * 100)}%)`);
     
-    console.log(`\n✓ Total scraped: ${vehiclesWithVdpUrls.length} vehicles from CarGurus`);
+    // Validate and filter vehicles with required data
+    console.log('\n=== VALIDATING VEHICLE DATA ===\n');
+    const validVehicles = enrichedVehicles.filter(v => {
+      if (!v.price || v.price === 0) {
+        console.log(`  ✗ Skipping (no price): ${v.year} ${v.make} ${v.model}`);
+        return false;
+      }
+      if (!v.odometer || v.odometer === 0) {
+        console.log(`  ✗ Skipping (no odometer): ${v.year} ${v.make} ${v.model}`);
+        return false;
+      }
+      if (!v.images || v.images.length === 0) {
+        console.log(`  ⚠ Warning (no images): ${v.year} ${v.make} ${v.model}`);
+        // Don't skip - continue with no images
+      }
+      return true;
+    });
     
-    // No need to merge - CarGurus data is complete and already has all fields
-    const allScrapedVehicles = vehiclesWithVdpUrls;
+    const skippedCount = enrichedVehicles.length - validVehicles.length;
+    if (skippedCount > 0) {
+      console.log(`\n⚠ Skipped ${skippedCount} vehicles due to missing required data (price or odometer)`);
+    }
+    console.log(`✓ ${validVehicles.length} vehicles ready for processing`);
     
-    // Generate AI-powered descriptions for all vehicles
-    console.log('\nGenerating AI-powered vehicle descriptions...');
+    // STEP 4: Generate AI-powered descriptions for all vehicles
+    console.log('\n=== STEP 4: GENERATING AI DESCRIPTIONS ===\n');
     const vehiclesWithDescriptions = await Promise.all(
-      allScrapedVehicles.map(async (vehicle) => {
+      validVehicles.map(async (vehicle) => {
         try {
           const aiDescription = await generateVehicleDescription({
             year: vehicle.year,
@@ -884,8 +1016,8 @@ export async function scrapeAllDealerships(): Promise<number> {
     
     console.log(`✓ Generated AI descriptions for ${vehiclesWithDescriptions.length} vehicles`);
     
-    // Save to database
-    console.log('\nSaving to database...');
+    // STEP 5: Save to database
+    console.log('\n=== STEP 5: SAVING TO DATABASE ===\n');
     
     // Clear existing inventory (delete views first to avoid foreign key constraint)
     await db.execute(sql`TRUNCATE TABLE vehicle_views, vehicles RESTART IDENTITY CASCADE`);
@@ -893,11 +1025,12 @@ export async function scrapeAllDealerships(): Promise<number> {
     // Insert new inventory
     await db.insert(vehicles).values(vehiclesWithDescriptions);
     
-    console.log(`\n✓ Successfully scraped and saved ${vehiclesWithDescriptions.length} vehicles from CarGurus`);
-    console.log(`  - Olympic Hyundai: ${allScrapedVehicles.filter(v => v.dealershipId === 1).length} vehicles`);
-    console.log(`  - Boundary Hyundai: ${allScrapedVehicles.filter(v => v.dealershipId === 2).length} vehicles`);
-    console.log(`  - Kia Vancouver: ${allScrapedVehicles.filter(v => v.dealershipId === 3).length} vehicles`);
-    console.log(`  - All vehicles include deal ratings and 20+ photos`);
+    console.log(`\n✓ Successfully scraped and saved ${vehiclesWithDescriptions.length} vehicles (DEALER-FIRST)`);
+    console.log(`  - Olympic Hyundai: ${enrichedVehicles.filter(v => v.dealershipId === 1).length} vehicles`);
+    console.log(`  - Boundary Hyundai: ${enrichedVehicles.filter(v => v.dealershipId === 2).length} vehicles`);
+    console.log(`  - Kia Vancouver: ${enrichedVehicles.filter(v => v.dealershipId === 3).length} vehicles`);
+    console.log(`  - Dealer data (primary): price, photos, description, badges`);
+    console.log(`  - CarGurus enrichment: ${enrichedCount} vehicles with deal ratings`);
     console.log(`  - AI descriptions: ${vehiclesWithDescriptions.length} vehicles`);
     
     return vehiclesWithDescriptions.length;

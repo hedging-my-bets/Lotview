@@ -27,14 +27,21 @@ const DEALER_CONFIGS = [
 
 export interface DealerVehicleListing {
   vin: string | null;
-  year: number | null;
-  make: string | null;
-  model: string | null;
+  year: number;
+  make: string;
+  model: string;
+  trim: string;
   odometer: number | null;
   price: number | null;
+  images: string[];
+  description: string;
+  badges: string[];
+  type: string; // Body type: SUV, Sedan, Truck, etc.
+  stockNumber: string | null;
   vdpUrl: string;
   dealershipId: number;
   dealershipName: string;
+  location: string;
 }
 
 function parsePrice(priceText: string): number | null {
@@ -64,13 +71,67 @@ function parseYear(text: string): number | null {
   return null;
 }
 
-async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2): Promise<{ vin: string | null, price: number | null, odometer: number | null }> {
+// Helper function to determine body type from text
+function determineBodyType(text: string): string {
+  const lowerText = text.toLowerCase();
+  
+  if (lowerText.includes('sedan')) return 'Sedan';
+  if (lowerText.includes('suv') || lowerText.includes('sport utility')) return 'SUV';
+  if (lowerText.includes('truck') || lowerText.includes('pickup')) return 'Truck';
+  if (lowerText.includes('hatchback')) return 'Hatchback';
+  if (lowerText.includes('coupe') || lowerText.includes('convertible')) return 'Coupe';
+  if (lowerText.includes('wagon')) return 'Wagon';
+  if (lowerText.includes('minivan') || lowerText.includes('van')) return 'Minivan';
+  
+  return 'SUV'; // Default
+}
+
+// Helper function to detect badges from text
+function detectBadges(text: string): string[] {
+  const badges: string[] = [];
+  const lowerText = text.toLowerCase();
+  
+  if (/\b(one owner|1 owner|single owner)\b/.test(lowerText)) {
+    badges.push('One Owner');
+  }
+  if (/\b(no accidents?|accident free|clean history|accident-free)\b/.test(lowerText)) {
+    badges.push('No Accidents');
+  }
+  if (/\b(clean title|clear title)\b/.test(lowerText)) {
+    badges.push('Clean Title');
+  }
+  if (/\b(certified|cpo|certified pre-owned)\b/.test(lowerText)) {
+    badges.push('Certified Pre-Owned');
+  }
+  if (/\b(low km|low kilometers|low mileage|low km's)\b/.test(lowerText)) {
+    badges.push('Low Kilometers');
+  }
+  
+  return badges;
+}
+
+interface VehicleDetailData {
+  vin: string | null;
+  price: number | null;
+  odometer: number | null;
+  images: string[];
+  trim: string;
+  description: string;
+  badges: string[];
+  type: string;
+  stockNumber: string | null;
+}
+
+async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2): Promise<VehicleDetailData> {
   let page = null;
   
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       page = await browser.newPage();
-      await page.goto(vdpUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+      await page.goto(vdpUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+      
+      // Wait a moment for images to load
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       const data = await page.evaluate(() => {
         const pageText = document.body.textContent || '';
@@ -82,14 +143,64 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
           vin = vinMatch[1].toUpperCase();
         }
         
-        // Extract price - look for largest dollar amount in valid range
+        // Extract Stock Number
+        let stockNumber: string | null = null;
+        const stockMatch = pageText.match(/stock[#\s:]*([A-Z0-9-]+)/i);
+        if (stockMatch) {
+          stockNumber = stockMatch[1];
+        }
+        
+        // Extract price - target the actual selling price, not MSRP
         let price: number | null = null;
-        const priceRegex = /\$\s*([0-9,]+)/g;
-        let priceMatch;
-        while ((priceMatch = priceRegex.exec(pageText)) !== null) {
-          const val = parseInt(priceMatch[1].replace(/,/g, ''));
-          if (val >= 5000 && val <= 500000 && (!price || val > price)) {
-            price = val;
+        
+        // Strategy 1: Look for specific price elements with common selectors
+        const priceSelectors = [
+          '[data-field="price"]',
+          '[data-field="sellingPrice"]',
+          '.price', '.dealer-price', '.selling-price', 
+          '.vehicle-price', '[class*="price"]'
+        ];
+        
+        for (const selector of priceSelectors) {
+          const priceEl = document.querySelector(selector);
+          if (priceEl) {
+            const priceText = priceEl.textContent || priceEl.getAttribute('data-value') || '';
+            const match = priceText.match(/\$?\s*([0-9,]+)/);
+            if (match) {
+              const val = parseInt(match[1].replace(/,/g, ''));
+              if (val >= 5000 && val <= 500000) {
+                price = val;
+                break; // Use first valid price found from selector
+              }
+            }
+          }
+        }
+        
+        // Strategy 2: If no price from selectors, search page text for "Sale Price" or "Selling Price"
+        if (!price) {
+          const salePriceMatch = pageText.match(/(?:Sale|Selling|Dealer)\s*Price[:\s]*\$?\s*([0-9,]+)/i);
+          if (salePriceMatch) {
+            const val = parseInt(salePriceMatch[1].replace(/,/g, ''));
+            if (val >= 5000 && val <= 500000) {
+              price = val;
+            }
+          }
+        }
+        
+        // Strategy 3: Fallback to conservative regex (smaller prices likely to be selling price)
+        if (!price) {
+          const priceRegex = /\$\s*([0-9,]+)/g;
+          let priceMatch;
+          const prices: number[] = [];
+          while ((priceMatch = priceRegex.exec(pageText)) !== null) {
+            const val = parseInt(priceMatch[1].replace(/,/g, ''));
+            if (val >= 5000 && val <= 500000) {
+              prices.push(val);
+            }
+          }
+          // Use the SMALLEST price in valid range (likely selling price, not MSRP)
+          if (prices.length > 0) {
+            price = Math.min(...prices);
           }
         }
         
@@ -103,11 +214,106 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
           }
         }
         
-        return { vin, price, odometer };
+        // Extract trim from title/heading
+        let trim = 'Base';
+        const h1 = document.querySelector('h1');
+        if (h1) {
+          const titleText = h1.textContent || '';
+          // Try to extract trim from title (usually after model name)
+          const trimMatch = titleText.match(/(?:\d{4}\s+[A-Za-z-]+\s+[A-Za-z0-9-]+\s+)([A-Za-z0-9\s]+)/i);
+          if (trimMatch && trimMatch[1]) {
+            trim = trimMatch[1].trim();
+          }
+        }
+        
+        // Extract description
+        let description = '';
+        const descriptionSelectors = [
+          '[class*="description"]',
+          '[class*="details"]',
+          '[class*="comments"]',
+          'p[class*="text"]',
+          '.vehicle-description',
+          '#description'
+        ];
+        
+        for (const selector of descriptionSelectors) {
+          const element = document.querySelector(selector);
+          if (element && element.textContent && element.textContent.length > 50) {
+            description = element.textContent.trim();
+            break;
+          }
+        }
+        
+        // If no description found, create a basic one
+        if (!description) {
+          description = `Used vehicle. Contact dealer for more information.`;
+        }
+        
+        // Extract images
+        const images: string[] = [];
+        const imageSelectors = [
+          'img[src*="/photos/"]',
+          'img[src*="/images/"]',
+          'img[src*="/inventory/"]',
+          'img[src*="/vehicle/"]',
+          'img[class*="vehicle"]',
+          'img[class*="gallery"]',
+          '.vehicle-images img',
+          '[class*="photo"] img',
+          '[class*="gallery"] img'
+        ];
+        
+        const processedUrls = new Set<string>();
+        for (const selector of imageSelectors) {
+          const imgs = document.querySelectorAll(selector);
+          imgs.forEach((img: any) => {
+            let src = img.getAttribute('src') || img.getAttribute('data-src') || '';
+            if (src && !src.includes('placeholder') && !src.includes('logo') && !src.includes('icon')) {
+              // Convert relative URLs to absolute
+              if (src.startsWith('//')) {
+                src = 'https:' + src;
+              } else if (src.startsWith('/')) {
+                src = window.location.origin + src;
+              }
+              
+              if (src.startsWith('http') && !processedUrls.has(src)) {
+                processedUrls.add(src);
+                images.push(src);
+              }
+            }
+          });
+        }
+        
+        return {
+          vin,
+          price,
+          odometer,
+          images,
+          trim,
+          description,
+          stockNumber,
+          pageText
+        };
       });
       
+      // Detect badges and body type from page text
+      const badges = detectBadges(data.pageText);
+      const type = determineBodyType(data.pageText);
+      
       if (page) await page.close().catch(() => {});
-      return data;
+      
+      return {
+        vin: data.vin,
+        price: data.price,
+        odometer: data.odometer,
+        images: data.images,
+        trim: data.trim,
+        description: data.description,
+        badges,
+        type,
+        stockNumber: data.stockNumber
+      };
     } catch (error) {
       if (page) {
         try {
@@ -123,12 +329,32 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
         continue;
       }
       
-      // Final attempt failed, return nulls
-      return { vin: null, price: null, odometer: null };
+      // Final attempt failed, return defaults
+      return {
+        vin: null,
+        price: null,
+        odometer: null,
+        images: [],
+        trim: 'Base',
+        description: 'Used vehicle. Contact dealer for more information.',
+        badges: [],
+        type: 'SUV',
+        stockNumber: null
+      };
     }
   }
   
-  return { vin: null, price: null, odometer: null };
+  return {
+    vin: null,
+    price: null,
+    odometer: null,
+    images: [],
+    trim: 'Base',
+    description: 'Used vehicle. Contact dealer for more information.',
+    badges: [],
+    type: 'SUV',
+    stockNumber: null
+  };
 }
 
 async function scrapeDealerListings(dealerConfig: typeof DEALER_CONFIGS[0]): Promise<DealerVehicleListing[]> {
@@ -168,6 +394,40 @@ async function scrapeDealerListings(dealerConfig: typeof DEALER_CONFIGS[0]): Pro
       { timeout: 10000 }
     );
 
+    // Infinite scroll to load ALL vehicles
+    console.log(`  Scrolling to load all vehicles...`);
+    let previousCount = 0;
+    let stableCount = 0;
+    
+    for (let i = 0; i < 30; i++) { // Max 30 scrolls
+      // Scroll to bottom
+      await page.evaluate(() => {
+        window.scrollTo(0, document.body.scrollHeight);
+      });
+      
+      // Wait for new content to load
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Check if new vehicles loaded
+      const currentCount = await page.evaluate(() => {
+        return document.querySelectorAll('a[href*="/vehicles/2"]').length;
+      });
+      
+      console.log(`    Scroll ${i + 1}: Found ${currentCount} vehicle links`);
+      
+      if (currentCount === previousCount) {
+        stableCount++;
+        if (stableCount >= 3) {
+          console.log(`    ✓ No new vehicles after 3 scrolls, stopping.`);
+          break;
+        }
+      } else {
+        stableCount = 0;
+      }
+      
+      previousCount = currentCount;
+    }
+
     console.log(`  Extracting VDP URLs...`);
     
     const vdpUrls = await page.evaluate((baseUrl) => {
@@ -205,12 +465,14 @@ async function scrapeDealerListings(dealerConfig: typeof DEALER_CONFIGS[0]): Pro
     
     await page.close();
     
-    // Visit each VDP to extract VIN, price, odometer
+    // Visit each VDP to extract complete vehicle data
     const vehicles: DealerVehicleListing[] = [];
     
-    for (let i = 0; i < Math.min(vdpUrls.length, 20); i++) { // Limit to 20 for reasonable scrape time
+    console.log(`  Processing ${vdpUrls.length} vehicles...`);
+    
+    for (let i = 0; i < vdpUrls.length; i++) {
       const urlData = vdpUrls[i];
-      console.log(`  [${i + 1}/${Math.min(vdpUrls.length, 20)}] Scraping ${urlData.year} ${urlData.make} ${urlData.model}...`);
+      console.log(`  [${i + 1}/${vdpUrls.length}] Scraping ${urlData.year} ${urlData.make} ${urlData.model}...`);
       
       const detailData = await scrapeVehicleDetailPage(browser, urlData.vdpUrl);
       
@@ -219,12 +481,21 @@ async function scrapeDealerListings(dealerConfig: typeof DEALER_CONFIGS[0]): Pro
         year: urlData.year,
         make: urlData.make,
         model: urlData.model,
+        trim: detailData.trim,
         odometer: detailData.odometer,
         price: detailData.price,
+        images: detailData.images,
+        description: detailData.description,
+        badges: detailData.badges,
+        type: detailData.type,
+        stockNumber: detailData.stockNumber,
         vdpUrl: urlData.vdpUrl,
         dealershipId: dealerConfig.dealershipId,
         dealershipName: dealerConfig.name,
+        location: dealerConfig.location,
       });
+      
+      console.log(`    ✓ Extracted: ${detailData.images.length} photos, ${detailData.badges.length} badges, Price: $${detailData.price || 'N/A'}`);
       
       // Small delay between requests
       await new Promise(resolve => setTimeout(resolve, 500));
