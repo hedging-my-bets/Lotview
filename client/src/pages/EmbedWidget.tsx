@@ -90,7 +90,7 @@ export default function EmbedWidget() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px] bg-slate-50">
+      <div className="flex items-center justify-center min-h-[400px] bg-background">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
@@ -98,17 +98,17 @@ export default function EmbedWidget() {
 
   if (filteredVehicles.length === 0) {
     return (
-      <div className="flex items-center justify-center min-h-[400px] bg-slate-50">
+      <div className="flex items-center justify-center min-h-[400px] bg-background">
         <div className="text-center">
-          <p className="text-lg font-medium text-slate-700">No vehicles found</p>
-          <p className="text-sm text-slate-500 mt-1">Try adjusting your filters</p>
+          <p className="text-lg font-medium text-foreground">No vehicles found</p>
+          <p className="text-sm text-muted-foreground mt-1">Try adjusting your filters</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-slate-50 p-4 min-h-screen">
+    <div className="bg-background p-4 min-h-screen">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 max-w-7xl mx-auto">
         {filteredVehicles.map((vehicle) => (
           <div 

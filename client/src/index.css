@@ -96,6 +96,52 @@
   --sidebar-ring: 217.2 91.2% 59.8%;
 }
 
+.dark {
+  /* Dark mode with Olympic Auto Group branding */
+  --background: 222 47% 11%;
+  --foreground: 210 40% 98%;
+
+  --card: 222 47% 15%;
+  --card-foreground: 210 40% 98%;
+
+  --popover: 222 47% 15%;
+  --popover-foreground: 210 40% 98%;
+
+  --primary: 191 100% 41%;
+  --primary-foreground: 222 47% 11%;
+
+  --secondary: 212 96% 30%;
+  --secondary-foreground: 210 40% 98%;
+
+  --muted: 217.2 32.6% 17.5%;
+  --muted-foreground: 215 20.2% 65.1%;
+
+  --accent: 217.2 32.6% 17.5%;
+  --accent-foreground: 210 40% 98%;
+
+  --destructive: 0 62.8% 50.6%;
+  --destructive-foreground: 210 40% 98%;
+
+  --border: 217.2 32.6% 25%;
+  --input: 217.2 32.6% 25%;
+  --ring: 191 100% 41%;
+
+  --chart-1: 220 70% 50%;
+  --chart-2: 160 60% 45%;
+  --chart-3: 30 80% 55%;
+  --chart-4: 280 65% 60%;
+  --chart-5: 340 75% 55%;
+
+  --sidebar: 222 47% 11%;
+  --sidebar-foreground: 210 40% 98%;
+  --sidebar-primary: 191 100% 41%;
+  --sidebar-primary-foreground: 222 47% 11%;
+  --sidebar-accent: 217.2 32.6% 17.5%;
+  --sidebar-accent-foreground: 210 40% 98%;
+  --sidebar-border: 217.2 32.6% 25%;
+  --sidebar-ring: 191 100% 41%;
+}
+
 .glass-panel {
   @apply bg-white/90 backdrop-blur-lg border border-white/60 shadow-sm;
 }

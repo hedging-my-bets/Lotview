@@ -170,7 +170,7 @@ export default function VehicleDetail() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
@@ -178,9 +178,9 @@ export default function VehicleDetail() {
 
   if (!car) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-slate-900 mb-4">Vehicle not found</h1>
+          <h1 className="text-2xl font-bold text-foreground mb-4">Vehicle not found</h1>
           <button onClick={() => setLocation("/")} className="text-primary hover:underline">
             Back to Inventory
           </button>
@@ -206,13 +206,13 @@ export default function VehicleDetail() {
   const monthlyPayment = calculateMonthlyPayment(car.price, selectedTerm, downPayment, apr);
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-background">
       <Navbar />
       
       <div className="pt-28 pb-20 px-4 max-w-7xl mx-auto">
         <button 
           onClick={() => setLocation("/")}
-          className="mb-6 flex items-center gap-2 text-slate-500 hover:text-primary transition font-medium"
+          className="mb-6 flex items-center gap-2 text-muted-foreground hover:text-primary transition font-medium"
         >
           <ArrowLeft className="w-4 h-4" /> Back to Inventory
         </button>
@@ -257,7 +257,7 @@ export default function VehicleDetail() {
                 <button 
                   onClick={handleLike}
                   className={`p-2 bg-white/90 backdrop-blur rounded-full transition shadow-sm ${
-                    isLiked ? 'text-red-500' : 'text-slate-600 hover:text-red-500'
+                    isLiked ? 'text-red-500' : 'text-muted-foreground hover:text-red-500'
                   }`}
                   data-testid="button-like-vehicle"
                 >
@@ -265,7 +265,7 @@ export default function VehicleDetail() {
                 </button>
                 <button 
                   onClick={handleShare}
-                  className="p-2 bg-white/90 backdrop-blur rounded-full text-slate-600 hover:text-primary transition shadow-sm"
+                  className="p-2 bg-white/90 backdrop-blur rounded-full text-muted-foreground hover:text-primary transition shadow-sm"
                   data-testid="button-share-vehicle"
                 >
                   <Share2 className="w-5 h-5" />
@@ -277,14 +277,14 @@ export default function VehicleDetail() {
                 <>
                   <button
                     onClick={scrollPrev}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-slate-900 md:opacity-0 md:group-hover:opacity-100 transition shadow-lg hover:scale-110 z-10"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-foreground md:opacity-0 md:group-hover:opacity-100 transition shadow-lg hover:scale-110 z-10"
                     data-testid="button-prev-image"
                   >
                     <ChevronLeft className="w-6 h-6" />
                   </button>
                   <button
                     onClick={scrollNext}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-slate-900 md:opacity-0 md:group-hover:opacity-100 transition shadow-lg hover:scale-110 z-10"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 backdrop-blur rounded-full flex items-center justify-center text-foreground md:opacity-0 md:group-hover:opacity-100 transition shadow-lg hover:scale-110 z-10"
                     data-testid="button-next-image"
                   >
                     <ChevronRight className="w-6 h-6" />
@@ -355,12 +355,12 @@ export default function VehicleDetail() {
             <div className="glass-panel p-8 rounded-2xl">
               <div className="flex justify-between items-start mb-4">
                 <div>
-                  <h1 className="text-3xl font-black text-slate-900 mb-2">{car.year} {car.make} {car.model}</h1>
-                  <p className="text-lg text-slate-500 font-medium">{car.trim}</p>
+                  <h1 className="text-3xl font-black text-foreground mb-2">{car.year} {car.make} {car.model}</h1>
+                  <p className="text-lg text-muted-foreground font-medium">{car.trim}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-3xl font-black text-primary">${car.price.toLocaleString()}</p>
-                  <p className="text-sm text-slate-400">Cash Price</p>
+                  <p className="text-sm text-muted-foreground">Cash Price</p>
                 </div>
               </div>
 
@@ -373,51 +373,51 @@ export default function VehicleDetail() {
                 ))}
               </div>
 
-              <div className="grid grid-cols-2 gap-4 mb-8 p-4 bg-slate-50 rounded-xl border border-slate-100">
+              <div className="grid grid-cols-2 gap-4 mb-8 p-4 bg-muted rounded-xl border border-border">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-400 shadow-sm"><Gauge className="w-5 h-5" /></div>
+                  <div className="w-10 h-10 rounded-full bg-card flex items-center justify-center text-muted-foreground shadow-sm"><Gauge className="w-5 h-5" /></div>
                   <div>
-                    <p className="text-xs text-slate-400 font-bold uppercase">Odometer</p>
-                    <p className="font-bold text-slate-700">{car.odometer.toLocaleString()} km</p>
+                    <p className="text-xs text-muted-foreground font-bold uppercase">Odometer</p>
+                    <p className="font-bold text-foreground">{car.odometer.toLocaleString()} km</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-400 shadow-sm"><MapPin className="w-5 h-5" /></div>
+                  <div className="w-10 h-10 rounded-full bg-card flex items-center justify-center text-muted-foreground shadow-sm"><MapPin className="w-5 h-5" /></div>
                   <div>
-                    <p className="text-xs text-slate-400 font-bold uppercase">Location</p>
-                    <p className="font-bold text-slate-700">{car.location}</p>
+                    <p className="text-xs text-muted-foreground font-bold uppercase">Location</p>
+                    <p className="font-bold text-foreground">{car.location}</p>
                   </div>
                 </div>
                  <div className="flex items-center gap-3 col-span-2">
-                  <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-orange-400 shadow-sm"><Flame className="w-5 h-5" /></div>
+                  <div className="w-10 h-10 rounded-full bg-card flex items-center justify-center text-orange-400 shadow-sm"><Flame className="w-5 h-5" /></div>
                   <div>
-                    <p className="text-xs text-slate-400 font-bold uppercase">Interest (24h)</p>
-                    <p className="font-bold text-slate-700">{car.views} people viewing</p>
+                    <p className="text-xs text-muted-foreground font-bold uppercase">Interest (24h)</p>
+                    <p className="font-bold text-foreground">{car.views} people viewing</p>
                   </div>
                 </div>
                 {car.vin && (
                   <div className="flex items-center gap-3 col-span-2">
-                    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-400 shadow-sm"><FileText className="w-5 h-5" /></div>
+                    <div className="w-10 h-10 rounded-full bg-card flex items-center justify-center text-muted-foreground shadow-sm"><FileText className="w-5 h-5" /></div>
                     <div>
-                      <p className="text-xs text-slate-400 font-bold uppercase">VIN</p>
-                      <p className="font-bold text-slate-700 font-mono text-sm">{car.vin}</p>
+                      <p className="text-xs text-muted-foreground font-bold uppercase">VIN</p>
+                      <p className="font-bold text-foreground font-mono text-sm">{car.vin}</p>
                     </div>
                   </div>
                 )}
                 {car.stockNumber && (
                   <div className="flex items-center gap-3 col-span-2">
-                    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-400 shadow-sm"><FileText className="w-5 h-5" /></div>
+                    <div className="w-10 h-10 rounded-full bg-card flex items-center justify-center text-muted-foreground shadow-sm"><FileText className="w-5 h-5" /></div>
                     <div>
-                      <p className="text-xs text-slate-400 font-bold uppercase">Stock #</p>
-                      <p className="font-bold text-slate-700">{car.stockNumber}</p>
+                      <p className="text-xs text-muted-foreground font-bold uppercase">Stock #</p>
+                      <p className="font-bold text-foreground">{car.stockNumber}</p>
                     </div>
                   </div>
                 )}
                 {car.carfaxUrl && (
                   <div className="flex items-center gap-3 col-span-2">
-                    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-green-600 shadow-sm"><FileText className="w-5 h-5" /></div>
+                    <div className="w-10 h-10 rounded-full bg-card flex items-center justify-center text-green-600 shadow-sm"><FileText className="w-5 h-5" /></div>
                     <div className="flex-1">
-                      <p className="text-xs text-slate-400 font-bold uppercase mb-1">Vehicle History</p>
+                      <p className="text-xs text-muted-foreground font-bold uppercase mb-1">Vehicle History</p>
                       <a 
                         href={car.carfaxUrl} 
                         target="_blank" 
@@ -434,16 +434,16 @@ export default function VehicleDetail() {
 
               <div className="bg-primary/5 border border-primary/10 p-6 rounded-xl mb-4">
                 <div className="flex justify-between items-center mb-3">
-                  <p className="font-bold text-slate-900">Estimated Finance</p>
-                  <p className="text-2xl font-black text-primary">${monthlyPayment}<span className="text-sm text-slate-500 font-medium">/mo</span></p>
+                  <p className="font-bold text-foreground">Estimated Finance</p>
+                  <p className="text-2xl font-black text-primary">${monthlyPayment}<span className="text-sm text-muted-foreground font-medium">/mo</span></p>
                 </div>
-                <p className="text-xs text-slate-500 mb-4">
+                <p className="text-xs text-muted-foreground mb-4">
                   Based on {apr}% APR, ${downPayment.toLocaleString()} down. Taxes and fees extra.
                 </p>
                 
                 {/* Term Selector - Shows available terms for this vehicle based on model year */}
                 <div className="space-y-2">
-                  <p className="text-xs font-bold text-slate-400 uppercase">Select Term</p>
+                  <p className="text-xs font-bold text-muted-foreground uppercase">Select Term</p>
                   <div className={`grid gap-2 ${availableTerms.length <= 3 ? 'grid-cols-3' : availableTerms.length === 4 ? 'grid-cols-4' : 'grid-cols-5'}`}>
                     {availableTerms.map((term: FinanceTerm) => (
                       <button
@@ -452,7 +452,7 @@ export default function VehicleDetail() {
                         className={`py-2 rounded-lg text-sm font-bold transition ${
                           selectedTerm === term 
                             ? 'bg-secondary text-white shadow-md' 
-                            : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                            : 'bg-card text-muted-foreground hover:bg-muted border border-border'
                         }`}
                         data-testid={`button-term-${term}`}
                       >
@@ -461,7 +461,7 @@ export default function VehicleDetail() {
                     ))}
                   </div>
                   {availableTerms.length < 5 && (
-                    <p className="text-xs text-slate-400 text-center">
+                    <p className="text-xs text-muted-foreground text-center">
                       Max {Math.max(...availableTerms)} months for {car.year} model year
                     </p>
                   )}
@@ -503,14 +503,14 @@ export default function VehicleDetail() {
               <div className="grid grid-cols-2 gap-3">
                 <button 
                   onClick={() => handleAction("Value Your Trade-in")} 
-                  className="w-full bg-white border-2 border-slate-200 hover:border-primary text-slate-700 hover:text-primary py-3 rounded-lg font-bold text-sm transition flex items-center justify-center gap-2"
+                  className="w-full bg-card border-2 border-border hover:border-primary text-foreground hover:text-primary py-3 rounded-lg font-bold text-sm transition flex items-center justify-center gap-2"
                   data-testid="button-value-trade"
                 >
                   <DollarSign className="w-4 h-4" /> Value Trade-in
                 </button>
                 <button 
                   onClick={() => handleAction("Reserve Vehicle")} 
-                  className="w-full bg-white border-2 border-slate-200 hover:border-secondary text-slate-700 hover:text-secondary py-3 rounded-lg font-bold text-sm transition flex items-center justify-center gap-2"
+                  className="w-full bg-card border-2 border-border hover:border-secondary text-foreground hover:text-secondary py-3 rounded-lg font-bold text-sm transition flex items-center justify-center gap-2"
                   data-testid="button-reserve-vehicle"
                 >
                   <Car className="w-4 h-4" /> Reserve Now
@@ -520,7 +520,7 @@ export default function VehicleDetail() {
 
             <div className="glass-panel p-8 rounded-2xl">
               <h3 className="font-bold text-lg mb-4">Vehicle Description</h3>
-              <p className="text-slate-600 leading-relaxed">{car.description}</p>
+              <p className="text-muted-foreground leading-relaxed">{car.description}</p>
             </div>
           </div>
         </div>

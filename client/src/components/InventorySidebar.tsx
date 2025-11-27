@@ -25,18 +25,18 @@ export function InventorySidebar({ filters, setFilters }: InventorySidebarProps)
   return (
     <aside className="w-full lg:w-64 flex-shrink-0 space-y-6">
       <div className="glass-panel p-6 rounded-2xl sticky top-24">
-        <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2">
+        <h3 className="font-bold text-foreground mb-6 flex items-center gap-2">
           <SlidersHorizontal className="w-4 h-4" /> Filters
         </h3>
 
         {/* Dealership Filter */}
         <div className="mb-8">
-          <p className="text-xs font-bold text-slate-400 uppercase mb-3 flex items-center gap-2">
+          <p className="text-xs font-bold text-muted-foreground uppercase mb-3 flex items-center gap-2">
             <Building2 className="w-3 h-3" /> Dealership
           </p>
           <div className="space-y-2">
             <label className="flex items-center gap-3 cursor-pointer group">
-              <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${filters.dealership === 'all' ? 'bg-primary border-primary text-white' : 'border-slate-300 bg-white'}`}>
+              <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${filters.dealership === 'all' ? 'bg-primary border-primary text-white' : 'border-border bg-card'}`}>
                 {filters.dealership === 'all' && <Check className="w-3 h-3" />}
               </div>
               <input 
@@ -46,11 +46,11 @@ export function InventorySidebar({ filters, setFilters }: InventorySidebarProps)
                 checked={filters.dealership === 'all'} 
                 onChange={() => setFilters({ ...filters, dealership: 'all' })}
               />
-              <span className={`text-sm font-medium transition ${filters.dealership === 'all' ? 'text-primary' : 'text-slate-600 group-hover:text-primary'}`}>All Dealerships</span>
+              <span className={`text-sm font-medium transition ${filters.dealership === 'all' ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'}`}>All Dealerships</span>
             </label>
             {DEALERSHIPS.map(dealer => (
                <label key={dealer} className="flex items-center gap-3 cursor-pointer group">
-                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${filters.dealership === dealer ? 'bg-primary border-primary text-white' : 'border-slate-300 bg-white'}`}>
+                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${filters.dealership === dealer ? 'bg-primary border-primary text-white' : 'border-border bg-card'}`}>
                   {filters.dealership === dealer && <Check className="w-3 h-3" />}
                 </div>
                 <input 
@@ -60,7 +60,7 @@ export function InventorySidebar({ filters, setFilters }: InventorySidebarProps)
                   checked={filters.dealership === dealer} 
                   onChange={() => handleDealershipChange(dealer)}
                 />
-                <span className={`text-sm font-medium transition ${filters.dealership === dealer ? 'text-primary' : 'text-slate-600 group-hover:text-primary'}`}>{dealer}</span>
+                <span className={`text-sm font-medium transition ${filters.dealership === dealer ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'}`}>{dealer}</span>
               </label>
             ))}
           </div>
@@ -68,12 +68,12 @@ export function InventorySidebar({ filters, setFilters }: InventorySidebarProps)
         
         {/* Body Style Filter */}
         <div className="mb-8">
-          <p className="text-xs font-bold text-slate-400 uppercase mb-3 flex items-center gap-2">
+          <p className="text-xs font-bold text-muted-foreground uppercase mb-3 flex items-center gap-2">
             <CarFront className="w-3 h-3" /> Body Style
           </p>
           <div className="space-y-2">
             <label className="flex items-center gap-3 cursor-pointer group">
-              <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${filters.type === 'all' ? 'bg-primary border-primary text-white' : 'border-slate-300 bg-white'}`}>
+              <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${filters.type === 'all' ? 'bg-primary border-primary text-white' : 'border-border bg-card'}`}>
                 {filters.type === 'all' && <Check className="w-3 h-3" />}
               </div>
               <input 
@@ -83,11 +83,11 @@ export function InventorySidebar({ filters, setFilters }: InventorySidebarProps)
                 checked={filters.type === 'all'} 
                 onChange={() => setFilters({ ...filters, type: 'all' })}
               />
-              <span className={`text-sm font-medium transition ${filters.type === 'all' ? 'text-primary' : 'text-slate-600 group-hover:text-primary'}`}>All Styles</span>
+              <span className={`text-sm font-medium transition ${filters.type === 'all' ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'}`}>All Styles</span>
             </label>
             {BODY_STYLES.map(style => (
               <label key={style} className="flex items-center gap-3 cursor-pointer group">
-                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${filters.type === style ? 'bg-primary border-primary text-white' : 'border-slate-300 bg-white'}`}>
+                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${filters.type === style ? 'bg-primary border-primary text-white' : 'border-border bg-card'}`}>
                   {filters.type === style && <Check className="w-3 h-3" />}
                 </div>
                 <input 
@@ -97,7 +97,7 @@ export function InventorySidebar({ filters, setFilters }: InventorySidebarProps)
                   checked={filters.type === style} 
                   onChange={() => handleTypeChange(style)}
                 />
-                <span className={`text-sm font-medium transition ${filters.type === style ? 'text-primary' : 'text-slate-600 group-hover:text-primary'}`}>{style}</span>
+                <span className={`text-sm font-medium transition ${filters.type === style ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'}`}>{style}</span>
               </label>
             ))}
           </div>
@@ -105,7 +105,7 @@ export function InventorySidebar({ filters, setFilters }: InventorySidebarProps)
 
         {/* Price Slider */}
         <div>
-          <div className="flex justify-between text-xs font-bold text-slate-400 uppercase mb-4">
+          <div className="flex justify-between text-xs font-bold text-muted-foreground uppercase mb-4">
             <span className="flex items-center gap-1"><DollarSign className="w-3 h-3" /> Max Price</span>
             <span className="text-primary">${filters.priceMax.toLocaleString()}</span>
           </div>

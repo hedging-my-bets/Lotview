@@ -3,13 +3,14 @@ import { Phone, MessageSquare, Menu } from "lucide-react";
 import { useChat } from "@/contexts/ChatContext";
 import { useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export function Navbar() {
   const { openChat } = useChat();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   return (
-    <nav className="fixed top-0 w-full z-50 bg-white border-b border-slate-200 shadow-sm">
+    <nav className="fixed top-0 w-full z-50 bg-background border-b border-border shadow-sm">
       <div className="max-w-7xl mx-auto px-4 py-3 md:py-4 flex justify-between items-center">
         {/* Logo */}
         <Link href="/">
@@ -29,9 +30,10 @@ export function Navbar() {
 
         {/* Desktop Actions */}
         <div className="hidden md:flex gap-3 items-center">
+          <ThemeToggle />
           <button 
             onClick={() => openChat()}
-            className="bg-white border-2 border-primary text-primary px-4 py-2 rounded-lg text-sm font-bold hover:bg-primary hover:text-white transition flex items-center gap-2"
+            className="bg-background border-2 border-primary text-primary px-4 py-2 rounded-lg text-sm font-bold hover:bg-primary hover:text-primary-foreground transition flex items-center gap-2"
             data-testid="button-chat-desktop"
           >
             <MessageSquare className="w-4 h-4" />
@@ -39,7 +41,7 @@ export function Navbar() {
           </button>
           <a 
             href="tel:+16041234567"
-            className="bg-secondary text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-secondary/90 transition flex items-center gap-2"
+            className="bg-secondary text-secondary-foreground px-4 py-2 rounded-lg text-sm font-bold hover:bg-secondary/90 transition flex items-center gap-2"
             data-testid="button-phone-desktop"
           >
             <Phone className="w-4 h-4" />
@@ -48,7 +50,7 @@ export function Navbar() {
           <Sheet>
             <SheetTrigger asChild>
               <button
-                className="w-9 h-9 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center hover:bg-slate-200 transition"
+                className="w-9 h-9 rounded-full bg-muted text-muted-foreground flex items-center justify-center hover:bg-accent transition"
                 data-testid="button-menu-desktop"
               >
                 <Menu className="w-5 h-5" />
@@ -58,7 +60,7 @@ export function Navbar() {
               <div className="flex flex-col gap-4 mt-8">
                 <Link href="/login">
                   <button
-                    className="w-full bg-slate-800 text-white py-3 rounded-lg text-sm font-bold hover:bg-slate-700 transition"
+                    className="w-full bg-primary text-primary-foreground py-3 rounded-lg text-sm font-bold hover:bg-primary/90 transition"
                     data-testid="link-admin-menu"
                   >
                     Admin Dashboard
@@ -71,9 +73,10 @@ export function Navbar() {
 
         {/* Mobile Actions */}
         <div className="flex md:hidden items-center gap-2">
+          <ThemeToggle />
           <button
             onClick={() => openChat()}
-            className="w-9 h-9 rounded-full bg-primary text-white flex items-center justify-center"
+            className="w-9 h-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center"
             data-testid="button-chat-mobile"
           >
             <MessageSquare className="w-5 h-5" />
@@ -81,7 +84,7 @@ export function Navbar() {
           <Sheet open={isMenuOpen} onOpenChange={setIsMenuOpen}>
             <SheetTrigger asChild>
               <button
-                className="w-9 h-9 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center"
+                className="w-9 h-9 rounded-full bg-muted text-muted-foreground flex items-center justify-center"
                 data-testid="button-menu-mobile"
               >
                 <Menu className="w-5 h-5" />
@@ -91,7 +94,7 @@ export function Navbar() {
               <div className="flex flex-col gap-4 mt-8">
                 <a
                   href="tel:+16041234567"
-                  className="w-full bg-secondary text-white py-3 rounded-lg text-sm font-bold hover:bg-secondary/90 transition flex items-center justify-center gap-2"
+                  className="w-full bg-secondary text-secondary-foreground py-3 rounded-lg text-sm font-bold hover:bg-secondary/90 transition flex items-center justify-center gap-2"
                   onClick={() => setIsMenuOpen(false)}
                   data-testid="link-phone-menu"
                 >
@@ -100,7 +103,7 @@ export function Navbar() {
                 </a>
                 <Link href="/">
                   <button
-                    className="w-full bg-white border-2 border-slate-200 text-slate-700 py-3 rounded-lg text-sm font-bold hover:border-primary hover:text-primary transition"
+                    className="w-full bg-background border-2 border-border text-foreground py-3 rounded-lg text-sm font-bold hover:border-primary hover:text-primary transition"
                     onClick={() => setIsMenuOpen(false)}
                     data-testid="link-inventory-menu"
                   >
@@ -109,7 +112,7 @@ export function Navbar() {
                 </Link>
                 <Link href="/login">
                   <button
-                    className="w-full bg-slate-800 text-white py-3 rounded-lg text-sm font-bold hover:bg-slate-700 transition"
+                    className="w-full bg-primary text-primary-foreground py-3 rounded-lg text-sm font-bold hover:bg-primary/90 transition"
                     onClick={() => setIsMenuOpen(false)}
                     data-testid="link-admin-menu-mobile"
                   >

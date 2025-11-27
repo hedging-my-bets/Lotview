@@ -70,7 +70,7 @@ export function VehicleCard({ car }: VehicleCardProps) {
 
   return (
     <Link href={`/vehicle/${car.id}`}>
-      <div className="group bg-card rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 cursor-pointer h-full flex flex-col">
+      <div className="group bg-card rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-border cursor-pointer h-full flex flex-col">
         {/* Image Container with Carousel */}
         <div className="relative aspect-[4/3] overflow-hidden">
           <img 
@@ -89,14 +89,14 @@ export function VehicleCard({ car }: VehicleCardProps) {
                 className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white p-1.5 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
                 data-testid={`button-prev-image-${car.id}`}
               >
-                <ChevronLeft className="w-4 h-4 text-slate-700" />
+                <ChevronLeft className="w-4 h-4 text-foreground" />
               </button>
               <button
                 onClick={nextImage}
                 className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white p-1.5 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
                 data-testid={`button-next-image-${car.id}`}
               >
-                <ChevronRight className="w-4 h-4 text-slate-700" />
+                <ChevronRight className="w-4 h-4 text-foreground" />
               </button>
               
               {/* Image Indicators */}
@@ -194,13 +194,13 @@ export function VehicleCard({ car }: VehicleCardProps) {
         {/* Content */}
         <div className="p-4 flex-1 flex flex-col">
           <div className="mb-3">
-            <h3 className="text-lg font-bold text-slate-900 leading-tight">
+            <h3 className="text-lg font-bold text-foreground leading-tight">
               {car.year} {car.make} {car.model}
             </h3>
-            <p className="text-xs text-slate-500 font-medium mt-1">{car.trim}</p>
+            <p className="text-xs text-muted-foreground font-medium mt-1">{car.trim}</p>
           </div>
 
-          <div className="mt-auto pt-3 border-t border-slate-100 flex justify-between items-center text-xs text-slate-500 font-medium">
+          <div className="mt-auto pt-3 border-t border-border flex justify-between items-center text-xs text-muted-foreground font-medium">
             <div className="flex items-center gap-1">
               <Info className="w-3 h-3" />
               {car.odometer.toLocaleString()} km

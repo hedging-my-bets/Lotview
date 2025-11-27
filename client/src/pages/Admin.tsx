@@ -97,7 +97,7 @@ export default function Admin() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-screen bg-background">
         <Navbar />
         <div className="min-h-[calc(100vh-80px)] flex items-center justify-center p-4 pt-28">
           <Card className="w-full max-w-md">
@@ -139,14 +139,14 @@ export default function Admin() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-background">
       <Navbar />
       <div className="pt-28 pb-12 px-4">
         <div className="max-w-7xl mx-auto">
           <div className="mb-8 flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-slate-900 mb-2">Admin Dashboard</h1>
-              <p className="text-slate-600">Manage chat conversations and AI settings</p>
+              <h1 className="text-3xl font-bold text-foreground mb-2">Admin Dashboard</h1>
+              <p className="text-muted-foreground">Manage chat conversations and AI settings</p>
             </div>
             <Button onClick={handleLogout} variant="outline" data-testid="button-logout">
               <LogOut className="w-4 h-4 mr-2" />
@@ -332,7 +332,7 @@ function ConversationsTab() {
     return (
       <Card>
         <CardContent className="text-center py-12">
-          <div className="text-slate-500">Loading conversations...</div>
+          <div className="text-muted-foreground">Loading conversations...</div>
         </CardContent>
       </Card>
     );
@@ -361,16 +361,16 @@ function ConversationsTab() {
                   <button
                     key={cat.value}
                     onClick={() => setSelectedCategory(cat.value)}
-                    className={`px-4 py-3 text-left transition border-l-2 hover:bg-slate-50 ${
+                    className={`px-4 py-3 text-left transition border-l-2 hover:bg-muted ${
                       selectedCategory === cat.value
-                        ? 'bg-slate-50 border-primary text-primary font-medium'
-                        : 'border-transparent text-slate-600'
+                        ? 'bg-muted border-primary text-primary font-medium'
+                        : 'border-transparent text-muted-foreground'
                     }`}
                     data-testid={`button-category-${cat.value}`}
                   >
                     <div className="flex justify-between items-center">
                       <span className="text-sm">{cat.label}</span>
-                      <span className="text-xs bg-slate-200 px-2 py-1 rounded">{cat.count}</span>
+                      <span className="text-xs bg-muted px-2 py-1 rounded">{cat.count}</span>
                     </div>
                   </button>
                 ))}
@@ -378,7 +378,7 @@ function ConversationsTab() {
             </div>
             <div className="max-h-[500px] overflow-y-auto">
               {filteredConversations.length === 0 ? (
-                <div className="text-center py-8 text-slate-400 text-sm" data-testid="text-no-conversations">
+                <div className="text-center py-8 text-muted-foreground text-sm" data-testid="text-no-conversations">
                   No conversations found
                 </div>
               ) : (
@@ -386,18 +386,18 @@ function ConversationsTab() {
                   <button
                     key={conv.id}
                     onClick={() => setSelectedConversation(conv)}
-                    className={`w-full px-4 py-3 text-left border-b hover:bg-slate-50 transition ${
+                    className={`w-full px-4 py-3 text-left border-b hover:bg-muted transition ${
                       selectedConversation?.id === conv.id ? 'bg-blue-50' : ''
                     }`}
                     data-testid={`button-conversation-${conv.id}`}
                   >
-                    <div className="font-medium text-sm text-slate-900 mb-1">
+                    <div className="font-medium text-sm text-foreground mb-1">
                       {conv.vehicleName || 'General Chat'}
                     </div>
-                    <div className="text-xs text-slate-500 mb-1">
+                    <div className="text-xs text-muted-foreground mb-1">
                       {new Date(conv.createdAt).toLocaleDateString()} at {new Date(conv.createdAt).toLocaleTimeString()}
                     </div>
-                    <div className="text-xs text-slate-400">
+                    <div className="text-xs text-muted-foreground">
                       {conv.messages?.length || 0} messages
                     </div>
                   </button>
@@ -421,29 +421,29 @@ function ConversationsTab() {
           </CardHeader>
           <CardContent>
             {!selectedConversation ? (
-              <div className="text-center py-12 text-slate-400" data-testid="text-select-conversation">
+              <div className="text-center py-12 text-muted-foreground" data-testid="text-select-conversation">
                 Select a conversation from the list to view details
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="bg-slate-50 p-4 rounded-lg space-y-2 text-sm">
+                <div className="bg-muted p-4 rounded-lg space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-slate-500">Category:</span>
+                    <span className="text-muted-foreground">Category:</span>
                     <span className="font-medium capitalize">{selectedConversation.category}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">Vehicle:</span>
+                    <span className="text-muted-foreground">Vehicle:</span>
                     <span className="font-medium">{selectedConversation.vehicleName || 'N/A'}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">Date:</span>
+                    <span className="text-muted-foreground">Date:</span>
                     <span className="font-medium">
                       {new Date(selectedConversation.createdAt).toLocaleDateString()} at{' '}
                       {new Date(selectedConversation.createdAt).toLocaleTimeString()}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">Session ID:</span>
+                    <span className="text-muted-foreground">Session ID:</span>
                     <span className="font-mono text-xs">{selectedConversation.sessionId}</span>
                   </div>
                 </div>
@@ -458,7 +458,7 @@ function ConversationsTab() {
                         className={`max-w-[80%] p-3 rounded-xl text-sm ${
                           msg.role === 'user'
                             ? 'bg-primary text-white rounded-br-none'
-                            : 'bg-slate-100 text-slate-700 rounded-tl-none'
+                            : 'bg-muted text-foreground rounded-tl-none'
                         }`}
                         data-testid={`message-${idx}`}
                       >
@@ -600,7 +600,7 @@ function PromptsTab() {
     return (
       <Card>
         <CardContent className="text-center py-12">
-          <div className="text-slate-500">Loading prompts...</div>
+          <div className="text-muted-foreground">Loading prompts...</div>
         </CardContent>
       </Card>
     );
@@ -620,15 +620,15 @@ function PromptsTab() {
                 <button
                   key={scenario.value}
                   onClick={() => setSelectedScenario(scenario.value)}
-                  className={`px-4 py-3 text-left transition border-l-2 hover:bg-slate-50 ${
+                  className={`px-4 py-3 text-left transition border-l-2 hover:bg-muted ${
                     selectedScenario === scenario.value
-                      ? 'bg-slate-50 border-primary text-primary font-medium'
-                      : 'border-transparent text-slate-600'
+                      ? 'bg-muted border-primary text-primary font-medium'
+                      : 'border-transparent text-muted-foreground'
                   }`}
                   data-testid={`button-scenario-${scenario.value}`}
                 >
                   <div className="text-sm font-medium mb-1">{scenario.label}</div>
-                  <div className="text-xs text-slate-400">{scenario.description}</div>
+                  <div className="text-xs text-muted-foreground">{scenario.description}</div>
                 </button>
               ))}
             </div>
@@ -647,30 +647,30 @@ function PromptsTab() {
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700">System Prompt</label>
-              <p className="text-xs text-slate-500 mb-2">
+              <label className="text-sm font-medium text-foreground">System Prompt</label>
+              <p className="text-xs text-muted-foreground mb-2">
                 Instructions for how the AI should behave in this scenario
               </p>
               <textarea
                 value={systemPrompt}
                 onChange={(e) => setSystemPrompt(e.target.value)}
                 rows={6}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 placeholder="Enter system prompt..."
                 data-testid="textarea-system-prompt"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700">Initial Greeting</label>
-              <p className="text-xs text-slate-500 mb-2">
+              <label className="text-sm font-medium text-foreground">Initial Greeting</label>
+              <p className="text-xs text-muted-foreground mb-2">
                 The first message customers see when they trigger this scenario
               </p>
               <textarea
                 value={greeting}
                 onChange={(e) => setGreeting(e.target.value)}
                 rows={3}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 placeholder="Enter initial greeting..."
                 data-testid="textarea-greeting"
               />
@@ -761,10 +761,10 @@ function InsightsTab() {
                 <button
                   key={scenario.value}
                   onClick={() => setSelectedScenario(scenario.value)}
-                  className={`px-4 py-3 text-left transition border-l-2 hover:bg-slate-50 ${
+                  className={`px-4 py-3 text-left transition border-l-2 hover:bg-muted ${
                     selectedScenario === scenario.value
-                      ? 'bg-slate-50 border-primary text-primary font-medium'
-                      : 'border-transparent text-slate-600'
+                      ? 'bg-muted border-primary text-primary font-medium'
+                      : 'border-transparent text-muted-foreground'
                   }`}
                   data-testid={`button-insight-scenario-${scenario.value}`}
                 >
@@ -807,21 +807,21 @@ function InsightsTab() {
           <CardContent>
             {!insights && !isLoading ? (
               <div className="text-center py-12">
-                <Sparkles className="w-12 h-12 mx-auto text-slate-300 mb-4" />
-                <p className="text-slate-500 mb-2">Ready to analyze conversations</p>
-                <p className="text-sm text-slate-400" data-testid="text-no-insights">
+                <Sparkles className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                <p className="text-muted-foreground mb-2">Ready to analyze conversations</p>
+                <p className="text-sm text-muted-foreground" data-testid="text-no-insights">
                   Click "Generate Insights" to get AI-powered recommendations
                 </p>
               </div>
             ) : isLoading ? (
               <div className="text-center py-12">
                 <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                <p className="text-slate-500">Analyzing conversations with AI...</p>
+                <p className="text-muted-foreground">Analyzing conversations with AI...</p>
               </div>
             ) : (
               <div className="prose prose-sm max-w-none">
                 <div 
-                  className="bg-slate-50 p-6 rounded-lg whitespace-pre-wrap text-sm leading-relaxed"
+                  className="bg-muted p-6 rounded-lg whitespace-pre-wrap text-sm leading-relaxed"
                   data-testid="text-insights-content"
                 >
                   {insights}
@@ -917,7 +917,7 @@ function SMSConfigTab() {
       <Card>
         <CardContent className="py-12 text-center">
           <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-slate-500">Loading configuration...</p>
+          <p className="text-muted-foreground">Loading configuration...</p>
         </CardContent>
       </Card>
     );
@@ -945,7 +945,7 @@ function SMSConfigTab() {
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
+            <label className="block text-sm font-medium text-foreground mb-2">
               Webhook Name
             </label>
             <Input
@@ -955,13 +955,13 @@ function SMSConfigTab() {
               onChange={(e) => setWebhookName(e.target.value)}
               data-testid="input-webhook-name"
             />
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               Descriptive name for this webhook configuration
             </p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
+            <label className="block text-sm font-medium text-foreground mb-2">
               GoHighLevel Inbound Webhook URL
             </label>
             <Input
@@ -971,14 +971,14 @@ function SMSConfigTab() {
               onChange={(e) => setWebhookUrl(e.target.value)}
               data-testid="input-webhook-url"
             />
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               Create an inbound webhook in GHL and paste the URL here
             </p>
           </div>
         </div>
 
-        <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
-          <h4 className="font-semibold text-slate-700 mb-2">Webhook Payload Format</h4>
+        <div className="bg-muted border border-border rounded-lg p-4">
+          <h4 className="font-semibold text-foreground mb-2">Webhook Payload Format</h4>
           <pre className="text-xs bg-white p-3 rounded border overflow-x-auto">
 {`{
   "phone": "(555) 123-4567",

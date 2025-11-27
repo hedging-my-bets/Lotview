@@ -47,7 +47,7 @@ export default function Inventory() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-background">
       <Navbar />
       <StickyPaymentBar />
       
@@ -60,8 +60,8 @@ export default function Inventory() {
           
           <main className="flex-1">
             <div className="mb-6 flex justify-between items-end">
-              <h2 className="text-2xl font-bold text-slate-900">
-                Inventory <span className="text-slate-400 font-normal text-lg ml-2">{filteredInventory.length} Vehicles</span>
+              <h2 className="text-2xl font-bold text-foreground">
+                Inventory <span className="text-muted-foreground font-normal text-lg ml-2">{filteredInventory.length} Vehicles</span>
               </h2>
               <button 
                 onClick={handleRefresh}
@@ -78,7 +78,7 @@ export default function Inventory() {
                 <Loader2 className="w-8 h-8 animate-spin text-primary" />
               </div>
             ) : filteredInventory.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+              <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
                 <p>No vehicles match your criteria.</p>
                 <button onClick={() => setFilters({ type: 'all', priceMax: 100000, location: 'all', dealership: 'all', search: '' })} className="text-primary font-bold mt-2 hover:underline">Clear Filters</button>
               </div>
@@ -96,7 +96,7 @@ export default function Inventory() {
         <div className="mt-12 flex justify-center">
           <button 
             onClick={handleLogin}
-            className="glass-panel px-6 py-3 rounded-xl font-bold text-slate-600 hover:text-primary hover:border-primary transition flex items-center gap-2 border-2 border-slate-200"
+            className="glass-panel px-6 py-3 rounded-xl font-bold text-muted-foreground hover:text-primary hover:border-primary transition flex items-center gap-2 border-2 border-border"
           >
             <LogIn className="w-4 h-4" />
             Sales Team Login
@@ -105,7 +105,7 @@ export default function Inventory() {
       </div>
 
       {/* Mobile Filter Button - Sticky Bottom Bar */}
-      <div className="lg:hidden fixed bottom-16 md:bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 shadow-lg">
+      <div className="lg:hidden fixed bottom-16 md:bottom-0 left-0 right-0 z-30 bg-card border-t border-border shadow-lg">
         <div className="max-w-7xl mx-auto px-4 py-3 flex gap-3">
           <Sheet open={isFilterOpen} onOpenChange={setIsFilterOpen}>
             <SheetTrigger asChild>

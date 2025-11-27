@@ -827,24 +827,24 @@ export default function Dashboard() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-slate-500">Loading dashboard...</p>
+          <p className="text-muted-foreground">Loading dashboard...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-background">
       <Navbar />
       <div className="pt-28 pb-12 px-4">
         <div className="max-w-7xl mx-auto">
           <div className="mb-8 flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-slate-900 mb-2">Master Dashboard</h1>
-              <p className="text-slate-600">Welcome back, {user?.name}</p>
+              <h1 className="text-3xl font-bold text-foreground mb-2">Master Dashboard</h1>
+              <p className="text-muted-foreground">Welcome back, {user?.name}</p>
             </div>
             <div className="flex gap-2">
               {user?.role === 'super_admin' && (
@@ -978,7 +978,7 @@ export default function Dashboard() {
                 <CardContent>
                   <div className="space-y-4">
                     {users.length === 0 ? (
-                      <div className="text-center py-12 text-slate-500">
+                      <div className="text-center py-12 text-muted-foreground">
                         No users found. Create your first user to get started.
                       </div>
                     ) : (
@@ -986,14 +986,14 @@ export default function Dashboard() {
                         {users.map((u) => (
                           <div
                             key={u.id}
-                            className="flex items-center justify-between p-4 border rounded-lg hover:bg-slate-50"
+                            className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted"
                             data-testid={`user-row-${u.id}`}
                           >
                             <div className="flex-1">
-                              <div className="font-semibold text-slate-900">{u.name}</div>
-                              <div className="text-sm text-slate-600">{u.email}</div>
+                              <div className="font-semibold text-foreground">{u.name}</div>
+                              <div className="text-sm text-muted-foreground">{u.email}</div>
                               <div className="flex items-center gap-2 mt-1">
-                                <span className="text-xs bg-slate-100 text-slate-700 px-2 py-1 rounded">
+                                <span className="text-xs bg-muted text-foreground px-2 py-1 rounded">
                                   {u.role.charAt(0).toUpperCase() + u.role.slice(1)}
                                 </span>
                                 <span className={`text-xs px-2 py-1 rounded ${u.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
@@ -1114,19 +1114,19 @@ export default function Dashboard() {
                   <CardContent>
                     <div className="space-y-2">
                       {creditTiers.length === 0 ? (
-                        <div className="text-center py-8 text-slate-500">
+                        <div className="text-center py-8 text-muted-foreground">
                           No credit tiers configured. Add your first tier to get started.
                         </div>
                       ) : (
                         creditTiers.map((tier) => (
                           <div
                             key={tier.id}
-                            className="flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50"
+                            className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted"
                             data-testid={`credit-tier-${tier.id}`}
                           >
                             <div className="flex-1">
-                              <div className="font-semibold text-slate-900">{tier.tierName}</div>
-                              <div className="text-sm text-slate-600">
+                              <div className="font-semibold text-foreground">{tier.tierName}</div>
+                              <div className="text-sm text-muted-foreground">
                                 {tier.minScore} - {tier.maxScore}
                               </div>
                             </div>
@@ -1255,21 +1255,21 @@ export default function Dashboard() {
                   <CardContent>
                     <div className="space-y-2">
                       {modelYearTerms.length === 0 ? (
-                        <div className="text-center py-8 text-slate-500">
+                        <div className="text-center py-8 text-muted-foreground">
                           No term rules configured. Add your first rule to get started.
                         </div>
                       ) : (
                         modelYearTerms.map((term) => (
                           <div
                             key={term.id}
-                            className="flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50"
+                            className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted"
                             data-testid={`model-year-term-${term.id}`}
                           >
                             <div className="flex-1">
-                              <div className="font-semibold text-slate-900">
+                              <div className="font-semibold text-foreground">
                                 {term.minModelYear} - {term.maxModelYear}
                               </div>
-                              <div className="text-sm text-slate-600">
+                              <div className="text-sm text-muted-foreground">
                                 Terms: {term.availableTerms.join(", ")} months
                               </div>
                             </div>
@@ -1355,7 +1355,7 @@ export default function Dashboard() {
                                   type="button"
                                   onClick={() => setBudgetPriority(priority)}
                                   className={`p-2 rounded transition-colors ${
-                                    budgetPriority >= priority ? 'text-yellow-500' : 'text-slate-300'
+                                    budgetPriority >= priority ? 'text-yellow-500' : 'text-muted-foreground'
                                   }`}
                                   data-testid={`button-priority-${priority}`}
                                 >
@@ -1363,7 +1363,7 @@ export default function Dashboard() {
                                 </button>
                               ))}
                             </div>
-                            <p className="text-xs text-slate-500 mt-2">
+                            <p className="text-xs text-muted-foreground mt-2">
                               {budgetPriority === 5 && "Highest priority - Maximum ad spend"}
                               {budgetPriority === 4 && "High priority - Above average spend"}
                               {budgetPriority === 3 && "Medium priority - Average spend"}
@@ -1381,8 +1381,8 @@ export default function Dashboard() {
                 </CardHeader>
                 <CardContent>
                   {remarketingVehicles.length === 0 ? (
-                    <div className="text-center py-12 text-slate-500">
-                      <Target className="w-12 h-12 mx-auto mb-4 text-slate-300" />
+                    <div className="text-center py-12 text-muted-foreground">
+                      <Target className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
                       <h3 className="text-lg font-medium mb-2">No Vehicles Selected</h3>
                       <p className="text-sm mb-4">
                         Add vehicles to your remarketing campaign (up to 20)
@@ -1400,7 +1400,7 @@ export default function Dashboard() {
                               <div className="font-medium">
                                 {vehicle.year} {vehicle.make} {vehicle.model}
                               </div>
-                              <div className="text-sm text-slate-500">
+                              <div className="text-sm text-muted-foreground">
                                 ${vehicle.price.toLocaleString()} • Stock #{vehicle.stockNumber || 'N/A'}
                               </div>
                             </div>
@@ -1411,7 +1411,7 @@ export default function Dashboard() {
                                     key={priority}
                                     onClick={() => updateRemarketingPriority(rv.id, priority)}
                                     className={`p-1 rounded transition-colors ${
-                                      rv.budgetPriority >= priority ? 'text-yellow-500' : 'text-slate-300'
+                                      rv.budgetPriority >= priority ? 'text-yellow-500' : 'text-muted-foreground'
                                     }`}
                                     data-testid={`button-update-priority-${rv.id}-${priority}`}
                                   >
@@ -1522,7 +1522,7 @@ export default function Dashboard() {
                                     placeholder={`${window.location.origin}/api/pbs/webhook`}
                                     data-testid="input-webhook-url"
                                   />
-                                  <p className="text-xs text-slate-500 mt-1">
+                                  <p className="text-xs text-muted-foreground mt-1">
                                     Register this URL in your PBS Partner Hub dashboard
                                   </p>
                                 </div>
@@ -1550,21 +1550,21 @@ export default function Dashboard() {
                   <CardContent>
                     {pbsConfig ? (
                       <div className="space-y-3">
-                        <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-lg">
+                        <div className="grid grid-cols-2 gap-4 p-4 bg-muted rounded-lg">
                           <div>
-                            <div className="text-sm font-medium text-slate-600">Partner ID</div>
+                            <div className="text-sm font-medium text-muted-foreground">Partner ID</div>
                             <div className="text-sm">{pbsConfig.partnerId}</div>
                           </div>
                           <div>
-                            <div className="text-sm font-medium text-slate-600">Username</div>
+                            <div className="text-sm font-medium text-muted-foreground">Username</div>
                             <div className="text-sm">{pbsConfig.username}</div>
                           </div>
                           <div>
-                            <div className="text-sm font-medium text-slate-600">API URL</div>
+                            <div className="text-sm font-medium text-muted-foreground">API URL</div>
                             <div className="text-sm">{pbsConfig.pbsApiUrl}</div>
                           </div>
                           <div>
-                            <div className="text-sm font-medium text-slate-600">Webhook URL</div>
+                            <div className="text-sm font-medium text-muted-foreground">Webhook URL</div>
                             <div className="text-sm truncate">{pbsConfig.webhookUrl || 'Not configured'}</div>
                           </div>
                         </div>
@@ -1574,10 +1574,10 @@ export default function Dashboard() {
                         </div>
                       </div>
                     ) : (
-                      <div className="text-center py-8 text-slate-500">
-                        <Webhook className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Webhook className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
                         <p className="mb-2">No PBS configuration found</p>
-                        <p className="text-sm text-slate-400">Click Configure PBS to get started</p>
+                        <p className="text-sm text-muted-foreground">Click Configure PBS to get started</p>
                       </div>
                     )}
                   </CardContent>
@@ -1607,10 +1607,10 @@ export default function Dashboard() {
                   </CardHeader>
                   <CardContent>
                     {webhookEvents.length === 0 ? (
-                      <div className="text-center py-8 text-slate-500">
-                        <MessageSquare className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                      <div className="text-center py-8 text-muted-foreground">
+                        <MessageSquare className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
                         <p className="mb-2">No webhook events received yet</p>
-                        <p className="text-sm text-slate-400">
+                        <p className="text-sm text-muted-foreground">
                           Events will appear here when PBS sends webhooks
                         </p>
                       </div>
@@ -1619,7 +1619,7 @@ export default function Dashboard() {
                         {webhookEvents.map((event) => (
                           <div
                             key={event.id}
-                            className="p-3 border rounded-lg hover:bg-slate-50"
+                            className="p-3 border rounded-lg hover:bg-muted"
                             data-testid={`webhook-event-${event.id}`}
                           >
                             <div className="flex items-start justify-between">
@@ -1638,7 +1638,7 @@ export default function Dashboard() {
                                     {event.status}
                                   </span>
                                 </div>
-                                <div className="text-xs text-slate-500 mt-1">
+                                <div className="text-xs text-muted-foreground mt-1">
                                   Event ID: {event.eventId} • Received: {new Date(event.receivedAt).toLocaleString()}
                                 </div>
                                 {event.errorMessage && (
@@ -1675,15 +1675,15 @@ export default function Dashboard() {
                         return (
                           <div
                             key={scenario.value}
-                            className={`flex items-center justify-between p-4 border rounded-lg hover:bg-slate-50 cursor-pointer transition-colors ${
+                            className={`flex items-center justify-between p-4 border rounded-lg hover:bg-muted cursor-pointer transition-colors ${
                               selectedScenario === scenario.value ? 'border-primary bg-primary/5' : ''
                             }`}
                             onClick={() => handleSelectScenario(scenario.value)}
                             data-testid={`scenario-${scenario.value}`}
                           >
                             <div className="flex-1">
-                              <div className="font-semibold text-slate-900">{scenario.label}</div>
-                              <div className="text-sm text-slate-600">{scenario.value}</div>
+                              <div className="font-semibold text-foreground">{scenario.label}</div>
+                              <div className="text-sm text-muted-foreground">{scenario.value}</div>
                             </div>
                             <div className="flex items-center gap-2">
                               {isConfigured && (
@@ -1727,7 +1727,7 @@ export default function Dashboard() {
                             id="scenario"
                             value={scenarios.find(s => s.value === editingPrompt.scenario)?.label || editingPrompt.scenario}
                             disabled
-                            className="bg-slate-100"
+                            className="bg-muted"
                             data-testid="input-scenario"
                           />
                         </div>
@@ -1743,7 +1743,7 @@ export default function Dashboard() {
                             required
                             data-testid="textarea-system-prompt"
                           />
-                          <p className="text-xs text-slate-500 mt-1">
+                          <p className="text-xs text-muted-foreground mt-1">
                             This defines how the AI should behave and respond for this scenario
                           </p>
                         </div>
@@ -1759,7 +1759,7 @@ export default function Dashboard() {
                             required
                             data-testid="textarea-greeting"
                           />
-                          <p className="text-xs text-slate-500 mt-1">
+                          <p className="text-xs text-muted-foreground mt-1">
                             The first message users see when starting this conversation
                           </p>
                         </div>
@@ -1769,8 +1769,8 @@ export default function Dashboard() {
                         </Button>
                       </form>
                     ) : (
-                      <div className="py-12 text-center text-slate-500">
-                        <MessageSquare className="w-12 h-12 mx-auto mb-4 text-slate-400" />
+                      <div className="py-12 text-center text-muted-foreground">
+                        <MessageSquare className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
                         <p>Select a scenario to configure its chat prompt</p>
                       </div>
                     )}
@@ -1788,9 +1788,9 @@ export default function Dashboard() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="py-12 text-center">
-                  <MessageSquare className="w-12 h-12 mx-auto mb-4 text-slate-400" />
-                  <p className="text-slate-500 mb-4">Chatbot conversation monitoring coming soon</p>
-                  <p className="text-sm text-slate-400">
+                  <MessageSquare className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                  <p className="text-muted-foreground mb-4">Chatbot conversation monitoring coming soon</p>
+                  <p className="text-sm text-muted-foreground">
                     Track customer interactions with SMS handoff to GoHighLevel
                   </p>
                 </CardContent>
@@ -1806,9 +1806,9 @@ export default function Dashboard() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="py-12 text-center">
-                  <Sparkles className="w-12 h-12 mx-auto mb-4 text-slate-400" />
-                  <p className="text-slate-500 mb-4">AI-powered analytics coming soon</p>
-                  <p className="text-sm text-slate-400">
+                  <Sparkles className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                  <p className="text-muted-foreground mb-4">AI-powered analytics coming soon</p>
+                  <p className="text-sm text-muted-foreground">
                     Analyze conversation sentiment, customer intent, and conversion patterns
                   </p>
                 </CardContent>

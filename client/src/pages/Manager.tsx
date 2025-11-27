@@ -646,24 +646,24 @@ export default function Manager() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-slate-500">Loading...</p>
+          <p className="text-muted-foreground">Loading...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-background">
       <Navbar />
       <div className="pt-28 pb-12 px-4">
         <div className="max-w-7xl mx-auto">
           <div className="mb-8 flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-slate-900 mb-2">Sales Manager Dashboard</h1>
-              <p className="text-slate-600">Welcome back, {user?.name}</p>
+              <h1 className="text-3xl font-bold text-foreground mb-2">Sales Manager Dashboard</h1>
+              <p className="text-muted-foreground">Welcome back, {user?.name}</p>
             </div>
             <Button onClick={handleLogout} variant="outline" data-testid="button-logout">
               <LogOut className="w-4 h-4 mr-2" />
@@ -681,8 +681,8 @@ export default function Manager() {
               <CardContent>
                 {isLoadingMetrics ? (
                   <div className="space-y-2">
-                    <div className="h-8 w-20 bg-slate-200 rounded animate-pulse" />
-                    <div className="h-3 w-32 bg-slate-200 rounded animate-pulse" />
+                    <div className="h-8 w-20 bg-muted rounded animate-pulse" />
+                    <div className="h-3 w-32 bg-muted rounded animate-pulse" />
                   </div>
                 ) : (
                   <>
@@ -701,8 +701,8 @@ export default function Manager() {
               <CardContent>
                 {isLoadingMetrics ? (
                   <div className="space-y-2">
-                    <div className="h-8 w-20 bg-slate-200 rounded animate-pulse" />
-                    <div className="h-3 w-32 bg-slate-200 rounded animate-pulse" />
+                    <div className="h-8 w-20 bg-muted rounded animate-pulse" />
+                    <div className="h-3 w-32 bg-muted rounded animate-pulse" />
                   </div>
                 ) : (
                   <>
@@ -721,8 +721,8 @@ export default function Manager() {
               <CardContent>
                 {isLoadingMetrics ? (
                   <div className="space-y-2">
-                    <div className="h-8 w-20 bg-slate-200 rounded animate-pulse" />
-                    <div className="h-3 w-32 bg-slate-200 rounded animate-pulse" />
+                    <div className="h-8 w-20 bg-muted rounded animate-pulse" />
+                    <div className="h-3 w-32 bg-muted rounded animate-pulse" />
                   </div>
                 ) : (
                   <>
@@ -741,8 +741,8 @@ export default function Manager() {
               <CardContent>
                 {isLoadingMetrics ? (
                   <div className="space-y-2">
-                    <div className="h-8 w-20 bg-slate-200 rounded animate-pulse" />
-                    <div className="h-3 w-32 bg-slate-200 rounded animate-pulse" />
+                    <div className="h-8 w-20 bg-muted rounded animate-pulse" />
+                    <div className="h-3 w-32 bg-muted rounded animate-pulse" />
                   </div>
                 ) : (
                   <>
@@ -768,9 +768,9 @@ export default function Manager() {
             <CardContent>
               {isLoadingPrompts ? (
                 <div className="space-y-2">
-                  <div className="h-12 bg-slate-200 rounded animate-pulse" />
-                  <div className="h-12 bg-slate-200 rounded animate-pulse" />
-                  <div className="h-12 bg-slate-200 rounded animate-pulse" />
+                  <div className="h-12 bg-muted rounded animate-pulse" />
+                  <div className="h-12 bg-muted rounded animate-pulse" />
+                  <div className="h-12 bg-muted rounded animate-pulse" />
                 </div>
               ) : chatPrompts.length > 0 ? (
                 <Accordion type="single" collapsible>
@@ -784,7 +784,7 @@ export default function Manager() {
                         {formatScenario(prompt.scenario)}
                       </AccordionTrigger>
                       <AccordionContent>
-                        <div className="text-sm text-slate-600 whitespace-pre-wrap">
+                        <div className="text-sm text-muted-foreground whitespace-pre-wrap">
                           {prompt.greeting}
                         </div>
                       </AccordionContent>
@@ -792,8 +792,8 @@ export default function Manager() {
                   ))}
                 </Accordion>
               ) : (
-                <div className="text-center py-8 text-slate-500">
-                  <MessageSquare className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                <div className="text-center py-8 text-muted-foreground">
+                  <MessageSquare className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
                   <p className="text-sm">No chat prompts configured yet</p>
                 </div>
               )}
@@ -836,7 +836,7 @@ export default function Manager() {
                       data-testid="input-postal-code"
                       className="mt-2"
                     />
-                    <p className="text-xs text-slate-500 mt-1">
+                    <p className="text-xs text-muted-foreground mt-1">
                       Used for geocoding and radius-based market searches
                     </p>
                   </div>
@@ -850,7 +850,7 @@ export default function Manager() {
                       data-testid="input-default-radius"
                       className="mt-2"
                     />
-                    <p className="text-xs text-slate-500 mt-1">
+                    <p className="text-xs text-muted-foreground mt-1">
                       Default radius for searching nearby listings
                     </p>
                   </div>
@@ -915,7 +915,7 @@ export default function Manager() {
                         )}
                       </Button>
                     </div>
-                    <p className="text-xs text-slate-500 mt-1">
+                    <p className="text-xs text-muted-foreground mt-1">
                       Enter a valid 17-character VIN to decode and auto-populate market analysis
                     </p>
                   </div>
@@ -925,62 +925,62 @@ export default function Manager() {
                 {vinResults && (
                   <div className="border-t pt-6" data-testid="vin-results">
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-                      <h3 className="text-xl font-bold text-slate-900 mb-4">
+                      <h3 className="text-xl font-bold text-foreground mb-4">
                         {vinResults.year} {vinResults.make} {vinResults.model}
                         {vinResults.trim && ` ${vinResults.trim}`}
                       </h3>
                       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                         {vinResults.year && (
                           <div data-testid="result-year">
-                            <div className="text-xs text-slate-500 font-medium">Year</div>
+                            <div className="text-xs text-muted-foreground font-medium">Year</div>
                             <div className="text-sm font-semibold">{vinResults.year}</div>
                           </div>
                         )}
                         {vinResults.make && (
                           <div data-testid="result-make">
-                            <div className="text-xs text-slate-500 font-medium">Make</div>
+                            <div className="text-xs text-muted-foreground font-medium">Make</div>
                             <div className="text-sm font-semibold">{vinResults.make}</div>
                           </div>
                         )}
                         {vinResults.model && (
                           <div data-testid="result-model">
-                            <div className="text-xs text-slate-500 font-medium">Model</div>
+                            <div className="text-xs text-muted-foreground font-medium">Model</div>
                             <div className="text-sm font-semibold">{vinResults.model}</div>
                           </div>
                         )}
                         {vinResults.trim && (
                           <div data-testid="result-trim">
-                            <div className="text-xs text-slate-500 font-medium">Trim</div>
+                            <div className="text-xs text-muted-foreground font-medium">Trim</div>
                             <div className="text-sm font-semibold">{vinResults.trim}</div>
                           </div>
                         )}
                         {vinResults.bodyClass && (
                           <div data-testid="result-body-class">
-                            <div className="text-xs text-slate-500 font-medium">Body Class</div>
+                            <div className="text-xs text-muted-foreground font-medium">Body Class</div>
                             <div className="text-sm font-semibold">{vinResults.bodyClass}</div>
                           </div>
                         )}
                         {vinResults.vehicleType && (
                           <div data-testid="result-vehicle-type">
-                            <div className="text-xs text-slate-500 font-medium">Vehicle Type</div>
+                            <div className="text-xs text-muted-foreground font-medium">Vehicle Type</div>
                             <div className="text-sm font-semibold">{vinResults.vehicleType}</div>
                           </div>
                         )}
                         {vinResults.fuelType && (
                           <div data-testid="result-fuel-type">
-                            <div className="text-xs text-slate-500 font-medium">Fuel Type</div>
+                            <div className="text-xs text-muted-foreground font-medium">Fuel Type</div>
                             <div className="text-sm font-semibold">{vinResults.fuelType}</div>
                           </div>
                         )}
                         {vinResults.transmission && (
                           <div data-testid="result-transmission">
-                            <div className="text-xs text-slate-500 font-medium">Transmission</div>
+                            <div className="text-xs text-muted-foreground font-medium">Transmission</div>
                             <div className="text-sm font-semibold">{vinResults.transmission}</div>
                           </div>
                         )}
                         {vinResults.driveType && (
                           <div data-testid="result-drive-type">
-                            <div className="text-xs text-slate-500 font-medium">Drive Type</div>
+                            <div className="text-xs text-muted-foreground font-medium">Drive Type</div>
                             <div className="text-sm font-semibold">{vinResults.driveType}</div>
                           </div>
                         )}
@@ -992,7 +992,7 @@ export default function Manager() {
                 {/* Market Pricing Section */}
                 <div className="border-t pt-6">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-slate-900">Market Pricing Analysis</h3>
+                    <h3 className="text-lg font-semibold text-foreground">Market Pricing Analysis</h3>
                     <Button
                       onClick={handleRefreshMarketData}
                       disabled={isScraping || !pricingForm.make || !pricingForm.model}
@@ -1331,30 +1331,30 @@ export default function Manager() {
                     <div className="space-y-6">
                       {/* Data Source Info */}
                       {pricingResults.meta && (
-                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                        <div className="bg-muted border border-border rounded-lg p-4">
                           <div className="space-y-3">
                             {/* Primary metadata row */}
                             <div className="flex flex-wrap items-center gap-4 text-sm">
                               <div>
-                                <span className="font-medium text-slate-700">Data Source:</span>{' '}
-                                <span className="text-slate-900">{pricingResults.meta.dataSource === 'external_market' ? 'External Market Listings' : 'No Data'}</span>
+                                <span className="font-medium text-foreground">Data Source:</span>{' '}
+                                <span className="text-foreground">{pricingResults.meta.dataSource === 'external_market' ? 'External Market Listings' : 'No Data'}</span>
                               </div>
                               {pricingResults.meta.year && (
                                 <div>
-                                  <span className="font-medium text-slate-700">Year:</span>{' '}
-                                  <span className="text-slate-900">{pricingResults.meta.year}</span>
+                                  <span className="font-medium text-foreground">Year:</span>{' '}
+                                  <span className="text-foreground">{pricingResults.meta.year}</span>
                                 </div>
                               )}
                               {pricingResults.meta.searchRadius && (
                                 <div>
-                                  <span className="font-medium text-slate-700">Search Radius:</span>{' '}
-                                  <span className="text-slate-900">{pricingResults.meta.searchRadius} KM</span>
+                                  <span className="font-medium text-foreground">Search Radius:</span>{' '}
+                                  <span className="text-foreground">{pricingResults.meta.searchRadius} KM</span>
                                 </div>
                               )}
                               {pricingResults.meta.postalCode && (
                                 <div>
-                                  <span className="font-medium text-slate-700">Location:</span>{' '}
-                                  <span className="text-slate-900">{pricingResults.meta.postalCode}</span>
+                                  <span className="font-medium text-foreground">Location:</span>{' '}
+                                  <span className="text-foreground">{pricingResults.meta.postalCode}</span>
                                 </div>
                               )}
                             </div>
@@ -1362,7 +1362,7 @@ export default function Manager() {
                             {/* Source breakdown badges */}
                             {pricingResults.meta.sourceBreakdown && (
                               <div className="flex flex-wrap items-center gap-2">
-                                <span className="text-sm font-medium text-slate-700">Data Sources:</span>
+                                <span className="text-sm font-medium text-foreground">Data Sources:</span>
                                 {pricingResults.meta.sourceBreakdown.marketcheck > 0 && (
                                   <Badge variant="default" className="bg-green-600 hover:bg-green-700">
                                     MarketCheck: {pricingResults.meta.sourceBreakdown.marketcheck}
@@ -1374,7 +1374,7 @@ export default function Manager() {
                                   </Badge>
                                 )}
                                 {pricingResults.meta.sourceBreakdown.autotrader_scraper > 0 && (
-                                  <Badge variant="outline" className="border-slate-400">
+                                  <Badge variant="outline" className="border-border">
                                     Scraper: {pricingResults.meta.sourceBreakdown.autotrader_scraper}
                                   </Badge>
                                 )}
@@ -1391,29 +1391,29 @@ export default function Manager() {
 
                       {/* Market Statistics */}
                       <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-                        <h3 className="text-xl font-bold text-slate-900 mb-4">
+                        <h3 className="text-xl font-bold text-foreground mb-4">
                           Market Analysis: {pricingForm.make} {pricingForm.model}
                           {pricingForm.selectedTrims.length > 0 && ` - ${pricingForm.selectedTrims.join(', ')}`}
                         </h3>
                         <div className="grid gap-4 md:grid-cols-4">
                           <div data-testid="stat-average-price">
-                            <div className="text-xs text-slate-500 font-medium">Average Price</div>
+                            <div className="text-xs text-muted-foreground font-medium">Average Price</div>
                             <div className="text-2xl font-bold text-green-600">
                               ${pricingResults.averagePrice.toLocaleString()}
                             </div>
                           </div>
                           <div data-testid="stat-median-price">
-                            <div className="text-xs text-slate-500 font-medium">Median Price</div>
+                            <div className="text-xs text-muted-foreground font-medium">Median Price</div>
                             <div className="text-2xl font-bold">${pricingResults.medianPrice.toLocaleString()}</div>
                           </div>
                           <div data-testid="stat-price-range">
-                            <div className="text-xs text-slate-500 font-medium">Price Range</div>
+                            <div className="text-xs text-muted-foreground font-medium">Price Range</div>
                             <div className="text-lg font-semibold">
                               ${pricingResults.minPrice.toLocaleString()} - ${pricingResults.maxPrice.toLocaleString()}
                             </div>
                           </div>
                           <div data-testid="stat-total-comps">
-                            <div className="text-xs text-slate-500 font-medium">Comparables Found</div>
+                            <div className="text-xs text-muted-foreground font-medium">Comparables Found</div>
                             <div className="text-2xl font-bold">{pricingResults.totalComps}</div>
                           </div>
                         </div>
@@ -1421,8 +1421,8 @@ export default function Manager() {
 
                       {/* Recommendation */}
                       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                        <h4 className="font-semibold text-slate-900 mb-2">Market Recommendation</h4>
-                        <p className="text-sm text-slate-700">{pricingResults.recommendation}</p>
+                        <h4 className="font-semibold text-foreground mb-2">Market Recommendation</h4>
+                        <p className="text-sm text-foreground">{pricingResults.recommendation}</p>
                         <div className="mt-3 text-sm">
                           <span className="font-medium">Recommended Price Range:</span>{' '}
                           <span className="font-semibold text-green-600">
@@ -1434,12 +1434,12 @@ export default function Manager() {
                       {/* Comparable Vehicles */}
                       {pricingResults.comparisons && pricingResults.comparisons.length > 0 && (
                         <div>
-                          <h4 className="font-semibold text-slate-900 mb-4">Comparable Vehicles</h4>
+                          <h4 className="font-semibold text-foreground mb-4">Comparable Vehicles</h4>
                           <div className="space-y-3">
                             {pricingResults.comparisons.slice(0, 10).map((comp: any, index: number) => (
                               <div 
                                 key={index}
-                                className="border rounded-lg p-4 hover:bg-slate-50"
+                                className="border rounded-lg p-4 hover:bg-muted"
                                 data-testid={`comparison-${index}`}
                               >
                                 <div className="flex items-center justify-between">
@@ -1448,7 +1448,7 @@ export default function Manager() {
                                       {comp.year} {comp.make} {comp.model}
                                       {comp.trim && ` ${comp.trim}`}
                                     </div>
-                                    <div className="text-sm text-slate-500 mt-1">
+                                    <div className="text-sm text-muted-foreground mt-1">
                                       Stock #{comp.stockNumber} • {comp.location} • {comp.dealership}
                                       {comp.mileage && ` • ${comp.mileage.toLocaleString()} mi`}
                                     </div>
@@ -1471,8 +1471,8 @@ export default function Manager() {
 
                 {!pricingResults && !vinResults && (
                   <div className="border-t pt-6">
-                    <div className="text-center py-12 text-slate-500">
-                      <Car className="w-16 h-16 mx-auto mb-4 text-slate-300" />
+                    <div className="text-center py-12 text-muted-foreground">
+                      <Car className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
                       <h3 className="text-lg font-medium mb-2">Get Started</h3>
                       <p className="text-sm mb-4">
                         Enter a VIN to decode and automatically analyze market pricing, or manually enter vehicle details

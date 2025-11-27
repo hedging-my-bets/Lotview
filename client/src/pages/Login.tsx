@@ -66,7 +66,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-background">
       <Navbar />
       <div className="min-h-[calc(100vh-80px)] flex items-center justify-center p-4 pt-28">
         <Card className="w-full max-w-md">
@@ -82,7 +82,7 @@ export default function Login() {
           <CardContent>
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   Email Address
                 </label>
                 <Input
@@ -96,7 +96,7 @@ export default function Login() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   Password
                 </label>
                 <Input

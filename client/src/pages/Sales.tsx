@@ -438,24 +438,24 @@ export default function Sales() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-slate-500">Loading...</p>
+          <p className="text-muted-foreground">Loading...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-background">
       <Navbar />
       <div className="pt-28 pb-12 px-4">
         <div className="max-w-7xl mx-auto">
           <div className="mb-8 flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-slate-900 mb-2">Salesperson Dashboard</h1>
-              <p className="text-slate-600">Welcome back, {user?.name}</p>
+              <h1 className="text-3xl font-bold text-foreground mb-2">Salesperson Dashboard</h1>
+              <p className="text-muted-foreground">Welcome back, {user?.name}</p>
             </div>
             <Button onClick={handleLogout} variant="outline" data-testid="button-logout">
               <LogOut className="w-4 h-4 mr-2" />
@@ -541,7 +541,7 @@ export default function Sales() {
                       <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
                     </div>
                   ) : accounts.length === 0 ? (
-                    <div className="text-center py-8 text-slate-500">
+                    <div className="text-center py-8 text-muted-foreground">
                       No Facebook accounts connected yet. Add your first account to get started.
                     </div>
                   ) : (
@@ -558,7 +558,7 @@ export default function Sales() {
                             </div>
                             <div>
                               <div className="font-medium">{account.accountName}</div>
-                              <div className="text-sm text-slate-500">
+                              <div className="text-sm text-muted-foreground">
                                 Added {new Date(account.createdAt).toLocaleDateString()}
                               </div>
                             </div>
@@ -668,7 +668,7 @@ export default function Sales() {
                       <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
                     </div>
                   ) : templates.length === 0 ? (
-                    <div className="text-center py-8 text-slate-500">
+                    <div className="text-center py-8 text-muted-foreground">
                       No templates created yet. Create your first template to standardize your posts.
                     </div>
                   ) : (
@@ -687,7 +687,7 @@ export default function Sales() {
                                   <Badge variant="secondary">Default</Badge>
                                 )}
                               </div>
-                              <div className="text-sm text-slate-500">
+                              <div className="text-sm text-muted-foreground">
                                 Created {new Date(template.createdAt).toLocaleDateString()}
                               </div>
                             </div>
@@ -702,12 +702,12 @@ export default function Sales() {
                           </div>
                           <div className="space-y-2">
                             <div>
-                              <div className="text-xs font-medium text-slate-500 mb-1">Title:</div>
-                              <div className="text-sm bg-slate-50 p-2 rounded font-mono">{template.titleTemplate}</div>
+                              <div className="text-xs font-medium text-muted-foreground mb-1">Title:</div>
+                              <div className="text-sm bg-muted p-2 rounded font-mono">{template.titleTemplate}</div>
                             </div>
                             <div>
-                              <div className="text-xs font-medium text-slate-500 mb-1">Description:</div>
-                              <div className="text-sm bg-slate-50 p-2 rounded font-mono whitespace-pre-wrap">{template.descriptionTemplate}</div>
+                              <div className="text-xs font-medium text-muted-foreground mb-1">Description:</div>
+                              <div className="text-sm bg-muted p-2 rounded font-mono whitespace-pre-wrap">{template.descriptionTemplate}</div>
                             </div>
                           </div>
                         </div>
@@ -808,15 +808,15 @@ export default function Sales() {
                       <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
                     </div>
                   ) : queueItems.length === 0 ? (
-                    <div className="text-center py-12 text-slate-500">
-                      <ListOrdered className="w-12 h-12 mx-auto mb-4 text-slate-300" />
+                    <div className="text-center py-12 text-muted-foreground">
+                      <ListOrdered className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
                       <p className="text-lg font-medium mb-2">No vehicles in queue</p>
                       <p className="mb-4">Add vehicles to start building your automated posting schedule</p>
                       <p className="text-xs">Vehicles will post in order based on your configured schedule</p>
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      <div className="text-xs text-slate-500 mb-3 flex items-center justify-between">
+                      <div className="text-xs text-muted-foreground mb-3 flex items-center justify-between">
                         <span>Drag items to reorder posting sequence</span>
                         <span>{queueItems.length}/45 vehicles</span>
                       </div>
@@ -836,8 +836,8 @@ export default function Sales() {
                             data-testid={`queue-item-${item.id}`}
                           >
                             <div className="flex items-start gap-3">
-                              <GripVertical className="w-5 h-5 text-slate-400 mt-1 flex-shrink-0" />
-                              <div className="flex-shrink-0 text-lg font-bold text-slate-400 w-8">
+                              <GripVertical className="w-5 h-5 text-muted-foreground mt-1 flex-shrink-0" />
+                              <div className="flex-shrink-0 text-lg font-bold text-muted-foreground w-8">
                                 #{index + 1}
                               </div>
                               {vehicle?.imageUrl && (
@@ -853,7 +853,7 @@ export default function Sales() {
                                     <h3 className="font-medium">
                                       {vehicle?.year} {vehicle?.make} {vehicle?.model}
                                     </h3>
-                                    <p className="text-sm text-slate-500">
+                                    <p className="text-sm text-muted-foreground">
                                       ${vehicle?.price?.toLocaleString()} • {vehicle?.odometer?.toLocaleString()}km
                                     </p>
                                   </div>
@@ -863,11 +863,11 @@ export default function Sales() {
                                 </div>
                                 <div className="grid grid-cols-2 gap-2 text-xs">
                                   <div>
-                                    <span className="text-slate-500">Account:</span>{" "}
+                                    <span className="text-muted-foreground">Account:</span>{" "}
                                     <span className="font-medium">{account?.accountName || "Default"}</span>
                                   </div>
                                   <div>
-                                    <span className="text-slate-500">Template:</span>{" "}
+                                    <span className="text-muted-foreground">Template:</span>{" "}
                                     <span className="font-medium">{template?.templateName || "Default"}</span>
                                   </div>
                                 </div>
@@ -915,7 +915,7 @@ export default function Sales() {
                               onChange={(e) => setScheduleForm({ ...scheduleForm, startTime: e.target.value })}
                               data-testid="input-start-time"
                             />
-                            <p className="text-xs text-slate-500 mt-1">What time to start posting each day</p>
+                            <p className="text-xs text-muted-foreground mt-1">What time to start posting each day</p>
                           </div>
                           <div>
                             <Label htmlFor="interval">Interval (minutes)</Label>
@@ -927,11 +927,11 @@ export default function Sales() {
                               onChange={(e) => setScheduleForm({ ...scheduleForm, intervalMinutes: parseInt(e.target.value) || 60 })}
                               data-testid="input-interval"
                             />
-                            <p className="text-xs text-slate-500 mt-1">Time between posts</p>
+                            <p className="text-xs text-muted-foreground mt-1">Time between posts</p>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-lg">
+                        <div className="flex items-center gap-3 p-4 bg-muted rounded-lg">
                           <Switch
                             checked={scheduleForm.isActive}
                             onCheckedChange={(checked) => setScheduleForm({ ...scheduleForm, isActive: checked })}
@@ -939,7 +939,7 @@ export default function Sales() {
                           />
                           <div className="flex-1">
                             <Label className="text-base">Enable Automated Posting</Label>
-                            <p className="text-sm text-slate-500">
+                            <p className="text-sm text-muted-foreground">
                               Posts will automatically go live based on your queue and schedule
                             </p>
                           </div>

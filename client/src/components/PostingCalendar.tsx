@@ -175,14 +175,14 @@ export function PostingCalendar({ queueItems, schedule }: PostingCalendarProps) 
               </Button>
             </div>
           </div>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-muted-foreground">
             {format(currentMonth, 'MMMM yyyy')}
           </p>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-7 gap-1 mb-2">
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-              <div key={day} className="text-center text-xs font-medium text-slate-500 py-2">
+              <div key={day} className="text-center text-xs font-medium text-muted-foreground py-2">
                 {day}
               </div>
             ))}
@@ -208,8 +208,8 @@ export function PostingCalendar({ queueItems, schedule }: PostingCalendarProps) 
                     aspect-square p-1 rounded-lg text-sm relative
                     transition-colors duration-150
                     ${isTodayDate ? 'ring-2 ring-primary ring-offset-1' : ''}
-                    ${!isCurrentMonth ? 'text-slate-300' : 'text-slate-700'}
-                    ${hasScheduledPosts ? 'bg-primary/10 hover:bg-primary/20 cursor-pointer' : 'hover:bg-slate-50'}
+                    ${!isCurrentMonth ? 'text-muted-foreground' : 'text-foreground'}
+                    ${hasScheduledPosts ? 'bg-primary/10 hover:bg-primary/20 cursor-pointer' : 'hover:bg-muted'}
                   `}
                   data-testid={`calendar-day-${format(day, 'yyyy-MM-dd')}`}
                 >
@@ -247,15 +247,15 @@ export function PostingCalendar({ queueItems, schedule }: PostingCalendarProps) 
           )}
 
           {schedule.isActive && scheduledPosts.length === 0 && (
-            <div className="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-lg">
-              <p className="text-sm text-slate-600">
+            <div className="mt-4 p-3 bg-muted border border-border rounded-lg">
+              <p className="text-sm text-muted-foreground">
                 No vehicles in the queue. Add vehicles to see their scheduled posting times.
               </p>
             </div>
           )}
           
           {scheduledPosts.length > 0 && (
-            <div className="mt-4 pt-4 border-t flex items-center gap-4 text-xs text-slate-500">
+            <div className="mt-4 pt-4 border-t flex items-center gap-4 text-xs text-muted-foreground">
               <span className="font-medium">Legend:</span>
               <div className="flex items-center gap-1">
                 <Badge variant="outline" className="text-[10px] bg-green-100 text-green-700 border-green-200">
@@ -286,7 +286,7 @@ export function PostingCalendar({ queueItems, schedule }: PostingCalendarProps) 
                   <div
                     key={post.id}
                     className={`flex items-center gap-3 p-3 rounded-lg ${
-                      post.status === 'predicted' ? 'bg-amber-50 border border-amber-100' : 'bg-slate-50'
+                      post.status === 'predicted' ? 'bg-amber-50 border border-amber-100' : 'bg-muted'
                     }`}
                     data-testid={`upcoming-post-${post.id}`}
                   >
@@ -297,8 +297,8 @@ export function PostingCalendar({ queueItems, schedule }: PostingCalendarProps) 
                         className="w-16 h-12 object-cover rounded"
                       />
                     ) : (
-                      <div className="w-16 h-12 bg-slate-200 rounded flex items-center justify-center">
-                        <Car className="w-6 h-6 text-slate-400" />
+                      <div className="w-16 h-12 bg-muted rounded flex items-center justify-center">
+                        <Car className="w-6 h-6 text-muted-foreground" />
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
@@ -318,7 +318,7 @@ export function PostingCalendar({ queueItems, schedule }: PostingCalendarProps) 
                           </Badge>
                         )}
                       </div>
-                      <p className="text-xs text-slate-500">
+                      <p className="text-xs text-muted-foreground">
                         ${post.vehicle.price.toLocaleString()}
                       </p>
                     </div>
@@ -326,7 +326,7 @@ export function PostingCalendar({ queueItems, schedule }: PostingCalendarProps) 
                       <p className="text-sm font-medium text-primary">
                         {format(post.scheduledTime, 'MMM d')}
                       </p>
-                      <p className="text-xs text-slate-500 flex items-center gap-1 justify-end">
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 justify-end">
                         <Clock className="w-3 h-3" />
                         {format(post.scheduledTime, 'h:mm a')}
                       </p>
@@ -337,7 +337,7 @@ export function PostingCalendar({ queueItems, schedule }: PostingCalendarProps) 
             </ScrollArea>
             
             {scheduledPosts.length > 10 && (
-              <p className="text-xs text-slate-500 mt-2 text-center">
+              <p className="text-xs text-muted-foreground mt-2 text-center">
                 + {scheduledPosts.length - 10} more scheduled posts
               </p>
             )}
@@ -373,8 +373,8 @@ export function PostingCalendar({ queueItems, schedule }: PostingCalendarProps) 
                       className="w-20 h-14 object-cover rounded"
                     />
                   ) : (
-                    <div className="w-20 h-14 bg-slate-100 rounded flex items-center justify-center">
-                      <Car className="w-8 h-8 text-slate-300" />
+                    <div className="w-20 h-14 bg-muted rounded flex items-center justify-center">
+                      <Car className="w-8 h-8 text-muted-foreground" />
                     </div>
                   )}
                   <div className="flex-1">
@@ -394,9 +394,9 @@ export function PostingCalendar({ queueItems, schedule }: PostingCalendarProps) 
                       )}
                     </div>
                     {post.vehicle.trim && (
-                      <p className="text-sm text-slate-600">{post.vehicle.trim}</p>
+                      <p className="text-sm text-muted-foreground">{post.vehicle.trim}</p>
                     )}
-                    <p className="text-sm text-slate-500">
+                    <p className="text-sm text-muted-foreground">
                       ${post.vehicle.price.toLocaleString()}
                     </p>
                   </div>

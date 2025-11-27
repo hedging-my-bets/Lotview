@@ -641,13 +641,13 @@ function CreateDealershipDialog({ onSubmit }: { onSubmit: (data: any) => void })
               <Key className="h-4 w-4" />
               API Keys & Integration Settings
             </h4>
-            <p className="text-sm text-slate-500 mb-4">
+            <p className="text-sm text-muted-foreground mb-4">
               Configure third-party API keys for this dealership. All fields are optional but required for specific features.
             </p>
             <div className="space-y-4">
               {/* AI & Chat */}
               <div className="space-y-3">
-                <h5 className="text-sm font-medium text-slate-700">AI & Customer Chat</h5>
+                <h5 className="text-sm font-medium text-foreground">AI & Customer Chat</h5>
                 <div className="space-y-2">
                   <Label htmlFor="openaiApiKey">OpenAI API Key</Label>
                   <Input
@@ -658,7 +658,7 @@ function CreateDealershipDialog({ onSubmit }: { onSubmit: (data: any) => void })
                     placeholder="sk-..."
                     data-testid="input-openai-key"
                   />
-                  <p className="text-xs text-slate-500">For custom AI training & ChatGPT integration</p>
+                  <p className="text-xs text-muted-foreground">For custom AI training & ChatGPT integration</p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="geminiApiKey">Google Gemini API Key</Label>
@@ -670,12 +670,12 @@ function CreateDealershipDialog({ onSubmit }: { onSubmit: (data: any) => void })
                     placeholder="AI..."
                     data-testid="input-gemini-key"
                   />
-                  <p className="text-xs text-slate-500">For video generation with Gemini Veo</p>
+                  <p className="text-xs text-muted-foreground">For video generation with Gemini Veo</p>
                 </div>
               </div>
               {/* Market Analysis */}
               <div className="space-y-3">
-                <h5 className="text-sm font-medium text-slate-700">Market Pricing & Data</h5>
+                <h5 className="text-sm font-medium text-foreground">Market Pricing & Data</h5>
                 <div className="space-y-2">
                   <Label htmlFor="marketcheckKey">MarketCheck API Key</Label>
                   <Input
@@ -686,7 +686,7 @@ function CreateDealershipDialog({ onSubmit }: { onSubmit: (data: any) => void })
                     placeholder="Enter MarketCheck API key"
                     data-testid="input-marketcheck-key"
                   />
-                  <p className="text-xs text-slate-500">For market pricing analysis (primary source)</p>
+                  <p className="text-xs text-muted-foreground">For market pricing analysis (primary source)</p>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
@@ -711,11 +711,11 @@ function CreateDealershipDialog({ onSubmit }: { onSubmit: (data: any) => void })
                     />
                   </div>
                 </div>
-                <p className="text-xs text-slate-500">For AutoTrader.ca scraping (fallback source)</p>
+                <p className="text-xs text-muted-foreground">For AutoTrader.ca scraping (fallback source)</p>
               </div>
               {/* CRM & Marketing */}
               <div className="space-y-3">
-                <h5 className="text-sm font-medium text-slate-700">CRM & Marketing Automation</h5>
+                <h5 className="text-sm font-medium text-foreground">CRM & Marketing Automation</h5>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label htmlFor="ghlApiKey">GoHighLevel API Key</Label>
@@ -739,11 +739,11 @@ function CreateDealershipDialog({ onSubmit }: { onSubmit: (data: any) => void })
                     />
                   </div>
                 </div>
-                <p className="text-xs text-slate-500">For lead management & automation workflows</p>
+                <p className="text-xs text-muted-foreground">For lead management & automation workflows</p>
               </div>
               {/* Facebook */}
               <div className="space-y-3">
-                <h5 className="text-sm font-medium text-slate-700">Facebook Integration</h5>
+                <h5 className="text-sm font-medium text-foreground">Facebook Integration</h5>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label htmlFor="facebookAppId">Facebook App ID</Label>
@@ -767,7 +767,7 @@ function CreateDealershipDialog({ onSubmit }: { onSubmit: (data: any) => void })
                     />
                   </div>
                 </div>
-                <p className="text-xs text-slate-500">For automated Facebook Marketplace posting</p>
+                <p className="text-xs text-muted-foreground">For automated Facebook Marketplace posting</p>
               </div>
             </div>
           </div>
