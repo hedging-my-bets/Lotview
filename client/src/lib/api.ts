@@ -4,6 +4,32 @@ export interface VehicleWithViews extends Vehicle {
   views: number;
 }
 
+// Financing Rules Types
+export interface CreditTier {
+  tierName: string;
+  minScore: number;
+  maxScore: number;
+  interestRate: number; // As percentage (e.g., 5.99)
+}
+
+export interface ModelYearTerm {
+  minModelYear: number;
+  maxModelYear: number;
+  availableTerms: number[]; // e.g., [36, 48, 60, 72, 84]
+}
+
+export interface FinancingRules {
+  creditTiers: CreditTier[];
+  modelYearTerms: ModelYearTerm[];
+}
+
+// Financing Rules API (Public, no auth required)
+export async function getFinancingRules(): Promise<FinancingRules> {
+  const response = await fetch("/api/public/financing-rules");
+  if (!response.ok) throw new Error("Failed to fetch financing rules");
+  return response.json();
+}
+
 // Vehicle API
 export async function getVehicles(): Promise<Vehicle[]> {
   const response = await fetch("/api/vehicles");

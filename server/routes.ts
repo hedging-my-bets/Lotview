@@ -515,6 +515,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== PUBLIC FINANCING RULES (Customer-facing, no auth required) =====
+  
+  // Get financing rules for payment calculator (public endpoint)
+  app.get("/api/public/financing-rules", async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      
+      // Get active credit score tiers
+      const creditTiers = await storage.getCreditScoreTiers(dealershipId);
+      const activeTiers = creditTiers.filter(tier => tier.isActive);
+      
+      // Get active model year terms
+      const modelYearTerms = await storage.getModelYearTerms(dealershipId);
+      const activeTerms = modelYearTerms.filter(term => term.isActive);
+      
+      // If no tiers configured, return sensible defaults
+      const defaultTiers = activeTiers.length > 0 ? activeTiers : [
+        { tierName: 'Excellent', minScore: 720, maxScore: 850, interestRate: 599 },
+        { tierName: 'Good', minScore: 680, maxScore: 719, interestRate: 799 },
+        { tierName: 'Fair', minScore: 620, maxScore: 679, interestRate: 999 },
+        { tierName: 'Poor', minScore: 300, maxScore: 619, interestRate: 1299 },
+      ];
+      
+      // If no model year terms configured, return sensible defaults
+      const defaultTerms = activeTerms.length > 0 ? activeTerms : [
+        { minModelYear: 2022, maxModelYear: 2025, availableTerms: ['36', '48', '60', '72', '84'] },
+        { minModelYear: 2019, maxModelYear: 2021, availableTerms: ['36', '48', '60', '72'] },
+        { minModelYear: 2016, maxModelYear: 2018, availableTerms: ['36', '48', '60'] },
+        { minModelYear: 2010, maxModelYear: 2015, availableTerms: ['36', '48'] },
+      ];
+      
+      res.json({
+        creditTiers: defaultTiers.map(t => ({
+          tierName: t.tierName,
+          minScore: t.minScore,
+          maxScore: t.maxScore,
+          interestRate: t.interestRate / 100, // Convert basis points to percentage (599 -> 5.99%)
+        })),
+        modelYearTerms: defaultTerms.map(t => ({
+          minModelYear: t.minModelYear,
+          maxModelYear: t.maxModelYear,
+          availableTerms: t.availableTerms.map(term => parseInt(term)),
+        })),
+      });
+    } catch (error) {
+      console.error("Error fetching financing rules:", error);
+      res.status(500).json({ error: "Failed to fetch financing rules" });
+    }
+  });
+
   // Create vehicle (master only)
   app.post("/api/vehicles", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
     try {

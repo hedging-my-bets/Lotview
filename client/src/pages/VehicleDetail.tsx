@@ -1,14 +1,14 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Navbar } from "@/components/Navbar";
 import { ChatBot } from "@/components/ChatBot";
 import { getVehicleById, trackVehicleView } from "@/lib/api";
-import { FINANCE_TERMS, calculateMonthlyPayment, type FinanceTerm } from "@/lib/types";
+import { calculateMonthlyPayment } from "@/lib/types";
 import { ArrowLeft, Calendar, CheckCircle2, MapPin, Gauge, Flame, Share2, Heart, ChevronLeft, ChevronRight, DollarSign, Car, FileText, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
-import { usePayment } from "@/contexts/PaymentContext";
+import { usePayment, type FinanceTerm } from "@/contexts/PaymentContext";
 import { useChat } from "@/contexts/ChatContext";
 import { trackVehicleView as trackGTMVehicleView, trackCTAClick, trackPaymentCalculation } from "@/lib/tracking";
 import useEmblaCarousel from 'embla-carousel-react';
@@ -17,10 +17,10 @@ export default function VehicleDetail() {
   const [match, params] = useRoute("/vehicle/:id");
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
-  const { downPayment, apr } = usePayment();
+  const { downPayment, apr, selectedTerm: globalTerm, getAvailableTerms, getMaxTerm } = usePayment();
   const { openChat } = useChat();
   const [sessionId] = useState(() => `session-${Date.now()}-${Math.random()}`);
-  const [selectedTerm, setSelectedTerm] = useState<FinanceTerm>(84);
+  const [localTerm, setLocalTerm] = useState<FinanceTerm | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isLiked, setIsLiked] = useState(false);
   const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true });
@@ -188,6 +188,20 @@ export default function VehicleDetail() {
       </div>
     );
   }
+
+  // Get available terms for this vehicle based on its year
+  const availableTerms = getAvailableTerms(car.year);
+  
+  // Use the global selected term, but clamp to max available for this vehicle
+  const effectiveTerm = useMemo(() => {
+    if (availableTerms.includes(globalTerm)) {
+      return globalTerm;
+    }
+    return getMaxTerm(car.year);
+  }, [globalTerm, availableTerms, car.year, getMaxTerm]);
+  
+  // Use local term if set, otherwise use effective term
+  const selectedTerm = localTerm ?? effectiveTerm;
 
   const monthlyPayment = calculateMonthlyPayment(car.price, selectedTerm, downPayment, apr);
 
@@ -427,24 +441,30 @@ export default function VehicleDetail() {
                   Based on {apr}% APR, ${downPayment.toLocaleString()} down. Taxes and fees extra.
                 </p>
                 
-                {/* Term Selector */}
+                {/* Term Selector - Shows available terms for this vehicle based on model year */}
                 <div className="space-y-2">
                   <p className="text-xs font-bold text-slate-400 uppercase">Select Term</p>
-                  <div className="grid grid-cols-5 gap-2">
-                    {FINANCE_TERMS.map(term => (
+                  <div className={`grid gap-2 ${availableTerms.length <= 3 ? 'grid-cols-3' : availableTerms.length === 4 ? 'grid-cols-4' : 'grid-cols-5'}`}>
+                    {availableTerms.map((term: FinanceTerm) => (
                       <button
                         key={term}
-                        onClick={() => setSelectedTerm(term)}
+                        onClick={() => setLocalTerm(term)}
                         className={`py-2 rounded-lg text-sm font-bold transition ${
                           selectedTerm === term 
                             ? 'bg-secondary text-white shadow-md' 
                             : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
                         }`}
+                        data-testid={`button-term-${term}`}
                       >
                         {term}mo
                       </button>
                     ))}
                   </div>
+                  {availableTerms.length < 5 && (
+                    <p className="text-xs text-slate-400 text-center">
+                      Max {Math.max(...availableTerms)} months for {car.year} model year
+                    </p>
+                  )}
                 </div>
               </div>
 
