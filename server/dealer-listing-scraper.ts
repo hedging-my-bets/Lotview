@@ -846,23 +846,41 @@ async function scrapeDealerListings(dealerConfig: typeof DEALER_CONFIGS[0]): Pro
 
     console.log(`  ✓ Found ${vdpUrls.length} VDP URLs, now extracting VIN/price/odometer...`);
     
-    // IMPORTANT: Reuse the SAME page that already solved Cloudflare challenge
-    // This preserves the cf_clearance cookie and browser fingerprint
-    // Creating a new page would require solving Cloudflare again
-    const vdpPage = page; // Reuse the same page
-    console.log(`  Reusing listing page (already has Cloudflare clearance) for VDP scraping`);
-    
     // Visit each VDP to extract complete vehicle data
     const vehicles: DealerVehicleListing[] = [];
     
-    console.log(`  Processing ${vdpUrls.length} vehicles...`);
+    // Track current page - will be refreshed periodically to prevent detached frame errors
+    let currentVdpPage = page;
+    const PAGE_REFRESH_INTERVAL = 10; // Refresh page every 10 vehicles to prevent frame detachment
+    
+    console.log(`  Processing ${vdpUrls.length} vehicles (refreshing page every ${PAGE_REFRESH_INTERVAL} vehicles)...`);
     
     for (let i = 0; i < vdpUrls.length; i++) {
       const urlData = vdpUrls[i];
       console.log(`  [${i + 1}/${vdpUrls.length}] Scraping ${urlData.year} ${urlData.make} ${urlData.model}...`);
       
-      // Pass the reusable page instead of browser
-      const detailData = await scrapeVehicleDetailPage(vdpPage, urlData.vdpUrl);
+      // Refresh page every PAGE_REFRESH_INTERVAL vehicles to prevent frame detachment
+      if (i > 0 && i % PAGE_REFRESH_INTERVAL === 0) {
+        console.log(`    🔄 Refreshing page to prevent frame detachment (processed ${i} vehicles)...`);
+        
+        // Save cookies before closing page
+        const currentCookies = await currentVdpPage.cookies();
+        
+        // Close old page and create new one
+        await currentVdpPage.close();
+        currentVdpPage = await browser.newPage();
+        
+        // Restore cookies and fingerprint
+        if (currentCookies.length > 0) {
+          await currentVdpPage.setCookie(...currentCookies);
+        }
+        await applyFingerprint(currentVdpPage, fingerprint);
+        
+        console.log(`    ✓ Page refreshed with ${currentCookies.length} cookies preserved`);
+      }
+      
+      // Pass the current page
+      const detailData = await scrapeVehicleDetailPage(currentVdpPage, urlData.vdpUrl);
       
       vehicles.push({
         vin: detailData.vin,
