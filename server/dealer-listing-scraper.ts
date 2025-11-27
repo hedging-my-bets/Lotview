@@ -176,11 +176,24 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
         for (const selector of nextButtonSelectors) {
           const nextBtn = await page.$(selector);
           if (nextBtn) {
-            // Click through 30+ images to ensure all are loaded
-            for (let clickCount = 0; clickCount < 35; clickCount++) {
+            // Click through 50 images to ensure all are loaded
+            // IMPROVED: 150ms delay (was 100ms) + visibility check before each click
+            for (let clickCount = 0; clickCount < 50; clickCount++) {
               try {
+                // Check if button is still visible and clickable before clicking
+                const isClickable = await page.evaluate((sel: string) => {
+                  const btn = document.querySelector(sel);
+                  if (!btn) return false;
+                  const style = window.getComputedStyle(btn);
+                  return style.display !== 'none' && 
+                         style.visibility !== 'hidden' && 
+                         !btn.hasAttribute('disabled');
+                }, selector);
+                
+                if (!isClickable) break;
+                
                 await nextBtn.click();
-                await new Promise(resolve => setTimeout(resolve, 100)); // Quick delay between clicks
+                await new Promise(resolve => setTimeout(resolve, 150)); // Increased from 100ms to 150ms
               } catch (e) {
                 break; // Button may become disabled
               }
@@ -394,18 +407,29 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
         var debugImgInfo = [];
         
         // TRUSTED VEHICLE PHOTO CDN DOMAINS - these contain actual car photos
+        // EXPANDED from refactored scraper to include HomeNet and more CDNs
         var trustedPhotoCDNs = [
-          'autotradercdn.ca/photos/',       // AutoTrader CDN - main vehicle photos
+          'autotradercdn.ca/photos',        // AutoTrader CDN - main vehicle photos
+          'photos.autotrader.ca',           // AutoTrader alternate
           'photomanager',                    // Photo manager services
           '/vehicles/',                      // Dealer's own vehicle photos
-          'cargurus.com/images/forsale/',   // CarGurus vehicle images
+          'cargurus.com/images/forsale',    // CarGurus vehicle images
           'ddclstatic.com',                 // DDC vehicle images
           'dealercdn.com',                  // Dealer CDN
-          'dealerinspire.com/vehicles/',    // DI vehicle images
+          'dealerinspire.com/vehicles',     // DI vehicle images
           'photos.dealer.com',              // Dealer.com photos
           'gdealer.com',                    // GDealer images
           'evoxcdn.com',                    // Evox images
-          'ws-assets.dealercom.net'         // DealerSocket images
+          'ws-assets.dealercom.net',        // DealerSocket images
+          'homenetiol.com',                 // HomeNet inventory images (MAJOR PROVIDER)
+          'homenet-inc.com',                // HomeNet alternate domain
+          'cdnmedia.endeavorsuite.com',     // Endeavor/PBS suite images
+          'images.foxdealer.com',           // Fox dealer images
+          'spincar.com',                    // SpinCar 360 photos
+          '360.spincar.com',                // SpinCar 360 alternate
+          'izmostock.com',                  // Stock photos for new vehicles
+          'lotstalk.net',                   // LotsTalk inventory images
+          'vauto.com'                       // vAuto images
         ];
         
         // BLOCKED PROMOTIONAL DOMAINS - these are banners/site images
@@ -457,6 +481,44 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
           return src;
         }
         
+        // Helper function to upgrade image URLs to higher resolution
+        // Tries to get 2048px instead of 1024px where supported
+        function upgradeImageResolution(url) {
+          var upgraded = url;
+          
+          // AutoTrader CDN - upgrade to higher resolution
+          if (url.indexOf('autotradercdn.ca') !== -1) {
+            // Replace common size patterns with larger ones
+            upgraded = upgraded.replace(/-1024x786\\./, '-2048x1536.');
+            upgraded = upgraded.replace(/-640x480\\./, '-2048x1536.');
+            upgraded = upgraded.replace(/w=\\d+/, 'w=2048');
+            upgraded = upgraded.replace(/width=\\d+/, 'width=2048');
+            upgraded = upgraded.replace(/h=\\d+/, 'h=1536');
+            upgraded = upgraded.replace(/height=\\d+/, 'height=1536');
+          }
+          
+          // CarGurus - upgrade to max quality
+          if (url.indexOf('cargurus.com/images/forsale') !== -1) {
+            var baseUrl = url.split('?')[0];
+            upgraded = baseUrl + '?io=true&width=2048&height=1536&fit=bounds&format=jpg&auto=webp';
+          }
+          
+          // DealerInspire - use large version
+          if (url.indexOf('dealerinspire.com') !== -1) {
+            upgraded = upgraded.replace('/thumb/', '/large/');
+            upgraded = upgraded.replace('/small/', '/large/');
+            upgraded = upgraded.replace('/medium/', '/large/');
+          }
+          
+          // HomeNet - try to get larger images
+          if (url.indexOf('homenetiol.com') !== -1 || url.indexOf('homenet-inc.com') !== -1) {
+            upgraded = upgraded.replace(/sz=\\d+/, 'sz=2048');
+            upgraded = upgraded.replace(/size=\\d+/, 'size=2048');
+          }
+          
+          return upgraded;
+        }
+        
         // STRATEGY 1: Look ONLY in gallery/slider containers for vehicle photos
         var galleryContainers = document.querySelectorAll('.photo-gallery, .mobile-slider, .vehicle-gallery, .gallery-container, [class*="vehicle-photo"], [class*="main-image"]');
         debugImgInfo.push('Gallery containers: ' + galleryContainers.length);
@@ -476,6 +538,7 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
         for (var i = 0; i < galleryImgs.length; i++) {
           var img = galleryImgs[i];
           // Use .src property for dynamic content (not getAttribute)
+          // EXPANDED: Check 8+ lazy-load attributes to capture more images
           var possibleSrcs = [
             img.src,                           // Current loaded source
             img.currentSrc,                    // What browser actually displays
@@ -483,7 +546,11 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
             img.getAttribute('data-lazy-src'),
             img.getAttribute('data-original'),
             img.getAttribute('data-image'),
-            img.getAttribute('data-full-size')
+            img.getAttribute('data-full-size'),
+            img.getAttribute('data-large-src'),  // Large version
+            img.getAttribute('data-zoom-image'), // Zoom version (usually high-res)
+            img.getAttribute('data-srcset'),     // Responsive srcset
+            img.getAttribute('srcset')           // Standard srcset
           ];
           
           for (var ps = 0; ps < possibleSrcs.length; ps++) {
@@ -493,8 +560,11 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
               if (src.indexOf('http') === 0 && !processedUrls[src]) {
                 // STRICT: Only allow images from trusted CDN domains
                 if (isVehiclePhotoCDN(src)) {
+                  // UPGRADE: Try to get higher resolution version
+                  var upgradedSrc = upgradeImageResolution(src);
                   processedUrls[src] = true;
-                  images.push(src);
+                  processedUrls[upgradedSrc] = true; // Prevent duplicates with upgraded URL
+                  images.push(upgradedSrc);
                 }
               }
             }
@@ -511,8 +581,11 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
           if (src && isVehiclePhotoCDN(src)) {
             src = normalizeUrl(src);
             if (src.indexOf('http') === 0 && !processedUrls[src]) {
+              // UPGRADE: Try to get higher resolution version
+              var upgradedSrc = upgradeImageResolution(src);
               processedUrls[src] = true;
-              images.push(src);
+              processedUrls[upgradedSrc] = true;
+              images.push(upgradedSrc);
             }
           }
         }
@@ -529,8 +602,11 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
             var bgSrc = bgMatch[1];
             bgSrc = normalizeUrl(bgSrc);
             if (bgSrc.indexOf('http') === 0 && isVehiclePhotoCDN(bgSrc) && !processedUrls[bgSrc]) {
+              // UPGRADE: Try to get higher resolution version
+              var upgradedBgSrc = upgradeImageResolution(bgSrc);
               processedUrls[bgSrc] = true;
-              images.push(bgSrc);
+              processedUrls[upgradedBgSrc] = true;
+              images.push(upgradedBgSrc);
             }
           }
         }
