@@ -12,6 +12,8 @@ Preferred communication style: Simple, everyday language.
 - **Frameworks**: React 18 with TypeScript, Vite, Wouter for routing, TanStack Query for server state management.
 - **UI/UX**: Shadcn UI (New York style) with Radix UI, Tailwind CSS v4, custom CSS variables for branding (#022d60 dark, #00aad2 light), Lucide React for iconography.
 - **Design Decisions**: Component-based architecture, custom filtering for inventory, real-time financing calculator, session-based view tracking.
+- **Dark Mode**: Custom ThemeProvider (`client/src/components/ThemeProvider.tsx`) with localStorage persistence, system preference detection, and ThemeToggle component. All pages use theme-aware CSS tokens (bg-background, text-foreground, border-border, etc.).
+- **Mobile Responsive**: All dashboards use responsive layouts with flex-col/flex-row stacking, w-full buttons on mobile, overflow-x-auto for tables, and responsive tab grids (grid-cols-2 sm:grid-cols-4).
 
 ### Backend Architecture
 - **Server**: Express.js with TypeScript, custom request logging middleware.
