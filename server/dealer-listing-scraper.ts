@@ -161,6 +161,40 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
       const pageUrl = await page.url();
       console.log(`    → VDP loaded: ${pageUrl}`);
       
+      // Click through gallery carousel to load all images (Alpine.js lazy loading)
+      try {
+        // Click gallery next button multiple times to load all images
+        const nextButtonSelectors = [
+          '.photo-gallery__arrow--next',
+          '.mobile-slider__arrow--next', 
+          '[class*="gallery"] [class*="next"]',
+          '[class*="slider"] [class*="next"]',
+          '.swiper-button-next',
+          '.slick-next'
+        ];
+        
+        for (const selector of nextButtonSelectors) {
+          const nextBtn = await page.$(selector);
+          if (nextBtn) {
+            // Click through 30+ images to ensure all are loaded
+            for (let clickCount = 0; clickCount < 35; clickCount++) {
+              try {
+                await nextBtn.click();
+                await new Promise(resolve => setTimeout(resolve, 100)); // Quick delay between clicks
+              } catch (e) {
+                break; // Button may become disabled
+              }
+            }
+            break; // Found and clicked a gallery button
+          }
+        }
+      } catch (galleryErr) {
+        // Gallery clicking is optional, continue with extraction
+      }
+      
+      // Wait a moment for images to load after gallery navigation
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       // Use page.evaluate with a string to prevent ESBuild transformation
       const data = await page.evaluate(`(function() {
         var pageText = document.body.textContent || '';
@@ -354,29 +388,63 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
           description = 'Used vehicle. Contact dealer for more information.';
         }
         
-        // Extract images from multiple sources - AGGRESSIVE APPROACH
+        // Extract images - FOCUSED ON VEHICLE PHOTO CDN DOMAINS
         var images = [];
         var processedUrls = {};
         var debugImgInfo = [];
         
-        // Helper function to check if URL is a valid vehicle image
-        function isVehicleImage(src) {
+        // TRUSTED VEHICLE PHOTO CDN DOMAINS - these contain actual car photos
+        var trustedPhotoCDNs = [
+          'autotradercdn.ca/photos/',       // AutoTrader CDN - main vehicle photos
+          'photomanager',                    // Photo manager services
+          '/vehicles/',                      // Dealer's own vehicle photos
+          'cargurus.com/images/forsale/',   // CarGurus vehicle images
+          'ddclstatic.com',                 // DDC vehicle images
+          'dealercdn.com',                  // Dealer CDN
+          'dealerinspire.com/vehicles/',    // DI vehicle images
+          'photos.dealer.com',              // Dealer.com photos
+          'gdealer.com',                    // GDealer images
+          'evoxcdn.com',                    // Evox images
+          'ws-assets.dealercom.net'         // DealerSocket images
+        ];
+        
+        // BLOCKED PROMOTIONAL DOMAINS - these are banners/site images
+        var blockedPatterns = [
+          'cdn-convertus.com/uploads/sites/', // Site promotional images
+          'form-',                             // Form background images  
+          'bg-',                               // Background images
+          '-bg',                               // Background suffix
+          'Welcome-background',                // Welcome banners
+          'Get-Approved',                      // Promotional
+          'Pictogram',                         // Icons
+          'quote-',                            // Quote icons
+          '-dark.png',                         // Icon variants
+          '-light.png',                        // Icon variants
+          'Home-Delivery',                     // Promotional banner
+          'Car-Buying',                        // Promotional banner
+          'hassle'                             // Promotional text
+        ];
+        
+        // Helper function to check if URL is from a trusted vehicle photo CDN
+        function isVehiclePhotoCDN(src) {
           if (!src || src.length < 10) return false;
           var lower = src.toLowerCase();
-          // Skip obvious non-vehicle images
-          if (lower.indexOf('placeholder') !== -1) return false;
-          if (lower.indexOf('logo') !== -1) return false;
-          if (lower.indexOf('icon') !== -1) return false;
-          if (lower.indexOf('avatar') !== -1) return false;
-          if (lower.indexOf('spinner') !== -1) return false;
-          if (lower.indexOf('loading') !== -1) return false;
-          if (lower.indexOf('blank') !== -1) return false;
-          if (lower.indexOf('pixel') !== -1) return false;
-          if (lower.indexOf('.svg') !== -1) return false;
-          if (lower.indexOf('.gif') !== -1 && lower.indexOf('loading') !== -1) return false;
-          if (lower.indexOf('data:image') === 0 && lower.length < 200) return false; // Skip tiny base64
-          // Must be a proper image URL
-          return (src.indexOf('http') === 0 || src.indexOf('//') === 0 || src.indexOf('/') === 0);
+          
+          // First check if it's blocked
+          for (var bi = 0; bi < blockedPatterns.length; bi++) {
+            if (lower.indexOf(blockedPatterns[bi].toLowerCase()) !== -1) {
+              return false;
+            }
+          }
+          
+          // Check if from trusted CDN
+          for (var ci = 0; ci < trustedPhotoCDNs.length; ci++) {
+            if (lower.indexOf(trustedPhotoCDNs[ci].toLowerCase()) !== -1) {
+              return true;
+            }
+          }
+          
+          return false;
         }
         
         // Helper function to normalize URL
@@ -389,44 +457,42 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
           return src;
         }
         
-        // Strategy 1: Get ALL images on the page and filter
-        var allImgElements = document.querySelectorAll('img');
-        debugImgInfo.push('Total img tags: ' + allImgElements.length);
+        // STRATEGY 1: Look ONLY in gallery/slider containers for vehicle photos
+        var galleryContainers = document.querySelectorAll('.photo-gallery, .mobile-slider, .vehicle-gallery, .gallery-container, [class*="vehicle-photo"], [class*="main-image"]');
+        debugImgInfo.push('Gallery containers: ' + galleryContainers.length);
         
-        for (var i = 0; i < allImgElements.length; i++) {
-          var img = allImgElements[i];
-          // Check multiple attributes for the actual image URL
+        // Collect all img elements from gallery containers
+        var galleryImgs = [];
+        for (var gc = 0; gc < galleryContainers.length; gc++) {
+          var containerImgs = galleryContainers[gc].querySelectorAll('img');
+          for (var gci = 0; gci < containerImgs.length; gci++) {
+            galleryImgs.push(containerImgs[gci]);
+          }
+        }
+        
+        debugImgInfo.push('Gallery imgs: ' + galleryImgs.length);
+        
+        // Extract from gallery images first (priority)
+        for (var i = 0; i < galleryImgs.length; i++) {
+          var img = galleryImgs[i];
+          // Use .src property for dynamic content (not getAttribute)
           var possibleSrcs = [
-            img.getAttribute('src'),
+            img.src,                           // Current loaded source
+            img.currentSrc,                    // What browser actually displays
             img.getAttribute('data-src'),
             img.getAttribute('data-lazy-src'),
             img.getAttribute('data-original'),
             img.getAttribute('data-image'),
-            img.getAttribute('data-full-size'),
-            img.getAttribute('data-large'),
-            img.currentSrc // What the browser actually loaded
+            img.getAttribute('data-full-size')
           ];
-          
-          // Also check srcset for high-quality images
-          var srcset = img.getAttribute('srcset') || '';
-          if (srcset) {
-            var srcsetParts = srcset.split(',');
-            for (var sp = 0; sp < srcsetParts.length; sp++) {
-              var part = srcsetParts[sp].trim().split(' ')[0];
-              if (part) possibleSrcs.push(part);
-            }
-          }
           
           for (var ps = 0; ps < possibleSrcs.length; ps++) {
             var src = possibleSrcs[ps];
-            if (src && isVehicleImage(src)) {
+            if (src && src.length > 10) {
               src = normalizeUrl(src);
               if (src.indexOf('http') === 0 && !processedUrls[src]) {
-                // Additional size checks - prefer larger images
-                var imgWidth = img.naturalWidth || img.width || 0;
-                var imgHeight = img.naturalHeight || img.height || 0;
-                // Skip tiny images (likely thumbnails or icons)
-                if (imgWidth > 50 || imgHeight > 50 || imgWidth === 0) {
+                // STRICT: Only allow images from trusted CDN domains
+                if (isVehiclePhotoCDN(src)) {
                   processedUrls[src] = true;
                   images.push(src);
                 }
@@ -435,50 +501,41 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
           }
         }
         
-        debugImgInfo.push('Images from img tags: ' + images.length);
+        debugImgInfo.push('After gallery: ' + images.length);
         
-        // Strategy 2: Look for background images in style attributes
+        // STRATEGY 2: Look for AutoTrader CDN photos anywhere on page
+        var allImgElements = document.querySelectorAll('img');
+        for (var ai = 0; ai < allImgElements.length; ai++) {
+          var allImg = allImgElements[ai];
+          var src = allImg.src || allImg.currentSrc || '';
+          if (src && isVehiclePhotoCDN(src)) {
+            src = normalizeUrl(src);
+            if (src.indexOf('http') === 0 && !processedUrls[src]) {
+              processedUrls[src] = true;
+              images.push(src);
+            }
+          }
+        }
+        
+        debugImgInfo.push('After CDN scan: ' + images.length);
+        
+        // STRATEGY 3: Look for background images ONLY from trusted CDNs
         var elementsWithBg = document.querySelectorAll('[style*="background"]');
-        for (var bi = 0; bi < elementsWithBg.length; bi++) {
-          var el = elementsWithBg[bi];
+        for (var bi2 = 0; bi2 < elementsWithBg.length; bi2++) {
+          var el = elementsWithBg[bi2];
           var style = el.getAttribute('style') || '';
           var bgMatch = style.match(/url\\s*\\(\\s*['"]?([^'"\\)]+)['"]?\\s*\\)/i);
           if (bgMatch && bgMatch[1]) {
             var bgSrc = bgMatch[1];
-            if (isVehicleImage(bgSrc)) {
-              bgSrc = normalizeUrl(bgSrc);
-              if (bgSrc.indexOf('http') === 0 && !processedUrls[bgSrc]) {
-                processedUrls[bgSrc] = true;
-                images.push(bgSrc);
-              }
+            bgSrc = normalizeUrl(bgSrc);
+            if (bgSrc.indexOf('http') === 0 && isVehiclePhotoCDN(bgSrc) && !processedUrls[bgSrc]) {
+              processedUrls[bgSrc] = true;
+              images.push(bgSrc);
             }
           }
         }
         
-        debugImgInfo.push('After bg images: ' + images.length);
-        
-        // Strategy 3: Look for data attributes on non-img elements (common for lazy loading)
-        var dataImageEls = document.querySelectorAll('[data-image], [data-src], [data-background]');
-        for (var di2 = 0; di2 < dataImageEls.length; di2++) {
-          var dataEl = dataImageEls[di2];
-          var dataSrcs = [
-            dataEl.getAttribute('data-image'),
-            dataEl.getAttribute('data-src'),
-            dataEl.getAttribute('data-background')
-          ];
-          for (var ds = 0; ds < dataSrcs.length; ds++) {
-            var dataSrc = dataSrcs[ds];
-            if (dataSrc && isVehicleImage(dataSrc)) {
-              dataSrc = normalizeUrl(dataSrc);
-              if (dataSrc.indexOf('http') === 0 && !processedUrls[dataSrc]) {
-                processedUrls[dataSrc] = true;
-                images.push(dataSrc);
-              }
-            }
-          }
-        }
-        
-        debugImgInfo.push('After data attrs: ' + images.length);
+        debugImgInfo.push('After bg (CDN only): ' + images.length);
         
         return {
           vin: vin,
