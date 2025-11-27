@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Key, FileText, Plus, Eye, EyeOff, Trash2, LogOut, Settings2, CheckCircle2, XCircle, Loader2, Plug } from "lucide-react";
+import { Building2, Key, FileText, Plus, Eye, EyeOff, Trash2, LogOut, Settings2, CheckCircle2, XCircle, Loader2, Plug, Pencil } from "lucide-react";
 import { format } from "date-fns";
 
 interface Dealership {
@@ -21,6 +21,13 @@ interface Dealership {
   name: string;
   slug: string;
   subdomain: string;
+  address?: string;
+  city?: string;
+  province?: string;
+  postalCode?: string;
+  phone?: string;
+  timezone?: string;
+  defaultCurrency?: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -326,6 +333,7 @@ export default function SuperAdminDashboard() {
                         <TableHead>Subdomain</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Created</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -340,6 +348,14 @@ export default function SuperAdminDashboard() {
                             </Badge>
                           </TableCell>
                           <TableCell>{format(new Date(dealership.createdAt), "PPP")}</TableCell>
+                          <TableCell className="text-right">
+                            <EditDealershipDialog 
+                              dealership={dealership}
+                              onSuccess={() => {
+                                queryClient.invalidateQueries({ queryKey: ["/api/super-admin/dealerships"] });
+                              }}
+                            />
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -534,6 +550,280 @@ export default function SuperAdminDashboard() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+function EditDealershipDialog({ dealership, onSuccess }: { dealership: Dealership; onSuccess: () => void }) {
+  const [open, setOpen] = useState(false);
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
+  const [masterUser, setMasterUser] = useState<{ id: number; email: string; name: string } | null>(null);
+  const [formData, setFormData] = useState({
+    name: dealership.name,
+    slug: dealership.slug,
+    subdomain: dealership.subdomain,
+    address: dealership.address || "",
+    city: dealership.city || "",
+    province: dealership.province || "",
+    postalCode: dealership.postalCode || "",
+    phone: dealership.phone || "",
+    timezone: dealership.timezone || "America/Vancouver",
+    defaultCurrency: dealership.defaultCurrency || "CAD",
+    isActive: dealership.isActive,
+    masterAdminEmail: "",
+    masterAdminName: "",
+    masterAdminPassword: "",
+  });
+
+  const fetchDealershipDetails = async () => {
+    const token = localStorage.getItem('auth_token');
+    try {
+      const response = await fetch(`/api/super-admin/dealerships/${dealership.id}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setMasterUser(data.masterUser);
+        if (data.masterUser) {
+          setFormData(prev => ({
+            ...prev,
+            masterAdminEmail: data.masterUser.email,
+            masterAdminName: data.masterUser.name,
+          }));
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching dealership details:", error);
+    }
+  };
+
+  useEffect(() => {
+    if (open) {
+      fetchDealershipDetails();
+    }
+  }, [open]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    
+    const token = localStorage.getItem('auth_token');
+    
+    try {
+      const response = await fetch(`/api/super-admin/dealerships/${dealership.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(formData),
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.masterUser) {
+          setMasterUser(result.masterUser);
+        }
+        toast({
+          title: "Success",
+          description: result.masterUser 
+            ? `Dealership updated and master admin ${result.masterUser.email} saved successfully`
+            : "Dealership updated successfully",
+        });
+        setFormData(prev => ({ ...prev, masterAdminPassword: "" }));
+        setOpen(false);
+        onSuccess();
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Error",
+          description: error.error || "Failed to update dealership",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update dealership",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" data-testid={`button-edit-dealership-${dealership.id}`}>
+          <Pencil className="h-4 w-4 mr-2" />
+          Edit
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl max-h-[90vh]">
+        <DialogHeader>
+          <DialogTitle>Edit Dealership: {dealership.name}</DialogTitle>
+          <DialogDescription>
+            Update dealership settings and master admin credentials
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <ScrollArea className="h-[60vh] pr-4">
+            <div className="space-y-6">
+              <div className="space-y-4">
+                <h3 className="font-semibold text-lg border-b pb-2">Dealership Information</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-name">Dealership Name *</Label>
+                    <Input
+                      id="edit-name"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-slug">URL Slug *</Label>
+                    <Input
+                      id="edit-slug"
+                      value={formData.slug}
+                      onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-subdomain">Subdomain *</Label>
+                    <Input
+                      id="edit-subdomain"
+                      value={formData.subdomain}
+                      onChange={(e) => setFormData({ ...formData, subdomain: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-phone">Phone</Label>
+                    <Input
+                      id="edit-phone"
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    />
+                  </div>
+                  <div className="col-span-2 space-y-2">
+                    <Label htmlFor="edit-address">Address</Label>
+                    <Input
+                      id="edit-address"
+                      value={formData.address}
+                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-city">City</Label>
+                    <Input
+                      id="edit-city"
+                      value={formData.city}
+                      onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-province">Province</Label>
+                    <Input
+                      id="edit-province"
+                      value={formData.province}
+                      onChange={(e) => setFormData({ ...formData, province: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-postalCode">Postal Code</Label>
+                    <Input
+                      id="edit-postalCode"
+                      value={formData.postalCode}
+                      onChange={(e) => setFormData({ ...formData, postalCode: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-timezone">Timezone</Label>
+                    <Input
+                      id="edit-timezone"
+                      value={formData.timezone}
+                      onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 pt-2">
+                  <Switch
+                    id="edit-isActive"
+                    checked={formData.isActive}
+                    onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
+                  />
+                  <Label htmlFor="edit-isActive">Dealership Active</Label>
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                <h3 className="font-semibold text-lg border-b pb-2">Master Admin User</h3>
+                {masterUser && (
+                  <div className="bg-muted/50 p-3 rounded-lg mb-4">
+                    <p className="text-sm text-muted-foreground">Current Master Admin:</p>
+                    <p className="font-medium">{masterUser.name} ({masterUser.email})</p>
+                  </div>
+                )}
+                <p className="text-sm text-muted-foreground">
+                  {masterUser 
+                    ? "Update the password to change credentials for the existing master admin, or enter a new email to create a new master admin."
+                    : "Create a new master admin for this dealership by entering email and password."}
+                </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-masterAdminName">Admin Name</Label>
+                    <Input
+                      id="edit-masterAdminName"
+                      value={formData.masterAdminName}
+                      onChange={(e) => setFormData({ ...formData, masterAdminName: e.target.value })}
+                      placeholder="e.g., John Smith"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-masterAdminEmail">Admin Email</Label>
+                    <Input
+                      id="edit-masterAdminEmail"
+                      type="email"
+                      value={formData.masterAdminEmail}
+                      onChange={(e) => setFormData({ ...formData, masterAdminEmail: e.target.value })}
+                      placeholder="admin@dealership.com"
+                    />
+                  </div>
+                  <div className="col-span-2 space-y-2">
+                    <Label htmlFor="edit-masterAdminPassword">Admin Password {masterUser ? "(leave blank to keep current)" : "*"}</Label>
+                    <Input
+                      id="edit-masterAdminPassword"
+                      type="password"
+                      value={formData.masterAdminPassword}
+                      onChange={(e) => setFormData({ ...formData, masterAdminPassword: e.target.value })}
+                      placeholder={masterUser ? "Enter new password or leave blank" : "Enter password"}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </ScrollArea>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={loading}>
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save Changes"
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

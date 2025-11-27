@@ -189,6 +189,7 @@ export interface IStorage {
   updateUser(id: number, user: Partial<InsertUser>, dealershipId?: number): Promise<User | undefined>;
   getAllUsers(dealershipId: number): Promise<User[]>; // REQUIRED: only get users from specific dealership
   getUsersByRole(role: string): Promise<User[]>;
+  getUsersByDealership(dealershipId: number): Promise<User[]>; // Get all users for a specific dealership
   
   // Financing rules - Credit score tiers (Multi-Tenant)
   getCreditScoreTiers(dealershipId: number): Promise<CreditScoreTier[]>;
@@ -747,6 +748,12 @@ export class DatabaseStorage implements IStorage {
   async getUsersByRole(role: string): Promise<User[]> {
     // TODO: Add dealershipId parameter to filter by dealership
     return await db.select().from(users).where(eq(users.role, role)).orderBy(desc(users.createdAt));
+  }
+
+  async getUsersByDealership(dealershipId: number): Promise<User[]> {
+    return await db.select().from(users)
+      .where(eq(users.dealershipId, dealershipId))
+      .orderBy(desc(users.createdAt));
   }
 
   // ====== FINANCING RULES - CREDIT SCORE TIERS (Multi-Tenant) ======

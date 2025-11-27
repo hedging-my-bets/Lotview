@@ -240,6 +240,132 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Update dealership settings (super admin only)
+  app.patch("/api/super-admin/dealerships/:dealershipId", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const dealershipId = parseInt(req.params.dealershipId);
+      const { 
+        name, 
+        slug, 
+        subdomain, 
+        address,
+        city,
+        province,
+        postalCode,
+        phone,
+        timezone,
+        defaultCurrency,
+        isActive,
+        masterAdminEmail,
+        masterAdminName,
+        masterAdminPassword,
+      } = req.body;
+      
+      // Check if dealership exists
+      const dealership = await storage.getDealership(dealershipId);
+      if (!dealership) {
+        return res.status(404).json({ error: "Dealership not found" });
+      }
+      
+      // Update dealership basic info
+      const dealershipUpdates: Record<string, any> = {};
+      if (name !== undefined) dealershipUpdates.name = name;
+      if (slug !== undefined) dealershipUpdates.slug = slug;
+      if (subdomain !== undefined) dealershipUpdates.subdomain = subdomain;
+      if (address !== undefined) dealershipUpdates.address = address;
+      if (city !== undefined) dealershipUpdates.city = city;
+      if (province !== undefined) dealershipUpdates.province = province;
+      if (postalCode !== undefined) dealershipUpdates.postalCode = postalCode;
+      if (phone !== undefined) dealershipUpdates.phone = phone;
+      if (timezone !== undefined) dealershipUpdates.timezone = timezone;
+      if (defaultCurrency !== undefined) dealershipUpdates.defaultCurrency = defaultCurrency;
+      if (isActive !== undefined) dealershipUpdates.isActive = isActive;
+      
+      let updatedDealership = dealership;
+      if (Object.keys(dealershipUpdates).length > 0) {
+        updatedDealership = await storage.updateDealership(dealershipId, dealershipUpdates) || dealership;
+      }
+      
+      // Handle master admin user creation or update
+      let masterUser = null;
+      if (masterAdminEmail && masterAdminPassword) {
+        // Check if this email already exists
+        const existingUser = await storage.getUserByEmail(masterAdminEmail);
+        
+        if (existingUser) {
+          // Update existing user if it belongs to this dealership or has no dealership
+          if (existingUser.dealershipId === dealershipId || existingUser.dealershipId === null) {
+            const hashedPassword = await hashPassword(masterAdminPassword);
+            masterUser = await storage.updateUser(existingUser.id, {
+              name: masterAdminName || existingUser.name,
+              passwordHash: hashedPassword,
+              dealershipId,
+              role: 'master',
+            });
+          } else {
+            return res.status(400).json({ error: "Email already in use by another dealership" });
+          }
+        } else {
+          // Create new master user
+          const hashedPassword = await hashPassword(masterAdminPassword);
+          masterUser = await storage.createUser({
+            email: masterAdminEmail,
+            passwordHash: hashedPassword,
+            name: masterAdminName || masterAdminEmail.split('@')[0],
+            role: 'master',
+            dealershipId,
+            isActive: true,
+            createdBy: (req as AuthRequest).user!.id,
+          });
+        }
+      }
+      
+      // Log audit action
+      const authReq = req as AuthRequest;
+      await storage.logAuditAction({
+        userId: authReq.user!.id,
+        action: "UPDATE_DEALERSHIP",
+        resource: "dealership",
+        resourceId: String(dealershipId),
+        details: `Updated dealership: ${updatedDealership.name}${masterUser ? ` with master admin: ${masterUser.email}` : ''}`,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent']
+      });
+      
+      res.json({ 
+        dealership: updatedDealership,
+        masterUser: masterUser ? { id: masterUser.id, email: masterUser.email, name: masterUser.name } : null
+      });
+    } catch (error) {
+      console.error("Error updating dealership:", error);
+      res.status(500).json({ error: "Failed to update dealership" });
+    }
+  });
+  
+  // Get dealership details with master user (super admin only)
+  app.get("/api/super-admin/dealerships/:dealershipId", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const dealershipId = parseInt(req.params.dealershipId);
+      
+      const dealership = await storage.getDealership(dealershipId);
+      if (!dealership) {
+        return res.status(404).json({ error: "Dealership not found" });
+      }
+      
+      // Get master user for this dealership
+      const users = await storage.getUsersByDealership(dealershipId);
+      const masterUser = users.find(u => u.role === 'master');
+      
+      res.json({
+        dealership,
+        masterUser: masterUser ? { id: masterUser.id, email: masterUser.email, name: masterUser.name } : null
+      });
+    } catch (error) {
+      console.error("Error fetching dealership details:", error);
+      res.status(500).json({ error: "Failed to fetch dealership details" });
+    }
+  });
+  
   // Get all global settings (super admin only)
   app.get("/api/super-admin/global-settings", authMiddleware, superAdminOnly, async (req, res) => {
     try {
