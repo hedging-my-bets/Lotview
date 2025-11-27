@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Key, FileText, Plus, Eye, EyeOff, Trash2, LogOut } from "lucide-react";
+import { Building2, Key, FileText, Plus, Eye, EyeOff, Trash2, LogOut, Settings2, CheckCircle2, XCircle, Loader2, Plug } from "lucide-react";
 import { format } from "date-fns";
 
 interface Dealership {
@@ -56,6 +56,37 @@ interface User {
   role: string;
   dealershipId: number | null;
   isActive: boolean;
+}
+
+interface DealershipWithIntegrations extends Dealership {
+  integrations: {
+    openai: boolean;
+    facebook: boolean;
+    marketcheck: boolean;
+    apify: boolean;
+    gemini: boolean;
+    ghl: boolean;
+    googleAnalytics: boolean;
+    googleAds: boolean;
+    facebookPixel: boolean;
+  };
+}
+
+interface DealershipApiKeys {
+  dealershipId: number;
+  openaiApiKey: string | null;
+  facebookAppId: string | null;
+  facebookAppSecret: string | null;
+  marketcheckKey: string | null;
+  apifyToken: string | null;
+  apifyActorId: string | null;
+  geminiApiKey: string | null;
+  ghlApiKey: string | null;
+  ghlLocationId: string | null;
+  gtmContainerId: string | null;
+  googleAnalyticsId: string | null;
+  googleAdsId: string | null;
+  facebookPixelId: string | null;
 }
 
 export default function SuperAdminDashboard() {
@@ -112,6 +143,11 @@ export default function SuperAdminDashboard() {
   // Audit Logs
   const { data: auditLogsData, isLoading: auditLogsLoading } = useQuery<{ logs: AuditLog[]; total: number }>({
     queryKey: ["/api/super-admin/audit-logs"],
+  });
+
+  // Dealerships with integrations status
+  const { data: dealershipsWithIntegrations = [], isLoading: integrationsLoading } = useQuery<DealershipWithIntegrations[]>({
+    queryKey: ["/api/super-admin/dealerships-with-integrations"],
   });
 
   // Create Dealership Mutation
@@ -248,6 +284,11 @@ export default function SuperAdminDashboard() {
             <span className="hidden sm:inline">Dealerships</span>
             <span className="sm:hidden">Dealers</span>
           </TabsTrigger>
+          <TabsTrigger value="integrations" data-testid="tab-integrations" className="text-xs sm:text-sm px-2 sm:px-3 py-2">
+            <Plug className="h-4 w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">API Integrations</span>
+            <span className="sm:hidden">APIs</span>
+          </TabsTrigger>
           <TabsTrigger value="settings" data-testid="tab-settings" className="text-xs sm:text-sm px-2 sm:px-3 py-2">
             <Key className="h-4 w-4 mr-1 sm:mr-2" />
             <span className="hidden sm:inline">Global Settings</span>
@@ -303,6 +344,63 @@ export default function SuperAdminDashboard() {
                       ))}
                     </TableBody>
                   </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* API Integrations Tab */}
+        <TabsContent value="integrations">
+          <Card>
+            <CardHeader>
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Plug className="h-5 w-5" />
+                  API Integrations
+                </CardTitle>
+                <CardDescription>Manage OpenAI, Facebook, and other service integrations for each dealership</CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {integrationsLoading ? (
+                <div className="text-center py-8 text-muted-foreground">Loading integrations...</div>
+              ) : dealershipsWithIntegrations.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">No dealerships found. Create a dealership first.</div>
+              ) : (
+                <div className="space-y-6">
+                  {dealershipsWithIntegrations.map((dealership) => (
+                    <Card key={dealership.id} className="border-2">
+                      <CardHeader className="pb-3">
+                        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                          <div>
+                            <CardTitle className="text-lg">{dealership.name}</CardTitle>
+                            <CardDescription>Configure API keys and integration settings</CardDescription>
+                          </div>
+                          <EditApiKeysDialog 
+                            dealershipId={dealership.id} 
+                            dealershipName={dealership.name}
+                            onSuccess={() => {
+                              queryClient.invalidateQueries({ queryKey: ["/api/super-admin/dealerships-with-integrations"] });
+                            }}
+                          />
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                          <IntegrationStatus label="OpenAI" active={dealership.integrations.openai} />
+                          <IntegrationStatus label="Facebook" active={dealership.integrations.facebook} />
+                          <IntegrationStatus label="MarketCheck" active={dealership.integrations.marketcheck} />
+                          <IntegrationStatus label="Apify" active={dealership.integrations.apify} />
+                          <IntegrationStatus label="GoHighLevel" active={dealership.integrations.ghl} />
+                          <IntegrationStatus label="GA4" active={dealership.integrations.googleAnalytics} />
+                          <IntegrationStatus label="Google Ads" active={dealership.integrations.googleAds} />
+                          <IntegrationStatus label="FB Pixel" active={dealership.integrations.facebookPixel} />
+                          <IntegrationStatus label="Gemini" active={dealership.integrations.gemini} />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
               )}
             </CardContent>
@@ -899,6 +997,440 @@ function AddSettingDialog({ onSubmit }: { onSubmit: (data: any) => void }) {
             <Button type="submit" data-testid="button-submit-setting">Add Setting</Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function IntegrationStatus({ label, active }: { label: string; active: boolean }) {
+  return (
+    <div className={`flex items-center gap-2 p-2 rounded-lg border ${active ? 'bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800' : 'bg-muted/50 border-border'}`}>
+      {active ? (
+        <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+      ) : (
+        <XCircle className="h-4 w-4 text-muted-foreground" />
+      )}
+      <span className={`text-sm ${active ? 'text-green-700 dark:text-green-300 font-medium' : 'text-muted-foreground'}`}>
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function EditApiKeysDialog({ 
+  dealershipId, 
+  dealershipName,
+  onSuccess 
+}: { 
+  dealershipId: number; 
+  dealershipName: string;
+  onSuccess: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
+  const [testing, setTesting] = useState<{ openai: boolean; facebook: boolean }>({ openai: false, facebook: false });
+  const [testResults, setTestResults] = useState<{ openai?: { success: boolean; message: string }; facebook?: { success: boolean; message: string } }>({});
+  const { toast } = useToast();
+  
+  const [formData, setFormData] = useState({
+    openaiApiKey: "",
+    facebookAppId: "",
+    facebookAppSecret: "",
+    marketcheckKey: "",
+    apifyToken: "",
+    apifyActorId: "",
+    geminiApiKey: "",
+    ghlApiKey: "",
+    ghlLocationId: "",
+    gtmContainerId: "",
+    googleAnalyticsId: "",
+    googleAdsId: "",
+    facebookPixelId: "",
+  });
+
+  const { data: apiKeys, isLoading } = useQuery<DealershipApiKeys>({
+    queryKey: [`/api/super-admin/dealerships/${dealershipId}/api-keys`],
+    enabled: open,
+  });
+
+  useEffect(() => {
+    if (apiKeys) {
+      setFormData({
+        openaiApiKey: apiKeys.openaiApiKey || "",
+        facebookAppId: apiKeys.facebookAppId || "",
+        facebookAppSecret: apiKeys.facebookAppSecret || "",
+        marketcheckKey: apiKeys.marketcheckKey || "",
+        apifyToken: apiKeys.apifyToken || "",
+        apifyActorId: apiKeys.apifyActorId || "",
+        geminiApiKey: apiKeys.geminiApiKey || "",
+        ghlApiKey: apiKeys.ghlApiKey || "",
+        ghlLocationId: apiKeys.ghlLocationId || "",
+        gtmContainerId: apiKeys.gtmContainerId || "",
+        googleAnalyticsId: apiKeys.googleAnalyticsId || "",
+        googleAdsId: apiKeys.googleAdsId || "",
+        facebookPixelId: apiKeys.facebookPixelId || "",
+      });
+    }
+  }, [apiKeys]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/super-admin/dealerships/${dealershipId}/api-keys`, {
+        method: "PATCH",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify(formData),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to update API keys");
+      }
+      
+      toast({ title: "Success", description: "API keys updated successfully" });
+      onSuccess();
+      setOpen(false);
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  };
+
+  const testOpenAI = async () => {
+    setTesting({ ...testing, openai: true });
+    setTestResults({ ...testResults, openai: undefined });
+    
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/super-admin/dealerships/${dealershipId}/test-openai`, {
+        method: "POST",
+        headers: { 
+          "Authorization": `Bearer ${token}`,
+        },
+      });
+      const result = await response.json();
+      setTestResults({ ...testResults, openai: { success: result.success, message: result.message || result.error } });
+    } catch (error) {
+      setTestResults({ ...testResults, openai: { success: false, message: "Connection failed" } });
+    } finally {
+      setTesting({ ...testing, openai: false });
+    }
+  };
+
+  const testFacebook = async () => {
+    setTesting({ ...testing, facebook: true });
+    setTestResults({ ...testResults, facebook: undefined });
+    
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/super-admin/dealerships/${dealershipId}/test-facebook`, {
+        method: "POST",
+        headers: { 
+          "Authorization": `Bearer ${token}`,
+        },
+      });
+      const result = await response.json();
+      setTestResults({ ...testResults, facebook: { success: result.success, message: result.message || result.error } });
+    } catch (error) {
+      setTestResults({ ...testResults, facebook: { success: false, message: "Connection failed" } });
+    } finally {
+      setTesting({ ...testing, facebook: false });
+    }
+  };
+
+  const toggleSecret = (key: string) => {
+    setShowSecrets({ ...showSecrets, [key]: !showSecrets[key] });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" data-testid={`button-edit-api-keys-${dealershipId}`}>
+          <Settings2 className="h-4 w-4 mr-2" />
+          Configure
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-4xl max-h-[90vh]">
+        <DialogHeader>
+          <DialogTitle>API Keys - {dealershipName}</DialogTitle>
+          <DialogDescription>
+            Configure API keys and integration settings for this dealership
+          </DialogDescription>
+        </DialogHeader>
+        
+        {isLoading ? (
+          <div className="text-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+            <p className="text-muted-foreground mt-2">Loading API keys...</p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <ScrollArea className="h-[60vh] pr-4">
+              <div className="space-y-6">
+                {/* AI Integration */}
+                <div className="border rounded-lg p-4">
+                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+                    🤖 AI Integration (OpenAI ChatGPT)
+                  </h4>
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="openaiApiKey">OpenAI API Key</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="openaiApiKey"
+                          value={formData.openaiApiKey}
+                          onChange={(e) => setFormData({ ...formData, openaiApiKey: e.target.value })}
+                          placeholder="sk-..."
+                          type={showSecrets.openaiApiKey ? "text" : "password"}
+                          className="flex-1"
+                          data-testid="input-openai-api-key"
+                        />
+                        <Button type="button" variant="ghost" size="icon" onClick={() => toggleSecret('openaiApiKey')}>
+                          {showSecrets.openaiApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          onClick={testOpenAI}
+                          disabled={testing.openai || !formData.openaiApiKey}
+                          data-testid="button-test-openai"
+                        >
+                          {testing.openai ? <Loader2 className="h-4 w-4 animate-spin" /> : "Test"}
+                        </Button>
+                      </div>
+                      {testResults.openai && (
+                        <p className={`text-sm ${testResults.openai.success ? 'text-green-600' : 'text-red-600'}`}>
+                          {testResults.openai.success ? '✓ ' : '✗ '}{testResults.openai.message}
+                        </p>
+                      )}
+                      <p className="text-xs text-muted-foreground">Used for the AI chat assistant on vehicle pages</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Facebook Integration */}
+                <div className="border rounded-lg p-4">
+                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+                    📘 Facebook Marketplace Automation
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="facebookAppId">Facebook App ID</Label>
+                      <Input
+                        id="facebookAppId"
+                        value={formData.facebookAppId}
+                        onChange={(e) => setFormData({ ...formData, facebookAppId: e.target.value })}
+                        placeholder="123456789..."
+                        data-testid="input-facebook-app-id"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="facebookAppSecret">Facebook App Secret</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="facebookAppSecret"
+                          value={formData.facebookAppSecret}
+                          onChange={(e) => setFormData({ ...formData, facebookAppSecret: e.target.value })}
+                          placeholder="abc123..."
+                          type={showSecrets.facebookAppSecret ? "text" : "password"}
+                          className="flex-1"
+                          data-testid="input-facebook-app-secret"
+                        />
+                        <Button type="button" variant="ghost" size="icon" onClick={() => toggleSecret('facebookAppSecret')}>
+                          {showSecrets.facebookAppSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="col-span-full">
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        onClick={testFacebook}
+                        disabled={testing.facebook || !formData.facebookAppId || !formData.facebookAppSecret}
+                        data-testid="button-test-facebook"
+                      >
+                        {testing.facebook ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                        Test Facebook Credentials
+                      </Button>
+                      {testResults.facebook && (
+                        <p className={`text-sm mt-2 ${testResults.facebook.success ? 'text-green-600' : 'text-red-600'}`}>
+                          {testResults.facebook.success ? '✓ ' : '✗ '}{testResults.facebook.message}
+                        </p>
+                      )}
+                      <p className="text-xs text-muted-foreground mt-1">Required for automated Facebook Marketplace posting</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Remarketing / Analytics */}
+                <div className="border rounded-lg p-4">
+                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+                    📊 Analytics & Remarketing
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="gtmContainerId">GTM Container ID</Label>
+                      <Input
+                        id="gtmContainerId"
+                        value={formData.gtmContainerId}
+                        onChange={(e) => setFormData({ ...formData, gtmContainerId: e.target.value })}
+                        placeholder="GTM-XXXXX"
+                        data-testid="input-gtm-container-id"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="googleAnalyticsId">Google Analytics 4 ID</Label>
+                      <Input
+                        id="googleAnalyticsId"
+                        value={formData.googleAnalyticsId}
+                        onChange={(e) => setFormData({ ...formData, googleAnalyticsId: e.target.value })}
+                        placeholder="G-XXXXX"
+                        data-testid="input-google-analytics-id"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="googleAdsId">Google Ads ID</Label>
+                      <Input
+                        id="googleAdsId"
+                        value={formData.googleAdsId}
+                        onChange={(e) => setFormData({ ...formData, googleAdsId: e.target.value })}
+                        placeholder="AW-XXXXX"
+                        data-testid="input-google-ads-id"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="facebookPixelId">Facebook Pixel ID</Label>
+                      <Input
+                        id="facebookPixelId"
+                        value={formData.facebookPixelId}
+                        onChange={(e) => setFormData({ ...formData, facebookPixelId: e.target.value })}
+                        placeholder="123456789..."
+                        data-testid="input-facebook-pixel-id"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Market Data APIs */}
+                <div className="border rounded-lg p-4">
+                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+                    🔍 Market Data APIs
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="marketcheckKey">MarketCheck API Key</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="marketcheckKey"
+                          value={formData.marketcheckKey}
+                          onChange={(e) => setFormData({ ...formData, marketcheckKey: e.target.value })}
+                          placeholder="API key..."
+                          type={showSecrets.marketcheckKey ? "text" : "password"}
+                          className="flex-1"
+                          data-testid="input-marketcheck-key"
+                        />
+                        <Button type="button" variant="ghost" size="icon" onClick={() => toggleSecret('marketcheckKey')}>
+                          {showSecrets.marketcheckKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="apifyToken">Apify API Token</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="apifyToken"
+                          value={formData.apifyToken}
+                          onChange={(e) => setFormData({ ...formData, apifyToken: e.target.value })}
+                          placeholder="apify_api_..."
+                          type={showSecrets.apifyToken ? "text" : "password"}
+                          className="flex-1"
+                          data-testid="input-apify-token"
+                        />
+                        <Button type="button" variant="ghost" size="icon" onClick={() => toggleSecret('apifyToken')}>
+                          {showSecrets.apifyToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="apifyActorId">Apify Actor ID</Label>
+                      <Input
+                        id="apifyActorId"
+                        value={formData.apifyActorId}
+                        onChange={(e) => setFormData({ ...formData, apifyActorId: e.target.value })}
+                        placeholder="Actor ID..."
+                        data-testid="input-apify-actor-id"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="geminiApiKey">Google Gemini API Key</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="geminiApiKey"
+                          value={formData.geminiApiKey}
+                          onChange={(e) => setFormData({ ...formData, geminiApiKey: e.target.value })}
+                          placeholder="API key..."
+                          type={showSecrets.geminiApiKey ? "text" : "password"}
+                          className="flex-1"
+                          data-testid="input-gemini-api-key"
+                        />
+                        <Button type="button" variant="ghost" size="icon" onClick={() => toggleSecret('geminiApiKey')}>
+                          {showSecrets.geminiApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* GoHighLevel CRM */}
+                <div className="border rounded-lg p-4">
+                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+                    📞 GoHighLevel CRM
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="ghlApiKey">GHL API Key</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="ghlApiKey"
+                          value={formData.ghlApiKey}
+                          onChange={(e) => setFormData({ ...formData, ghlApiKey: e.target.value })}
+                          placeholder="API key..."
+                          type={showSecrets.ghlApiKey ? "text" : "password"}
+                          className="flex-1"
+                          data-testid="input-ghl-api-key"
+                        />
+                        <Button type="button" variant="ghost" size="icon" onClick={() => toggleSecret('ghlApiKey')}>
+                          {showSecrets.ghlApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="ghlLocationId">GHL Location ID</Label>
+                      <Input
+                        id="ghlLocationId"
+                        value={formData.ghlLocationId}
+                        onChange={(e) => setFormData({ ...formData, ghlLocationId: e.target.value })}
+                        placeholder="Location ID..."
+                        data-testid="input-ghl-location-id"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </ScrollArea>
+            <DialogFooter className="mt-4">
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" data-testid="button-save-api-keys">
+                Save Changes
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   );

@@ -331,6 +331,171 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Get API keys for a specific dealership (super admin only)
+  app.get("/api/super-admin/dealerships/:dealershipId/api-keys", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const dealershipId = parseInt(req.params.dealershipId);
+      const apiKeys = await storage.getDealershipApiKeys(dealershipId);
+      
+      if (!apiKeys) {
+        return res.json({
+          dealershipId,
+          openaiApiKey: null,
+          facebookAppId: null,
+          facebookAppSecret: null,
+          marketcheckKey: null,
+          apifyToken: null,
+          apifyActorId: null,
+          geminiApiKey: null,
+          ghlApiKey: null,
+          ghlLocationId: null,
+          gtmContainerId: null,
+          googleAnalyticsId: null,
+          googleAdsId: null,
+          facebookPixelId: null,
+        });
+      }
+      
+      res.json(apiKeys);
+    } catch (error) {
+      console.error("Error fetching dealership API keys:", error);
+      res.status(500).json({ error: "Failed to fetch dealership API keys" });
+    }
+  });
+  
+  // Update API keys for a specific dealership (super admin only)
+  app.patch("/api/super-admin/dealerships/:dealershipId/api-keys", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const dealershipId = parseInt(req.params.dealershipId);
+      const updates = req.body;
+      
+      // Check if dealership exists
+      const dealership = await storage.getDealership(dealershipId);
+      if (!dealership) {
+        return res.status(404).json({ error: "Dealership not found" });
+      }
+      
+      // Check if API keys exist, create if not
+      const existing = await storage.getDealershipApiKeys(dealershipId);
+      let apiKeys;
+      
+      if (existing) {
+        apiKeys = await storage.updateDealershipApiKeys(dealershipId, updates);
+      } else {
+        apiKeys = await storage.saveDealershipApiKeys({
+          dealershipId,
+          ...updates,
+        });
+      }
+      
+      // Log audit action
+      const authReq = req as AuthRequest;
+      await storage.logAuditAction({
+        userId: authReq.user!.id,
+        action: "UPDATE_DEALERSHIP_API_KEYS",
+        resource: "dealership_api_keys",
+        resourceId: String(dealershipId),
+        details: `Updated API keys for dealership: ${dealership.name}`,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent']
+      });
+      
+      res.json(apiKeys);
+    } catch (error) {
+      console.error("Error updating dealership API keys:", error);
+      res.status(500).json({ error: "Failed to update dealership API keys" });
+    }
+  });
+  
+  // Test OpenAI API key for a dealership (super admin only)
+  app.post("/api/super-admin/dealerships/:dealershipId/test-openai", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const dealershipId = parseInt(req.params.dealershipId);
+      const apiKeys = await storage.getDealershipApiKeys(dealershipId);
+      
+      if (!apiKeys?.openaiApiKey) {
+        return res.json({ success: false, error: "OpenAI API key not configured" });
+      }
+      
+      // Test the API key with a simple completion request
+      const response = await fetch("https://api.openai.com/v1/models", {
+        headers: {
+          "Authorization": `Bearer ${apiKeys.openaiApiKey}`,
+        },
+      });
+      
+      if (response.ok) {
+        res.json({ success: true, message: "OpenAI API key is valid" });
+      } else {
+        const error = await response.json();
+        res.json({ success: false, error: error.error?.message || "Invalid API key" });
+      }
+    } catch (error) {
+      console.error("Error testing OpenAI API key:", error);
+      res.json({ success: false, error: "Connection failed" });
+    }
+  });
+  
+  // Test Facebook App credentials for a dealership (super admin only)
+  app.post("/api/super-admin/dealerships/:dealershipId/test-facebook", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const dealershipId = parseInt(req.params.dealershipId);
+      const apiKeys = await storage.getDealershipApiKeys(dealershipId);
+      
+      if (!apiKeys?.facebookAppId || !apiKeys?.facebookAppSecret) {
+        return res.json({ success: false, error: "Facebook App ID or Secret not configured" });
+      }
+      
+      // Test credentials by getting an app access token
+      const response = await fetch(
+        `https://graph.facebook.com/oauth/access_token?client_id=${apiKeys.facebookAppId}&client_secret=${apiKeys.facebookAppSecret}&grant_type=client_credentials`
+      );
+      
+      if (response.ok) {
+        res.json({ success: true, message: "Facebook credentials are valid" });
+      } else {
+        const error = await response.json();
+        res.json({ success: false, error: error.error?.message || "Invalid credentials" });
+      }
+    } catch (error) {
+      console.error("Error testing Facebook credentials:", error);
+      res.json({ success: false, error: "Connection failed" });
+    }
+  });
+  
+  // Get all dealerships with API key status (super admin only)
+  app.get("/api/super-admin/dealerships-with-integrations", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const dealerships = await storage.getAllDealerships();
+      
+      // Get API keys for all dealerships
+      const dealershipsWithIntegrations = await Promise.all(
+        dealerships.map(async (dealership) => {
+          const apiKeys = await storage.getDealershipApiKeys(dealership.id);
+          return {
+            ...dealership,
+            integrations: {
+              openai: !!apiKeys?.openaiApiKey,
+              facebook: !!(apiKeys?.facebookAppId && apiKeys?.facebookAppSecret),
+              marketcheck: !!apiKeys?.marketcheckKey,
+              apify: !!apiKeys?.apifyToken,
+              gemini: !!apiKeys?.geminiApiKey,
+              ghl: !!(apiKeys?.ghlApiKey && apiKeys?.ghlLocationId),
+              googleAnalytics: !!apiKeys?.googleAnalyticsId,
+              googleAds: !!apiKeys?.googleAdsId,
+              facebookPixel: !!apiKeys?.facebookPixelId,
+            },
+          };
+        })
+      );
+      
+      res.json(dealershipsWithIntegrations);
+    } catch (error) {
+      console.error("Error fetching dealerships with integrations:", error);
+      res.status(500).json({ error: "Failed to fetch dealerships with integrations" });
+    }
+  });
+  
   // ===== USER MANAGEMENT ROUTES (Master Only) =====
   
   // Get all users (master only)
@@ -2756,13 +2921,13 @@ Format your response in clear sections with actionable recommendations.`;
   
   // Store connected clients by dealership with authenticated user info
   interface AuthenticatedClient {
-    ws: WebSocket.WebSocket;
+    ws: InstanceType<typeof WebSocket.WebSocket>;
     userId: number;
     dealershipId: number;
   }
   const clientsByDealership = new Map<number, Set<AuthenticatedClient>>();
   
-  wss.on('connection', async (ws: WebSocket.WebSocket, req) => {
+  wss.on('connection', async (ws: InstanceType<typeof WebSocket.WebSocket>, req) => {
     // SECURITY: Authenticate WebSocket connection using JWT token
     const url = new URL(req.url || '', `http://${req.headers.host}`);
     const token = url.searchParams.get('token');
@@ -2810,7 +2975,7 @@ Format your response in clear sections with actionable recommendations.`;
         console.log(`WebSocket client disconnected: user ${user.id} for dealership ${dealershipId}`);
       });
       
-      ws.on('error', (error) => {
+      ws.on('error', (error: Error) => {
         console.error('WebSocket error:', error);
       });
     } catch (error) {

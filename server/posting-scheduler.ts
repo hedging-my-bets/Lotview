@@ -3,7 +3,7 @@ import { storage } from "./storage";
 import { facebookService } from "./facebook-service";
 
 let schedulerActive = false;
-let schedulerTask: cron.ScheduledTask | null = null;
+let schedulerTask: ReturnType<typeof cron.schedule> | null = null;
 let isProcessing = false;
 
 async function processPostingQueues() {
@@ -15,11 +15,12 @@ async function processPostingQueues() {
   isProcessing = true;
   
   try {
-    const schedules = await storage.getAllPostingSchedules();
+    const schedules = await storage.getAllPostingSchedules(1);
     
     for (const schedule of schedules) {
       if (!schedule.isActive) continue;
       
+      const dealershipId = schedule.dealershipId || 1;
       const now = new Date();
       
       if (schedule.lastPostedAt) {
@@ -39,7 +40,7 @@ async function processPostingQueues() {
         continue;
       }
       
-      const queue = await storage.getPostingQueueByUser(schedule.userId);
+      const queue = await storage.getPostingQueueByUser(schedule.userId, dealershipId);
       const queuedItems = queue
         .filter(item => item.status === 'queued')
         .sort((a, b) => a.queueOrder - b.queueOrder);
@@ -52,9 +53,9 @@ async function processPostingQueues() {
       const nextItem = queuedItems[0];
       
       try {
-        const vehicle = await storage.getVehicleById(nextItem.vehicleId);
+        const vehicle = await storage.getVehicleById(nextItem.vehicleId, dealershipId);
         if (!vehicle) {
-          await storage.updatePostingQueueItem(nextItem.id, schedule.userId, {
+          await storage.updatePostingQueueItem(nextItem.id, schedule.userId, dealershipId, {
             status: 'failed',
             errorMessage: 'Vehicle not found'
           });
@@ -63,14 +64,14 @@ async function processPostingQueues() {
         
         let account;
         if (nextItem.facebookAccountId) {
-          account = await storage.getFacebookAccountById(nextItem.facebookAccountId, schedule.userId);
+          account = await storage.getFacebookAccountById(nextItem.facebookAccountId, schedule.userId, dealershipId);
         } else {
-          const accounts = await storage.getFacebookAccountsByUser(schedule.userId);
+          const accounts = await storage.getFacebookAccountsByUser(schedule.userId, dealershipId);
           account = accounts.find(acc => acc.isActive && acc.accessToken);
         }
         
         if (!account || !account.accessToken) {
-          await storage.updatePostingQueueItem(nextItem.id, schedule.userId, {
+          await storage.updatePostingQueueItem(nextItem.id, schedule.userId, dealershipId, {
             status: 'failed',
             errorMessage: 'No active Facebook account found'
           });
@@ -79,21 +80,21 @@ async function processPostingQueues() {
         
         let template;
         if (nextItem.templateId) {
-          template = await storage.getAdTemplateById(nextItem.templateId, schedule.userId);
+          template = await storage.getAdTemplateById(nextItem.templateId, schedule.userId, dealershipId);
         } else {
-          const templates = await storage.getAdTemplatesByUser(schedule.userId);
+          const templates = await storage.getAdTemplatesByUser(schedule.userId, dealershipId);
           template = templates.find(t => t.isDefault) || templates[0];
         }
         
         if (!template) {
-          await storage.updatePostingQueueItem(nextItem.id, schedule.userId, {
+          await storage.updatePostingQueueItem(nextItem.id, schedule.userId, dealershipId, {
             status: 'failed',
             errorMessage: 'No ad template found'
           });
           continue;
         }
         
-        await storage.updatePostingQueueItem(nextItem.id, schedule.userId, {
+        await storage.updatePostingQueueItem(nextItem.id, schedule.userId, dealershipId, {
           status: 'posting'
         });
         
@@ -108,20 +109,20 @@ async function processPostingQueues() {
         
         const postedAt = new Date();
         
-        await storage.updatePostingQueueItem(nextItem.id, schedule.userId, {
+        await storage.updatePostingQueueItem(nextItem.id, schedule.userId, dealershipId, {
           status: 'posted',
           facebookPostId: postId,
           postedAt
         });
         
-        await storage.updatePostingSchedule(schedule.userId, {
+        await storage.updatePostingSchedule(schedule.userId, dealershipId, {
           lastPostedAt: postedAt
         });
         
         console.log(`Successfully posted vehicle ${vehicle.id} to Facebook for user ${schedule.userId}`);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        await storage.updatePostingQueueItem(nextItem.id, schedule.userId, {
+        await storage.updatePostingQueueItem(nextItem.id, schedule.userId, dealershipId, {
           status: 'failed',
           errorMessage
         });
@@ -156,7 +157,7 @@ export function stopPostingScheduler() {
 }
 
 export async function getSchedulerStatus() {
-  const schedules = await storage.getAllPostingSchedules();
+  const schedules = await storage.getAllPostingSchedules(1);
   return {
     active: schedulerActive,
     processing: isProcessing,

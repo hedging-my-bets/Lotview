@@ -6,32 +6,35 @@ interface FacebookConfig {
   redirectUri: string;
 }
 
-interface FacebookAccount {
-  id: number;
-  accessToken?: string;
-  facebookUserId?: string;
-}
-
 interface PostingTemplate {
   titleTemplate: string;
   descriptionTemplate: string;
 }
 
 export class FacebookService {
-  private config: FacebookConfig;
+  private defaultConfig: FacebookConfig;
 
   constructor() {
-    this.config = {
+    this.defaultConfig = {
       appId: process.env.FACEBOOK_APP_ID || 'YOUR_FACEBOOK_APP_ID',
       appSecret: process.env.FACEBOOK_APP_SECRET || 'YOUR_FACEBOOK_APP_SECRET',
       redirectUri: process.env.FACEBOOK_REDIRECT_URI || 'https://your-domain.replit.app/api/facebook/oauth/callback'
     };
   }
 
-  getAuthUrl(state: string): string {
+  getConfig(dealershipConfig?: { facebookAppId?: string | null; facebookAppSecret?: string | null }): FacebookConfig {
+    return {
+      appId: dealershipConfig?.facebookAppId || this.defaultConfig.appId,
+      appSecret: dealershipConfig?.facebookAppSecret || this.defaultConfig.appSecret,
+      redirectUri: this.defaultConfig.redirectUri,
+    };
+  }
+
+  getAuthUrl(state: string, dealershipConfig?: { facebookAppId?: string | null; facebookAppSecret?: string | null }): string {
+    const config = this.getConfig(dealershipConfig);
     const params = new URLSearchParams({
-      client_id: this.config.appId,
-      redirect_uri: this.config.redirectUri,
+      client_id: config.appId,
+      redirect_uri: config.redirectUri,
       state,
       scope: 'pages_manage_posts,pages_read_engagement,catalog_management',
       response_type: 'code'
@@ -40,11 +43,12 @@ export class FacebookService {
     return `https://www.facebook.com/v18.0/dialog/oauth?${params.toString()}`;
   }
 
-  async exchangeCodeForToken(code: string): Promise<{ accessToken: string; expiresIn: number }> {
+  async exchangeCodeForToken(code: string, dealershipConfig?: { facebookAppId?: string | null; facebookAppSecret?: string | null }): Promise<{ accessToken: string; expiresIn: number }> {
+    const config = this.getConfig(dealershipConfig);
     const params = new URLSearchParams({
-      client_id: this.config.appId,
-      client_secret: this.config.appSecret,
-      redirect_uri: this.config.redirectUri,
+      client_id: config.appId,
+      client_secret: config.appSecret,
+      redirect_uri: config.redirectUri,
       code
     });
 
@@ -73,11 +77,12 @@ export class FacebookService {
     return response.json();
   }
 
-  async getLongLivedToken(shortLivedToken: string): Promise<{ accessToken: string; expiresIn: number }> {
+  async getLongLivedToken(shortLivedToken: string, dealershipConfig?: { facebookAppId?: string | null; facebookAppSecret?: string | null }): Promise<{ accessToken: string; expiresIn: number }> {
+    const config = this.getConfig(dealershipConfig);
     const params = new URLSearchParams({
       grant_type: 'fb_exchange_token',
-      client_id: this.config.appId,
-      client_secret: this.config.appSecret,
+      client_id: config.appId,
+      client_secret: config.appSecret,
       fb_exchange_token: shortLivedToken
     });
 
@@ -122,7 +127,6 @@ export class FacebookService {
     formData.append('currency', 'CAD');
     formData.append('availability', 'in stock');
     
-    // Add all vehicle images (Facebook supports multiple images)
     if (vehicle.images && vehicle.images.length > 0) {
       vehicle.images.forEach((imageUrl, index) => {
         formData.append(`images[${index}][url]`, imageUrl);
@@ -154,11 +158,12 @@ export class FacebookService {
     }
   }
 
-  isConfigured(): boolean {
+  isConfigured(dealershipConfig?: { facebookAppId?: string | null; facebookAppSecret?: string | null }): boolean {
+    const config = this.getConfig(dealershipConfig);
     return (
-      this.config.appId !== 'YOUR_FACEBOOK_APP_ID' &&
-      this.config.appSecret !== 'YOUR_FACEBOOK_APP_SECRET' &&
-      this.config.redirectUri !== 'https://your-domain.replit.app/api/facebook/oauth/callback'
+      config.appId !== 'YOUR_FACEBOOK_APP_ID' &&
+      config.appSecret !== 'YOUR_FACEBOOK_APP_SECRET' &&
+      this.defaultConfig.redirectUri !== 'https://your-domain.replit.app/api/facebook/oauth/callback'
     );
   }
 }
