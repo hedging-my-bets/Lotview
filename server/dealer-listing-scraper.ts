@@ -1,6 +1,9 @@
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { execSync } from 'child_process';
+import { cookieStore } from './cloudflare-bypass/cookie-store';
+import { proxyManager } from './cloudflare-bypass/proxy-manager';
+import { generateRandomFingerprint, applyFingerprint, randomDelay, isCloudflareChallenge, humanLikeScroll } from './cloudflare-bypass/browser-utils';
 
 // Apply stealth plugin to evade bot detection
 puppeteer.use(StealthPlugin());
@@ -155,7 +158,7 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
         
         // HELPER: Check if element is in a payment context
         // CRITICAL: Only check element itself and attributes, NOT parent text (to avoid false positives)
-        function isPaymentContext(element) {
+        function isPaymentContext(element: any) {
           const paymentKeywords = /payment|weekly|bi-?weekly|monthly|calculator|financing|finance|per\s+month|\/mo/i;
           
           // Check element's own text content (the price value itself)
@@ -455,7 +458,9 @@ async function scrapeDealerListings(dealerConfig: typeof DEALER_CONFIGS[0]): Pro
     chromiumPath = '/nix/store/zi4f80l169xlmivz8vja8wlphq74qqk0-chromium-125.0.6422.141/bin/chromium';
   }
 
-  const browser = await puppeteer.launch({
+  // Get proxy if available
+  const proxy = proxyManager.getNext();
+  const launchOptions: any = {
     headless: true,
     executablePath: chromiumPath,
     args: [
@@ -465,12 +470,36 @@ async function scrapeDealerListings(dealerConfig: typeof DEALER_CONFIGS[0]): Pro
       '--disable-gpu',
       '--disable-blink-features=AutomationControlled'
     ],
-  });
+  };
 
+  // Add proxy args if configured
+  if (proxy) {
+    launchOptions.args.push(`--proxy-server=${proxy.server}`);
+    console.log(`  Using proxy: ${proxy.server}`);
+  }
+
+  const browser = await puppeteer.launch(launchOptions);
   const page = await browser.newPage();
   
-  // Set a realistic user agent to avoid bot detection
-  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+  // Authenticate proxy if needed
+  if (proxy) {
+    await proxyManager.authenticateProxy(page, proxy);
+  }
+  
+  // Generate and apply random fingerprint
+  const fingerprint = generateRandomFingerprint();
+  await applyFingerprint(page, fingerprint);
+  console.log(`  Applied fingerprint: ${fingerprint.viewport.width}x${fingerprint.viewport.height}`);
+  
+  // Try to load saved cookies
+  const savedCookies = await cookieStore.loadCookies(dealerConfig.domain);
+  if (savedCookies) {
+    await page.setCookie(...savedCookies);
+    console.log(`  ✓ Loaded saved cf_clearance cookies`);
+  }
+  
+  // Add human-like delay before navigation
+  await randomDelay(500, 1500);
   
   try {
     const response = await page.goto(dealerConfig.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
@@ -479,14 +508,85 @@ async function scrapeDealerListings(dealerConfig: typeof DEALER_CONFIGS[0]): Pro
     console.log(`  Response status: ${response?.status()}, url: ${response?.url()}`);
     
     // Check for Cloudflare challenge page
-    const pageContent = await page.content();
-    if (pageContent.includes('Checking your browser') || pageContent.includes('cloudflare') || pageContent.includes('cf-browser-verification')) {
-      console.error('  ⚠ Cloudflare challenge detected - scraper is being blocked');
-      throw new Error('Cloudflare challenge page detected');
+    const isChallenged = await isCloudflareChallenge(page);
+    if (isChallenged) {
+      console.log('  ⚠ Cloudflare challenge detected - waiting for automatic solve...');
+      console.log('  This may take up to 60 seconds...');
+      
+      // Wait up to 60 seconds for Cloudflare challenge to resolve
+      let attempts = 0;
+      const maxAttempts = 60;
+      
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Check if challenge is solved by looking for vehicle content
+        try {
+          const hasVehicles = await page.evaluate(() => {
+            return document.querySelectorAll('a[href*="/vehicles/2"]').length > 0;
+          });
+          
+          if (hasVehicles) {
+            console.log(`  ✓ Cloudflare challenge solved automatically after ${attempts + 1} seconds!`);
+            
+            // Save new cookies
+            const cookies = await page.cookies();
+            await cookieStore.saveCookies(dealerConfig.domain, cookies);
+            break;
+          }
+        } catch (err) {
+          // Continue waiting
+        }
+        
+        // Also check if page content changed
+        const stillChallenged = await isCloudflareChallenge(page);
+        if (!stillChallenged) {
+          console.log(`  ✓ Challenge page cleared after ${attempts + 1} seconds (checking for content...)`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          break;
+        }
+        
+        attempts++;
+        
+        if (attempts % 10 === 0) {
+          console.log(`    Still waiting... (${attempts}/${maxAttempts}s)`);
+        }
+      }
+      
+      if (attempts >= maxAttempts) {
+        // Save screenshot for debugging
+        try {
+          await page.screenshot({ path: '/tmp/cloudflare-blocked.png', fullPage: false });
+          console.log('  Screenshot saved to /tmp/cloudflare-blocked.png');
+        } catch (err) {
+          // Ignore screenshot errors
+        }
+        throw new Error('Cloudflare challenge did not resolve after 60 seconds');
+      }
     }
     
-    // Wait for vehicle links to appear
-    await page.waitForSelector('a[href*="/vehicles/2"]', { timeout: 15000 });
+    // Human-like behavior: scroll before interacting
+    await randomDelay(500, 1000);
+    await humanLikeScroll(page);
+    
+    // Wait for vehicle links to appear with retry
+    console.log('  Looking for vehicle listings...');
+    let vehicleLinksFound = false;
+    for (let retry = 0; retry < 3; retry++) {
+      try {
+        await page.waitForSelector('a[href*="/vehicles/2"]', { timeout: 10000 });
+        vehicleLinksFound = true;
+        console.log('  ✓ Vehicle listings loaded successfully');
+        break;
+      } catch (err) {
+        console.log(`  Retry ${retry + 1}/3: Vehicle links not found yet...`);
+        await randomDelay(2000, 3000);
+      }
+    }
+    
+    if (!vehicleLinksFound) {
+      throw new Error('Vehicle listings failed to load after multiple retries');
+    }
     
     // Give page a moment to fully render
     await page.waitForFunction(
