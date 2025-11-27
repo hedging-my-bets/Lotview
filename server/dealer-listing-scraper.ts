@@ -1,5 +1,9 @@
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { execSync } from 'child_process';
+
+// Apply stealth plugin to evade bot detection
+puppeteer.use(StealthPlugin());
 
 const DEALER_CONFIGS = [
   {
@@ -469,9 +473,17 @@ async function scrapeDealerListings(dealerConfig: typeof DEALER_CONFIGS[0]): Pro
   await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
   
   try {
-    await page.goto(dealerConfig.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    const response = await page.goto(dealerConfig.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
     
     console.log(`  Waiting for vehicle listings to load...`);
+    console.log(`  Response status: ${response?.status()}, url: ${response?.url()}`);
+    
+    // Check for Cloudflare challenge page
+    const pageContent = await page.content();
+    if (pageContent.includes('Checking your browser') || pageContent.includes('cloudflare') || pageContent.includes('cf-browser-verification')) {
+      console.error('  ⚠ Cloudflare challenge detected - scraper is being blocked');
+      throw new Error('Cloudflare challenge page detected');
+    }
     
     // Wait for vehicle links to appear
     await page.waitForSelector('a[href*="/vehicles/2"]', { timeout: 15000 });
