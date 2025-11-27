@@ -9,20 +9,21 @@ const DEALER_CONFIGS = [
     dealershipId: 1,
     location: 'Vancouver'
   },
-  {
-    name: 'Boundary Hyundai',
-    url: 'https://www.boundaryhyundai.com/vehicles/used/?st=price,desc&view=grid&sc=used',
-    domain: 'boundaryhyundai.com',
-    dealershipId: 2,
-    location: 'Burnaby'
-  },
-  {
-    name: 'Kia Vancouver',
-    url: 'https://www.kiavancouver.com/vehicles/used/?st=year,desc&view=grid&sc=used',
-    domain: 'kiavancouver.com',
-    dealershipId: 3,
-    location: 'Vancouver'
-  }
+  // TEMPORARILY DISABLED FOR TESTING - Enable after Olympic Hyundai works perfectly
+  // {
+  //   name: 'Boundary Hyundai',
+  //   url: 'https://www.boundaryhyundai.com/vehicles/used/?st=price,desc&view=grid&sc=used',
+  //   domain: 'boundaryhyundai.com',
+  //   dealershipId: 2,
+  //   location: 'Burnaby'
+  // },
+  // {
+  //   name: 'Kia Vancouver',
+  //   url: 'https://www.kiavancouver.com/vehicles/used/?st=year,desc&view=grid&sc=used',
+  //   domain: 'kiavancouver.com',
+  //   dealershipId: 3,
+  //   location: 'Vancouver'
+  // }
 ];
 
 export interface DealerVehicleListing {
@@ -128,6 +129,18 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       page = await browser.newPage();
+      
+      // CRITICAL: Relay browser console messages to Node.js logs
+      page.on('console', (msg: any) => {
+        const type = msg.type();
+        const text = msg.text();
+        if (type === 'warning' || type === 'warn') {
+          console.warn(`[Browser Warning] ${text}`);
+        } else if (type === 'error') {
+          console.error(`[Browser Error] ${text}`);
+        }
+      });
+      
       await page.goto(vdpUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
       
       // Wait a moment for images to load
@@ -135,6 +148,37 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
       
       const data = await page.evaluate(() => {
         const pageText = document.body.textContent || '';
+        
+        // HELPER: Check if element is in a payment context
+        // CRITICAL: Only check element itself and attributes, NOT parent text (to avoid false positives)
+        const isPaymentContext = (element: Element): boolean => {
+          const paymentKeywords = /payment|weekly|bi-?weekly|monthly|calculator|financing|finance|per\s+month|\/mo/i;
+          
+          // Check element's own text content (the price value itself)
+          const elementText = element.textContent || '';
+          if (paymentKeywords.test(elementText)) {
+            return true;
+          }
+          
+          // Check element's class and ID attributes (not HTML content)
+          const elementClass = element.className || '';
+          const elementId = element.id || '';
+          if (paymentKeywords.test(elementClass) || paymentKeywords.test(elementId)) {
+            return true;
+          }
+          
+          // Check parent's class and ID (but NOT parent text - that includes disclaimers)
+          const parent = element.parentElement;
+          if (parent) {
+            const parentClass = parent.className || '';
+            const parentId = parent.id || '';
+            if (paymentKeywords.test(parentClass) || paymentKeywords.test(parentId)) {
+              return true;
+            }
+          }
+          
+          return false;
+        };
         
         // Extract VIN
         let vin: string | null = null;
@@ -175,27 +219,20 @@ async function scrapeVehicleDetailPage(browser: any, vdpUrl: string, retries = 2
         for (const selector of authoritativePriceSelectors) {
           const priceEl = document.querySelector(selector);
           if (priceEl) {
-            // Skip if element or its parents have payment-related classes/IDs
-            const elementHtml = priceEl.outerHTML || '';
-            const parentHtml = priceEl.parentElement?.outerHTML || '';
-            const isPaymentWidget = /payment|calculator|financing|finance/i.test(elementHtml + parentHtml);
-            
-            if (!isPaymentWidget) {
+            // CRITICAL: Use payment context helper to reject payment widgets
+            if (!isPaymentContext(priceEl)) {
               const priceText = priceEl.textContent || priceEl.getAttribute('data-value') || priceEl.getAttribute('data-price') || '';
-              // Double-check: Exclude payment-related text
-              if (!/weekly|bi-?weekly|monthly|payment|per\s+month|\/mo/i.test(priceText)) {
-                const match = priceText.match(/\$?\s*([0-9,]+)/);
-                if (match) {
-                  const val = parseInt(match[1].replace(/,/g, ''));
-                  // Realistic minimum: $1000 (excludes payment amounts like $399)
-                  if (val >= 1000 && val <= 500000) {
-                    price = val;
-                    priceConfidence = 'high';
-                    break; // Use first valid price from authoritative selector
-                  } else if (val > 0 && val < 1000) {
-                    // Log suspected payment amount for debugging
-                    console.warn(`⚠ Rejected price below $1000: $${val} (likely payment amount)`);
-                  }
+              const match = priceText.match(/\$?\s*([0-9,]+)/);
+              if (match) {
+                const val = parseInt(match[1].replace(/,/g, ''));
+                // Realistic minimum: $1000 (excludes payment amounts like $399)
+                if (val >= 1000 && val <= 500000) {
+                  price = val;
+                  priceConfidence = 'high';
+                  break; // Use first valid CASH price from authoritative selector
+                } else if (val > 0 && val < 1000) {
+                  // Log suspected payment amount for debugging
+                  console.warn(`⚠ Rejected price below $1000: $${val} (likely payment amount)`);
                 }
               }
             }
