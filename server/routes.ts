@@ -589,6 +589,100 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Test GoHighLevel API key for a dealership (super admin only)
+  app.post("/api/super-admin/dealerships/:dealershipId/test-ghl", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const dealershipId = parseInt(req.params.dealershipId);
+      const apiKeys = await storage.getDealershipApiKeys(dealershipId);
+      
+      if (!apiKeys?.ghlApiKey || !apiKeys?.ghlLocationId) {
+        return res.json({ success: false, error: "GHL API Key or Location ID not configured" });
+      }
+      
+      // Test the API key by getting location info
+      const response = await fetch(
+        `https://services.leadconnectorhq.com/locations/${apiKeys.ghlLocationId}`,
+        {
+          headers: {
+            "Authorization": `Bearer ${apiKeys.ghlApiKey}`,
+            "Version": "2021-04-15",
+          },
+        }
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        res.json({ success: true, message: `Connected to: ${data.location?.name || 'GHL Location'}` });
+      } else {
+        const error = await response.json();
+        res.json({ success: false, error: error.message || "Invalid API key or Location ID" });
+      }
+    } catch (error) {
+      console.error("Error testing GHL credentials:", error);
+      res.json({ success: false, error: "Connection failed" });
+    }
+  });
+  
+  // Test MarketCheck API key for a dealership (super admin only)
+  app.post("/api/super-admin/dealerships/:dealershipId/test-marketcheck", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const dealershipId = parseInt(req.params.dealershipId);
+      const apiKeys = await storage.getDealershipApiKeys(dealershipId);
+      
+      if (!apiKeys?.marketcheckKey) {
+        return res.json({ success: false, error: "MarketCheck API key not configured" });
+      }
+      
+      // Test the API key with a simple stats request
+      const response = await fetch(
+        `https://api.marketcheck.com/v2/stats/car?api_key=${apiKeys.marketcheckKey}&limit=1`
+      );
+      
+      if (response.ok) {
+        res.json({ success: true, message: "MarketCheck API key is valid" });
+      } else if (response.status === 401 || response.status === 403) {
+        res.json({ success: false, error: "Invalid API key" });
+      } else {
+        res.json({ success: false, error: `API error: ${response.status}` });
+      }
+    } catch (error) {
+      console.error("Error testing MarketCheck credentials:", error);
+      res.json({ success: false, error: "Connection failed" });
+    }
+  });
+  
+  // Test Apify API token for a dealership (super admin only)
+  app.post("/api/super-admin/dealerships/:dealershipId/test-apify", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const dealershipId = parseInt(req.params.dealershipId);
+      const apiKeys = await storage.getDealershipApiKeys(dealershipId);
+      
+      if (!apiKeys?.apifyToken) {
+        return res.json({ success: false, error: "Apify API token not configured" });
+      }
+      
+      // Test the API token by getting user info
+      const response = await fetch(
+        "https://api.apify.com/v2/users/me",
+        {
+          headers: {
+            "Authorization": `Bearer ${apiKeys.apifyToken}`,
+          },
+        }
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        res.json({ success: true, message: `Connected as: ${data.data?.username || 'Apify User'}` });
+      } else {
+        res.json({ success: false, error: "Invalid API token" });
+      }
+    } catch (error) {
+      console.error("Error testing Apify credentials:", error);
+      res.json({ success: false, error: "Connection failed" });
+    }
+  });
+  
   // Get all dealerships with API key status (super admin only)
   app.get("/api/super-admin/dealerships-with-integrations", authMiddleware, superAdminOnly, async (req, res) => {
     try {

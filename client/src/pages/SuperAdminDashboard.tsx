@@ -1318,8 +1318,20 @@ function EditApiKeysDialog({
 }) {
   const [open, setOpen] = useState(false);
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
-  const [testing, setTesting] = useState<{ openai: boolean; facebook: boolean }>({ openai: false, facebook: false });
-  const [testResults, setTestResults] = useState<{ openai?: { success: boolean; message: string }; facebook?: { success: boolean; message: string } }>({});
+  const [testing, setTesting] = useState<{ 
+    openai: boolean; 
+    facebook: boolean; 
+    ghl: boolean; 
+    marketcheck: boolean; 
+    apify: boolean;
+  }>({ openai: false, facebook: false, ghl: false, marketcheck: false, apify: false });
+  const [testResults, setTestResults] = useState<{ 
+    openai?: { success: boolean; message: string }; 
+    facebook?: { success: boolean; message: string };
+    ghl?: { success: boolean; message: string };
+    marketcheck?: { success: boolean; message: string };
+    apify?: { success: boolean; message: string };
+  }>({});
   const { toast } = useToast();
   
   const [formData, setFormData] = useState({
@@ -1428,6 +1440,69 @@ function EditApiKeysDialog({
       setTestResults({ ...testResults, facebook: { success: false, message: "Connection failed" } });
     } finally {
       setTesting({ ...testing, facebook: false });
+    }
+  };
+
+  const testGHL = async () => {
+    setTesting({ ...testing, ghl: true });
+    setTestResults({ ...testResults, ghl: undefined });
+    
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/super-admin/dealerships/${dealershipId}/test-ghl`, {
+        method: "POST",
+        headers: { 
+          "Authorization": `Bearer ${token}`,
+        },
+      });
+      const result = await response.json();
+      setTestResults({ ...testResults, ghl: { success: result.success, message: result.message || result.error } });
+    } catch (error) {
+      setTestResults({ ...testResults, ghl: { success: false, message: "Connection failed" } });
+    } finally {
+      setTesting({ ...testing, ghl: false });
+    }
+  };
+
+  const testMarketCheck = async () => {
+    setTesting({ ...testing, marketcheck: true });
+    setTestResults({ ...testResults, marketcheck: undefined });
+    
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/super-admin/dealerships/${dealershipId}/test-marketcheck`, {
+        method: "POST",
+        headers: { 
+          "Authorization": `Bearer ${token}`,
+        },
+      });
+      const result = await response.json();
+      setTestResults({ ...testResults, marketcheck: { success: result.success, message: result.message || result.error } });
+    } catch (error) {
+      setTestResults({ ...testResults, marketcheck: { success: false, message: "Connection failed" } });
+    } finally {
+      setTesting({ ...testing, marketcheck: false });
+    }
+  };
+
+  const testApify = async () => {
+    setTesting({ ...testing, apify: true });
+    setTestResults({ ...testResults, apify: undefined });
+    
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/super-admin/dealerships/${dealershipId}/test-apify`, {
+        method: "POST",
+        headers: { 
+          "Authorization": `Bearer ${token}`,
+        },
+      });
+      const result = await response.json();
+      setTestResults({ ...testResults, apify: { success: result.success, message: result.message || result.error } });
+    } catch (error) {
+      setTestResults({ ...testResults, apify: { success: false, message: "Connection failed" } });
+    } finally {
+      setTesting({ ...testing, apify: false });
     }
   };
 
@@ -1625,7 +1700,21 @@ function EditApiKeysDialog({
                         <Button type="button" variant="ghost" size="icon" onClick={() => toggleSecret('marketcheckKey')}>
                           {showSecrets.marketcheckKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </Button>
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          onClick={testMarketCheck}
+                          disabled={testing.marketcheck || !formData.marketcheckKey}
+                          data-testid="button-test-marketcheck"
+                        >
+                          {testing.marketcheck ? <Loader2 className="h-4 w-4 animate-spin" /> : "Test"}
+                        </Button>
                       </div>
+                      {testResults.marketcheck && (
+                        <p className={`text-sm ${testResults.marketcheck.success ? 'text-green-600' : 'text-red-600'}`}>
+                          {testResults.marketcheck.success ? '✓ ' : '✗ '}{testResults.marketcheck.message}
+                        </p>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="apifyToken">Apify API Token</Label>
@@ -1642,7 +1731,21 @@ function EditApiKeysDialog({
                         <Button type="button" variant="ghost" size="icon" onClick={() => toggleSecret('apifyToken')}>
                           {showSecrets.apifyToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </Button>
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          onClick={testApify}
+                          disabled={testing.apify || !formData.apifyToken}
+                          data-testid="button-test-apify"
+                        >
+                          {testing.apify ? <Loader2 className="h-4 w-4 animate-spin" /> : "Test"}
+                        </Button>
                       </div>
+                      {testResults.apify && (
+                        <p className={`text-sm ${testResults.apify.success ? 'text-green-600' : 'text-red-600'}`}>
+                          {testResults.apify.success ? '✓ ' : '✗ '}{testResults.apify.message}
+                        </p>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="apifyActorId">Apify Actor ID</Label>
@@ -1679,6 +1782,9 @@ function EditApiKeysDialog({
                   <h4 className="font-semibold mb-3 flex items-center gap-2">
                     📞 GoHighLevel CRM
                   </h4>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Connect to sync website chat conversations and leads to your CRM
+                  </p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="ghlApiKey">GHL API Key</Label>
@@ -1706,6 +1812,23 @@ function EditApiKeysDialog({
                         placeholder="Location ID..."
                         data-testid="input-ghl-location-id"
                       />
+                    </div>
+                    <div className="col-span-full">
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        onClick={testGHL}
+                        disabled={testing.ghl || !formData.ghlApiKey || !formData.ghlLocationId}
+                        data-testid="button-test-ghl"
+                      >
+                        {testing.ghl ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                        Test GHL Connection
+                      </Button>
+                      {testResults.ghl && (
+                        <p className={`text-sm mt-2 ${testResults.ghl.success ? 'text-green-600' : 'text-red-600'}`}>
+                          {testResults.ghl.success ? '✓ ' : '✗ '}{testResults.ghl.message}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
