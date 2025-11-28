@@ -1775,6 +1775,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== FILE DOWNLOADS =====
+  
+  // Download scraper and appraisal files
+  app.get("/api/download/scraper-files", async (req, res) => {
+    try {
+      const path = await import('path');
+      const fs = await import('fs');
+      const filePath = path.join(process.cwd(), 'public', 'scraper-appraisal-files.zip');
+      
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', 'attachment; filename=scraper-appraisal-files.zip');
+      fs.createReadStream(filePath).pipe(res);
+    } catch (error) {
+      console.error("Error serving download:", error);
+      res.status(500).json({ error: "Failed to serve file" });
+    }
+  });
+
   // ===== SCRAPER ROUTES =====
   
   // Manual trigger for inventory sync
