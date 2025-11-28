@@ -168,6 +168,31 @@ export default function VehicleDetail() {
     }
   };
 
+  // IMPORTANT: All hooks must be called before any early returns to follow React's Rules of Hooks
+  // Get available terms for this vehicle based on its year (handles null car)
+  const availableTerms = useMemo(() => {
+    if (!car) return [36, 48, 60, 72, 84] as FinanceTerm[];
+    return getAvailableTerms(car.year);
+  }, [car, getAvailableTerms]);
+  
+  // Use the global selected term, but clamp to max available for this vehicle
+  const effectiveTerm = useMemo(() => {
+    if (!car) return globalTerm;
+    if (availableTerms.includes(globalTerm)) {
+      return globalTerm;
+    }
+    return getMaxTerm(car.year);
+  }, [globalTerm, availableTerms, car, getMaxTerm]);
+  
+  // Use local term if set, otherwise use effective term
+  const selectedTerm = localTerm ?? effectiveTerm;
+
+  // Calculate monthly payment (handles null car)
+  const monthlyPayment = useMemo(() => {
+    if (!car) return 0;
+    return calculateMonthlyPayment(car.price, selectedTerm, downPayment, apr);
+  }, [car, selectedTerm, downPayment, apr]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -188,22 +213,6 @@ export default function VehicleDetail() {
       </div>
     );
   }
-
-  // Get available terms for this vehicle based on its year
-  const availableTerms = getAvailableTerms(car.year);
-  
-  // Use the global selected term, but clamp to max available for this vehicle
-  const effectiveTerm = useMemo(() => {
-    if (availableTerms.includes(globalTerm)) {
-      return globalTerm;
-    }
-    return getMaxTerm(car.year);
-  }, [globalTerm, availableTerms, car.year, getMaxTerm]);
-  
-  // Use local term if set, otherwise use effective term
-  const selectedTerm = localTerm ?? effectiveTerm;
-
-  const monthlyPayment = calculateMonthlyPayment(car.price, selectedTerm, downPayment, apr);
 
   return (
     <div className="min-h-screen bg-background">
