@@ -2001,27 +2001,29 @@ export default function Dashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="grid gap-4 md:grid-cols-2">
-                    <div className="p-6 border rounded-lg hover:border-primary transition-colors">
-                      <div className="flex items-start gap-4">
-                        <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-                          <Code className="w-6 h-6 text-orange-600" />
-                        </div>
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-lg">n8n Integration</h3>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            Automate vehicle imports from CarGurus, your website, or other sources using n8n workflows.
-                          </p>
-                          <Button
-                            className="mt-4"
-                            onClick={() => setLocation('/n8n-integration')}
-                            data-testid="button-n8n-integration"
-                          >
-                            <ExternalLink className="w-4 h-4 mr-2" />
-                            Setup n8n
-                          </Button>
+                    {user?.role === 'super_admin' && (
+                      <div className="p-6 border rounded-lg hover:border-primary transition-colors">
+                        <div className="flex items-start gap-4">
+                          <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                            <Code className="w-6 h-6 text-orange-600" />
+                          </div>
+                          <div className="flex-1">
+                            <h3 className="font-semibold text-lg">n8n Integration</h3>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              Automate vehicle imports from CarGurus, your website, or other sources using n8n workflows.
+                            </p>
+                            <Button
+                              className="mt-4"
+                              onClick={() => setLocation('/n8n-integration')}
+                              data-testid="button-n8n-integration"
+                            >
+                              <ExternalLink className="w-4 h-4 mr-2" />
+                              Setup n8n
+                            </Button>
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    )}
                     
                     <div className="p-6 border rounded-lg bg-muted/50">
                       <div className="flex items-start gap-4">
