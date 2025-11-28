@@ -1381,16 +1381,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Token does not have delete:vehicles permission" });
       }
       
-      // Find vehicle by VIN
-      const { vehicles } = await storage.getVehicles(dealershipId);
-      const vehicle = vehicles.find((v: any) => v.vin === vin);
+      // Validate VIN format (basic check: 17 alphanumeric characters)
+      const normalizedVin = vin.trim().toUpperCase();
+      if (!normalizedVin || normalizedVin.length < 5) {
+        return res.status(400).json({ error: "Invalid VIN format" });
+      }
+      
+      // Use efficient indexed lookup instead of full table scan
+      const vehicle = await storage.getVehicleByVin(normalizedVin, dealershipId);
       
       if (!vehicle) {
         return res.status(404).json({ error: "Vehicle not found with that VIN" });
       }
       
       await storage.deleteVehicle(vehicle.id, dealershipId);
-      res.json({ deleted: true, vehicleId: vehicle.id, vin });
+      res.json({ deleted: true, vehicleId: vehicle.id, vin: normalizedVin });
     } catch (error: any) {
       console.error("Error deleting vehicle by VIN via external API:", error);
       res.status(500).json({ error: "Failed to delete vehicle", details: error.message });
@@ -1398,6 +1403,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Bulk sync - delete vehicles not in provided VIN list (for full inventory sync)
+  // SAFETY: Requires non-empty VIN list and supports dry-run mode
   app.post("/api/import/vehicles/sync", externalApiAuth, async (req: any, res) => {
     try {
       const token = req.externalToken;
@@ -1408,30 +1414,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Token requires both import:vehicles and delete:vehicles permissions for sync" });
       }
       
-      const { vins } = req.body;
+      const { vins, dryRun = false, confirmDelete = false } = req.body;
       
+      // Validate VINs array
       if (!Array.isArray(vins)) {
         return res.status(400).json({ error: "vins array is required" });
       }
       
-      // Get current inventory
-      const { vehicles } = await storage.getVehicles(dealershipId);
-      
-      // Find vehicles to delete (in our DB but not in scraped list)
-      const vehiclesToDelete = vehicles.filter((v: any) => v.vin && !vins.includes(v.vin));
-      
-      // Delete stale vehicles
-      const deleted: string[] = [];
-      for (const vehicle of vehiclesToDelete) {
-        await storage.deleteVehicle(vehicle.id, dealershipId);
-        if (vehicle.vin) deleted.push(vehicle.vin);
+      // SAFETY: Require at least 1 VIN to prevent accidental mass deletion
+      // No bypass allowed - even with confirmDelete, empty arrays are rejected
+      if (vins.length === 0) {
+        return res.status(400).json({ 
+          error: "vins array cannot be empty. This prevents accidental deletion of all inventory.",
+          hint: "To delete vehicles, provide the VINs to keep or delete individual vehicles via DELETE /api/import/vehicles/:id"
+        });
       }
       
+      // Normalize VINs
+      const normalizedVins = vins.map((v: string) => v.trim().toUpperCase()).filter((v: string) => v.length >= 5);
+      
+      if (normalizedVins.length === 0) {
+        return res.status(400).json({ error: "No valid VINs provided after normalization" });
+      }
+      
+      // Get current inventory count for context
+      const { total: totalInSystem } = await storage.getVehicles(dealershipId, 1, 0);
+      
+      if (dryRun) {
+        // Dry run: just report what would be deleted without actually deleting
+        const { vehicles } = await storage.getVehicles(dealershipId, 1000, 0);
+        const wouldDelete = vehicles.filter((v: any) => 
+          v.vin && !normalizedVins.includes(v.vin.trim().toUpperCase())
+        );
+        
+        return res.json({
+          dryRun: true,
+          totalInSystem,
+          vinsProvided: normalizedVins.length,
+          wouldDelete: wouldDelete.length,
+          wouldDeleteVins: wouldDelete.map((v: any) => v.vin).slice(0, 20), // Limit response size
+          message: "No changes made. Set dryRun: false to execute deletion."
+        });
+      }
+      
+      // SAFETY: Warn if deleting more than 50% of inventory
+      const { vehicles: allVehicles } = await storage.getVehicles(dealershipId, 1000, 0);
+      const wouldDeleteCount = allVehicles.filter((v: any) => 
+        v.vin && !normalizedVins.includes(v.vin.trim().toUpperCase())
+      ).length;
+      
+      if (wouldDeleteCount > totalInSystem * 0.5 && !confirmDelete) {
+        return res.status(400).json({
+          error: "Safety check: This would delete more than 50% of inventory",
+          totalInSystem,
+          wouldDelete: wouldDeleteCount,
+          hint: "Add confirmDelete: true to proceed, or use dryRun: true to preview changes"
+        });
+      }
+      
+      // Use efficient batch delete instead of N individual queries
+      const { deletedCount, deletedVins } = await storage.deleteVehiclesByVinNotIn(normalizedVins, dealershipId);
+      
       res.json({
-        totalInSystem: vehicles.length,
-        vinsProvided: vins.length,
-        deleted: deleted.length,
-        deletedVins: deleted
+        totalInSystem,
+        vinsProvided: normalizedVins.length,
+        deleted: deletedCount,
+        deletedVins: deletedVins.slice(0, 50) // Limit response size
       });
     } catch (error: any) {
       console.error("Error syncing vehicles via external API:", error);

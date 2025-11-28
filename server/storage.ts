@@ -139,6 +139,8 @@ export interface IStorage {
   // dealershipId is REQUIRED for all multi-tenant operations to ensure data isolation
   getVehicles(dealershipId: number, limit?: number, offset?: number): Promise<{ vehicles: Vehicle[]; total: number }>;
   getVehicleById(id: number, dealershipId: number): Promise<Vehicle | undefined>;
+  getVehicleByVin(vin: string, dealershipId: number): Promise<Vehicle | undefined>;
+  deleteVehiclesByVinNotIn(vins: string[], dealershipId: number): Promise<{ deletedCount: number; deletedVins: string[] }>;
   createVehicle(vehicle: InsertVehicle): Promise<Vehicle>;
   updateVehicle(id: number, vehicle: Partial<InsertVehicle>, dealershipId: number): Promise<Vehicle | undefined>;
   deleteVehicle(id: number, dealershipId: number): Promise<boolean>;
@@ -409,6 +411,54 @@ export class DatabaseStorage implements IStorage {
       ))
       .limit(1);
     return result[0];
+  }
+
+  async getVehicleByVin(vin: string, dealershipId: number): Promise<Vehicle | undefined> {
+    // Normalize VIN: uppercase and trim whitespace for consistent matching
+    const normalizedVin = vin.trim().toUpperCase();
+    const result = await db.select().from(vehicles)
+      .where(and(
+        sql`UPPER(TRIM(${vehicles.vin})) = ${normalizedVin}`,
+        eq(vehicles.dealershipId, dealershipId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+
+  async deleteVehiclesByVinNotIn(vins: string[], dealershipId: number): Promise<{ deletedCount: number; deletedVins: string[] }> {
+    // Normalize all VINs for comparison
+    const normalizedVins = vins.map(v => v.trim().toUpperCase()).filter(v => v.length > 0);
+    
+    // SAFETY: If no valid VINs provided, refuse to execute (would delete everything)
+    if (normalizedVins.length === 0) {
+      throw new Error('Cannot execute sync with empty VIN list - this would delete all vehicles');
+    }
+    
+    // Get vehicles that will be deleted (for reporting)
+    // Using parameterized array to prevent SQL injection
+    const toDelete = await db.select({ id: vehicles.id, vin: vehicles.vin })
+      .from(vehicles)
+      .where(and(
+        eq(vehicles.dealershipId, dealershipId),
+        sql`${vehicles.vin} IS NOT NULL`,
+        sql`UPPER(TRIM(${vehicles.vin})) != ALL(${normalizedVins}::text[])`
+      ));
+    
+    if (toDelete.length === 0) {
+      return { deletedCount: 0, deletedVins: [] };
+    }
+    
+    // Delete in one efficient query using parameterized array
+    const idsToDelete = toDelete.map(v => v.id);
+    await db.delete(vehicles).where(and(
+      eq(vehicles.dealershipId, dealershipId),
+      sql`${vehicles.id} = ANY(${idsToDelete}::int[])`
+    ));
+    
+    return {
+      deletedCount: toDelete.length,
+      deletedVins: toDelete.map(v => v.vin).filter((v): v is string => v !== null)
+    };
   }
 
   async createVehicle(vehicle: InsertVehicle): Promise<Vehicle> {
