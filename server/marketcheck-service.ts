@@ -40,7 +40,7 @@ export interface MarketCheckResponse {
 
 export class MarketCheckService {
   private apiKey: string;
-  private baseUrl = 'https://mc-api.marketcheck.com/v2';
+  private baseUrl = 'https://api.marketcheck.com/v2';
 
   constructor(apiKey: string) {
     if (!apiKey) {
