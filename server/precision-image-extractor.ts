@@ -22,7 +22,7 @@ import type { Page } from 'puppeteer';
 
 export interface ExtractedImage {
   url: string;
-  originalUrl: string;
+  originalUrl?: string;  // Original URL before normalization (for VIN matching)
   source: 'gallery-active' | 'gallery-slide' | 'gallery-thumbnail' | 'data-attr' | 'background';
   slideIndex: number;
   isActive: boolean;
@@ -231,12 +231,30 @@ function createExtractionScript(vin: string | null, stockNumber: string | null):
     }
     
     function addImage(url, source, slideIndex, isActive) {
+      const originalUrl = url;
       const normalized = normalizeUrl(url);
       if (!normalized) return false;
-      if (seenUrls.has(normalized)) return false;
       if (!isVehiclePhotoUrl(normalized)) return false;
       
-      seenUrls.add(normalized);
+      // Check BOTH original and normalized URLs for VIN/stock match BEFORE duplicate check
+      const matchesVin = urlMatchesVehicle(originalUrl) || urlMatchesVehicle(normalized);
+      
+      // For duplicates: still track VIN match even if URL already seen
+      const baseUrl = normalized.split('?')[0];  // Dedupe on base URL
+      if (seenUrls.has(baseUrl)) {
+        // If this duplicate has VIN match, upgrade existing image
+        if (matchesVin) {
+          const existing = result.images.find(img => img.url.split('?')[0] === baseUrl);
+          if (existing && !existing.matchesVin) {
+            existing.matchesVin = true;
+            existing.confidence = 'high';
+            result.debug.vinMatchCount = (result.debug.vinMatchCount || 0) + 1;
+          }
+        }
+        return false;
+      }
+      
+      seenUrls.add(baseUrl);
       
       let width = 0, height = 0;
       const sizeMatch = normalized.match(/(\\d{3,4})x(\\d{3,4})/);
@@ -250,10 +268,9 @@ function createExtractionScript(vin: string | null, stockNumber: string | null):
         return false;
       }
       
-      const matchesVin = urlMatchesVehicle(normalized);
-      
       result.images.push({
         url: normalized,
+        originalUrl: originalUrl,
         source: source,
         slideIndex: slideIndex,
         isActive: isActive,
@@ -264,6 +281,7 @@ function createExtractionScript(vin: string | null, stockNumber: string | null):
       });
       
       result.debug.imagesExtracted++;
+      if (matchesVin) result.debug.vinMatchCount = (result.debug.vinMatchCount || 0) + 1;
       return true;
     }
     
@@ -637,15 +655,14 @@ export function validateImages(
   hasVinMatches: boolean;
   vinMatchCount: number;
 } {
-  const valid: ExtractedImage[] = [];
+  const vinMatches: ExtractedImage[] = [];
+  const galleryActive: ExtractedImage[] = [];
   const suspicious: ExtractedImage[] = [];
-  let vinMatchCount = 0;
-  
-  const anyImagesMatchVin = images.some(img => img.matchesVin);
   
   for (const img of images) {
     const lower = img.url.toLowerCase();
     
+    // Block suspicious URLs outright
     const isSuspiciousUrl =
       /similar|recommend|related|also-like|other|comparison|compete/i.test(lower) ||
       img.confidence === 'low';
@@ -655,35 +672,37 @@ export function validateImages(
       continue;
     }
     
+    // Categorize by VIN match or gallery source
     if (img.matchesVin) {
-      vinMatchCount++;
-      valid.push(img);
-      continue;
-    }
-    
-    if (anyImagesMatchVin) {
-      suspicious.push(img);
-      continue;
-    }
-    
-    if (img.source === 'gallery-active') {
-      valid.push(img);
+      vinMatches.push(img);
+    } else if (img.source === 'gallery-active') {
+      galleryActive.push(img);
     } else {
       suspicious.push(img);
     }
   }
   
-  let confidence: 'high' | 'medium' | 'low' = 'low';
+  const vinMatchCount = vinMatches.length;
   const hasVinMatches = vinMatchCount > 0;
   
-  if (valid.length > 0) {
-    if (hasVinMatches) {
-      confidence = vinMatchCount >= 5 ? 'high' : 'medium';
-    } else if (valid.length >= 10) {
-      confidence = 'high';
-    } else if (valid.length >= 5) {
-      confidence = 'medium';
-    }
+  let valid: ExtractedImage[];
+  let confidence: 'high' | 'medium' | 'low';
+  
+  if (hasVinMatches) {
+    // VIN matches found: ONLY accept VIN-matching images
+    valid = vinMatches;
+    // Move gallery-active to suspicious since they don't match VIN
+    suspicious.push(...galleryActive);
+    confidence = vinMatchCount >= 5 ? 'high' : 'medium';
+  } else if (galleryActive.length >= 3) {
+    // No VIN matches, but enough active gallery images to trust
+    valid = galleryActive;
+    confidence = galleryActive.length >= 10 ? 'high' : (galleryActive.length >= 5 ? 'medium' : 'low');
+  } else {
+    // Insufficient evidence - return empty to trigger fallback
+    valid = [];
+    suspicious.push(...galleryActive);
+    confidence = 'low';
   }
   
   return { valid, suspicious, confidence, hasVinMatches, vinMatchCount };
