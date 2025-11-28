@@ -1309,6 +1309,135 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: "Failed to import vehicles", details: error.message });
     }
   });
+  
+  // Get vehicles via external API (n8n can check existing inventory)
+  app.get("/api/import/vehicles", externalApiAuth, async (req: any, res) => {
+    try {
+      const token = req.externalToken;
+      const dealershipId = req.dealershipId;
+      
+      // Check permission
+      if (!token.permissions.includes("read:vehicles")) {
+        return res.status(403).json({ error: "Token does not have read:vehicles permission" });
+      }
+      
+      const { vehicles } = await storage.getVehicles(dealershipId);
+      
+      // Return simplified vehicle data for n8n comparisons
+      const vehicleData = vehicles.map((v: any) => ({
+        id: v.id,
+        vin: v.vin,
+        stockNumber: v.stockNumber,
+        year: v.year,
+        make: v.make,
+        model: v.model,
+        trim: v.trim,
+        price: v.price,
+        odometer: v.odometer,
+        imageCount: v.images?.length || 0,
+        dealerVdpUrl: v.dealerVdpUrl,
+        createdAt: v.createdAt,
+      }));
+      
+      res.json({
+        count: vehicleData.length,
+        vehicles: vehicleData
+      });
+    } catch (error: any) {
+      console.error("Error fetching vehicles via external API:", error);
+      res.status(500).json({ error: "Failed to fetch vehicles", details: error.message });
+    }
+  });
+  
+  // Delete vehicle via external API (n8n can remove sold vehicles)
+  app.delete("/api/import/vehicles/:id", externalApiAuth, async (req: any, res) => {
+    try {
+      const token = req.externalToken;
+      const dealershipId = req.dealershipId;
+      const vehicleId = parseInt(req.params.id);
+      
+      // Check permission
+      if (!token.permissions.includes("delete:vehicles")) {
+        return res.status(403).json({ error: "Token does not have delete:vehicles permission" });
+      }
+      
+      await storage.deleteVehicle(vehicleId, dealershipId);
+      res.status(204).send();
+    } catch (error: any) {
+      console.error("Error deleting vehicle via external API:", error);
+      res.status(500).json({ error: "Failed to delete vehicle", details: error.message });
+    }
+  });
+  
+  // Delete vehicle by VIN via external API (n8n can remove sold vehicles by VIN)
+  app.delete("/api/import/vehicles/vin/:vin", externalApiAuth, async (req: any, res) => {
+    try {
+      const token = req.externalToken;
+      const dealershipId = req.dealershipId;
+      const vin = req.params.vin;
+      
+      // Check permission
+      if (!token.permissions.includes("delete:vehicles")) {
+        return res.status(403).json({ error: "Token does not have delete:vehicles permission" });
+      }
+      
+      // Find vehicle by VIN
+      const { vehicles } = await storage.getVehicles(dealershipId);
+      const vehicle = vehicles.find((v: any) => v.vin === vin);
+      
+      if (!vehicle) {
+        return res.status(404).json({ error: "Vehicle not found with that VIN" });
+      }
+      
+      await storage.deleteVehicle(vehicle.id, dealershipId);
+      res.json({ deleted: true, vehicleId: vehicle.id, vin });
+    } catch (error: any) {
+      console.error("Error deleting vehicle by VIN via external API:", error);
+      res.status(500).json({ error: "Failed to delete vehicle", details: error.message });
+    }
+  });
+  
+  // Bulk sync - delete vehicles not in provided VIN list (for full inventory sync)
+  app.post("/api/import/vehicles/sync", externalApiAuth, async (req: any, res) => {
+    try {
+      const token = req.externalToken;
+      const dealershipId = req.dealershipId;
+      
+      // Requires both import and delete permissions
+      if (!token.permissions.includes("import:vehicles") || !token.permissions.includes("delete:vehicles")) {
+        return res.status(403).json({ error: "Token requires both import:vehicles and delete:vehicles permissions for sync" });
+      }
+      
+      const { vins } = req.body;
+      
+      if (!Array.isArray(vins)) {
+        return res.status(400).json({ error: "vins array is required" });
+      }
+      
+      // Get current inventory
+      const { vehicles } = await storage.getVehicles(dealershipId);
+      
+      // Find vehicles to delete (in our DB but not in scraped list)
+      const vehiclesToDelete = vehicles.filter((v: any) => v.vin && !vins.includes(v.vin));
+      
+      // Delete stale vehicles
+      const deleted: string[] = [];
+      for (const vehicle of vehiclesToDelete) {
+        await storage.deleteVehicle(vehicle.id, dealershipId);
+        if (vehicle.vin) deleted.push(vehicle.vin);
+      }
+      
+      res.json({
+        totalInSystem: vehicles.length,
+        vinsProvided: vins.length,
+        deleted: deleted.length,
+        deletedVins: deleted
+      });
+    } catch (error: any) {
+      console.error("Error syncing vehicles via external API:", error);
+      res.status(500).json({ error: "Failed to sync vehicles", details: error.message });
+    }
+  });
 
   // Create vehicle (master only)
   app.post("/api/vehicles", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
