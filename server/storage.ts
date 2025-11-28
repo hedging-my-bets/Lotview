@@ -208,9 +208,11 @@ export interface IStorage {
   
   // Facebook Accounts (Multi-Tenant - Defense-in-Depth)
   getFacebookAccountsByUser(userId: number, dealershipId: number): Promise<FacebookAccount[]>;
+  getAllFacebookAccountsByDealership(dealershipId: number): Promise<FacebookAccount[]>;
   getFacebookAccountById(id: number, userId: number, dealershipId: number): Promise<FacebookAccount | undefined>;
   createFacebookAccount(account: InsertFacebookAccount): Promise<FacebookAccount>;
   updateFacebookAccount(id: number, userId: number, dealershipId: number, account: Partial<InsertFacebookAccount>): Promise<FacebookAccount | undefined>;
+  updateFacebookAccountDirect(id: number, account: Partial<InsertFacebookAccount>): Promise<FacebookAccount | undefined>;
   deleteFacebookAccount(id: number, userId: number, dealershipId: number): Promise<boolean>;
   
   // Ad Templates (Multi-Tenant - Defense-in-Depth)
@@ -940,6 +942,22 @@ export class DatabaseStorage implements IStorage {
       eq(facebookAccounts.dealershipId, dealershipId)
     )).returning();
     return result.length > 0;
+  }
+
+  async getAllFacebookAccountsByDealership(dealershipId: number): Promise<FacebookAccount[]> {
+    // Get all Facebook accounts for a dealership (both user-scoped and dealership-level)
+    return await db.select().from(facebookAccounts).where(
+      eq(facebookAccounts.dealershipId, dealershipId)
+    );
+  }
+
+  async updateFacebookAccountDirect(id: number, account: Partial<InsertFacebookAccount>): Promise<FacebookAccount | undefined> {
+    // Direct update by ID only - used for system operations like token refresh
+    const result = await db.update(facebookAccounts)
+      .set({ ...account, updatedAt: new Date() })
+      .where(eq(facebookAccounts.id, id))
+      .returning();
+    return result[0];
   }
 
   // ====== AD TEMPLATES (Multi-Tenant - Defense-in-Depth) ======

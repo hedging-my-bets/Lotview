@@ -195,6 +195,58 @@ export class FacebookService {
     };
   }
 
+  /**
+   * Refresh a long-lived token before it expires.
+   * Long-lived tokens can be refreshed as long as they're still valid.
+   * After refresh, you get a new long-lived token (60 days).
+   */
+  async refreshLongLivedToken(currentToken: string, dealershipConfig?: { facebookAppId?: string | null; facebookAppSecret?: string | null }): Promise<{ accessToken: string; expiresIn: number }> {
+    // Facebook allows exchanging a valid long-lived token for a new one
+    return this.getLongLivedToken(currentToken, dealershipConfig);
+  }
+
+  /**
+   * Validate a token and get its expiration info.
+   * Returns null if token is invalid.
+   */
+  async validateToken(accessToken: string, dealershipConfig?: { facebookAppId?: string | null; facebookAppSecret?: string | null }): Promise<{ isValid: boolean; expiresAt?: Date; userId?: string } | null> {
+    const config = this.getConfig(dealershipConfig);
+    try {
+      const params = new URLSearchParams({
+        input_token: accessToken,
+        access_token: `${config.appId}|${config.appSecret}` // App access token
+      });
+
+      const response = await fetch(`https://graph.facebook.com/v18.0/debug_token?${params.toString()}`);
+      
+      if (!response.ok) {
+        return null;
+      }
+
+      const data = await response.json();
+      if (!data.data) return null;
+
+      return {
+        isValid: data.data.is_valid,
+        expiresAt: data.data.expires_at ? new Date(data.data.expires_at * 1000) : undefined,
+        userId: data.data.user_id
+      };
+    } catch (error) {
+      console.error('Error validating token:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Check if a token needs refresh (expires within specified days).
+   */
+  tokenNeedsRefresh(expiresAt: Date | null | undefined, daysBeforeExpiry: number = 7): boolean {
+    if (!expiresAt) return false;
+    const refreshThreshold = new Date();
+    refreshThreshold.setDate(refreshThreshold.getDate() + daysBeforeExpiry);
+    return expiresAt <= refreshThreshold;
+  }
+
   private replaceTemplateVariables(template: string, vehicle: Vehicle): string {
     return template
       .replace(/{price}/g, vehicle.price?.toString() || '0')
