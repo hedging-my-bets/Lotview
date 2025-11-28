@@ -659,9 +659,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json({ success: false, error: "MarketCheck API key not configured" });
       }
       
-      // Test the API key with a simple stats request
+      // Test the API key with a simple search request (uses endpoints the user has enabled)
       const response = await fetch(
-        `https://api.marketcheck.com/v2/stats/car?api_key=${apiKeys.marketcheckKey}&limit=1`
+        `https://api.marketcheck.com/v2/search/car/active?api_key=${apiKeys.marketcheckKey}&rows=1&make=Toyota`
       );
       
       if (response.ok) {
