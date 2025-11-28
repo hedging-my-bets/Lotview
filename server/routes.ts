@@ -1799,6 +1799,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ===== SCRAPER ROUTES =====
   
+  // Enhanced single vehicle test scraper - PROTECTED ENDPOINT
+  app.post("/api/scraper/test-single-vehicle", authMiddleware, requireRole("master"), requireDealership, async (req: any, res) => {
+    try {
+      const { vdpUrl, config } = req.body;
+      const dealershipId = req.dealershipId;
+      
+      if (!vdpUrl) {
+        return res.status(400).json({ error: "vdpUrl is required" });
+      }
+      
+      // Validate URL format
+      if (!vdpUrl.startsWith('https://')) {
+        return res.status(400).json({ error: "vdpUrl must be a secure HTTPS URL" });
+      }
+      
+      // SECURITY: Restrict to known dealer domains to prevent SSRF
+      const allowedDomains = [
+        'olympichyundaivancouver.com',
+        'boundaryhyundai.com',
+        'kiavancouver.com'
+      ];
+      
+      const url = new URL(vdpUrl);
+      const isDomainAllowed = allowedDomains.some(domain => 
+        url.hostname === domain || url.hostname === `www.${domain}`
+      );
+      
+      if (!isDomainAllowed) {
+        return res.status(400).json({ 
+          error: "URL domain not allowed. Only authorized dealer domains are permitted." 
+        });
+      }
+      
+      console.log(`\n=== Testing Enhanced Single Vehicle Scraper ===`);
+      console.log(`URL: ${vdpUrl}`);
+      console.log(`Config: ${JSON.stringify(config || {})}`);
+      
+      const { scrapeSingleVehicle } = await import('./enhanced-single-vehicle-scraper');
+      const result = await scrapeSingleVehicle(vdpUrl, config || {});
+      
+      console.log(`\n=== Scraping Results ===`);
+      console.log(`VIN: ${result.vin}`);
+      console.log(`Year/Make/Model: ${result.year} ${result.make} ${result.model}`);
+      console.log(`Price: $${result.price}`);
+      console.log(`Odometer: ${result.odometer} km`);
+      console.log(`Images: ${result.imageCount} (${result.imageQuality})`);
+      console.log(`Features: ${result.features.length}`);
+      console.log(`Data Quality Score: ${result.dataQualityScore}/100`);
+      console.log(`VIN Validation: ${result.vinValidation.matches ? 'PASSED' : 'DISCREPANCIES'}`);
+      
+      res.json({
+        success: true,
+        data: result,
+        summary: {
+          vin: result.vin,
+          vehicle: `${result.year} ${result.make} ${result.model} ${result.trim}`,
+          price: result.price,
+          odometer: result.odometer,
+          imageCount: result.imageCount,
+          imageQuality: result.imageQuality,
+          featureCount: result.features.length,
+          dataQualityScore: result.dataQualityScore,
+          vinValidation: result.vinValidation.matches ? 'PASSED' : 'DISCREPANCIES',
+          descriptionSource: result.descriptionSource
+        }
+      });
+    } catch (error) {
+      console.error("Error in single vehicle test:", error);
+      res.status(500).json({ 
+        success: false, 
+        error: error instanceof Error ? error.message : "Failed to scrape vehicle" 
+      });
+    }
+  });
+
   // Manual trigger for inventory sync
   app.post("/api/scraper/sync", async (req, res) => {
     try {
