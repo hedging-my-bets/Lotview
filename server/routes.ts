@@ -741,10 +741,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const dealerships = await storage.getAllDealerships();
       
-      // Get API keys for all dealerships
+      // Get API keys and n8n tokens for all dealerships
       const dealershipsWithIntegrations = await Promise.all(
         dealerships.map(async (dealership) => {
           const apiKeys = await storage.getDealershipApiKeys(dealership.id);
+          const n8nTokens = await storage.getExternalApiTokens(dealership.id);
+          const activeN8nTokens = n8nTokens.filter(t => t.isActive);
+          
           return {
             ...dealership,
             integrations: {
@@ -757,7 +760,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               googleAnalytics: !!apiKeys?.googleAnalyticsId,
               googleAds: !!apiKeys?.googleAdsId,
               facebookPixel: !!apiKeys?.facebookPixelId,
+              n8n: activeN8nTokens.length > 0,
             },
+            n8nTokenCount: activeN8nTokens.length,
           };
         })
       );
@@ -1040,7 +1045,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/external-tokens", authMiddleware, requireRole("super_admin"), async (req, res) => {
     try {
       // Super_admin MUST specify dealership via query param - no fallback
-      const dealershipId = parseDealershipId(req.query.dealershipId);
+      const dealershipId = parseDealershipId(req.query.dealershipId as string | undefined);
       if (dealershipId === null) {
         return res.status(400).json({ error: "Missing or invalid dealershipId. Please select a dealership." });
       }
@@ -1142,7 +1147,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = parseInt(req.params.id);
       
       // Super_admin MUST specify dealership via query param - prevents cross-tenant deletion
-      const dealershipId = parseDealershipId(req.query.dealershipId);
+      const dealershipId = parseDealershipId(req.query.dealershipId as string | undefined);
       if (dealershipId === null) {
         return res.status(400).json({ error: "Missing or invalid dealershipId. Please select a dealership." });
       }

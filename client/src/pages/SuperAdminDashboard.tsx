@@ -13,7 +13,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Key, FileText, Plus, Eye, EyeOff, Trash2, LogOut, Settings2, CheckCircle2, XCircle, Loader2, Plug, Pencil } from "lucide-react";
+import { Building2, Key, FileText, Plus, Eye, EyeOff, Trash2, LogOut, Settings2, CheckCircle2, XCircle, Loader2, Plug, Pencil, Webhook, Copy, AlertCircle, Clock } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 
 interface Dealership {
@@ -76,7 +77,9 @@ interface DealershipWithIntegrations extends Dealership {
     googleAnalytics: boolean;
     googleAds: boolean;
     facebookPixel: boolean;
+    n8n: boolean;
   };
+  n8nTokenCount?: number;
 }
 
 interface DealershipApiKeys {
@@ -413,6 +416,15 @@ export default function SuperAdminDashboard() {
                           <IntegrationStatus label="Google Ads" active={dealership.integrations.googleAds} />
                           <IntegrationStatus label="FB Pixel" active={dealership.integrations.facebookPixel} />
                           <IntegrationStatus label="Gemini" active={dealership.integrations.gemini} />
+                          <N8nTokensDialog 
+                            dealershipId={dealership.id}
+                            dealershipName={dealership.name}
+                            active={dealership.integrations.n8n}
+                            tokenCount={dealership.n8nTokenCount || 0}
+                            onSuccess={() => {
+                              queryClient.invalidateQueries({ queryKey: ["/api/super-admin/dealerships-with-integrations"] });
+                            }}
+                          />
                         </div>
                       </CardContent>
                     </Card>
@@ -1304,6 +1316,328 @@ function IntegrationStatus({ label, active }: { label: string; active: boolean }
         {label}
       </span>
     </div>
+  );
+}
+
+interface ExternalToken {
+  id: number;
+  dealershipId: number;
+  tokenName: string;
+  tokenPrefix: string;
+  permissions: string[];
+  lastUsedAt?: string;
+  expiresAt?: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+interface NewTokenResponse {
+  id: number;
+  tokenName: string;
+  rawToken: string;
+  tokenPrefix: string;
+  permissions: string[];
+  expiresAt?: string;
+  dealershipId: number;
+  message: string;
+}
+
+const PERMISSIONS = [
+  { value: "import:vehicles", label: "Import Vehicles", description: "Create and update vehicles" },
+  { value: "read:vehicles", label: "Read Vehicles", description: "View vehicle inventory" },
+  { value: "update:vehicles", label: "Update Vehicles", description: "Modify existing vehicles" },
+  { value: "delete:vehicles", label: "Delete Vehicles", description: "Remove vehicles" },
+];
+
+function N8nTokensDialog({
+  dealershipId,
+  dealershipName,
+  active,
+  tokenCount,
+  onSuccess,
+}: {
+  dealershipId: number;
+  dealershipName: string;
+  active: boolean;
+  tokenCount: number;
+  onSuccess: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [newToken, setNewToken] = useState<NewTokenResponse | null>(null);
+  const [tokenForm, setTokenForm] = useState({
+    tokenName: "",
+    permissions: ["import:vehicles"] as string[],
+  });
+  const { toast } = useToast();
+
+  // Fetch tokens for this dealership
+  const { data: tokens = [], isLoading, refetch } = useQuery<ExternalToken[]>({
+    queryKey: ['external-tokens', dealershipId],
+    queryFn: async () => {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/external-tokens?dealershipId=${dealershipId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error('Failed to fetch tokens');
+      return response.json();
+    },
+    enabled: open
+  });
+
+  const createTokenMutation = useMutation({
+    mutationFn: async (data: typeof tokenForm) => {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('/api/external-tokens', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ ...data, dealershipId })
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create token');
+      }
+      return response.json();
+    },
+    onSuccess: (data: NewTokenResponse) => {
+      setNewToken(data);
+      setCreateDialogOpen(false);
+      refetch();
+      onSuccess();
+      setTokenForm({ tokenName: "", permissions: ["import:vehicles"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  });
+
+  const deleteTokenMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/external-tokens/${id}?dealershipId=${dealershipId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to delete token');
+      }
+    },
+    onSuccess: () => {
+      refetch();
+      onSuccess();
+      toast({ title: "Success", description: "Token deleted successfully" });
+    }
+  });
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast({ title: "Copied!", description: `${label} copied to clipboard` });
+  };
+
+  const togglePermission = (perm: string) => {
+    setTokenForm(prev => ({
+      ...prev,
+      permissions: prev.permissions.includes(perm)
+        ? prev.permissions.filter(p => p !== perm)
+        : [...prev.permissions, perm]
+    }));
+  };
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer hover:border-primary/50 transition-colors ${active ? 'bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800' : 'bg-muted/50 border-border'}`}
+        data-testid={`n8n-config-${dealershipId}`}
+      >
+        {active ? (
+          <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+        ) : (
+          <XCircle className="h-4 w-4 text-muted-foreground" />
+        )}
+        <span className={`text-sm ${active ? 'text-green-700 dark:text-green-300 font-medium' : 'text-muted-foreground'}`}>
+          n8n {tokenCount > 0 && `(${tokenCount})`}
+        </span>
+      </button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Webhook className="h-5 w-5" />
+              n8n Integration - {dealershipName}
+            </DialogTitle>
+            <DialogDescription>
+              Manage API tokens for n8n workflows and other automation tools
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-muted-foreground">
+                {tokens.length} active token{tokens.length !== 1 ? 's' : ''}
+              </span>
+              <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" data-testid="button-create-n8n-token">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Token
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Create API Token</DialogTitle>
+                    <DialogDescription>
+                      This token will allow external services to access {dealershipName}'s vehicle data
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div>
+                      <Label htmlFor="tokenName">Token Name</Label>
+                      <Input
+                        id="tokenName"
+                        placeholder="n8n Scraper"
+                        value={tokenForm.tokenName}
+                        onChange={(e) => setTokenForm({ ...tokenForm, tokenName: e.target.value })}
+                        data-testid="input-n8n-token-name"
+                      />
+                    </div>
+                    <div>
+                      <Label>Permissions</Label>
+                      <div className="space-y-2 mt-2">
+                        {PERMISSIONS.map((perm) => (
+                          <div key={perm.value} className="flex items-start gap-3 p-2 border rounded-lg">
+                            <Checkbox
+                              id={perm.value}
+                              checked={tokenForm.permissions.includes(perm.value)}
+                              onCheckedChange={() => togglePermission(perm.value)}
+                            />
+                            <div>
+                              <Label htmlFor={perm.value} className="font-medium cursor-pointer">
+                                {perm.label}
+                              </Label>
+                              <p className="text-xs text-muted-foreground">{perm.description}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      onClick={() => createTokenMutation.mutate(tokenForm)}
+                      disabled={!tokenForm.tokenName || tokenForm.permissions.length === 0 || createTokenMutation.isPending}
+                      data-testid="button-save-n8n-token"
+                    >
+                      Create Token
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
+
+            {isLoading ? (
+              <div className="text-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
+              </div>
+            ) : tokens.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg">
+                <Webhook className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p>No API tokens created yet</p>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-80 overflow-y-auto">
+                {tokens.map((token) => (
+                  <div
+                    key={token.id}
+                    className="flex items-center justify-between p-3 border rounded-lg"
+                    data-testid={`n8n-token-item-${token.id}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium flex items-center gap-2">
+                        {token.tokenName}
+                        <Badge variant={token.isActive ? "default" : "secondary"} className="text-xs">
+                          {token.isActive ? "Active" : "Inactive"}
+                        </Badge>
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        Prefix: <code className="bg-muted px-1 rounded text-xs">{token.tokenPrefix}...</code>
+                      </div>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {token.permissions.map((perm) => (
+                          <Badge key={perm} variant="outline" className="text-xs">
+                            {perm}
+                          </Badge>
+                        ))}
+                      </div>
+                      {token.lastUsedAt && (
+                        <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          Last used: {format(new Date(token.lastUsedAt), "PPp")}
+                        </div>
+                      )}
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deleteTokenMutation.mutate(token.id)}
+                      disabled={deleteTokenMutation.isPending}
+                      data-testid={`button-delete-n8n-token-${token.id}`}
+                    >
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* New Token Created Dialog */}
+      <Dialog open={!!newToken} onOpenChange={(open) => !open && setNewToken(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-green-600">
+              <CheckCircle2 className="h-5 w-5" />
+              Token Created Successfully
+            </DialogTitle>
+            <DialogDescription>
+              Copy this token now - you won't be able to see it again!
+            </DialogDescription>
+          </DialogHeader>
+          {newToken && (
+            <div className="py-4">
+              <div className="bg-muted p-4 rounded-lg">
+                <div className="flex items-center justify-between gap-2">
+                  <code className="text-sm break-all flex-1">{newToken.rawToken}</code>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => copyToClipboard(newToken.rawToken, "API Token")}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              <div className="mt-4 p-3 bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800 rounded-lg flex items-start gap-2">
+                <AlertCircle className="h-5 w-5 text-orange-500 shrink-0 mt-0.5" />
+                <p className="text-sm text-orange-700 dark:text-orange-300">
+                  Make sure to save this token. For security reasons, you won't be able to see it again.
+                </p>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setNewToken(null)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

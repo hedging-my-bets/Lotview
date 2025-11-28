@@ -2000,44 +2000,20 @@ export default function Dashboard() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid gap-4 md:grid-cols-2">
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Webhook className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p className="mb-2">External integrations like Zapier, Make.com, and custom webhooks are coming soon.</p>
                     {user?.role === 'super_admin' && (
-                      <div className="p-6 border rounded-lg hover:border-primary transition-colors">
-                        <div className="flex items-start gap-4">
-                          <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-                            <Code className="w-6 h-6 text-orange-600" />
-                          </div>
-                          <div className="flex-1">
-                            <h3 className="font-semibold text-lg">n8n Integration</h3>
-                            <p className="text-sm text-muted-foreground mt-1">
-                              Automate vehicle imports from CarGurus, your website, or other sources using n8n workflows.
-                            </p>
-                            <Button
-                              className="mt-4"
-                              onClick={() => setLocation('/n8n-integration')}
-                              data-testid="button-n8n-integration"
-                            >
-                              <ExternalLink className="w-4 h-4 mr-2" />
-                              Setup n8n
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
+                      <p className="text-sm">
+                        For n8n integration, visit the{' '}
+                        <button 
+                          onClick={() => setLocation('/super-admin')}
+                          className="text-primary hover:underline"
+                        >
+                          Super Admin Dashboard → API Integrations
+                        </button>
+                      </p>
                     )}
-                    
-                    <div className="p-6 border rounded-lg bg-muted/50">
-                      <div className="flex items-start gap-4">
-                        <div className="w-12 h-12 bg-muted rounded-lg flex items-center justify-center">
-                          <Webhook className="w-6 h-6 text-muted-foreground" />
-                        </div>
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-lg text-muted-foreground">More Coming Soon</h3>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            Additional integrations like Zapier, Make.com, and custom webhooks are in development.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
                   </div>
                 </CardContent>
               </Card>
