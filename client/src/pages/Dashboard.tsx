@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { MessageSquare, Settings, Sparkles, Users, LogOut, DollarSign, Plus, Edit2, Trash2, Target, Webhook, Star, X } from "lucide-react";
+import { MessageSquare, Settings, Sparkles, Users, LogOut, DollarSign, Plus, Edit2, Trash2, Target, Webhook, Star, X, Code, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -888,6 +888,10 @@ export default function Dashboard() {
               <TabsTrigger value="insights" className="flex items-center gap-1 text-xs sm:text-sm px-2 sm:px-3 py-2 flex-1 sm:flex-none" data-testid="tab-insights">
                 <Sparkles className="w-4 h-4" />
                 <span className="hidden sm:inline">Insights</span>
+              </TabsTrigger>
+              <TabsTrigger value="integrations" className="flex items-center gap-1 text-xs sm:text-sm px-2 sm:px-3 py-2 flex-1 sm:flex-none" data-testid="tab-integrations">
+                <Code className="w-4 h-4" />
+                <span className="hidden sm:inline">Integrations</span>
               </TabsTrigger>
             </TabsList>
 
@@ -1811,6 +1815,56 @@ export default function Dashboard() {
                   <p className="text-sm text-muted-foreground">
                     Analyze conversation sentiment, customer intent, and conversion patterns
                   </p>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="integrations">
+              <Card>
+                <CardHeader>
+                  <CardTitle>External Integrations</CardTitle>
+                  <CardDescription>
+                    Connect external tools and automation services to your dealership
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="p-6 border rounded-lg hover:border-primary transition-colors">
+                      <div className="flex items-start gap-4">
+                        <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                          <Code className="w-6 h-6 text-orange-600" />
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-lg">n8n Integration</h3>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            Automate vehicle imports from CarGurus, your website, or other sources using n8n workflows.
+                          </p>
+                          <Button
+                            className="mt-4"
+                            onClick={() => setLocation('/n8n-integration')}
+                            data-testid="button-n8n-integration"
+                          >
+                            <ExternalLink className="w-4 h-4 mr-2" />
+                            Setup n8n
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="p-6 border rounded-lg bg-muted/50">
+                      <div className="flex items-start gap-4">
+                        <div className="w-12 h-12 bg-muted rounded-lg flex items-center justify-center">
+                          <Webhook className="w-6 h-6 text-muted-foreground" />
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-lg text-muted-foreground">More Coming Soon</h3>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            Additional integrations like Zapier, Make.com, and custom webhooks are in development.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>

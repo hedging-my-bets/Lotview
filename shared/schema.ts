@@ -85,6 +85,29 @@ export const insertDealershipApiKeysSchema = createInsertSchema(dealershipApiKey
 export type InsertDealershipApiKeys = z.infer<typeof insertDealershipApiKeysSchema>;
 export type DealershipApiKeys = typeof dealershipApiKeys.$inferSelect;
 
+// External API tokens - For n8n and other external integrations
+export const externalApiTokens = pgTable("external_api_tokens", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  tokenName: text("token_name").notNull(), // Descriptive name (e.g., "n8n Scraper")
+  tokenHash: text("token_hash").notNull(), // bcrypt hash of the token
+  tokenPrefix: text("token_prefix").notNull(), // First 8 chars for identification (e.g., "oag_n8n_")
+  permissions: text("permissions").array().notNull(), // ["import:vehicles", "read:vehicles"]
+  lastUsedAt: timestamp("last_used_at"),
+  expiresAt: timestamp("expires_at"), // Optional expiration
+  isActive: boolean("is_active").notNull().default(true),
+  createdBy: integer("created_by"), // User ID who created the token (no FK to avoid circular ref)
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertExternalApiTokenSchema = createInsertSchema(externalApiTokens).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertExternalApiToken = z.infer<typeof insertExternalApiTokenSchema>;
+export type ExternalApiToken = typeof externalApiTokens.$inferSelect;
+
 // ====== APPLICATION TABLES (Multi-Tenant) ======
 
 // Vehicles table

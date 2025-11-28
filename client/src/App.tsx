@@ -16,6 +16,7 @@ import Dashboard from "@/pages/Dashboard";
 import Manager from "@/pages/Manager";
 import Sales from "@/pages/Sales";
 import SuperAdminDashboard from "@/pages/SuperAdminDashboard";
+import N8nIntegration from "@/pages/N8nIntegration";
 
 function Router() {
   return (
@@ -24,6 +25,7 @@ function Router() {
       <Route path="/vehicle/:id" component={VehicleDetail} />
       <Route path="/login" component={Login} />
       <Route path="/dashboard" component={Dashboard} />
+      <Route path="/n8n-integration" component={N8nIntegration} />
       <Route path="/manager" component={Manager} />
       <Route path="/sales" component={Sales} />
       <Route path="/admin" component={Admin} />

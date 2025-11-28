@@ -999,6 +999,242 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== EXTERNAL API TOKENS (for n8n and other integrations) =====
+  
+  // List external API tokens (master only)
+  app.get("/api/external-tokens", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const tokens = await storage.getExternalApiTokens(dealershipId);
+      
+      // Never expose the full token hash, only return metadata
+      const safeTokens = tokens.map(t => ({
+        id: t.id,
+        tokenName: t.tokenName,
+        tokenPrefix: t.tokenPrefix,
+        permissions: t.permissions,
+        lastUsedAt: t.lastUsedAt,
+        expiresAt: t.expiresAt,
+        isActive: t.isActive,
+        createdAt: t.createdAt
+      }));
+      
+      res.json(safeTokens);
+    } catch (error) {
+      console.error("Error fetching external tokens:", error);
+      res.status(500).json({ error: "Failed to fetch external tokens" });
+    }
+  });
+  
+  // Create external API token (master only) - returns the raw token ONCE
+  app.post("/api/external-tokens", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
+    try {
+      const { tokenName, permissions, expiresAt } = req.body;
+      const authReq = req as AuthRequest;
+      const dealershipId = req.dealershipId!;
+      const userId = authReq.user!.id;
+      
+      if (!tokenName || !permissions || !Array.isArray(permissions)) {
+        return res.status(400).json({ error: "tokenName and permissions are required" });
+      }
+      
+      // Valid permissions
+      const validPerms = ["import:vehicles", "read:vehicles", "update:vehicles", "delete:vehicles"];
+      if (!permissions.every(p => validPerms.includes(p))) {
+        return res.status(400).json({ error: `Invalid permissions. Valid: ${validPerms.join(", ")}` });
+      }
+      
+      // Generate a secure token: oag_{prefix}_{random}
+      const prefix = `oag_${tokenName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 4)}_`;
+      const randomPart = crypto.randomBytes(24).toString('base64url');
+      const rawToken = prefix + randomPart;
+      const tokenHash = await hashPassword(rawToken);
+      
+      const token = await storage.createExternalApiToken({
+        dealershipId,
+        tokenName,
+        tokenHash,
+        tokenPrefix: prefix,
+        permissions,
+        expiresAt: expiresAt ? new Date(expiresAt) : null,
+        isActive: true,
+        createdBy: userId
+      });
+      
+      // Return the raw token ONCE - it can never be retrieved again
+      res.status(201).json({
+        id: token.id,
+        tokenName: token.tokenName,
+        rawToken, // This is shown only once!
+        tokenPrefix: token.tokenPrefix,
+        permissions: token.permissions,
+        expiresAt: token.expiresAt,
+        message: "Save this token now - it won't be shown again!"
+      });
+    } catch (error) {
+      console.error("Error creating external token:", error);
+      res.status(500).json({ error: "Failed to create external token" });
+    }
+  });
+  
+  // Delete external API token (master only)
+  app.delete("/api/external-tokens/:id", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const dealershipId = req.dealershipId!;
+      
+      const deleted = await storage.deleteExternalApiToken(id, dealershipId);
+      if (!deleted) {
+        return res.status(404).json({ error: "Token not found" });
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting external token:", error);
+      res.status(500).json({ error: "Failed to delete external token" });
+    }
+  });
+  
+  // ===== VEHICLE IMPORT API (for n8n) =====
+  
+  // Middleware to validate external API token
+  const externalApiAuth = async (req: any, res: any, next: any) => {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: "Missing or invalid Authorization header" });
+    }
+    
+    const rawToken = authHeader.substring(7);
+    
+    // Extract prefix (first part before the random section)
+    const prefixMatch = rawToken.match(/^(oag_[a-z0-9]+_)/);
+    if (!prefixMatch) {
+      return res.status(401).json({ error: "Invalid token format" });
+    }
+    
+    const prefix = prefixMatch[1];
+    const token = await storage.getExternalApiTokenByPrefix(prefix);
+    
+    if (!token) {
+      return res.status(401).json({ error: "Invalid token" });
+    }
+    
+    if (!token.isActive) {
+      return res.status(401).json({ error: "Token is deactivated" });
+    }
+    
+    if (token.expiresAt && token.expiresAt < new Date()) {
+      return res.status(401).json({ error: "Token has expired" });
+    }
+    
+    // Verify the token hash
+    const isValid = await comparePassword(rawToken, token.tokenHash);
+    if (!isValid) {
+      return res.status(401).json({ error: "Invalid token" });
+    }
+    
+    // Update last used timestamp
+    await storage.updateExternalApiTokenLastUsed(token.id);
+    
+    // Attach token info to request
+    req.externalToken = token;
+    req.dealershipId = token.dealershipId;
+    
+    next();
+  };
+  
+  // Import vehicles from external sources (n8n)
+  app.post("/api/import/vehicles", externalApiAuth, async (req: any, res) => {
+    try {
+      const token = req.externalToken;
+      const dealershipId = req.dealershipId;
+      
+      // Check permission
+      if (!token.permissions.includes("import:vehicles")) {
+        return res.status(403).json({ error: "Token does not have import:vehicles permission" });
+      }
+      
+      const { vehicles: vehicleData, options } = req.body;
+      
+      if (!Array.isArray(vehicleData) || vehicleData.length === 0) {
+        return res.status(400).json({ error: "vehicles array is required and must not be empty" });
+      }
+      
+      if (vehicleData.length > 100) {
+        return res.status(400).json({ error: "Maximum 100 vehicles per import" });
+      }
+      
+      const results: { success: any[]; errors: any[] } = { success: [], errors: [] };
+      const updateExisting = options?.updateExisting ?? true;
+      
+      for (let i = 0; i < vehicleData.length; i++) {
+        const v = vehicleData[i];
+        try {
+          // Validate required fields
+          const required = ['year', 'make', 'model', 'trim', 'type', 'price', 'odometer', 'location', 'dealership', 'description'];
+          const missing = required.filter(f => v[f] === undefined || v[f] === null || v[f] === '');
+          
+          if (missing.length > 0) {
+            results.errors.push({ index: i, vin: v.vin, error: `Missing required fields: ${missing.join(', ')}` });
+            continue;
+          }
+          
+          // Check if vehicle exists by VIN
+          let existingVehicle = null;
+          if (v.vin && updateExisting) {
+            const { vehicles: allVehicles } = await storage.getVehicles(dealershipId);
+            existingVehicle = allVehicles.find((ev: any) => ev.vin === v.vin);
+          }
+          
+          const vehiclePayload = {
+            dealershipId,
+            year: parseInt(v.year),
+            make: v.make,
+            model: v.model,
+            trim: v.trim || '',
+            type: v.type,
+            price: parseInt(v.price),
+            odometer: parseInt(v.odometer),
+            images: Array.isArray(v.images) ? v.images : [],
+            badges: Array.isArray(v.badges) ? v.badges : [],
+            location: v.location,
+            dealership: v.dealership,
+            description: v.description,
+            vin: v.vin || null,
+            stockNumber: v.stockNumber || null,
+            cargurusPrice: v.cargurusPrice ? parseInt(v.cargurusPrice) : null,
+            cargurusUrl: v.cargurusUrl || null,
+            dealRating: v.dealRating || null,
+            carfaxUrl: v.carfaxUrl || null,
+            dealerVdpUrl: v.dealerVdpUrl || null,
+          };
+          
+          if (existingVehicle) {
+            // Update existing vehicle
+            const updated = await storage.updateVehicle(existingVehicle.id, vehiclePayload, dealershipId);
+            results.success.push({ id: updated?.id, vin: v.vin, action: 'updated' });
+          } else {
+            // Create new vehicle
+            const created = await storage.createVehicle(vehiclePayload);
+            results.success.push({ id: created.id, vin: v.vin, action: 'created' });
+          }
+        } catch (err: any) {
+          results.errors.push({ index: i, vin: v.vin, error: err.message });
+        }
+      }
+      
+      res.json({
+        imported: results.success.length,
+        failed: results.errors.length,
+        results
+      });
+    } catch (error: any) {
+      console.error("Error importing vehicles:", error);
+      res.status(500).json({ error: "Failed to import vehicles", details: error.message });
+    }
+  });
+
   // Create vehicle (master only)
   app.post("/api/vehicles", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
     try {

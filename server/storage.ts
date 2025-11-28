@@ -81,7 +81,10 @@ import {
   type InsertGlobalSetting,
   auditLogs,
   type AuditLog,
-  type InsertAuditLog
+  type InsertAuditLog,
+  externalApiTokens,
+  type ExternalApiToken,
+  type InsertExternalApiToken
 } from "@shared/schema";
 import { eq, desc, sql, and, gte, lte } from "drizzle-orm";
 
@@ -268,6 +271,15 @@ export interface IStorage {
   updateMarketListing(id: number, dealershipId: number, listing: Partial<InsertMarketListing>): Promise<MarketListing | undefined>;
   deactivateMarketListing(dealershipId: number, url: string): Promise<boolean>;
   deleteOldMarketListings(dealershipId: number, daysOld: number): Promise<number>;
+  
+  // External API Tokens (Multi-Tenant)
+  getExternalApiTokens(dealershipId: number): Promise<ExternalApiToken[]>;
+  getExternalApiTokenById(id: number, dealershipId: number): Promise<ExternalApiToken | undefined>;
+  getExternalApiTokenByPrefix(prefix: string): Promise<ExternalApiToken | undefined>;
+  createExternalApiToken(token: InsertExternalApiToken): Promise<ExternalApiToken>;
+  updateExternalApiToken(id: number, dealershipId: number, token: Partial<InsertExternalApiToken>): Promise<ExternalApiToken | undefined>;
+  deleteExternalApiToken(id: number, dealershipId: number): Promise<boolean>;
+  updateExternalApiTokenLastUsed(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1698,6 +1710,62 @@ export class DatabaseStorage implements IStorage {
       // g) Return created dealership and master admin
       return { dealership, masterAdmin };
     });
+  }
+
+  // ====== EXTERNAL API TOKENS (Multi-Tenant) ======
+  async getExternalApiTokens(dealershipId: number): Promise<ExternalApiToken[]> {
+    return await db.select().from(externalApiTokens)
+      .where(eq(externalApiTokens.dealershipId, dealershipId))
+      .orderBy(desc(externalApiTokens.createdAt));
+  }
+
+  async getExternalApiTokenById(id: number, dealershipId: number): Promise<ExternalApiToken | undefined> {
+    const result = await db.select().from(externalApiTokens)
+      .where(and(
+        eq(externalApiTokens.id, id),
+        eq(externalApiTokens.dealershipId, dealershipId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+
+  async getExternalApiTokenByPrefix(prefix: string): Promise<ExternalApiToken | undefined> {
+    const result = await db.select().from(externalApiTokens)
+      .where(eq(externalApiTokens.tokenPrefix, prefix))
+      .limit(1);
+    return result[0];
+  }
+
+  async createExternalApiToken(token: InsertExternalApiToken): Promise<ExternalApiToken> {
+    const result = await db.insert(externalApiTokens).values(token).returning();
+    return result[0];
+  }
+
+  async updateExternalApiToken(id: number, dealershipId: number, token: Partial<InsertExternalApiToken>): Promise<ExternalApiToken | undefined> {
+    const result = await db.update(externalApiTokens)
+      .set(token)
+      .where(and(
+        eq(externalApiTokens.id, id),
+        eq(externalApiTokens.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+
+  async deleteExternalApiToken(id: number, dealershipId: number): Promise<boolean> {
+    const result = await db.delete(externalApiTokens)
+      .where(and(
+        eq(externalApiTokens.id, id),
+        eq(externalApiTokens.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result.length > 0;
+  }
+
+  async updateExternalApiTokenLastUsed(id: number): Promise<void> {
+    await db.update(externalApiTokens)
+      .set({ lastUsedAt: new Date() })
+      .where(eq(externalApiTokens.id, id));
   }
 }
 
