@@ -25,12 +25,37 @@ import { decodeVIN } from "./vin-decoder";
 // Includes dealershipId for proper multi-tenant isolation during OAuth callback
 const oauthStateStore = new Map<string, { userId: number; accountId: number; dealershipId: number; expiresAt: number }>();
 
+// New OAuth session store for session-based flow (stores OAuth results until page selection)
+interface OAuthSession {
+  userId: number;
+  dealershipId: number;
+  facebookUserId: string;
+  facebookUserName: string;
+  accessToken: string;
+  tokenExpiresAt: Date;
+  pages: Array<{
+    id: string;
+    name: string;
+    category: string;
+    accessToken: string;
+    picture?: string;
+  }>;
+  expiresAt: number;
+}
+const oauthSessionStore = new Map<string, OAuthSession>();
+
 // Clean up expired states every hour
 setInterval(() => {
   const now = Date.now();
   for (const [state, data] of Array.from(oauthStateStore.entries())) {
     if (data.expiresAt < now) {
       oauthStateStore.delete(state);
+    }
+  }
+  // Also clean up expired OAuth sessions
+  for (const [sessionId, session] of Array.from(oauthSessionStore.entries())) {
+    if (session.expiresAt < now) {
+      oauthSessionStore.delete(sessionId);
     }
   }
 }, 3600000);
@@ -2622,6 +2647,185 @@ Format your response in clear sections with actionable recommendations.`;
     res.json({ configured: facebookService.isConfigured() });
   });
 
+  // ===== NEW SESSION-BASED OAUTH FLOW =====
+  // This flow: Click "Add Account" → OAuth popup → Select pages → Account created
+  
+  // Start OAuth session (no pre-created account needed)
+  app.post("/api/facebook/oauth/start", authMiddleware, requireRole("salesperson"), async (req, res) => {
+    try {
+      const authReq = req as AuthRequest;
+      const userId = authReq.user!.id;
+      const dealershipId = req.dealershipId!;
+      
+      // Check if user already has 5 accounts
+      const existingAccounts = await storage.getFacebookAccountsByUser(userId, dealershipId);
+      if (existingAccounts.length >= 5) {
+        return res.status(400).json({ error: "Maximum 5 Facebook accounts per user" });
+      }
+      
+      // Generate state and session ID
+      const state = crypto.randomBytes(32).toString('hex');
+      const sessionId = crypto.randomBytes(16).toString('hex');
+      
+      // Store state with session ID reference (no accountId needed)
+      oauthStateStore.set(state, {
+        userId,
+        accountId: 0, // Not used in new flow
+        dealershipId,
+        expiresAt: Date.now() + 600000 // 10 minutes
+      });
+      
+      // Store session ID in state data for callback to use
+      (oauthStateStore.get(state) as any).sessionId = sessionId;
+      (oauthStateStore.get(state) as any).isNewFlow = true;
+      
+      const authUrl = facebookService.getAuthUrl(state);
+      res.json({ authUrl, sessionId });
+    } catch (error) {
+      console.error("Error starting OAuth session:", error);
+      res.status(500).json({ error: "Failed to start OAuth flow" });
+    }
+  });
+  
+  // Get OAuth session status (poll this after OAuth popup closes)
+  app.get("/api/facebook/oauth/session/:sessionId", authMiddleware, requireRole("salesperson"), async (req, res) => {
+    try {
+      const authReq = req as AuthRequest;
+      const sessionId = req.params.sessionId;
+      const userId = authReq.user!.id;
+      const dealershipId = req.dealershipId!;
+      
+      const session = oauthSessionStore.get(sessionId);
+      
+      if (!session) {
+        return res.json({ status: 'pending' });
+      }
+      
+      // Verify session belongs to this user and dealership
+      if (session.userId !== userId || session.dealershipId !== dealershipId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      
+      if (session.expiresAt < Date.now()) {
+        oauthSessionStore.delete(sessionId);
+        return res.json({ status: 'expired' });
+      }
+      
+      // Return session data with pages
+      res.json({
+        status: 'ready',
+        facebookUserName: session.facebookUserName,
+        pages: session.pages.map(p => ({
+          id: p.id,
+          name: p.name,
+          category: p.category,
+          picture: p.picture
+        }))
+      });
+    } catch (error) {
+      console.error("Error fetching OAuth session:", error);
+      res.status(500).json({ error: "Failed to fetch session" });
+    }
+  });
+  
+  // Connect selected pages (creates accounts)
+  app.post("/api/facebook/accounts/connect", authMiddleware, requireRole("salesperson"), async (req, res) => {
+    try {
+      const authReq = req as AuthRequest;
+      const userId = authReq.user!.id;
+      const dealershipId = req.dealershipId!;
+      const { sessionId, pageIds } = req.body;
+      
+      if (!sessionId || !Array.isArray(pageIds) || pageIds.length === 0) {
+        return res.status(400).json({ error: "Session ID and at least one page selection required" });
+      }
+      
+      const session = oauthSessionStore.get(sessionId);
+      
+      if (!session) {
+        return res.status(400).json({ error: "Session not found or expired. Please try again." });
+      }
+      
+      // Verify session belongs to this user and dealership
+      if (session.userId !== userId || session.dealershipId !== dealershipId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      
+      if (session.expiresAt < Date.now()) {
+        oauthSessionStore.delete(sessionId);
+        return res.status(400).json({ error: "Session expired. Please try again." });
+      }
+      
+      // Check max accounts limit
+      const existingAccounts = await storage.getFacebookAccountsByUser(userId, dealershipId);
+      if (existingAccounts.length + pageIds.length > 5) {
+        return res.status(400).json({ 
+          error: `Cannot add ${pageIds.length} pages. You can only have ${5 - existingAccounts.length} more accounts.` 
+        });
+      }
+      
+      // Create accounts for selected pages
+      const createdAccounts = [];
+      for (const pageId of pageIds) {
+        const page = session.pages.find(p => p.id === pageId);
+        if (!page) {
+          continue; // Skip pages not in session
+        }
+        
+        // Check if this page is already connected
+        const existingPage = await storage.getFacebookPageByPageId(pageId);
+        if (existingPage) {
+          // Page already exists, skip or update
+          continue;
+        }
+        
+        // Create the Facebook account
+        const account = await storage.createFacebookAccount({
+          dealershipId,
+          userId,
+          accountName: page.name, // Use page name as account name
+          facebookUserId: session.facebookUserId,
+          accessToken: session.accessToken,
+          tokenExpiresAt: session.tokenExpiresAt,
+          isActive: true
+        });
+        
+        // Create the Facebook page entry (linked via dealershipId, not accountId)
+        await storage.createFacebookPage({
+          dealershipId,
+          pageId: page.id,
+          pageName: page.name,
+          accessToken: page.accessToken,
+          isActive: true
+        });
+        
+        createdAccounts.push({
+          id: account.id,
+          accountName: account.accountName,
+          pageName: page.name
+        });
+      }
+      
+      // Clean up session
+      oauthSessionStore.delete(sessionId);
+      
+      if (createdAccounts.length === 0) {
+        return res.status(400).json({ error: "No new pages were connected. They may already be connected." });
+      }
+      
+      res.json({ 
+        success: true, 
+        message: `Successfully connected ${createdAccounts.length} page(s)`,
+        accounts: createdAccounts 
+      });
+    } catch (error) {
+      console.error("Error connecting pages:", error);
+      res.status(500).json({ error: "Failed to connect pages" });
+    }
+  });
+
+  // ===== LEGACY OAUTH FLOW (for existing accounts that need reconnection) =====
+  
   // Initiate Facebook OAuth flow
   app.get("/api/facebook/oauth/init/:accountId", authMiddleware, requireRole("salesperson"), async (req, res) => {
     try {
@@ -2688,10 +2892,13 @@ Format your response in clear sections with actionable recommendations.`;
         `);
       }
 
-      oauthStateStore.delete(state as string);
-
       // Use dealershipId from state (not from request) for proper multi-tenant security
       const { accountId, userId, dealershipId } = stateData;
+      const isNewFlow = (stateData as any).isNewFlow === true;
+      const sessionId = (stateData as any).sessionId as string | undefined;
+      
+      // Delete state after extracting data
+      oauthStateStore.delete(state as string);
       
       // Runtime check to ensure dealershipId is present (defense in depth)
       if (!dealershipId || typeof dealershipId !== 'number') {
@@ -2707,6 +2914,55 @@ Format your response in clear sections with actionable recommendations.`;
         `);
       }
       
+      // Exchange code for tokens
+      const { accessToken } = await facebookService.exchangeCodeForToken(code as string);
+      const longLivedToken = await facebookService.getLongLivedToken(accessToken);
+      const userInfo = await facebookService.getUserInfo(longLivedToken.accessToken);
+      const expiresAt = new Date(Date.now() + longLivedToken.expiresIn * 1000);
+      
+      // NEW SESSION-BASED FLOW: Store session with pages for later selection
+      if (isNewFlow && sessionId) {
+        // Fetch user's pages
+        const pages = await facebookService.getUserPages(longLivedToken.accessToken);
+        
+        // Store session for frontend to poll
+        oauthSessionStore.set(sessionId, {
+          userId,
+          dealershipId,
+          facebookUserId: userInfo.id,
+          facebookUserName: userInfo.name,
+          accessToken: longLivedToken.accessToken,
+          tokenExpiresAt: expiresAt,
+          pages: pages.map(p => ({
+            id: p.id,
+            name: p.name,
+            category: p.category,
+            accessToken: p.access_token,
+            picture: p.picture?.data?.url
+          })),
+          expiresAt: Date.now() + 600000 // 10 minutes
+        });
+        
+        return res.send(`
+          <html>
+            <head><title>Facebook Connected</title></head>
+            <body style="font-family: system-ui; text-align: center; padding: 50px;">
+              <h1>✓ Connected to Facebook</h1>
+              <p>Please select your pages in the app window.</p>
+              <p>This window will close automatically...</p>
+              <script>
+                // Signal parent window that OAuth is complete
+                if (window.opener) {
+                  window.opener.postMessage({ type: 'facebook-oauth-complete', sessionId: '${sessionId}' }, '*');
+                }
+                setTimeout(() => window.close(), 1500);
+              </script>
+            </body>
+          </html>
+        `);
+      }
+      
+      // LEGACY FLOW: Update existing account directly
       const account = await storage.getFacebookAccountById(accountId, userId, dealershipId);
       if (!account) {
         return res.status(403).send(`
@@ -2720,12 +2976,6 @@ Format your response in clear sections with actionable recommendations.`;
           </html>
         `);
       }
-      
-      const { accessToken } = await facebookService.exchangeCodeForToken(code as string);
-      const longLivedToken = await facebookService.getLongLivedToken(accessToken);
-      const userInfo = await facebookService.getUserInfo(longLivedToken.accessToken);
-      
-      const expiresAt = new Date(Date.now() + longLivedToken.expiresIn * 1000);
       
       await storage.updateFacebookAccount(accountId, userId, dealershipId, {
         accessToken: longLivedToken.accessToken,

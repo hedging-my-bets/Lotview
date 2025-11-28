@@ -26,14 +26,6 @@ type FacebookAccount = {
   createdAt: string;
 };
 
-type FacebookPage = {
-  id: string;
-  name: string;
-  category?: string;
-  picture?: string;
-  hasToken: boolean;
-};
-
 type AdTemplate = {
   id: number;
   templateName: string;
@@ -105,10 +97,15 @@ export default function Sales() {
     templateId: 0
   });
   
-  // Facebook OAuth and page selection state
+  // Facebook OAuth state
   const [connectingAccountId, setConnectingAccountId] = useState<number | null>(null);
-  const [selectedAccountForPages, setSelectedAccountForPages] = useState<number | null>(null);
-  const [pageDialogOpen, setPageDialogOpen] = useState(false);
+  
+  // New OAuth session-based flow state
+  const [oauthSessionId, setOauthSessionId] = useState<string | null>(null);
+  const [oauthLoading, setOauthLoading] = useState(false);
+  const [oauthPages, setOauthPages] = useState<Array<{ id: string; name: string; category?: string; picture?: string }>>([]);
+  const [selectedPageIds, setSelectedPageIds] = useState<string[]>([]);
+  const [pageSelectionDialogOpen, setPageSelectionDialogOpen] = useState(false);
 
   useEffect(() => {
     checkAuth();
@@ -237,12 +234,147 @@ export default function Sales() {
     }
   });
   
-  // Initiate Facebook OAuth connection
+  // NEW: Start OAuth session (opens popup, then shows page selection)
+  const startOAuthMutation = useMutation({
+    mutationFn: async () => {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('/api/facebook/oauth/start', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to start OAuth');
+      }
+      return response.json();
+    },
+    onSuccess: (data: { authUrl: string; sessionId: string }) => {
+      setOauthSessionId(data.sessionId);
+      setOauthLoading(true);
+      
+      // Open Facebook auth in popup
+      const popup = window.open(data.authUrl, 'Facebook Auth', 'width=600,height=700');
+      
+      // Listen for message from popup
+      const handleMessage = (event: MessageEvent) => {
+        if (event.data?.type === 'facebook-oauth-complete') {
+          window.removeEventListener('message', handleMessage);
+          pollSessionStatus(data.sessionId);
+        }
+      };
+      window.addEventListener('message', handleMessage);
+      
+      // Also poll for popup close as fallback
+      const checkPopup = setInterval(() => {
+        if (popup?.closed) {
+          clearInterval(checkPopup);
+          window.removeEventListener('message', handleMessage);
+          // Start polling for session
+          pollSessionStatus(data.sessionId);
+        }
+      }, 500);
+    },
+    onError: (error: Error) => {
+      setOauthLoading(false);
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  });
+  
+  // Poll OAuth session status
+  const pollSessionStatus = async (sessionId: string) => {
+    const token = localStorage.getItem('auth_token');
+    let attempts = 0;
+    const maxAttempts = 20; // 10 seconds max
+    
+    const poll = async () => {
+      attempts++;
+      try {
+        const response = await fetch(`/api/facebook/oauth/session/${sessionId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error('Failed to fetch session');
+        const data = await response.json();
+        
+        if (data.status === 'ready') {
+          setOauthLoading(false);
+          setOauthPages(data.pages || []);
+          setSelectedPageIds([]);
+          setPageSelectionDialogOpen(true);
+        } else if (data.status === 'expired') {
+          setOauthLoading(false);
+          toast({ title: "Session Expired", description: "Please try again", variant: "destructive" });
+        } else if (attempts < maxAttempts) {
+          setTimeout(poll, 500);
+        } else {
+          setOauthLoading(false);
+          toast({ title: "Timeout", description: "Facebook connection timed out. Please try again.", variant: "destructive" });
+        }
+      } catch (error) {
+        setOauthLoading(false);
+        toast({ title: "Error", description: "Failed to check connection status", variant: "destructive" });
+      }
+    };
+    
+    poll();
+  };
+  
+  // Connect selected pages
+  const connectPagesMutation = useMutation({
+    mutationFn: async ({ sessionId, pageIds }: { sessionId: string; pageIds: string[] }) => {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('/api/facebook/accounts/connect', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify({ sessionId, pageIds })
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to connect pages');
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['facebook-accounts'] });
+      setPageSelectionDialogOpen(false);
+      setOauthSessionId(null);
+      setOauthPages([]);
+      setSelectedPageIds([]);
+      toast({ title: "Success", description: data.message || "Facebook pages connected successfully!" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  });
+  
+  // Handle Add Account button click (new flow)
+  const handleAddAccount = () => {
+    startOAuthMutation.mutate();
+  };
+  
+  // Handle page selection toggle
+  const togglePageSelection = (pageId: string) => {
+    setSelectedPageIds(prev => 
+      prev.includes(pageId) 
+        ? prev.filter(id => id !== pageId)
+        : [...prev, pageId]
+    );
+  };
+  
+  // Handle connect selected pages
+  const handleConnectPages = () => {
+    if (oauthSessionId && selectedPageIds.length > 0) {
+      connectPagesMutation.mutate({ sessionId: oauthSessionId, pageIds: selectedPageIds });
+    }
+  };
+
+  // LEGACY: Initiate Facebook OAuth for reconnecting existing accounts
   const initiateOAuthMutation = useMutation({
     mutationFn: async (accountId: number) => {
       const token = localStorage.getItem('auth_token');
       const response = await fetch(`/api/facebook/oauth/init/${accountId}`, {
-        method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!response.ok) {
@@ -261,7 +393,7 @@ export default function Sales() {
           clearInterval(checkPopup);
           queryClient.invalidateQueries({ queryKey: ['facebook-accounts'] });
           setConnectingAccountId(null);
-          toast({ title: "Check Connection", description: "If connected, you can now select your page" });
+          toast({ title: "Reconnected", description: "Facebook account reconnected successfully" });
         }
       }, 500);
     },
@@ -271,59 +403,10 @@ export default function Sales() {
     }
   });
   
-  // Fetch Facebook pages for an account
-  const { data: availablePages = [], isLoading: pagesLoading, refetch: refetchPages } = useQuery<FacebookPage[]>({
-    queryKey: ['facebook-pages', selectedAccountForPages],
-    queryFn: async () => {
-      if (!selectedAccountForPages) return [];
-      const token = localStorage.getItem('auth_token');
-      const response = await fetch(`/api/facebook/accounts/${selectedAccountForPages}/pages`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to fetch pages');
-      }
-      return response.json();
-    },
-    enabled: !!selectedAccountForPages
-  });
-  
-  // Connect a Facebook page
-  const connectPageMutation = useMutation({
-    mutationFn: async ({ accountId, pageId }: { accountId: number; pageId: string }) => {
-      const token = localStorage.getItem('auth_token');
-      const response = await fetch(`/api/facebook/accounts/${accountId}/pages/${pageId}/connect`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to connect page');
-      }
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['facebook-accounts'] });
-      setPageDialogOpen(false);
-      setSelectedAccountForPages(null);
-      toast({ title: "Success", description: "Facebook page connected successfully!" });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    }
-  });
-  
-  // Handle connect button click
+  // Handle reconnect button click (for expired tokens)
   const handleConnectFacebook = async (accountId: number) => {
     setConnectingAccountId(accountId);
     initiateOAuthMutation.mutate(accountId);
-  };
-  
-  // Handle select pages button click
-  const handleSelectPages = (accountId: number) => {
-    setSelectedAccountForPages(accountId);
-    setPageDialogOpen(true);
   };
   
   // Get token status display
@@ -619,47 +702,24 @@ export default function Sales() {
                         Connect up to 5 Facebook accounts for marketplace posting ({accounts.length}/5 used)
                       </CardDescription>
                     </div>
-                    <Dialog open={accountDialogOpen} onOpenChange={setAccountDialogOpen}>
-                      <DialogTrigger asChild>
-                        <Button 
-                          disabled={accounts.length >= 5}
-                          data-testid="button-add-account"
-                          className="w-full sm:w-auto"
-                        >
-                          <Plus className="w-4 h-4 mr-2" />
-                          Add Account
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Add Facebook Account</DialogTitle>
-                          <DialogDescription>
-                            Enter a name for this Facebook account. You'll connect it later.
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-4 py-4">
-                          <div>
-                            <Label htmlFor="accountName">Account Name</Label>
-                            <Input
-                              id="accountName"
-                              placeholder="My Facebook Account"
-                              value={accountForm.accountName}
-                              onChange={(e) => setAccountForm({ accountName: e.target.value })}
-                              data-testid="input-account-name"
-                            />
-                          </div>
-                        </div>
-                        <DialogFooter>
-                          <Button
-                            onClick={() => createAccountMutation.mutate(accountForm)}
-                            disabled={!accountForm.accountName || createAccountMutation.isPending}
-                            data-testid="button-save-account"
-                          >
-                            Add Account
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
+                    <Button 
+                      onClick={handleAddAccount}
+                      disabled={accounts.length >= 5 || oauthLoading || startOAuthMutation.isPending}
+                      data-testid="button-add-account"
+                      className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700"
+                    >
+                      {oauthLoading || startOAuthMutation.isPending ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                          Connecting...
+                        </>
+                      ) : (
+                        <>
+                          <Facebook className="w-4 h-4 mr-2" />
+                          Add Facebook Account
+                        </>
+                      )}
+                    </Button>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -675,7 +735,6 @@ export default function Sales() {
                     <div className="space-y-4">
                       {accounts.map((account) => {
                         const tokenStatus = getTokenStatus(account);
-                        const isConnected = !!account.facebookUserId;
                         
                         return (
                           <div
@@ -685,16 +744,16 @@ export default function Sales() {
                           >
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                               <div className="flex items-center gap-3">
-                                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isConnected ? 'bg-blue-100' : 'bg-muted'}`}>
-                                  <Facebook className={`w-5 h-5 ${isConnected ? 'text-blue-600' : 'text-muted-foreground'}`} />
+                                <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-100">
+                                  <Facebook className="w-5 h-5 text-blue-600" />
                                 </div>
                                 <div>
                                   <div className="font-medium flex items-center gap-2">
                                     {account.accountName}
-                                    {isConnected && <CheckCircle className="w-4 h-4 text-green-500" />}
+                                    <CheckCircle className="w-4 h-4 text-green-500" />
                                   </div>
                                   <div className="text-sm text-muted-foreground">
-                                    Added {new Date(account.createdAt).toLocaleDateString()}
+                                    Connected {new Date(account.createdAt).toLocaleDateString()}
                                   </div>
                                 </div>
                               </div>
@@ -704,51 +763,26 @@ export default function Sales() {
                                   {tokenStatus.label}
                                 </Badge>
                                 
-                                {!isConnected ? (
+                                {tokenStatus.status === 'expired' && (
                                   <Button
                                     size="sm"
+                                    variant="outline"
                                     onClick={() => handleConnectFacebook(account.id)}
                                     disabled={connectingAccountId === account.id}
-                                    data-testid={`button-connect-${account.id}`}
-                                    className="bg-blue-600 hover:bg-blue-700"
+                                    className="border-orange-500 text-orange-600 hover:bg-orange-50"
                                   >
                                     {connectingAccountId === account.id ? (
                                       <>
-                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                                        Connecting...
+                                        <div className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mr-2" />
+                                        Reconnecting...
                                       </>
                                     ) : (
                                       <>
-                                        <Link className="w-4 h-4 mr-2" />
-                                        Connect with Facebook
+                                        <AlertCircle className="w-4 h-4 mr-2" />
+                                        Reconnect
                                       </>
                                     )}
                                   </Button>
-                                ) : (
-                                  <>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => handleSelectPages(account.id)}
-                                      data-testid={`button-select-page-${account.id}`}
-                                    >
-                                      <ExternalLink className="w-4 h-4 mr-2" />
-                                      Select Page
-                                    </Button>
-                                    
-                                    {tokenStatus.status === 'expired' && (
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => handleConnectFacebook(account.id)}
-                                        disabled={connectingAccountId === account.id}
-                                        className="border-orange-500 text-orange-600 hover:bg-orange-50"
-                                      >
-                                        <AlertCircle className="w-4 h-4 mr-2" />
-                                        Reconnect
-                                      </Button>
-                                    )}
-                                  </>
                                 )}
                                 
                                 <Button
@@ -769,62 +803,6 @@ export default function Sales() {
                 </CardContent>
               </Card>
               
-              {/* Page Selection Dialog */}
-              <Dialog open={pageDialogOpen} onOpenChange={(open) => {
-                setPageDialogOpen(open);
-                if (!open) setSelectedAccountForPages(null);
-              }}>
-                <DialogContent className="max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>Select Facebook Page</DialogTitle>
-                    <DialogDescription>
-                      Choose which Facebook page to use for posting vehicles
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="py-4">
-                    {pagesLoading ? (
-                      <div className="text-center py-8">
-                        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                        <p className="text-sm text-muted-foreground">Loading your pages...</p>
-                      </div>
-                    ) : availablePages.length === 0 ? (
-                      <div className="text-center py-8 text-muted-foreground">
-                        <AlertCircle className="w-8 h-8 mx-auto mb-2 text-orange-500" />
-                        <p>No pages found. Make sure you have admin access to at least one Facebook Page.</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {availablePages.map((page) => (
-                          <div
-                            key={page.id}
-                            className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted cursor-pointer"
-                            onClick={() => selectedAccountForPages && connectPageMutation.mutate({ accountId: selectedAccountForPages, pageId: page.id })}
-                          >
-                            <div className="flex items-center gap-3">
-                              {page.picture ? (
-                                <img src={page.picture} alt={page.name} className="w-10 h-10 rounded-full" />
-                              ) : (
-                                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                                  <Facebook className="w-5 h-5 text-blue-600" />
-                                </div>
-                              )}
-                              <div>
-                                <div className="font-medium">{page.name}</div>
-                                {page.category && (
-                                  <div className="text-xs text-muted-foreground">{page.category}</div>
-                                )}
-                              </div>
-                            </div>
-                            <Button size="sm" variant="outline" disabled={connectPageMutation.isPending}>
-                              {connectPageMutation.isPending ? 'Connecting...' : 'Select'}
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </DialogContent>
-              </Dialog>
             </TabsContent>
 
             <TabsContent value="templates" className="mt-6">
@@ -1228,6 +1206,99 @@ export default function Sales() {
           </Tabs>
         </div>
       </div>
+      
+      {/* Page Selection Dialog (New OAuth Flow) */}
+      <Dialog open={pageSelectionDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          setPageSelectionDialogOpen(false);
+          setOauthSessionId(null);
+          setOauthPages([]);
+          setSelectedPageIds([]);
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Select Facebook Pages</DialogTitle>
+            <DialogDescription>
+              Choose which pages to connect for posting vehicles. Select one or more pages.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-3 max-h-80 overflow-y-auto py-4">
+            {oauthPages.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <AlertCircle className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                <p>No Facebook pages found.</p>
+                <p className="text-sm mt-1">Make sure you have admin access to at least one Facebook page.</p>
+              </div>
+            ) : (
+              oauthPages.map((page) => (
+                <div
+                  key={page.id}
+                  onClick={() => togglePageSelection(page.id)}
+                  className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                    selectedPageIds.includes(page.id) 
+                      ? 'border-blue-500 bg-blue-50' 
+                      : 'border-border hover:bg-muted'
+                  }`}
+                  data-testid={`page-option-${page.id}`}
+                >
+                  <div className="flex items-center gap-3">
+                    {page.picture ? (
+                      <img src={page.picture} alt="" className="w-10 h-10 rounded-full" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                        <Facebook className="w-5 h-5 text-blue-600" />
+                      </div>
+                    )}
+                    <div className="flex-1">
+                      <div className="font-medium">{page.name}</div>
+                      {page.category && (
+                        <div className="text-xs text-muted-foreground">{page.category}</div>
+                      )}
+                    </div>
+                    {selectedPageIds.includes(page.id) && (
+                      <CheckCircle className="w-5 h-5 text-blue-600" />
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setPageSelectionDialogOpen(false);
+                setOauthSessionId(null);
+                setOauthPages([]);
+                setSelectedPageIds([]);
+              }}
+              data-testid="button-cancel-page-selection"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConnectPages}
+              disabled={selectedPageIds.length === 0 || connectPagesMutation.isPending}
+              data-testid="button-connect-pages"
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {connectPagesMutation.isPending ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                  Connecting...
+                </>
+              ) : (
+                <>
+                  Connect {selectedPageIds.length > 0 && `(${selectedPageIds.length})`}
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
