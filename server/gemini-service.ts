@@ -201,7 +201,8 @@ export class GeminiService {
     type?: string;
     mileage?: number;
     price?: number;
-    features?: string[];
+    badges?: string[];
+    description?: string;
   }): Promise<{ success: boolean; description?: string; error?: string }> {
     const vehicleName = `${vehicle.year} ${vehicle.make} ${vehicle.model}${vehicle.trim ? ` ${vehicle.trim}` : ''}`;
     
@@ -209,7 +210,7 @@ export class GeminiService {
 ${vehicle.type ? `Vehicle type: ${vehicle.type}` : ''}
 ${vehicle.mileage ? `Mileage: ${vehicle.mileage.toLocaleString()} km` : ''}
 ${vehicle.price ? `Price: $${vehicle.price.toLocaleString()}` : ''}
-${vehicle.features?.length ? `Key features: ${vehicle.features.join(', ')}` : ''}
+${vehicle.badges?.length ? `Certifications/Badges: ${vehicle.badges.join(', ')}` : ''}
 
 The description should:
 - Be 2-3 paragraphs

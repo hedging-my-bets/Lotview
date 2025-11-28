@@ -1087,9 +1087,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         model: vehicle.model,
         trim: vehicle.trim || undefined,
         type: vehicle.type,
-        exteriorColor: vehicle.exteriorColor || undefined,
-        interiorColor: vehicle.interiorColor || undefined,
-        mileage: vehicle.mileage || undefined,
+        mileage: vehicle.odometer,
       });
 
       // Attempt video generation
@@ -1150,9 +1148,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         model: vehicle.model,
         trim: vehicle.trim || undefined,
         type: vehicle.type,
-        mileage: vehicle.mileage || undefined,
-        price: vehicle.price || undefined,
-        features: vehicle.features || undefined,
+        mileage: vehicle.odometer,
+        price: vehicle.price,
+        badges: vehicle.badges || undefined,
+        description: vehicle.description || undefined,
       });
 
       if (result.success && result.description) {
