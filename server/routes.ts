@@ -682,6 +682,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: false, error: "Connection failed" });
     }
   });
+
+  // Test Gemini API key for a dealership (super admin only)
+  app.post("/api/super-admin/dealerships/:dealershipId/test-gemini", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const dealershipId = parseInt(req.params.dealershipId);
+      const { GeminiService } = await import("./gemini-service");
+      const geminiService = await GeminiService.getInstanceForDealership(dealershipId);
+      
+      if (!geminiService) {
+        return res.json({ success: false, error: "Gemini API key not configured" });
+      }
+      
+      const result = await geminiService.testConnection();
+      
+      if (result.success) {
+        res.json({ 
+          success: true, 
+          message: `Connected! ${result.modelInfo?.total || 0} models available` 
+        });
+      } else {
+        res.json({ success: false, error: result.error || "Connection failed" });
+      }
+    } catch (error) {
+      console.error("Error testing Gemini credentials:", error);
+      res.json({ success: false, error: "Connection failed" });
+    }
+  });
   
   // Get all dealerships with API key status (super admin only)
   app.get("/api/super-admin/dealerships-with-integrations", authMiddleware, superAdminOnly, async (req, res) => {
@@ -1034,7 +1061,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/vehicles/:id/generate-video", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      // Dealership ID extracted from authenticated user via tenant middleware
       const dealershipId = req.dealershipId!;
       const vehicle = await storage.getVehicleById(id, dealershipId);
       
@@ -1042,31 +1068,107 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Vehicle not found" });
       }
 
-      // Note: Video generation using Gemini Veo 3.1 would be triggered here
-      // Cost: ~$0.15/second (6-8 seconds = ~$0.90-$1.20 per video)
-      // Time: ~1 minute generation time per video
-      // 
-      // The generate_video_tool is available in the Replit agent context
-      // For production, this would:
-      // 1. Create a prompt describing the vehicle
-      // 2. Call Gemini Veo API to generate video from vehicle images
-      // 3. Save the video URL to attached_assets/generated_videos/
-      // 4. Update the vehicle record with the video URL
-      //
-      // Example prompt:
-      // `Cinematic showcase of a ${vehicle.year} ${vehicle.make} ${vehicle.model}, 
-      //  ${vehicle.type.toLowerCase()} exterior and interior views, professional automotive 
-      //  photography style, rotating 360-degree view, premium dealership quality`
+      // Get Gemini service for this dealership (uses API key from database)
+      const { GeminiService } = await import("./gemini-service");
+      const geminiService = await GeminiService.getInstanceForDealership(dealershipId);
       
-      res.status(501).json({ 
-        message: "Video generation available but not yet implemented in production", 
-        note: "Contact admin to generate video using Gemini Veo 3.1",
-        estimatedCost: "$0.90-$1.20",
-        estimatedTime: "~60 seconds"
+      if (!geminiService) {
+        return res.status(503).json({ 
+          error: "Gemini API key not configured. Please configure in admin panel under API Keys.",
+          estimatedCost: "$0.90-$1.20",
+          estimatedTime: "~60 seconds"
+        });
+      }
+
+      // Generate video prompt based on vehicle data
+      const prompt = await geminiService.generateVehicleVideoPrompt({
+        year: vehicle.year,
+        make: vehicle.make,
+        model: vehicle.model,
+        trim: vehicle.trim || undefined,
+        type: vehicle.type,
+        exteriorColor: vehicle.exteriorColor || undefined,
+        interiorColor: vehicle.interiorColor || undefined,
+        mileage: vehicle.mileage || undefined,
       });
+
+      // Attempt video generation
+      const result = await geminiService.generateVideo({
+        prompt,
+        aspectRatio: "16:9",
+        durationSeconds: 6,
+        resolution: "720p",
+        negativePrompt: "watermark, logo, text, low quality, distortion, blurry"
+      });
+
+      if (result.success && result.videoUrl) {
+        res.json({ 
+          success: true,
+          videoUrl: result.videoUrl,
+          generationTimeSeconds: result.generationTimeSeconds,
+          estimatedCost: result.estimatedCost
+        });
+      } else {
+        res.status(501).json({ 
+          message: "Video generation requires Vertex AI project configuration",
+          note: "Gemini API key configured but video generation requires additional Vertex AI setup",
+          suggestedPrompt: prompt,
+          estimatedCost: result.estimatedCost || "$0.90-$1.20",
+          estimatedTime: "~60 seconds"
+        });
+      }
     } catch (error) {
       console.error("Error generating video:", error);
       res.status(500).json({ error: "Failed to generate video" });
+    }
+  });
+
+  // Generate AI description for vehicle using Gemini (master only)
+  app.post("/api/vehicles/:id/generate-description", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const dealershipId = req.dealershipId!;
+      const vehicle = await storage.getVehicleById(id, dealershipId);
+      
+      if (!vehicle) {
+        return res.status(404).json({ error: "Vehicle not found" });
+      }
+
+      // Get Gemini service for this dealership (uses API key from database)
+      const { GeminiService } = await import("./gemini-service");
+      const geminiService = await GeminiService.getInstanceForDealership(dealershipId);
+      
+      if (!geminiService) {
+        return res.status(503).json({ 
+          error: "Gemini API key not configured. Please configure in admin panel under API Keys."
+        });
+      }
+
+      const result = await geminiService.generateVehicleDescription({
+        year: vehicle.year,
+        make: vehicle.make,
+        model: vehicle.model,
+        trim: vehicle.trim || undefined,
+        type: vehicle.type,
+        mileage: vehicle.mileage || undefined,
+        price: vehicle.price || undefined,
+        features: vehicle.features || undefined,
+      });
+
+      if (result.success && result.description) {
+        res.json({ 
+          success: true,
+          description: result.description
+        });
+      } else {
+        res.status(500).json({ 
+          success: false,
+          error: result.error || "Failed to generate description"
+        });
+      }
+    } catch (error) {
+      console.error("Error generating description:", error);
+      res.status(500).json({ error: "Failed to generate description" });
     }
   });
 
