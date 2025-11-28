@@ -2278,8 +2278,15 @@ Format your response in clear sections with actionable recommendations.`;
       const userId = authReq.user!.id;
       const dealershipId = req.dealershipId!;
       
-      // Validate request body
-      const validated = insertFacebookAccountSchema.omit({ userId: true, isActive: true }).safeParse(req.body);
+      // Validate request body - only require accountName, dealershipId and userId come from auth
+      const validated = insertFacebookAccountSchema.omit({ 
+        userId: true, 
+        isActive: true, 
+        dealershipId: true,
+        facebookUserId: true,
+        accessToken: true,
+        tokenExpiresAt: true
+      }).safeParse(req.body);
       if (!validated.success) {
         return res.status(400).json({ error: fromZodError(validated.error).message });
       }

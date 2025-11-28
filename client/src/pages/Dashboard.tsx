@@ -96,6 +96,8 @@ export default function Dashboard() {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
   const { toast } = useToast();
 
   // New user form state
@@ -104,6 +106,15 @@ export default function Dashboard() {
     password: "",
     name: "",
     role: "salesperson",
+  });
+  
+  // Edit user form state
+  const [editUserForm, setEditUserForm] = useState({
+    email: "",
+    password: "",
+    name: "",
+    role: "salesperson",
+    isActive: true,
   });
 
   // Financing rules state
@@ -280,6 +291,72 @@ export default function Dashboard() {
       toast({
         title: "Error",
         description: "Failed to create user",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleEditUser = (userToEdit: User) => {
+    setEditingUser(userToEdit);
+    setEditUserForm({
+      email: userToEdit.email,
+      password: "",
+      name: userToEdit.name,
+      role: userToEdit.role,
+      isActive: userToEdit.isActive,
+    });
+    setIsEditDialogOpen(true);
+  };
+  
+  const handleUpdateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
+
+    try {
+      const updateData: any = {
+        email: editUserForm.email,
+        name: editUserForm.name,
+        role: editUserForm.role,
+        isActive: editUserForm.isActive,
+      };
+      
+      // Only include password if it was changed
+      if (editUserForm.password) {
+        updateData.password = editUserForm.password;
+      }
+
+      const response = await fetch(`/api/users/${editingUser.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(updateData),
+      });
+
+      if (response.ok) {
+        toast({
+          title: "User Updated",
+          description: "User information has been saved successfully",
+        });
+        setIsEditDialogOpen(false);
+        setEditingUser(null);
+        await loadUsers(token);
+      } else {
+        const data = await response.json();
+        toast({
+          title: "Error",
+          description: data.error || "Failed to update user",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update user",
         variant: "destructive",
       });
     }
@@ -1005,14 +1082,25 @@ export default function Dashboard() {
                                 </span>
                               </div>
                             </div>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => toggleUserStatus(u.id, u.isActive)}
-                              data-testid={`button-toggle-user-${u.id}`}
-                            >
-                              {u.isActive ? 'Deactivate' : 'Activate'}
-                            </Button>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleEditUser(u)}
+                                data-testid={`button-edit-user-${u.id}`}
+                              >
+                                <Edit2 className="w-4 h-4 mr-1" />
+                                Edit
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => toggleUserStatus(u.id, u.isActive)}
+                                data-testid={`button-toggle-user-${u.id}`}
+                              >
+                                {u.isActive ? 'Deactivate' : 'Activate'}
+                              </Button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -1020,6 +1108,90 @@ export default function Dashboard() {
                   </div>
                 </CardContent>
               </Card>
+              
+              {/* Edit User Dialog */}
+              <Dialog open={isEditDialogOpen} onOpenChange={(open) => {
+                setIsEditDialogOpen(open);
+                if (!open) {
+                  setEditingUser(null);
+                  setEditUserForm({ email: "", password: "", name: "", role: "salesperson", isActive: true });
+                }
+              }}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Edit User</DialogTitle>
+                    <DialogDescription>
+                      Update user information. Leave password blank to keep current password.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={handleUpdateUser} className="space-y-4">
+                    <div>
+                      <Label htmlFor="edit-name">Full Name</Label>
+                      <Input
+                        id="edit-name"
+                        value={editUserForm.name}
+                        onChange={(e) => setEditUserForm({ ...editUserForm, name: e.target.value })}
+                        placeholder="John Doe"
+                        required
+                        data-testid="input-edit-user-name"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="edit-email">Email</Label>
+                      <Input
+                        id="edit-email"
+                        type="email"
+                        value={editUserForm.email}
+                        onChange={(e) => setEditUserForm({ ...editUserForm, email: e.target.value })}
+                        placeholder="john@olympicauto.com"
+                        required
+                        data-testid="input-edit-user-email"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="edit-password">New Password (optional)</Label>
+                      <Input
+                        id="edit-password"
+                        type="password"
+                        value={editUserForm.password}
+                        onChange={(e) => setEditUserForm({ ...editUserForm, password: e.target.value })}
+                        placeholder="Leave blank to keep current password"
+                        data-testid="input-edit-user-password"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="edit-role">Role</Label>
+                      <Select
+                        value={editUserForm.role}
+                        onValueChange={(value) => setEditUserForm({ ...editUserForm, role: value })}
+                      >
+                        <SelectTrigger data-testid="select-edit-user-role">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="salesperson">Salesperson</SelectItem>
+                          <SelectItem value="manager">Sales Manager</SelectItem>
+                          <SelectItem value="master">Master Admin</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="edit-isActive"
+                        checked={editUserForm.isActive}
+                        onChange={(e) => setEditUserForm({ ...editUserForm, isActive: e.target.checked })}
+                        className="w-4 h-4"
+                        data-testid="checkbox-edit-user-active"
+                      />
+                      <Label htmlFor="edit-isActive">Active User</Label>
+                    </div>
+                    <Button type="submit" className="w-full" data-testid="button-update-user">
+                      Save Changes
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
             </TabsContent>
 
             <TabsContent value="financing">
