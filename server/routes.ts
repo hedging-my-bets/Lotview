@@ -1569,12 +1569,20 @@ Format your response in clear sections with actionable recommendations.`;
         return res.status(400).json({ error: "Invalid CTA type" });
       }
 
+      const dealershipId = req.dealershipId!;
       const { GHLClient } = await import("./ghl-client");
-      const client = await GHLClient.getInstance();
+      
+      // Try dealership-specific client first (uses API keys from database)
+      let client = await GHLClient.getInstanceForDealership(dealershipId);
+      
+      // Fallback to legacy getInstance (uses ghlConfig table)
+      if (!client) {
+        client = await GHLClient.getInstance();
+      }
 
       if (!client) {
         return res.status(503).json({ 
-          error: "GoHighLevel integration not configured. Please configure in admin panel." 
+          error: "GoHighLevel integration not configured. Please configure GHL API key in admin panel." 
         });
       }
 
@@ -1595,7 +1603,7 @@ Format your response in clear sections with actionable recommendations.`;
 
   // ===== SMS HANDOFF ROUTES =====
   
-  // Request SMS handoff (send conversation to GHL webhook) - PUBLIC (user initiates)
+  // Request SMS handoff (sync conversation to GHL via API or webhook) - PUBLIC (user initiates)
   app.post("/api/chat/handoff", async (req, res) => {
     try {
       const { conversationId, phoneNumber, messages, vehicleInfo, category } = req.body;
@@ -1604,63 +1612,100 @@ Format your response in clear sections with actionable recommendations.`;
         return res.status(400).json({ error: "conversationId, phoneNumber, and messages are required" });
       }
 
-      // Dealership ID from conversation record
       const dealershipId = req.dealershipId!;
+      let handoffSuccess = false;
+      let errorMessage = "";
 
-      // Get active webhook config
-      const webhookConfig = await storage.getActiveGHLWebhookConfig(dealershipId);
+      // Try GHL API first (preferred method - uses dealership-specific API keys from database)
+      const { GHLClient } = await import("./ghl-client");
+      const ghlClient = await GHLClient.getInstanceForDealership(dealershipId);
+      
+      if (ghlClient) {
+        try {
+          const dealership = await storage.getDealership(dealershipId);
+          const result = await ghlClient.syncChatConversation({
+            phone: phoneNumber,
+            sessionId: conversationId.toString(),
+            category: category || 'general',
+            vehicleName: vehicleInfo?.vehicleName,
+            messages: messages,
+            dealershipName: dealership?.name,
+          });
 
-      if (!webhookConfig) {
-        return res.status(503).json({ 
-          error: "SMS handoff not configured. Please configure GHL webhook in admin panel." 
-        });
+          if (result.success) {
+            handoffSuccess = true;
+            console.log(`[Chat Handoff] Successfully synced to GHL API - Contact: ${result.contactId}`);
+          } else {
+            errorMessage = result.error || "GHL API sync failed";
+            console.warn(`[Chat Handoff] GHL API failed: ${errorMessage}`);
+          }
+        } catch (apiError) {
+          errorMessage = apiError instanceof Error ? apiError.message : "GHL API error";
+          console.warn(`[Chat Handoff] GHL API error: ${errorMessage}`);
+        }
       }
 
-      // Format conversation summary for GHL
-      const conversationSummary = messages.map((m: any) => 
-        `${m.role === 'assistant' ? 'Bot' : 'Customer'}: ${m.content}`
-      ).join('\n\n');
+      // Fallback to webhook if API failed or not configured
+      if (!handoffSuccess) {
+        const webhookConfig = await storage.getActiveGHLWebhookConfig(dealershipId);
+        
+        if (webhookConfig) {
+          try {
+            const conversationSummary = messages.map((m: any) => 
+              `${m.role === 'assistant' ? 'Bot' : 'Customer'}: ${m.content}`
+            ).join('\n\n');
 
-      const payload = {
-        phone: phoneNumber,
-        conversationSummary,
-        category: category || 'general',
-        vehicleInfo: vehicleInfo || null,
-        timestamp: new Date().toISOString(),
-        source: 'olympic-auto-website'
-      };
+            const payload = {
+              phone: phoneNumber,
+              conversationSummary,
+              category: category || 'general',
+              vehicleInfo: vehicleInfo || null,
+              timestamp: new Date().toISOString(),
+              source: 'olympic-auto-website'
+            };
 
-      // Send to GHL webhook
-      const response = await fetch(webhookConfig.webhookUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
+            const response = await fetch(webhookConfig.webhookUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
 
-      if (!response.ok) {
-        throw new Error(`Webhook failed with status ${response.status}`);
+            if (response.ok) {
+              handoffSuccess = true;
+              console.log(`[Chat Handoff] Successfully sent to webhook`);
+            } else {
+              errorMessage = `Webhook failed with status ${response.status}`;
+            }
+          } catch (webhookError) {
+            errorMessage = webhookError instanceof Error ? webhookError.message : "Webhook error";
+          }
+        } else if (!ghlClient) {
+          return res.status(503).json({ 
+            error: "SMS handoff not configured. Please configure GHL API key or webhook in admin panel." 
+          });
+        }
       }
 
       // Update conversation with handoff status
       await storage.updateConversationHandoff(conversationId, dealershipId, {
         handoffRequested: true,
         handoffPhone: phoneNumber,
-        handoffSent: true,
-        handoffSentAt: new Date(),
+        handoffSent: handoffSuccess,
+        handoffSentAt: handoffSuccess ? new Date() : undefined,
       });
 
-      res.json({ 
-        success: true, 
-        message: "Conversation handed off to SMS. You'll receive a text shortly!" 
-      });
+      if (handoffSuccess) {
+        res.json({ 
+          success: true, 
+          message: "Conversation handed off to SMS. You'll receive a text shortly!" 
+        });
+      } else {
+        res.status(500).json({ error: errorMessage || "Failed to handoff conversation to SMS" });
+      }
     } catch (error) {
       console.error("Error handling SMS handoff:", error);
       
-      // Update conversation with failed handoff attempt
       if (req.body.conversationId) {
-        // Dealership ID from conversation record
         const dealershipId = req.dealershipId!;
         await storage.updateConversationHandoff(req.body.conversationId, dealershipId, {
           handoffRequested: true,

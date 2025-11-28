@@ -258,4 +258,150 @@ export class GHLClient {
       };
     }
   }
+
+  /**
+   * Sync a chat conversation to GHL as a contact + conversation thread
+   * Called when user requests SMS handoff
+   */
+  async syncChatConversation(data: {
+    phone: string;
+    sessionId: string;
+    category: 'test-drive' | 'get-approved' | 'value-trade' | 'reserve' | 'general';
+    vehicleName?: string;
+    messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+    dealershipName?: string;
+  }): Promise<{ success: boolean; contactId?: string; conversationId?: string; error?: string }> {
+    try {
+      const { phone, category, vehicleName, messages, dealershipName } = data;
+      
+      const categoryLabels: Record<string, string> = {
+        'test-drive': 'Test Drive Request',
+        'get-approved': 'Financing Pre-Approval',
+        'value-trade': 'Trade-In Valuation',
+        'reserve': 'Vehicle Reservation',
+        'general': 'General Inquiry'
+      };
+      
+      const categoryLabel = categoryLabels[category] || 'General Inquiry';
+      const tags = [
+        `chat-${category}`,
+        'chatbot-lead',
+        'website-lead',
+        dealershipName?.toLowerCase().replace(/\s+/g, '-') || 'dealership'
+      ].filter(Boolean);
+
+      let contact = await this.getContactByPhone(phone);
+      
+      if (!contact) {
+        contact = await this.createOrUpdateContact({
+          phone,
+          tags,
+          customFields: [
+            { id: "chat_category", value: categoryLabel },
+            { id: "interested_vehicle", value: vehicleName || "Not specified" },
+            { id: "lead_source", value: "AI Chatbot" }
+          ]
+        });
+      }
+
+      const chatSummary = messages
+        .map((m, i) => `${m.role === 'user' ? '👤 Customer' : '🤖 AI'}: ${m.content}`)
+        .join('\n\n');
+
+      const initialMessage = 
+`🔔 New AI Chat Lead - ${categoryLabel}
+${vehicleName ? `📋 Interested in: ${vehicleName}` : ''}
+
+📱 Chat Summary:
+${chatSummary}
+
+---
+Customer requested SMS follow-up.`;
+
+      const conversation = await this.createConversation(contact.id, initialMessage);
+
+      console.log(`[GHL] Chat conversation synced - Contact: ${contact.id}, Conversation: ${conversation.id}`);
+
+      return { 
+        success: true, 
+        contactId: contact.id, 
+        conversationId: conversation.id 
+      };
+    } catch (error) {
+      console.error("[GHL] Error syncing chat conversation:", error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : "Unknown error" 
+      };
+    }
+  }
+
+  /**
+   * Create or update a lead in GHL from chat handoff
+   */
+  async createLeadFromChat(data: {
+    phone: string;
+    name?: string;
+    email?: string;
+    category: string;
+    vehicleName?: string;
+    vehicleId?: number;
+    notes?: string;
+  }): Promise<{ success: boolean; contactId?: string; error?: string }> {
+    try {
+      const tags = [
+        'chatbot-lead',
+        'website-lead',
+        `interest-${data.category}`,
+      ];
+
+      let existingContact = await this.getContactByPhone(data.phone);
+      
+      if (!existingContact && data.email) {
+        existingContact = await this.getContactByEmail(data.email);
+      }
+
+      const customFields: { id: string; value: string }[] = [
+        { id: "lead_source", value: "AI Chatbot" },
+        { id: "chat_category", value: data.category },
+      ];
+
+      if (data.vehicleName) {
+        customFields.push({ id: "interested_vehicle", value: data.vehicleName });
+      }
+
+      if (data.vehicleId) {
+        customFields.push({ id: "vehicle_id", value: data.vehicleId.toString() });
+      }
+
+      let contact: GHLContact;
+
+      if (existingContact) {
+        contact = existingContact;
+      } else {
+        const nameParts = data.name?.split(' ') || [];
+        contact = await this.createOrUpdateContact({
+          firstName: nameParts[0] || 'Chat',
+          lastName: nameParts.slice(1).join(' ') || 'Lead',
+          phone: data.phone,
+          email: data.email,
+          tags,
+          customFields,
+        });
+      }
+
+      if (data.notes) {
+        await this.sendMessage(contact.id, `📝 Lead Notes:\n${data.notes}`);
+      }
+
+      console.log(`[GHL] Lead created from chat - Contact: ${contact.id}`);
+      return { success: true, contactId: contact.id };
+    } catch (error) {
+      console.error("[GHL] Error creating lead from chat:", error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : "Unknown error" 
+      };
+    }
+  }
 }
