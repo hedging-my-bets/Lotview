@@ -1,4 +1,5 @@
-import type { InsertMarketListing } from '@shared/schema';
+import type { InsertMarketListing, DealershipApiKeys } from '@shared/schema';
+import { storage } from './storage';
 
 export interface ApifySearchParams {
   make: string;
@@ -8,6 +9,7 @@ export interface ApifySearchParams {
   postalCode?: string;
   radiusKm?: number;
   maxResults?: number;
+  dealershipId?: number;
 }
 
 export interface ApifyAutoTraderListing {
@@ -137,12 +139,13 @@ export class ApifyService {
   /**
    * Convert Apify listing to our database format
    */
-  convertToMarketListing(listing: ApifyAutoTraderListing): InsertMarketListing {
+  convertToMarketListing(listing: ApifyAutoTraderListing, dealershipId: number): InsertMarketListing {
     // Determine listing type
     const listingType: 'dealer' | 'private' = 
       listing.listingType?.toLowerCase().includes('private') ? 'private' : 'dealer';
 
     return {
+      dealershipId,
       externalId: listing.id,
       source: 'apify_autotrader',
       listingType,
@@ -168,14 +171,57 @@ export class ApifyService {
    * Scrape and convert to our format
    */
   async scrapeAndConvert(params: ApifySearchParams): Promise<InsertMarketListing[]> {
+    const dealershipId = params.dealershipId || 1; // Default to dealership 1 for backwards compat
     const listings = await this.scrapeAutoTrader(params);
     return listings
       .filter(l => l.price > 1000) // Filter out invalid prices
-      .map(l => this.convertToMarketListing(l));
+      .map(l => this.convertToMarketListing(l, dealershipId));
   }
 }
 
-// Export singleton instance (will be initialized with API token from env)
+// Cache for service instances per dealership
+const serviceCache = new Map<number, ApifyService>();
+
+/**
+ * Get Apify service for a specific dealership
+ * Fetches API token from database, caches instance for performance
+ */
+export async function getApifyServiceForDealership(dealershipId: number): Promise<ApifyService | null> {
+  // Check cache first
+  if (serviceCache.has(dealershipId)) {
+    return serviceCache.get(dealershipId)!;
+  }
+  
+  try {
+    const apiKeys = await storage.getDealershipApiKeys(dealershipId);
+    
+    if (apiKeys?.apifyToken) {
+      const service = new ApifyService(apiKeys.apifyToken, apiKeys.apifyActorId || undefined);
+      serviceCache.set(dealershipId, service);
+      console.log(`[Apify] Service initialized for dealership ${dealershipId}${apiKeys.apifyActorId ? ` with actor ${apiKeys.apifyActorId}` : ''}`);
+      return service;
+    } else {
+      console.warn(`[Apify] API token not configured for dealership ${dealershipId}`);
+      return null;
+    }
+  } catch (error) {
+    console.error(`[Apify] Error loading API token for dealership ${dealershipId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Clear cached service instance (use when API token is updated)
+ */
+export function clearApifyCache(dealershipId?: number) {
+  if (dealershipId) {
+    serviceCache.delete(dealershipId);
+  } else {
+    serviceCache.clear();
+  }
+}
+
+// Legacy singleton for backwards compatibility (uses env var)
 let apifyService: ApifyService | null = null;
 
 export function getApifyService(): ApifyService | null {
@@ -185,13 +231,9 @@ export function getApifyService(): ApifyService | null {
     
     if (apiToken) {
       apifyService = new ApifyService(apiToken, actorId);
-      console.log('[Apify] Service initialized', actorId ? `with actor ${actorId}` : 'with default actor');
-      
-      if (!actorId) {
-        console.warn('[Apify] APIFY_AUTOTRADER_ACTOR_ID not configured - using default actor');
-      }
+      console.log('[Apify] Service initialized from env', actorId ? `with actor ${actorId}` : 'with default actor');
     } else {
-      console.warn('[Apify] API token not configured (APIFY_API_TOKEN)');
+      console.warn('[Apify] API token not configured (APIFY_API_TOKEN) - use getApifyServiceForDealership() instead');
     }
   }
   return apifyService;

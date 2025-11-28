@@ -1,4 +1,5 @@
-import type { InsertMarketListing } from '@shared/schema';
+import type { InsertMarketListing, DealershipApiKeys } from '@shared/schema';
+import { storage } from './storage';
 
 export interface MarketCheckSearchParams {
   make: string;
@@ -8,6 +9,7 @@ export interface MarketCheckSearchParams {
   postalCode?: string;
   radiusKm?: number;
   maxResults?: number;
+  dealershipId?: number;
 }
 
 export interface MarketCheckListing {
@@ -119,7 +121,7 @@ export class MarketCheckService {
   /**
    * Convert MarketCheck listing to our database format
    */
-  convertToMarketListing(listing: MarketCheckListing): InsertMarketListing {
+  convertToMarketListing(listing: MarketCheckListing, dealershipId: number): InsertMarketListing {
     // Convert miles to kilometers
     const mileage = listing.miles ? Math.round(listing.miles * 1.60934) : null;
     
@@ -134,6 +136,7 @@ export class MarketCheckService {
     }
 
     return {
+      dealershipId,
       externalId: listing.id,
       source: 'marketcheck',
       listingType: listing.seller_type,
@@ -159,14 +162,57 @@ export class MarketCheckService {
    * Search and convert to our format
    */
   async searchAndConvert(params: MarketCheckSearchParams): Promise<InsertMarketListing[]> {
+    const dealershipId = params.dealershipId || 1; // Default to dealership 1 for backwards compat
     const listings = await this.searchListings(params);
     return listings
       .filter(l => l.price > 0) // Filter out listings without prices
-      .map(l => this.convertToMarketListing(l));
+      .map(l => this.convertToMarketListing(l, dealershipId));
   }
 }
 
-// Export singleton instance (will be initialized with API key from env)
+// Cache for service instances per dealership
+const serviceCache = new Map<number, MarketCheckService>();
+
+/**
+ * Get MarketCheck service for a specific dealership
+ * Fetches API key from database, caches instance for performance
+ */
+export async function getMarketCheckServiceForDealership(dealershipId: number): Promise<MarketCheckService | null> {
+  // Check cache first
+  if (serviceCache.has(dealershipId)) {
+    return serviceCache.get(dealershipId)!;
+  }
+  
+  try {
+    const apiKeys = await storage.getDealershipApiKeys(dealershipId);
+    
+    if (apiKeys?.marketcheckKey) {
+      const service = new MarketCheckService(apiKeys.marketcheckKey);
+      serviceCache.set(dealershipId, service);
+      console.log(`[MarketCheck] Service initialized for dealership ${dealershipId}`);
+      return service;
+    } else {
+      console.warn(`[MarketCheck] API key not configured for dealership ${dealershipId}`);
+      return null;
+    }
+  } catch (error) {
+    console.error(`[MarketCheck] Error loading API key for dealership ${dealershipId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Clear cached service instance (use when API key is updated)
+ */
+export function clearMarketCheckCache(dealershipId?: number) {
+  if (dealershipId) {
+    serviceCache.delete(dealershipId);
+  } else {
+    serviceCache.clear();
+  }
+}
+
+// Legacy singleton for backwards compatibility (uses env var or default dealership)
 let marketCheckService: MarketCheckService | null = null;
 
 export function getMarketCheckService(): MarketCheckService | null {
@@ -174,9 +220,9 @@ export function getMarketCheckService(): MarketCheckService | null {
     const apiKey = process.env.MARKETCHECK_API_KEY;
     if (apiKey) {
       marketCheckService = new MarketCheckService(apiKey);
-      console.log('[MarketCheck] Service initialized');
+      console.log('[MarketCheck] Service initialized from env');
     } else {
-      console.warn('[MarketCheck] API key not configured (MARKETCHECK_API_KEY)');
+      console.warn('[MarketCheck] API key not configured (MARKETCHECK_API_KEY) - use getMarketCheckServiceForDealership() instead');
     }
   }
   return marketCheckService;

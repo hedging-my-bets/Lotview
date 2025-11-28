@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { ghlConfig } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { storage } from "./storage";
 
 const GHL_BASE_URL = "https://services.leadconnectorhq.com";
 const GHL_API_VERSION = "2021-04-15";
@@ -20,6 +21,9 @@ interface GHLConversation {
   contactId: string;
 }
 
+// Cache for GHL clients per dealership
+const clientCache = new Map<number, GHLClient>();
+
 export class GHLClient {
   private apiKey: string;
   private locationId: string;
@@ -29,6 +33,46 @@ export class GHLClient {
     this.locationId = locationId;
   }
 
+  /**
+   * Get GHL client for a specific dealership
+   * Fetches API key from database, caches instance for performance
+   */
+  static async getInstanceForDealership(dealershipId: number): Promise<GHLClient | null> {
+    // Check cache first
+    if (clientCache.has(dealershipId)) {
+      return clientCache.get(dealershipId)!;
+    }
+    
+    try {
+      const apiKeys = await storage.getDealershipApiKeys(dealershipId);
+      
+      if (apiKeys?.ghlApiKey && apiKeys?.ghlLocationId) {
+        const client = new GHLClient(apiKeys.ghlApiKey, apiKeys.ghlLocationId);
+        clientCache.set(dealershipId, client);
+        console.log(`[GHL] Client initialized for dealership ${dealershipId}`);
+        return client;
+      } else {
+        console.warn(`[GHL] API key or Location ID not configured for dealership ${dealershipId}`);
+        return null;
+      }
+    } catch (error) {
+      console.error(`[GHL] Error loading configuration for dealership ${dealershipId}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Clear cached client instance (use when API key is updated)
+   */
+  static clearCache(dealershipId?: number) {
+    if (dealershipId) {
+      clientCache.delete(dealershipId);
+    } else {
+      clientCache.clear();
+    }
+  }
+
+  // Legacy method for backwards compatibility (uses old ghlConfig table)
   static async getInstance(): Promise<GHLClient | null> {
     try {
       const config = await db.query.ghlConfig.findFirst({
@@ -36,7 +80,7 @@ export class GHLClient {
       });
 
       if (!config) {
-        console.warn("No active GHL configuration found");
+        console.warn("No active GHL configuration found - use getInstanceForDealership() instead");
         return null;
       }
 

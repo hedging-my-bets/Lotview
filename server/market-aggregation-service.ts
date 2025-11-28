@@ -1,6 +1,6 @@
 import { storage } from './storage';
-import { getMarketCheckService } from './marketcheck-service';
-import { getApifyService } from './apify-service';
+import { getMarketCheckService, getMarketCheckServiceForDealership } from './marketcheck-service';
+import { getApifyService, getApifyServiceForDealership } from './apify-service';
 import { autoTraderScraper } from './autotrader-scraper';
 import type { InsertMarketListing } from '@shared/schema';
 
@@ -12,6 +12,7 @@ export interface MarketAggregationParams {
   postalCode?: string;
   radiusKm?: number;
   maxResults?: number;
+  dealershipId?: number;
 }
 
 export interface MarketAggregationResult {
@@ -52,10 +53,14 @@ export class MarketAggregationService {
     const allListings: InsertMarketListing[] = [];
     const seenUrls = new Set<string>();
 
-    console.log(`[MarketAggregation] Starting data collection for ${params.make} ${params.model}`);
+    console.log(`[MarketAggregation] Starting data collection for ${params.make} ${params.model}${params.dealershipId ? ` (dealership ${params.dealershipId})` : ''}`);
 
     // 1. Try MarketCheck API (highest priority)
-    const marketCheckService = getMarketCheckService();
+    // Use dealership-specific API key if available, otherwise fall back to env var
+    const marketCheckService = params.dealershipId 
+      ? await getMarketCheckServiceForDealership(params.dealershipId)
+      : getMarketCheckService();
+      
     if (marketCheckService) {
       try {
         console.log('[MarketAggregation] Fetching from MarketCheck API...');
@@ -82,7 +87,11 @@ export class MarketAggregationService {
     }
 
     // 2. Try Apify AutoTrader.ca actor (second priority)
-    const apifyService = getApifyService();
+    // Use dealership-specific API token if available, otherwise fall back to env var
+    const apifyService = params.dealershipId 
+      ? await getApifyServiceForDealership(params.dealershipId)
+      : getApifyService();
+      
     if (apifyService) {
       try {
         console.log('[MarketAggregation] Fetching from Apify AutoTrader.ca...');
@@ -125,9 +134,11 @@ export class MarketAggregationService {
         };
         
         const scraperListings = await autoTraderScraper.scrapeListings(scraperParams);
+        const dealershipId = params.dealershipId || 1; // Default to dealership 1 for backwards compat
         
         for (const scraperListing of scraperListings) {
           const listing: InsertMarketListing = {
+            dealershipId,
             externalId: scraperListing.externalId,
             source: 'autotrader_scraper',
             listingType: scraperListing.listingType,
@@ -169,11 +180,12 @@ export class MarketAggregationService {
     // Save all unique listings to database (batch check existing URLs)
     let savedCount = 0;
     const listingUrls = allListings.map(l => l.listingUrl);
+    const dealershipId = params.dealershipId || 1; // Default to dealership 1 for backwards compat
     
     // Fetch all existing listings by URLs (cross-make/model deduplication)
     let existingUrls = new Set<string>();
     try {
-      const existingListings = await storage.getMarketListingsByUrls(listingUrls);
+      const existingListings = await storage.getMarketListingsByUrls(dealershipId, listingUrls);
       existingUrls = new Set(existingListings.map(l => l.listingUrl));
     } catch (error) {
       console.error('[MarketAggregation] Error fetching existing listings:', error);
