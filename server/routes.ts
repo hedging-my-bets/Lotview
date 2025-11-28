@@ -2502,6 +2502,194 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
 
+  // Get available Facebook pages from a connected account
+  app.get("/api/facebook/accounts/:accountId/pages", authMiddleware, requireRole("salesperson"), async (req, res) => {
+    try {
+      const authReq = req as AuthRequest;
+      const accountId = parseInt(req.params.accountId);
+      const userId = authReq.user!.id;
+      const dealershipId = req.dealershipId!;
+      
+      const account = await storage.getFacebookAccountById(accountId, userId, dealershipId);
+      if (!account || !account.accessToken) {
+        return res.status(400).json({ error: "Account not connected or token missing" });
+      }
+      
+      const pages = await facebookService.getUserPages(account.accessToken);
+      
+      const formattedPages = pages.map(page => ({
+        id: page.id,
+        name: page.name,
+        category: page.category,
+        picture: page.picture?.data?.url,
+        hasToken: !!page.access_token
+      }));
+      
+      res.json(formattedPages);
+    } catch (error) {
+      console.error("Error fetching Facebook pages:", error);
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to fetch pages" });
+    }
+  });
+
+  // Connect a Facebook page (store its access token)
+  app.post("/api/facebook/accounts/:accountId/pages/:pageId/connect", authMiddleware, requireRole("salesperson"), async (req, res) => {
+    try {
+      const authReq = req as AuthRequest;
+      const accountId = parseInt(req.params.accountId);
+      const pageId = req.params.pageId;
+      const userId = authReq.user!.id;
+      const dealershipId = req.dealershipId!;
+      
+      const account = await storage.getFacebookAccountById(accountId, userId, dealershipId);
+      if (!account || !account.accessToken) {
+        return res.status(400).json({ error: "Account not connected" });
+      }
+      
+      const pages = await facebookService.getUserPages(account.accessToken);
+      const page = pages.find(p => p.id === pageId);
+      
+      if (!page) {
+        return res.status(404).json({ error: "Page not found or you don't have access" });
+      }
+      
+      const existingPage = await storage.getFacebookPageByPageId(pageId);
+      if (existingPage) {
+        await storage.updateFacebookPage(existingPage.id, {
+          accessToken: page.access_token,
+          isActive: true,
+          pageName: page.name
+        });
+        return res.json({ 
+          success: true, 
+          message: "Page reconnected successfully",
+          page: { id: existingPage.id, pageId, name: page.name }
+        });
+      }
+      
+      const newPage = await storage.createFacebookPage({
+        dealershipId,
+        pageName: page.name,
+        pageId: page.id,
+        accessToken: page.access_token,
+        isActive: true,
+        selectedTemplate: 'modern'
+      });
+      
+      res.json({ 
+        success: true, 
+        message: "Page connected successfully",
+        page: { id: newPage.id, pageId: newPage.pageId, name: newPage.pageName }
+      });
+    } catch (error) {
+      console.error("Error connecting Facebook page:", error);
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to connect page" });
+    }
+  });
+
+  // Disconnect a Facebook page
+  app.post("/api/facebook/pages/:pageId/disconnect", authMiddleware, requireRole("salesperson"), async (req, res) => {
+    try {
+      const pageId = parseInt(req.params.pageId);
+      const dealershipId = req.dealershipId!;
+      
+      await storage.updateFacebookPage(pageId, { isActive: false, accessToken: null });
+      
+      res.json({ success: true, message: "Page disconnected" });
+    } catch (error) {
+      console.error("Error disconnecting Facebook page:", error);
+      res.status(500).json({ error: "Failed to disconnect page" });
+    }
+  });
+
+  // Get connected Facebook pages for the dealership
+  app.get("/api/facebook/connected-pages", authMiddleware, async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const pages = await storage.getFacebookPages(dealershipId);
+      
+      const pagesWithStatus = pages.map(page => ({
+        ...page,
+        hasValidToken: !!page.accessToken,
+        accessToken: undefined
+      }));
+      
+      res.json(pagesWithStatus);
+    } catch (error) {
+      console.error("Error fetching connected pages:", error);
+      res.status(500).json({ error: "Failed to fetch connected pages" });
+    }
+  });
+
+  // Test post to a Facebook page
+  app.post("/api/facebook/pages/:pageId/test-post", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const pageId = parseInt(req.params.pageId);
+      const dealershipId = req.dealershipId!;
+      const { message } = req.body;
+      
+      const pages = await storage.getFacebookPages(dealershipId);
+      const page = pages.find(p => p.id === pageId);
+      
+      if (!page || !page.accessToken) {
+        return res.status(400).json({ error: "Page not connected or token missing" });
+      }
+      
+      const result = await facebookService.postToPage(
+        page.accessToken,
+        page.pageId,
+        message || `Test post from Olympic Auto Group - ${new Date().toLocaleString()}`
+      );
+      
+      res.json({ success: true, postId: result.postId });
+    } catch (error) {
+      console.error("Error posting to Facebook page:", error);
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to post" });
+    }
+  });
+
+  // Post a vehicle to a Facebook page
+  app.post("/api/facebook/pages/:pageId/post-vehicle/:vehicleId", authMiddleware, requireRole("salesperson"), async (req, res) => {
+    try {
+      const pageId = parseInt(req.params.pageId);
+      const vehicleId = parseInt(req.params.vehicleId);
+      const dealershipId = req.dealershipId!;
+      
+      const pages = await storage.getFacebookPages(dealershipId);
+      const page = pages.find(p => p.id === pageId);
+      
+      if (!page || !page.accessToken) {
+        return res.status(400).json({ error: "Page not connected or token missing" });
+      }
+      
+      const vehicle = await storage.getVehicleById(vehicleId, dealershipId);
+      if (!vehicle) {
+        return res.status(404).json({ error: "Vehicle not found" });
+      }
+      
+      const result = await facebookService.postVehicleToPage(
+        page.accessToken,
+        page.pageId,
+        {
+          year: vehicle.year,
+          make: vehicle.make,
+          model: vehicle.model,
+          trim: vehicle.trim,
+          price: vehicle.price,
+          odometer: vehicle.odometer,
+          images: vehicle.images,
+          dealerVdpUrl: vehicle.dealerVdpUrl || undefined,
+          description: vehicle.description
+        }
+      );
+      
+      res.json({ success: true, postId: result.postId, vehicleId });
+    } catch (error) {
+      console.error("Error posting vehicle to Facebook:", error);
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to post vehicle" });
+    }
+  });
+
   // Manually post a vehicle to Facebook Marketplace
   app.post("/api/facebook/post/:queueId", authMiddleware, requireRole("salesperson"), async (req, res) => {
     try {

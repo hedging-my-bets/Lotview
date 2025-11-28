@@ -77,6 +77,101 @@ export class FacebookService {
     return response.json();
   }
 
+  async getUserPages(accessToken: string): Promise<Array<{
+    id: string;
+    name: string;
+    access_token: string;
+    category: string;
+    picture?: { data?: { url: string } };
+  }>> {
+    const response = await fetch(
+      `https://graph.facebook.com/v18.0/me/accounts?fields=id,name,access_token,category,picture&access_token=${accessToken}`
+    );
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message || 'Failed to get user pages');
+    }
+
+    const data = await response.json();
+    return data.data || [];
+  }
+
+  async getPageLongLivedToken(userAccessToken: string, pageId: string, dealershipConfig?: { facebookAppId?: string | null; facebookAppSecret?: string | null }): Promise<string> {
+    const pages = await this.getUserPages(userAccessToken);
+    const page = pages.find(p => p.id === pageId);
+    
+    if (!page) {
+      throw new Error('Page not found or you do not have access to it');
+    }
+    
+    return page.access_token;
+  }
+
+  async postToPage(pageAccessToken: string, pageId: string, message: string, link?: string, imageUrl?: string): Promise<{ postId: string }> {
+    const params: Record<string, string> = {
+      access_token: pageAccessToken,
+      message,
+    };
+    
+    if (link) {
+      params.link = link;
+    }
+
+    let endpoint = `https://graph.facebook.com/v18.0/${pageId}/feed`;
+    
+    if (imageUrl && !link) {
+      params.url = imageUrl;
+      endpoint = `https://graph.facebook.com/v18.0/${pageId}/photos`;
+    }
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(params).toString()
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message || 'Failed to post to page');
+    }
+
+    const data = await response.json();
+    return { postId: data.id || data.post_id };
+  }
+
+  async postVehicleToPage(pageAccessToken: string, pageId: string, vehicle: {
+    year: number;
+    make: string;
+    model: string;
+    trim?: string;
+    price: number;
+    odometer?: number;
+    images?: string[];
+    dealerVdpUrl?: string;
+    description?: string;
+  }): Promise<{ postId: string }> {
+    const vehicleName = `${vehicle.year} ${vehicle.make} ${vehicle.model}${vehicle.trim ? ` ${vehicle.trim}` : ''}`;
+    
+    let message = `🚗 ${vehicleName}\n`;
+    message += `💰 $${vehicle.price.toLocaleString()} CAD\n`;
+    if (vehicle.odometer) {
+      message += `📍 ${vehicle.odometer.toLocaleString()} km\n`;
+    }
+    message += `\n`;
+    if (vehicle.description) {
+      message += vehicle.description.substring(0, 500);
+      if (vehicle.description.length > 500) message += '...';
+      message += '\n\n';
+    }
+    message += `📲 Contact us for more details!`;
+    
+    const imageUrl = vehicle.images?.[0];
+    const link = vehicle.dealerVdpUrl;
+    
+    return this.postToPage(pageAccessToken, pageId, message, link, imageUrl);
+  }
+
   async getLongLivedToken(shortLivedToken: string, dealershipConfig?: { facebookAppId?: string | null; facebookAppSecret?: string | null }): Promise<{ accessToken: string; expiresIn: number }> {
     const config = this.getConfig(dealershipConfig);
     const params = new URLSearchParams({

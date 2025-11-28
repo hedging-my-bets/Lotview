@@ -146,7 +146,8 @@ export interface IStorage {
   getAllVehicleViews(dealershipId: number, hours?: number): Promise<Map<number, number>>; // REQUIRED filtering
   
   // Facebook pages
-  getFacebookPages(): Promise<FacebookPage[]>;
+  getFacebookPages(dealershipId?: number): Promise<FacebookPage[]>;
+  getFacebookPageByPageId(pageId: string): Promise<FacebookPage | undefined>;
   createFacebookPage(page: InsertFacebookPage): Promise<FacebookPage>;
   updateFacebookPage(id: number, page: Partial<InsertFacebookPage>): Promise<FacebookPage | undefined>;
   
@@ -477,8 +478,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Facebook pages
-  async getFacebookPages(): Promise<FacebookPage[]> {
+  async getFacebookPages(dealershipId?: number): Promise<FacebookPage[]> {
+    if (dealershipId) {
+      return await db.select().from(facebookPages).where(
+        and(eq(facebookPages.dealershipId, dealershipId), eq(facebookPages.isActive, true))
+      );
+    }
     return await db.select().from(facebookPages).where(eq(facebookPages.isActive, true));
+  }
+
+  async getFacebookPageByPageId(pageId: string): Promise<FacebookPage | undefined> {
+    const result = await db.select().from(facebookPages).where(eq(facebookPages.pageId, pageId));
+    return result[0];
   }
 
   async createFacebookPage(page: InsertFacebookPage): Promise<FacebookPage> {
