@@ -4,6 +4,13 @@ import { execSync } from 'child_process';
 import { cookieStore } from './cloudflare-bypass/cookie-store';
 import { proxyManager } from './cloudflare-bypass/proxy-manager';
 import { generateRandomFingerprint, applyFingerprint, randomDelay, isCloudflareChallenge, humanLikeScroll } from './cloudflare-bypass/browser-utils';
+import {
+  extractVehicleImages,
+  validateImages,
+  calculateImageQualityRating,
+  calculateDataQualityScore,
+  type ExtractedImage
+} from './precision-image-extractor';
 
 // Apply stealth plugin to evade bot detection
 puppeteer.use(StealthPlugin());
@@ -44,12 +51,14 @@ export interface DealerVehicleListing {
   images: string[];
   description: string;
   badges: string[];
-  type: string; // Body type: SUV, Sedan, Truck, etc.
+  type: string;
   stockNumber: string | null;
   vdpUrl: string;
   dealershipId: number;
   dealershipName: string;
   location: string;
+  imageQuality: 'excellent' | 'good' | 'fair' | 'poor';
+  dataQualityScore: number;
 }
 
 function parsePrice(priceText: string): number | null {
@@ -128,6 +137,8 @@ interface VehicleDetailData {
   badges: string[];
   type: string;
   stockNumber: string | null;
+  imageQuality: 'excellent' | 'good' | 'fair' | 'poor';
+  dataQualityScore: number;
 }
 
 // Scrape VDP using an existing page (reuses page instead of creating new ones)
@@ -638,12 +649,56 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
       // Log debug info to help diagnose extraction issues
       if (data.debug) {
         console.log(`    Debug: ${data.debug.bodyLength} chars, ${data.debug.allImgs} total imgs, price=$${data.price || 'null'}`);
-        console.log(`    Images: ${data.debug.imgDebug || 'N/A'}`);
+      }
+      
+      // Use PRECISION IMAGE EXTRACTION for accurate vehicle photos
+      let precisionImages: string[] = [];
+      let imageQuality: 'excellent' | 'good' | 'fair' | 'poor' = 'poor';
+      
+      let hasVinMatchingImages = false;
+      
+      try {
+        const extractionResult = await extractVehicleImages(page, data.vin, data.stockNumber);
+        const { valid: validImages, suspicious, confidence, hasVinMatches, vinMatchCount } = validateImages(
+          extractionResult.images,
+          data.vin,
+          data.stockNumber
+        );
+        
+        hasVinMatchingImages = hasVinMatches;
+        precisionImages = validImages.map(img => img.url);
+        imageQuality = calculateImageQualityRating(precisionImages.length);
+        
+        console.log(`    Precision: ${precisionImages.length} valid, ${suspicious.length} filtered, VIN match: ${vinMatchCount} (${confidence})`);
+        if (extractionResult.debug.gallerySelector) {
+          console.log(`    Gallery: ${extractionResult.debug.gallerySelector} (${extractionResult.totalSlides} slides)`);
+        }
+        
+        // If precision extraction returned zero valid images, fall back to legacy
+        if (precisionImages.length === 0 && data.images.length > 0) {
+          console.log(`    ⚠ No valid images after filtering, using legacy extraction`);
+          precisionImages = data.images;
+          hasVinMatchingImages = false;
+        }
+      } catch (precisionError) {
+        console.log(`    ⚠ Precision extraction failed, using fallback: ${precisionError instanceof Error ? precisionError.message : String(precisionError)}`);
+        precisionImages = data.images;
+        imageQuality = calculateImageQualityRating(data.images.length);
       }
       
       // Detect badges and body type from page text
       const badges = detectBadges(data.pageText);
       const type = determineBodyType(data.pageText);
+      
+      // Calculate data quality score with actual VIN match data
+      const dataQualityScore = calculateDataQualityScore({
+        vin: data.vin,
+        price: data.price,
+        odometer: data.odometer,
+        imageCount: precisionImages.length,
+        descriptionLength: data.description?.length || 0,
+        hasVinMatchingImages: hasVinMatchingImages
+      });
       
       // Don't close the page - we're reusing it for all VDPs
       
@@ -651,12 +706,14 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
         vin: data.vin,
         price: data.price,
         odometer: data.odometer,
-        images: data.images,
+        images: precisionImages.length > 0 ? precisionImages : data.images,
         trim: data.trim,
         description: data.description,
         badges,
         type,
-        stockNumber: data.stockNumber
+        stockNumber: data.stockNumber,
+        imageQuality,
+        dataQualityScore
       };
     } catch (error) {
       console.log(`    ✗ VDP extraction error (attempt ${attempt + 1}): ${error instanceof Error ? error.message : String(error)}`);
@@ -678,7 +735,9 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
         description: 'Used vehicle. Contact dealer for more information.',
         badges: [],
         type: 'SUV',
-        stockNumber: null
+        stockNumber: null,
+        imageQuality: 'poor' as const,
+        dataQualityScore: 0
       };
     }
   }
@@ -692,7 +751,9 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
     description: 'Used vehicle. Contact dealer for more information.',
     badges: [],
     type: 'SUV',
-    stockNumber: null
+    stockNumber: null,
+    imageQuality: 'poor' as const,
+    dataQualityScore: 0
   };
 }
 
@@ -1022,9 +1083,11 @@ async function scrapeDealerListings(dealerConfig: typeof DEALER_CONFIGS[0]): Pro
         dealershipId: dealerConfig.dealershipId,
         dealershipName: dealerConfig.name,
         location: dealerConfig.location,
+        imageQuality: detailData.imageQuality,
+        dataQualityScore: detailData.dataQualityScore,
       });
       
-      console.log(`    ✓ Extracted: ${detailData.images.length} photos, ${detailData.badges.length} badges, Price: $${detailData.price || 'N/A'}`);
+      console.log(`    ✓ ${detailData.images.length} photos (${detailData.imageQuality}), Quality: ${detailData.dataQualityScore}/100, Price: $${detailData.price || 'N/A'}`);
       
       // Human-like delay between requests (randomized)
       await randomDelay(800, 1500);
