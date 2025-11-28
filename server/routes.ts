@@ -1026,8 +1026,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ===== EXTERNAL API TOKENS (for n8n and other integrations) =====
   
-  // List external API tokens (master only)
-  app.get("/api/external-tokens", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
+  // List external API tokens (super_admin only)
+  app.get("/api/external-tokens", authMiddleware, requireRole("super_admin"), requireDealership, async (req, res) => {
     try {
       const dealershipId = req.dealershipId!;
       const tokens = await storage.getExternalApiTokens(dealershipId);
@@ -1051,8 +1051,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // Create external API token (master only) - returns the raw token ONCE
-  app.post("/api/external-tokens", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
+  // Create external API token (super_admin only) - returns the raw token ONCE
+  app.post("/api/external-tokens", authMiddleware, requireRole("super_admin"), requireDealership, async (req, res) => {
     try {
       const { tokenName, permissions, expiresAt } = req.body;
       const authReq = req as AuthRequest;
@@ -1102,8 +1102,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // Delete external API token (master only)
-  app.delete("/api/external-tokens/:id", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
+  // Delete external API token (super_admin only)
+  app.delete("/api/external-tokens/:id", authMiddleware, requireRole("super_admin"), requireDealership, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const dealershipId = req.dealershipId!;
