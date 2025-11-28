@@ -58,3 +58,4 @@ Preferred communication style: Simple, everyday language.
 - **Cron Scheduling**: Node-cron.
 - **AI/LLM**: OpenAI GPT-5 via Replit AI Integrations (fallback) or per-dealership OpenAI API keys.
 - **Carfax Integration**: Automated scraping of Carfax URLs from dealership websites.
+- **Facebook Integration**: OAuth 2.0 flow for page connections, page posting APIs, vehicle posting automation. Routes in `server/routes.ts` for `/api/facebook/auth`, `/api/facebook/callback`, page management endpoints.

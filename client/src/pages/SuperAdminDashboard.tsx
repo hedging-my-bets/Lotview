@@ -1627,6 +1627,17 @@ function EditApiKeysDialog({
                       )}
                       <p className="text-xs text-muted-foreground mt-1">Required for automated Facebook Marketplace posting</p>
                     </div>
+                    
+                    {/* Facebook OAuth Info Section */}
+                    <div className="col-span-full border-t pt-4 mt-2">
+                      <div className="mb-3">
+                        <h5 className="font-medium text-sm mb-2">Facebook Page Connection</h5>
+                        <p className="text-xs text-muted-foreground">
+                          Once you save the Facebook App ID and Secret above, dealership staff can connect 
+                          their Facebook accounts from the Sales Dashboard to post vehicles to their pages.
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
 

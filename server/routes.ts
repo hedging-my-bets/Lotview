@@ -22,7 +22,8 @@ import crypto from "crypto";
 import { decodeVIN } from "./vin-decoder";
 
 // OAuth state store for CSRF protection (in production, use Redis or signed JWTs)
-const oauthStateStore = new Map<string, { userId: number; accountId: number; expiresAt: number }>();
+// Includes dealershipId for proper multi-tenant isolation during OAuth callback
+const oauthStateStore = new Map<string, { userId: number; accountId: number; dealershipId: number; expiresAt: number }>();
 
 // Clean up expired states every hour
 setInterval(() => {
@@ -2395,6 +2396,7 @@ Format your response in clear sections with actionable recommendations.`;
       oauthStateStore.set(state, {
         userId,
         accountId,
+        dealershipId,
         expiresAt: Date.now() + 600000
       });
       
@@ -2445,11 +2447,23 @@ Format your response in clear sections with actionable recommendations.`;
 
       oauthStateStore.delete(state as string);
 
-      const { accountId, userId } = stateData;
+      // Use dealershipId from state (not from request) for proper multi-tenant security
+      const { accountId, userId, dealershipId } = stateData;
       
-      // Dealership ID from tenant middleware (single-dealership mode: defaults to 1)
-      // Multi-tenant expansion: Store dealershipId in OAuth state for proper tenant routing
-      const dealershipId = req.dealershipId!;
+      // Runtime check to ensure dealershipId is present (defense in depth)
+      if (!dealershipId || typeof dealershipId !== 'number') {
+        return res.status(400).send(`
+          <html>
+            <head><title>Invalid State</title></head>
+            <body style="font-family: system-ui; text-align: center; padding: 50px;">
+              <h1>✗ Invalid Session Data</h1>
+              <p>The session is missing required tenant information. Please try again.</p>
+              <button onclick="window.close()">Close</button>
+            </body>
+          </html>
+        `);
+      }
+      
       const account = await storage.getFacebookAccountById(accountId, userId, dealershipId);
       if (!account) {
         return res.status(403).send(`
@@ -2608,13 +2622,13 @@ Format your response in clear sections with actionable recommendations.`;
       const dealershipId = req.dealershipId!;
       const pages = await storage.getFacebookPages(dealershipId);
       
-      const pagesWithStatus = pages.map(page => ({
+      // Explicitly exclude sensitive token data from response
+      const safePages = pages.map(({ accessToken, ...page }) => ({
         ...page,
-        hasValidToken: !!page.accessToken,
-        accessToken: undefined
+        hasValidToken: !!accessToken
       }));
       
-      res.json(pagesWithStatus);
+      res.json(safePages);
     } catch (error) {
       console.error("Error fetching connected pages:", error);
       res.status(500).json({ error: "Failed to fetch connected pages" });
