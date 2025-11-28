@@ -1026,15 +1026,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ===== EXTERNAL API TOKENS (for n8n and other integrations) =====
   
+  // Helper to parse and validate dealership ID for super_admin
+  // Returns the parsed ID or null if invalid/missing - NEVER defaults to any dealership
+  const parseDealershipId = (value: string | number | undefined | null): number | null => {
+    if (value === undefined || value === null || value === '') {
+      return null;
+    }
+    const parsed = typeof value === 'number' ? value : parseInt(String(value), 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  };
+  
   // List external API tokens (super_admin only)
-  app.get("/api/external-tokens", authMiddleware, requireRole("super_admin"), requireDealership, async (req, res) => {
+  app.get("/api/external-tokens", authMiddleware, requireRole("super_admin"), async (req, res) => {
     try {
-      const dealershipId = req.dealershipId!;
+      // Super_admin MUST specify dealership via query param - no fallback
+      const dealershipId = parseDealershipId(req.query.dealershipId);
+      if (dealershipId === null) {
+        return res.status(400).json({ error: "Missing or invalid dealershipId. Please select a dealership." });
+      }
+      
+      // Verify dealership exists
+      const dealership = await storage.getDealership(dealershipId);
+      if (!dealership) {
+        return res.status(404).json({ error: "Selected dealership not found" });
+      }
+      
       const tokens = await storage.getExternalApiTokens(dealershipId);
       
       // Never expose the full token hash, only return metadata
       const safeTokens = tokens.map(t => ({
         id: t.id,
+        dealershipId: t.dealershipId,
         tokenName: t.tokenName,
         tokenPrefix: t.tokenPrefix,
         permissions: t.permissions,
@@ -1052,12 +1074,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Create external API token (super_admin only) - returns the raw token ONCE
-  app.post("/api/external-tokens", authMiddleware, requireRole("super_admin"), requireDealership, async (req, res) => {
+  app.post("/api/external-tokens", authMiddleware, requireRole("super_admin"), async (req, res) => {
     try {
-      const { tokenName, permissions, expiresAt } = req.body;
+      const { tokenName, permissions, expiresAt, dealershipId: bodyDealershipId } = req.body;
       const authReq = req as AuthRequest;
-      const dealershipId = req.dealershipId!;
       const userId = authReq.user!.id;
+      
+      // Super_admin MUST specify dealership in body - no fallback
+      const dealershipId = parseDealershipId(bodyDealershipId);
+      if (dealershipId === null) {
+        return res.status(400).json({ error: "Missing or invalid dealershipId. Please select a dealership." });
+      }
+      
+      // Verify dealership exists
+      const dealership = await storage.getDealership(dealershipId);
+      if (!dealership) {
+        return res.status(404).json({ error: "Selected dealership not found" });
+      }
       
       if (!tokenName || !permissions || !Array.isArray(permissions)) {
         return res.status(400).json({ error: "tokenName and permissions are required" });
@@ -1094,6 +1127,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         tokenPrefix: token.tokenPrefix,
         permissions: token.permissions,
         expiresAt: token.expiresAt,
+        dealershipId: token.dealershipId,
         message: "Save this token now - it won't be shown again!"
       });
     } catch (error) {
@@ -1103,14 +1137,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Delete external API token (super_admin only)
-  app.delete("/api/external-tokens/:id", authMiddleware, requireRole("super_admin"), requireDealership, async (req, res) => {
+  app.delete("/api/external-tokens/:id", authMiddleware, requireRole("super_admin"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const dealershipId = req.dealershipId!;
+      
+      // Super_admin MUST specify dealership via query param - prevents cross-tenant deletion
+      const dealershipId = parseDealershipId(req.query.dealershipId);
+      if (dealershipId === null) {
+        return res.status(400).json({ error: "Missing or invalid dealershipId. Please select a dealership." });
+      }
+      
+      // Verify dealership exists
+      const dealership = await storage.getDealership(dealershipId);
+      if (!dealership) {
+        return res.status(404).json({ error: "Selected dealership not found" });
+      }
       
       const deleted = await storage.deleteExternalApiToken(id, dealershipId);
       if (!deleted) {
-        return res.status(404).json({ error: "Token not found" });
+        return res.status(404).json({ error: "Token not found or does not belong to selected dealership" });
       }
       
       res.status(204).send();

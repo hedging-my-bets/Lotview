@@ -1753,6 +1753,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteExternalApiToken(id: number, dealershipId: number): Promise<boolean> {
+    // Always require dealershipId match for security - prevents cross-tenant deletion
     const result = await db.delete(externalApiTokens)
       .where(and(
         eq(externalApiTokens.id, id),

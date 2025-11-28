@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Navbar } from "@/components/Navbar";
@@ -9,11 +9,19 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ArrowLeft, Plus, Trash2, Copy, Key, Clock, CheckCircle, AlertCircle, Code, Webhook, FileJson } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ArrowLeft, Plus, Trash2, Copy, Key, Clock, CheckCircle, AlertCircle, Code, Webhook, FileJson, Building2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+
+type Dealership = {
+  id: number;
+  name: string;
+  slug: string;
+};
 
 type ExternalToken = {
   id: number;
+  dealershipId: number;
   tokenName: string;
   tokenPrefix: string;
   permissions: string[];
@@ -30,6 +38,7 @@ type NewTokenResponse = {
   tokenPrefix: string;
   permissions: string[];
   expiresAt?: string;
+  dealershipId: number;
   message: string;
 };
 
@@ -45,6 +54,8 @@ export default function N8nIntegration() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [selectedDealershipId, setSelectedDealershipId] = useState<number | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newToken, setNewToken] = useState<NewTokenResponse | null>(null);
   const [tokenForm, setTokenForm] = useState({
@@ -52,16 +63,67 @@ export default function N8nIntegration() {
     permissions: ["import:vehicles"] as string[],
   });
 
-  const { data: tokens = [], isLoading } = useQuery<ExternalToken[]>({
-    queryKey: ['external-tokens'],
+  // Check for super_admin access
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    if (!storedUser) {
+      setLocation('/login');
+      return;
+    }
+    
+    try {
+      const user = JSON.parse(storedUser);
+      if (user.role !== 'super_admin') {
+        toast({
+          title: "Access Denied",
+          description: "This feature is only available to system administrators.",
+          variant: "destructive",
+        });
+        setLocation('/dashboard');
+        return;
+      }
+      setIsAuthorized(true);
+    } catch {
+      setLocation('/login');
+    }
+  }, [setLocation, toast]);
+
+  // Fetch dealerships for super_admin
+  const { data: dealerships = [] } = useQuery<Dealership[]>({
+    queryKey: ['dealerships'],
     queryFn: async () => {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/external-tokens', {
+      const response = await fetch('/api/super-admin/dealerships', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error('Failed to fetch dealerships');
+      return response.json();
+    },
+    enabled: isAuthorized
+  });
+
+  // Note: We intentionally do NOT auto-select a dealership
+  // Super_admin must explicitly choose which tenant to manage for security
+  
+  // Close create dialog when dealership changes to prevent cross-tenant token creation
+  useEffect(() => {
+    if (createDialogOpen) {
+      setCreateDialogOpen(false);
+      setTokenForm({ tokenName: "", permissions: ["import:vehicles"] });
+    }
+  }, [selectedDealershipId]);
+
+  const { data: tokens = [], isLoading } = useQuery<ExternalToken[]>({
+    queryKey: ['external-tokens', selectedDealershipId],
+    queryFn: async () => {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/external-tokens?dealershipId=${selectedDealershipId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!response.ok) throw new Error('Failed to fetch tokens');
       return response.json();
-    }
+    },
+    enabled: isAuthorized && !!selectedDealershipId
   });
 
   const createTokenMutation = useMutation({
@@ -73,7 +135,7 @@ export default function N8nIntegration() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(data)
+        body: JSON.stringify({ ...data, dealershipId: selectedDealershipId })
       });
       if (!response.ok) {
         const error = await response.json();
@@ -83,7 +145,7 @@ export default function N8nIntegration() {
     },
     onSuccess: (data: NewTokenResponse) => {
       setNewToken(data);
-      queryClient.invalidateQueries({ queryKey: ['external-tokens'] });
+      queryClient.invalidateQueries({ queryKey: ['external-tokens', selectedDealershipId] });
       setTokenForm({ tokenName: "", permissions: ["import:vehicles"] });
     },
     onError: (error: Error) => {
@@ -94,14 +156,17 @@ export default function N8nIntegration() {
   const deleteTokenMutation = useMutation({
     mutationFn: async (id: number) => {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch(`/api/external-tokens/${id}`, {
+      const response = await fetch(`/api/external-tokens/${id}?dealershipId=${selectedDealershipId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      if (!response.ok) throw new Error('Failed to delete token');
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to delete token');
+      }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['external-tokens'] });
+      queryClient.invalidateQueries({ queryKey: ['external-tokens', selectedDealershipId] });
       toast({ title: "Success", description: "Token deleted successfully" });
     }
   });
@@ -152,6 +217,15 @@ export default function N8nIntegration() {
   }
 }`;
 
+  // Don't render until authorization is confirmed
+  if (!isAuthorized) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -168,9 +242,39 @@ export default function N8nIntegration() {
           </Button>
           
           <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">n8n Integration</h1>
-          <p className="text-muted-foreground mb-8">
+          <p className="text-muted-foreground mb-4">
             Connect n8n or other automation tools to automatically import vehicles from CarGurus, your website, or other sources.
           </p>
+
+          {/* Dealership Selector */}
+          <Card className="mb-6">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Building2 className="w-5 h-5" />
+                Select Dealership
+              </CardTitle>
+              <CardDescription>
+                Choose which dealership to manage API tokens for
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Select 
+                value={selectedDealershipId?.toString() || ""} 
+                onValueChange={(value) => setSelectedDealershipId(parseInt(value))}
+              >
+                <SelectTrigger className="w-full md:w-80" data-testid="select-dealership">
+                  <SelectValue placeholder="Select a dealership..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {dealerships.map((d) => (
+                    <SelectItem key={d.id} value={d.id.toString()}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </CardContent>
+          </Card>
 
           {/* API Tokens Section */}
           <Card className="mb-8">
@@ -187,7 +291,11 @@ export default function N8nIntegration() {
                 </div>
                 <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
                   <DialogTrigger asChild>
-                    <Button data-testid="button-create-token">
+                    <Button 
+                      data-testid="button-create-token"
+                      disabled={!selectedDealershipId}
+                      title={!selectedDealershipId ? "Select a dealership first" : undefined}
+                    >
                       <Plus className="w-4 h-4 mr-2" />
                       Create Token
                     </Button>
@@ -245,7 +353,12 @@ export default function N8nIntegration() {
               </div>
             </CardHeader>
             <CardContent>
-              {isLoading ? (
+              {!selectedDealershipId ? (
+                <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg">
+                  <Building2 className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p>Please select a dealership above to manage API tokens</p>
+                </div>
+              ) : isLoading ? (
                 <div className="text-center py-8">
                   <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
                 </div>
@@ -289,6 +402,7 @@ export default function N8nIntegration() {
                         variant="ghost"
                         size="sm"
                         onClick={() => deleteTokenMutation.mutate(token.id)}
+                        disabled={!selectedDealershipId || deleteTokenMutation.isPending}
                         data-testid={`button-delete-token-${token.id}`}
                       >
                         <Trash2 className="w-4 h-4 text-red-500" />

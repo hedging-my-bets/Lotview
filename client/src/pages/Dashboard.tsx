@@ -192,7 +192,7 @@ export default function Dashboard() {
       const parsedUser = JSON.parse(storedUser);
       
       // Only masters can access this dashboard
-      if (parsedUser.role !== 'master') {
+      if (parsedUser.role !== 'master' && parsedUser.role !== 'super_admin') {
         toast({
           title: "Access Denied",
           description: "You don't have permission to access this page",
