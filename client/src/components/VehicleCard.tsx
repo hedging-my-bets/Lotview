@@ -5,16 +5,28 @@ import { Link, useLocation } from "wouter";
 import { usePayment, type FinanceTerm } from "@/contexts/PaymentContext";
 import { trackCTAClick } from "@/lib/tracking";
 
-// Helper to proxy CDN images that have hotlink protection
+// Helper to get working image URL
+// AutoTrader CDN returns 404 for resize params (w=, h=), but quality/fit work fine
 function getProxiedImageUrl(url: string): string {
   if (!url) return '/placeholder-car.jpg';
   
-  // Check if this is a CDN URL that needs proxying
-  const needsProxy = url.includes('autotradercdn.ca') || 
-                     url.includes('autotrader.ca') ||
-                     url.includes('cargurus.com') ||
-                     url.includes('cargurus.ca');
+  // For AutoTrader CDN, strip resize params (w, h) which cause 404, keep quality/fit
+  if (url.includes('autotradercdn.ca')) {
+    try {
+      const urlObj = new URL(url);
+      // Remove problematic resize params that cause 404
+      urlObj.searchParams.delete('w');
+      urlObj.searchParams.delete('h');
+      urlObj.searchParams.delete('auto'); // webp conversion also seems problematic
+      // Keep quality and fit params which work fine
+      return urlObj.toString();
+    } catch {
+      return url;
+    }
+  }
   
+  // For other CDNs that might need proxying
+  const needsProxy = url.includes('cargurus.com') || url.includes('cargurus.ca');
   if (needsProxy) {
     return `/api/public/image-proxy?url=${encodeURIComponent(url)}`;
   }

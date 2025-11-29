@@ -13,18 +13,29 @@ import { useChat } from "@/contexts/ChatContext";
 import { trackVehicleView as trackGTMVehicleView, trackCTAClick, trackPaymentCalculation } from "@/lib/tracking";
 import useEmblaCarousel from 'embla-carousel-react';
 
-// Helper function to upgrade AutoTrader CDN images to maximum resolution and proxy them
+// Helper function to get working image URL
+// AutoTrader CDN returns 404 for resize params (w=, h=), but quality/fit work fine
 function upgradeImageUrl(url: string): string {
   if (!url) return '/placeholder-car.jpg';
   
-  // Check if this is a CDN URL that needs proxying (hotlink protection bypass)
-  const needsProxy = url.includes('autotradercdn.ca') || 
-                     url.includes('autotrader.ca') ||
-                     url.includes('cargurus.com') ||
-                     url.includes('cargurus.ca');
+  // For AutoTrader CDN, strip resize params (w, h) which cause 404, keep quality/fit
+  if (url.includes('autotradercdn.ca')) {
+    try {
+      const urlObj = new URL(url);
+      // Remove problematic resize params that cause 404
+      urlObj.searchParams.delete('w');
+      urlObj.searchParams.delete('h');
+      urlObj.searchParams.delete('auto'); // webp conversion also seems problematic
+      // Keep quality and fit params which work fine
+      return urlObj.toString();
+    } catch {
+      return url;
+    }
+  }
   
+  // For other CDNs that might need proxying (hotlink protection bypass)
+  const needsProxy = url.includes('cargurus.com') || url.includes('cargurus.ca');
   if (needsProxy) {
-    // Proxy through our backend to bypass hotlink protection
     return `/api/public/image-proxy?url=${encodeURIComponent(url)}`;
   }
   
