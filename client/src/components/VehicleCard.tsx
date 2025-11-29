@@ -145,15 +145,7 @@ export function VehicleCard({ car }: VehicleCardProps) {
             </>
           )}
           
-          {/* Location Badge - Top Left */}
-          <div className="absolute top-3 left-3">
-            <span className="bg-primary text-white text-[10px] font-bold px-3 py-1.5 rounded-full shadow-lg flex items-center gap-1">
-              <MapPin className="w-3 h-3" />
-              {car.dealership}
-            </span>
-          </div>
-
-          {/* Feature Badges - Top Right */}
+          {/* Feature Badges - Top Left */}
           <div className="absolute top-3 right-3 flex flex-wrap gap-1 justify-end max-w-[70%]">
             {car.dealRating && (
               <span className="bg-green-500 text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg">
@@ -226,7 +218,13 @@ export function VehicleCard({ car }: VehicleCardProps) {
             <h3 className="text-lg font-bold text-foreground leading-tight">
               {car.year} {car.make} {car.model}
             </h3>
-            <p className="text-xs text-muted-foreground font-medium mt-1">{car.trim}</p>
+            <div className="flex justify-between items-center mt-1">
+              <p className="text-xs text-muted-foreground font-medium">{car.trim}</p>
+              <span className="text-xs text-muted-foreground font-medium flex items-center gap-1">
+                <MapPin className="w-3 h-3" />
+                {car.dealership}
+              </span>
+            </div>
           </div>
 
           <div className="mt-auto pt-3 border-t border-border flex justify-between items-center text-xs text-muted-foreground font-medium">

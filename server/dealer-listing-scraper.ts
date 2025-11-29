@@ -117,7 +117,7 @@ function detectBadges(text: string): string[] {
   if (/\b(clean title|clear title)\b/.test(lowerText)) {
     badges.push('Clean Title');
   }
-  if (/\b(certified|cpo|certified pre-owned)\b/.test(lowerText)) {
+  if (/\b(certified pre-?owned|cpo\b|hyundai certified|manufacturer certified|factory certified)\b/.test(lowerText)) {
     badges.push('Certified Pre-Owned');
   }
   if (/\b(low km|low kilometers|low mileage|low km's)\b/.test(lowerText)) {
