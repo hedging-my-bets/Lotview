@@ -365,13 +365,83 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
           // Note: Low confidence prices are still used but should be validated
         }
         
-        // Extract odometer
+        // Extract odometer - look for specific odometer patterns, not just any "X km"
         var odometer = null;
-        var odoMatch = pageText.match(/([0-9,]+)\\s*(km|kilometers?)/i);
-        if (odoMatch) {
-          var odoVal = parseInt(odoMatch[1].replace(/,/g, ''));
-          if (odoVal > 0 && odoVal < 500000) {
-            odometer = odoVal;
+        
+        // Strategy 1: Look for labeled odometer fields (highest confidence)
+        var odoSelectors = [
+          '[class*="odometer"]',
+          '[class*="mileage"]',
+          '[class*="km"]',
+          '[data-odometer]',
+          '.kilometers',
+          '.vehicle-odometer'
+        ];
+        
+        for (var oi = 0; oi < odoSelectors.length && !odometer; oi++) {
+          var odoEl = document.querySelector(odoSelectors[oi]);
+          if (odoEl && odoEl.textContent) {
+            var odoText = odoEl.textContent;
+            var odoLabelMatch = odoText.match(/([0-9,]+)/);
+            if (odoLabelMatch) {
+              var odoVal = parseInt(odoLabelMatch[1].replace(/,/g, ''));
+              // Minimum 500 km to avoid erroneous small values
+              if (odoVal >= 500 && odoVal < 500000) {
+                odometer = odoVal;
+              }
+            }
+          }
+        }
+        
+        // Strategy 2: Look for labeled patterns in page text
+        if (!odometer) {
+          var labelPatterns = [
+            /odometer[:\\s]+([0-9,]+)\\s*(km)?/i,
+            /mileage[:\\s]+([0-9,]+)\\s*(km)?/i,
+            /kilometers[:\\s]+([0-9,]+)/i,
+            /([0-9,]+)\\s*km\\s*(?:odometer|mileage)/i,
+            /\\b([0-9]{1,3}(?:,[0-9]{3})+)\\s*km\\b/i  // Match numbers with commas like "67,432 km"
+          ];
+          
+          for (var li = 0; li < labelPatterns.length && !odometer; li++) {
+            var labelMatch = pageText.match(labelPatterns[li]);
+            if (labelMatch) {
+              var odoVal = parseInt(labelMatch[1].replace(/,/g, ''));
+              // Minimum 500 km to avoid erroneous small values (like "100 km away")
+              if (odoVal >= 500 && odoVal < 500000) {
+                odometer = odoVal;
+              }
+            }
+          }
+        }
+        
+        // Strategy 3: Last resort - look for reasonable standalone km values
+        // Exclude patterns like "X km away", "X km from", "within X km"
+        if (!odometer) {
+          var kmMatches = pageText.match(/\\b([0-9,]+)\\s*(km|kilometers?)\\b/gi);
+          if (kmMatches) {
+            for (var ki = 0; ki < kmMatches.length && !odometer; ki++) {
+              // Skip if it looks like a distance phrase
+              var context = pageText.substring(
+                Math.max(0, pageText.indexOf(kmMatches[ki]) - 20),
+                pageText.indexOf(kmMatches[ki]) + kmMatches[ki].length + 20
+              ).toLowerCase();
+              
+              if (context.includes('away') || context.includes('from') || 
+                  context.includes('within') || context.includes('distance') ||
+                  context.includes('radius') || context.includes('located')) {
+                continue;
+              }
+              
+              var numMatch = kmMatches[ki].match(/([0-9,]+)/);
+              if (numMatch) {
+                var odoVal = parseInt(numMatch[1].replace(/,/g, ''));
+                // Higher minimum (1000 km) for last resort strategy
+                if (odoVal >= 1000 && odoVal < 500000) {
+                  odometer = odoVal;
+                }
+              }
+            }
           }
         }
         
