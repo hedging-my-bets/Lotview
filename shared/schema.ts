@@ -136,6 +136,7 @@ export const vehicles = pgTable("vehicles", {
   dealerVdpUrl: text("dealer_vdp_url"), // Link to dealer's vehicle detail page
   videoUrl: text("video_url"), // Generated video URL from Gemini Veo
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  lastScrapedAt: timestamp("last_scraped_at").defaultNow(), // Track when vehicle was last scraped (for incremental sync)
 });
 
 export const insertVehicleSchema = createInsertSchema(vehicles).omit({

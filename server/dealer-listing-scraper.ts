@@ -757,7 +757,10 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
   };
 }
 
-async function scrapeDealerListings(dealerConfig: typeof DEALER_CONFIGS[0]): Promise<DealerVehicleListing[]> {
+async function scrapeDealerListings(
+  dealerConfig: typeof DEALER_CONFIGS[0],
+  onVehicleScraped?: (vehicle: DealerVehicleListing) => Promise<void>
+): Promise<DealerVehicleListing[]> {
   console.log(`\n[${dealerConfig.name}] Scraping dealer listing page...`);
   
   let chromiumPath = '';
@@ -1066,7 +1069,7 @@ async function scrapeDealerListings(dealerConfig: typeof DEALER_CONFIGS[0]): Pro
         }
       }
       
-      vehicles.push({
+      const vehicleData: DealerVehicleListing = {
         vin: detailData.vin,
         year: urlData.year,
         make: urlData.make,
@@ -1085,9 +1088,20 @@ async function scrapeDealerListings(dealerConfig: typeof DEALER_CONFIGS[0]): Pro
         location: dealerConfig.location,
         imageQuality: detailData.imageQuality,
         dataQualityScore: detailData.dataQualityScore,
-      });
+      };
+      
+      vehicles.push(vehicleData);
       
       console.log(`    ✓ ${detailData.images.length} photos (${detailData.imageQuality}), Quality: ${detailData.dataQualityScore}/100, Price: $${detailData.price || 'N/A'}`);
+      
+      // Call the callback to save immediately if provided (incremental saving)
+      if (onVehicleScraped) {
+        try {
+          await onVehicleScraped(vehicleData);
+        } catch (saveError) {
+          console.error(`    ⚠ Failed to save vehicle immediately:`, saveError);
+        }
+      }
       
       // Human-like delay between requests (randomized)
       await randomDelay(800, 1500);
@@ -1144,4 +1158,52 @@ export async function scrapeAllDealerListings(): Promise<DealerVehicleListing[]>
   console.log(`\n✓ Total dealer listings scraped: ${allListings.length}\n`);
   
   return allListings;
+}
+
+// Callback-based version that saves each vehicle immediately after scraping
+// This prevents data loss when the scraper is interrupted
+export type VehicleSaveCallback = (vehicle: DealerVehicleListing) => Promise<{ action: 'inserted' | 'updated', id: number }>;
+
+export async function scrapeDealerListingsWithCallback(
+  onVehicleSaved: VehicleSaveCallback
+): Promise<{ total: number; inserted: number; updated: number }> {
+  console.log('\n=== SCRAPING DEALER LISTING PAGES (TRUE INCREMENTAL SAVE) ===');
+  
+  let totalCount = 0;
+  let insertedCount = 0;
+  let updatedCount = 0;
+  
+  for (const config of DEALER_CONFIGS) {
+    console.log(`\n[${config.name}] Starting incremental scrape...`);
+    
+    try {
+      // Use the callback to save each vehicle IMMEDIATELY as it's scraped
+      const onVehicleScraped = async (vehicle: DealerVehicleListing) => {
+        try {
+          const result = await onVehicleSaved(vehicle);
+          totalCount++;
+          if (result.action === 'inserted') {
+            insertedCount++;
+          } else {
+            updatedCount++;
+          }
+          console.log(`    💾 ${result.action === 'inserted' ? 'NEW' : 'UPDATED'}: ${vehicle.year} ${vehicle.make} ${vehicle.model} (ID: ${result.id})`);
+        } catch (saveError) {
+          console.error(`    ✗ Failed to save ${vehicle.year} ${vehicle.make} ${vehicle.model}:`, saveError);
+        }
+      };
+      
+      // This now calls onVehicleScraped after each vehicle is scraped (truly incremental)
+      const listings = await scrapeDealerListings(config, onVehicleScraped);
+      
+      console.log(`  ✓ ${config.name}: ${listings.length} vehicles scraped and saved`);
+    } catch (error) {
+      console.error(`Failed to scrape ${config.name}:`, error);
+      console.log(`  ⚠ Partial results may have been saved before the error`);
+    }
+  }
+  
+  console.log(`\n✓ TRUE INCREMENTAL scrape complete: ${totalCount} total (${insertedCount} new, ${updatedCount} updated)\n`);
+  
+  return { total: totalCount, inserted: insertedCount, updated: updatedCount };
 }

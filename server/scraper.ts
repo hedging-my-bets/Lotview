@@ -1,12 +1,92 @@
 import puppeteer from 'puppeteer';
 import { execSync } from 'child_process';
-import { sql } from 'drizzle-orm';
+import { sql, eq, and } from 'drizzle-orm';
 import { db } from './db';
 import { vehicles } from '@shared/schema';
 import { scrapeAllCarGurusDealers } from './cargurus-scraper';
 import { generateVehicleDescription } from './openai';
-import { scrapeAllDealerListings } from './dealer-listing-scraper';
+import { scrapeAllDealerListings, scrapeDealerListingsWithCallback, type DealerVehicleListing } from './dealer-listing-scraper';
 import { matchCarGurusToDealer } from './vehicle-matcher';
+
+// Upsert a single vehicle by VIN (or stockNumber if VIN is null)
+// This enables incremental saving - each vehicle is saved immediately after scraping
+async function upsertVehicleByVin(vehicleData: ScrapedVehicle): Promise<{ action: 'inserted' | 'updated', id: number }> {
+  const now = new Date();
+  
+  // Build the vehicle record
+  const vehicleRecord = {
+    dealershipId: vehicleData.dealershipId,
+    year: vehicleData.year,
+    make: vehicleData.make,
+    model: vehicleData.model,
+    trim: vehicleData.trim,
+    type: vehicleData.type,
+    price: vehicleData.price || 0,
+    odometer: vehicleData.odometer || 0,
+    images: vehicleData.images,
+    badges: vehicleData.badges,
+    location: vehicleData.location,
+    dealership: vehicleData.dealership,
+    description: vehicleData.description || `${vehicleData.year} ${vehicleData.make} ${vehicleData.model} ${vehicleData.trim}`.trim(),
+    fullPageContent: vehicleData.fullPageContent || null,
+    vin: vehicleData.vin || null,
+    stockNumber: vehicleData.stockNumber || null,
+    cargurusPrice: vehicleData.cargurusPrice || null,
+    cargurusUrl: vehicleData.cargurusUrl || null,
+    dealRating: vehicleData.dealRating || null,
+    carfaxUrl: vehicleData.carfaxUrl || null,
+    dealerVdpUrl: vehicleData.dealerVdpUrl || null,
+    lastScrapedAt: now,
+  };
+  
+  // Find existing vehicle by VIN (preferred) or by year/make/model/dealershipId combo
+  let existingId: number | null = null;
+  
+  if (vehicleData.vin) {
+    const existing = await db.select({ id: vehicles.id })
+      .from(vehicles)
+      .where(and(
+        eq(vehicles.vin, vehicleData.vin),
+        eq(vehicles.dealershipId, vehicleData.dealershipId)
+      ))
+      .limit(1);
+    
+    if (existing.length > 0) {
+      existingId = existing[0].id;
+    }
+  }
+  
+  // Fallback: match by year/make/model/dealershipId (ignore trim - it can vary between scrapes)
+  if (!existingId) {
+    const existing = await db.select({ id: vehicles.id })
+      .from(vehicles)
+      .where(and(
+        eq(vehicles.year, vehicleData.year),
+        eq(vehicles.make, vehicleData.make),
+        eq(vehicles.model, vehicleData.model),
+        eq(vehicles.dealershipId, vehicleData.dealershipId)
+      ))
+      .limit(1);
+    
+    if (existing.length > 0) {
+      existingId = existing[0].id;
+    }
+  }
+  
+  if (existingId) {
+    // Update existing vehicle
+    await db.update(vehicles)
+      .set(vehicleRecord)
+      .where(eq(vehicles.id, existingId));
+    return { action: 'updated', id: existingId };
+  } else {
+    // Insert new vehicle
+    const result = await db.insert(vehicles)
+      .values(vehicleRecord)
+      .returning({ id: vehicles.id });
+    return { action: 'inserted', id: result[0].id };
+  }
+}
 
 interface ScrapedVehicle {
   year: number;
@@ -1125,5 +1205,50 @@ export async function testBadgeDetection() {
     console.log(`\nTest ${i + 1}: "${desc}"`);
     console.log(`Detected badges: ${badges.join(', ') || 'None'}`);
   });
+}
+
+// NEW: Incremental scraping that saves each vehicle immediately
+// This prevents data loss when the scraper is interrupted
+export async function scrapeAllDealershipsIncremental(): Promise<number> {
+  console.log('Starting INCREMENTAL inventory scrape (saves each vehicle immediately)...');
+  
+  try {
+    // Callback that saves each vehicle as it's scraped
+    const onVehicleSaved = async (listing: DealerVehicleListing) => {
+      // Convert listing to ScrapedVehicle format
+      const vehicleData: ScrapedVehicle = {
+        year: listing.year,
+        make: listing.make,
+        model: listing.model,
+        trim: listing.trim,
+        type: listing.type,
+        price: listing.price,
+        odometer: listing.odometer,
+        images: listing.images,
+        badges: listing.badges,
+        location: listing.location,
+        dealership: listing.dealershipName,
+        dealershipId: listing.dealershipId,
+        description: listing.description,
+        vin: listing.vin || undefined,
+        stockNumber: listing.stockNumber || undefined,
+        dealerVdpUrl: listing.vdpUrl,
+      };
+      
+      return await upsertVehicleByVin(vehicleData);
+    };
+    
+    const result = await scrapeDealerListingsWithCallback(onVehicleSaved);
+    
+    console.log(`\n✓ INCREMENTAL SCRAPE COMPLETE`);
+    console.log(`  - Total: ${result.total} vehicles`);
+    console.log(`  - New: ${result.inserted} vehicles`);
+    console.log(`  - Updated: ${result.updated} vehicles`);
+    
+    return result.total;
+  } catch (error) {
+    console.error('✗ Incremental scraping failed:', error);
+    throw error;
+  }
 }
 

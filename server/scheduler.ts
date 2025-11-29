@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { scrapeAllDealerships } from './scraper';
+import { scrapeAllDealerships, scrapeAllDealershipsIncremental } from './scraper';
 import { storage } from './storage';
 import { facebookService } from './facebook-service';
 
@@ -11,12 +11,12 @@ export function startInventoryScheduler() {
     return;
   }
 
-  // Run scraper every 24 hours at midnight
+  // Run scraper every 24 hours at midnight - uses incremental save
   cron.schedule('0 0 * * *', async () => {
-    console.log('🕐 Running scheduled inventory sync...');
+    console.log('🕐 Running scheduled inventory sync (INCREMENTAL MODE)...');
     try {
-      const count = await scrapeAllDealerships();
-      console.log(`✓ Scheduled sync complete: ${count} vehicles updated`);
+      const count = await scrapeAllDealershipsIncremental();
+      console.log(`✓ Scheduled sync complete: ${count} vehicles saved`);
     } catch (error) {
       console.error('✗ Scheduled sync failed:', error);
     }
@@ -138,12 +138,13 @@ async function refreshSingleAccount(
   }
 }
 
-// Manual trigger function for testing
+// Manual trigger function for testing - uses INCREMENTAL save to prevent data loss
 export async function triggerManualSync() {
-  console.log('🔄 Manual inventory sync triggered...');
+  console.log('🔄 Manual inventory sync triggered (INCREMENTAL MODE)...');
   try {
-    const count = await scrapeAllDealerships();
-    console.log(`✓ Manual sync complete: ${count} vehicles updated`);
+    // Use incremental scraper - saves each vehicle immediately to prevent data loss
+    const count = await scrapeAllDealershipsIncremental();
+    console.log(`✓ Manual sync complete: ${count} vehicles saved`);
     return { success: true, count };
   } catch (error) {
     console.error('✗ Manual sync failed:', error);
