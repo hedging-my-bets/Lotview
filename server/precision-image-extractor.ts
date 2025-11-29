@@ -592,52 +592,57 @@ async function useKeyboardNavigation(page: Page, maxClicks: number): Promise<num
  */
 async function openPrimaryGallery(page: Page): Promise<{ opened: boolean; method: string }> {
   try {
-    const result = await page.evaluate(
-      async (triggerSelectors: string[], overlaySelectors: string[]) => {
-        function hasOverlay(): boolean {
-          return overlaySelectors.some(sel => !!document.querySelector(sel));
+    // Create an inline script to avoid __name reference issues from tsx/esbuild
+    const galleryOpenScript = `(async function() {
+      var triggerSelectors = ${JSON.stringify(GALLERY_TRIGGER_SELECTORS)};
+      var overlaySelectors = ${JSON.stringify(OVERLAY_GALLERY_SELECTORS)};
+      
+      function hasOverlay() {
+        for (var i = 0; i < overlaySelectors.length; i++) {
+          if (document.querySelector(overlaySelectors[i])) return true;
         }
+        return false;
+      }
 
-        // If a fullscreen gallery is already open, do nothing
+      // If a fullscreen gallery is already open, do nothing
+      if (hasOverlay()) {
+        return { opened: false, method: 'overlay-already-open' };
+      }
+
+      // Find something clickable (hero image / open-gallery button)
+      var trigger = null;
+      for (var i = 0; i < triggerSelectors.length; i++) {
+        var el = document.querySelector(triggerSelectors[i]);
+        if (el) {
+          trigger = el;
+          break;
+        }
+      }
+
+      if (!trigger) {
+        // No obvious trigger – we'll just work with the inline gallery
+        return { opened: false, method: 'no-trigger-found' };
+      }
+
+      // Click the hero / trigger
+      trigger.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+      var start = Date.now();
+      var timeout = 1500;
+
+      // Wait up to ~1.5s for an overlay gallery to appear
+      while (Date.now() - start < timeout) {
         if (hasOverlay()) {
-          return { opened: false, method: 'overlay-already-open' };
+          return { opened: true, method: 'trigger-clicked-overlay-opened' };
         }
+        await new Promise(function(r) { setTimeout(r, 50); });
+      }
 
-        // Find something clickable (hero image / open-gallery button)
-        let trigger: HTMLElement | null = null;
-        for (const sel of triggerSelectors) {
-          const el = document.querySelector(sel) as HTMLElement | null;
-          if (el) {
-            trigger = el;
-            break;
-          }
-        }
+      // Click didn't open a separate overlay – inline gallery only
+      return { opened: false, method: 'trigger-clicked-inline-only' };
+    })()`;
 
-        if (!trigger) {
-          // No obvious trigger – we'll just work with the inline gallery
-          return { opened: false, method: 'no-trigger-found' };
-        }
-
-        // Click the hero / trigger
-        trigger.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-
-        const start = Date.now();
-        const timeout = 1500;
-
-        // Wait up to ~1.5s for an overlay gallery to appear
-        while (Date.now() - start < timeout) {
-          if (hasOverlay()) {
-            return { opened: true, method: 'trigger-clicked-overlay-opened' };
-          }
-          await new Promise(r => setTimeout(r, 50));
-        }
-
-        // Click didn't open a separate overlay – inline gallery only
-        return { opened: false, method: 'trigger-clicked-inline-only' };
-      },
-      GALLERY_TRIGGER_SELECTORS,
-      OVERLAY_GALLERY_SELECTORS
-    );
+    const result = await page.evaluate(galleryOpenScript) as { opened: boolean; method: string };
 
     console.log('openPrimaryGallery:', result);
     return result;
@@ -777,7 +782,7 @@ export function validateImages(
   vinMatchCount: number;
 } {
   const vinMatches: ExtractedImage[] = [];
-  const galleryActive: ExtractedImage[] = [];
+  const galleryImages: ExtractedImage[] = [];  // Both active and slide images
   const suspicious: ExtractedImage[] = [];
   
   for (const img of images) {
@@ -796,8 +801,9 @@ export function validateImages(
     // Categorize by VIN match or gallery source
     if (img.matchesVin) {
       vinMatches.push(img);
-    } else if (img.source === 'gallery-active') {
-      galleryActive.push(img);
+    } else if (img.source === 'gallery-active' || img.source === 'gallery-slide') {
+      // Accept BOTH active and slide images from the gallery
+      galleryImages.push(img);
     } else {
       suspicious.push(img);
     }
@@ -812,17 +818,17 @@ export function validateImages(
   if (hasVinMatches) {
     // VIN matches found: ONLY accept VIN-matching images
     valid = vinMatches;
-    // Move gallery-active to suspicious since they don't match VIN
-    suspicious.push(...galleryActive);
+    // Move gallery images to suspicious since they don't match VIN
+    suspicious.push(...galleryImages);
     confidence = vinMatchCount >= 5 ? 'high' : 'medium';
-  } else if (galleryActive.length >= 3) {
-    // No VIN matches, but enough active gallery images to trust
-    valid = galleryActive;
-    confidence = galleryActive.length >= 10 ? 'high' : (galleryActive.length >= 5 ? 'medium' : 'low');
+  } else if (galleryImages.length >= 3) {
+    // No VIN matches, but enough gallery images from slides to trust
+    valid = galleryImages;
+    confidence = galleryImages.length >= 15 ? 'high' : (galleryImages.length >= 8 ? 'medium' : 'low');
   } else {
     // Insufficient evidence - return empty to trigger fallback
     valid = [];
-    suspicious.push(...galleryActive);
+    suspicious.push(...galleryImages);
     confidence = 'low';
   }
   
