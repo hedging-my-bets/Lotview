@@ -405,14 +405,15 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
   };
 
   return (
-    <div className="fixed bottom-24 right-4 md:right-8 z-40 w-96 pointer-events-none">
+    <div className="fixed bottom-24 right-2 md:right-8 z-50 flex flex-col items-end gap-3 pointer-events-none">
+      {/* Chat Panel - only rendered when open, expands leftward */}
       <AnimatePresence>
         {isOpen && (
           <motion.div 
             initial={{ x: 100, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 100, opacity: 0 }}
-            className="glass-panel rounded-2xl shadow-2xl overflow-hidden border border-blue-100 pointer-events-auto mb-4 flex flex-col"
+            className="glass-panel rounded-2xl shadow-2xl overflow-hidden border border-blue-100 pointer-events-auto flex flex-col w-72 md:w-96"
             style={{ maxHeight: '500px' }}
           >
             {/* Header */}
@@ -484,7 +485,7 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
         )}
       </AnimatePresence>
 
-      {/* Toggle Button */}
+      {/* Toggle Button - always in reserved space */}
       {!isOpen && (
         <motion.button
           initial={{ scale: 0 }}
@@ -493,7 +494,7 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
             setIsOpen(true);
             trackChatOpen(vehicle, 'manual'); // Track manual chat open
           }}
-          className="pointer-events-auto absolute bottom-0 right-0 w-14 h-14 bg-primary rounded-full shadow-lg flex items-center justify-center text-white hover:bg-primary/90 transition-colors"
+          className="pointer-events-auto w-14 h-14 bg-primary rounded-full shadow-lg flex items-center justify-center text-white hover:bg-primary/90 transition-colors"
           data-testid="button-open-chat"
         >
           <MessageSquare className="w-6 h-6" />

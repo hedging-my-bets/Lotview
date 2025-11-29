@@ -30,7 +30,8 @@ export function StickyPaymentBar() {
   return (
     <div className="fixed md:sticky bottom-0 md:top-16 left-0 right-0 z-40 bg-gradient-to-r from-primary to-blue-700 text-white shadow-lg border-t md:border-t-0 md:border-b border-blue-800">
       <div className="max-w-7xl mx-auto px-3 md:px-4 py-2 md:py-3">
-        <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2 md:gap-4">
+        {/* Mobile: Use pr-20 to reserve space for floating chat bubble on the right */}
+        <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2 md:gap-4 pr-16 md:pr-0">
           <div className="hidden md:flex items-center gap-2 flex-shrink-0">
             <TrendingUp className="w-5 h-5" />
             <span className="font-bold text-sm">Payment Calculator</span>

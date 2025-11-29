@@ -5,6 +5,23 @@ import { Link, useLocation } from "wouter";
 import { usePayment, type FinanceTerm } from "@/contexts/PaymentContext";
 import { trackCTAClick } from "@/lib/tracking";
 
+// Helper to proxy CDN images that have hotlink protection
+function getProxiedImageUrl(url: string): string {
+  if (!url) return '/placeholder-car.jpg';
+  
+  // Check if this is a CDN URL that needs proxying
+  const needsProxy = url.includes('autotradercdn.ca') || 
+                     url.includes('autotrader.ca') ||
+                     url.includes('cargurus.com') ||
+                     url.includes('cargurus.ca');
+  
+  if (needsProxy) {
+    return `/api/public/image-proxy?url=${encodeURIComponent(url)}`;
+  }
+  
+  return url;
+}
+
 interface VehicleCardProps {
   car: Car;
 }
@@ -74,7 +91,7 @@ export function VehicleCard({ car }: VehicleCardProps) {
         {/* Image Container with Carousel */}
         <div className="relative aspect-[4/3] overflow-hidden">
           <img 
-            src={car.images[currentImageIndex] || '/placeholder-car.jpg'} 
+            src={getProxiedImageUrl(car.images[currentImageIndex])} 
             alt={`${car.year} ${car.make} ${car.model}`}
             className="w-full h-full object-cover transition-all duration-300"
             data-testid={`img-vehicle-${car.id}`}

@@ -1029,6 +1029,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Image proxy to bypass CDN hotlink protection (public endpoint)
+  app.get("/api/public/image-proxy", async (req, res) => {
+    try {
+      const imageUrl = req.query.url as string;
+      
+      if (!imageUrl) {
+        return res.status(400).json({ error: "Missing url parameter" });
+      }
+      
+      // Only allow proxying from known CDN domains - strict validation to prevent SSRF
+      const allowedDomains = [
+        '1s-photomanager-prd.autotradercdn.ca',
+        'autotradercdn.ca',
+        'www.autotrader.ca',
+        'autotrader.ca',
+        'static.cargurus.com',
+        'www.cargurus.ca'
+      ];
+      
+      let url: URL;
+      try {
+        url = new URL(imageUrl);
+      } catch {
+        return res.status(400).json({ error: "Invalid URL" });
+      }
+      
+      // Must be HTTPS
+      if (url.protocol !== 'https:') {
+        return res.status(403).json({ error: "Only HTTPS URLs allowed" });
+      }
+      
+      // Strict domain validation - exact match or subdomain match
+      const hostname = url.hostname.toLowerCase();
+      const isAllowed = allowedDomains.some(domain => 
+        hostname === domain || hostname.endsWith('.' + domain)
+      );
+      
+      if (!isAllowed) {
+        return res.status(403).json({ error: "Domain not allowed" });
+      }
+      
+      // Fetch the image with proper headers
+      const response = await fetch(imageUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+          'Referer': 'https://www.autotrader.ca/',
+          'Accept-Language': 'en-US,en;q=0.9',
+        }
+      });
+      
+      if (!response.ok) {
+        return res.status(response.status).json({ error: `Failed to fetch image: ${response.status}` });
+      }
+      
+      // Set appropriate headers
+      const contentType = response.headers.get('content-type') || 'image/jpeg';
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 24 hours
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      
+      // Stream the response
+      const buffer = await response.arrayBuffer();
+      res.send(Buffer.from(buffer));
+    } catch (error) {
+      console.error("Image proxy error:", error);
+      res.status(500).json({ error: "Failed to proxy image" });
+    }
+  });
+
   // ===== EXTERNAL API TOKENS (for n8n and other integrations) =====
   
   // Helper to parse and validate dealership ID for super_admin

@@ -13,25 +13,19 @@ import { useChat } from "@/contexts/ChatContext";
 import { trackVehicleView as trackGTMVehicleView, trackCTAClick, trackPaymentCalculation } from "@/lib/tracking";
 import useEmblaCarousel from 'embla-carousel-react';
 
-// Helper function to upgrade AutoTrader CDN images to maximum resolution
+// Helper function to upgrade AutoTrader CDN images to maximum resolution and proxy them
 function upgradeImageUrl(url: string): string {
-  if (!url) return url;
+  if (!url) return '/placeholder-car.jpg';
   
-  // AutoTrader CDN pattern: upgrade to 4K resolution
-  if (url.includes('autotradercdn.ca')) {
-    // Remove existing size suffix and upgrade to high res
-    let upgraded = url
-      .replace(/-\d+x\d+(\?|$)/, '$1')  // Remove size suffix like -133x100 or -1024x786
-      .replace(/\.jpg-\d+x\d+/, '.jpg');  // Alternative pattern
-    
-    // Add 4K parameters
-    if (!upgraded.includes('?')) {
-      upgraded += '?w=2048&h=1536&fit=bounds&auto=webp&quality=95';
-    } else if (!upgraded.includes('w=')) {
-      upgraded += '&w=2048&h=1536&fit=bounds&auto=webp&quality=95';
-    }
-    
-    return upgraded;
+  // Check if this is a CDN URL that needs proxying (hotlink protection bypass)
+  const needsProxy = url.includes('autotradercdn.ca') || 
+                     url.includes('autotrader.ca') ||
+                     url.includes('cargurus.com') ||
+                     url.includes('cargurus.ca');
+  
+  if (needsProxy) {
+    // Proxy through our backend to bypass hotlink protection
+    return `/api/public/image-proxy?url=${encodeURIComponent(url)}`;
   }
   
   return url;
