@@ -17,6 +17,8 @@ import {
   users,
   creditScoreTiers,
   modelYearTerms,
+  dealershipFees,
+  scrapeSources,
   facebookAccounts,
   adTemplates,
   postingQueue,
@@ -54,6 +56,10 @@ import {
   type InsertCreditScoreTier,
   type ModelYearTerm,
   type InsertModelYearTerm,
+  type DealershipFee,
+  type InsertDealershipFee,
+  type ScrapeSource,
+  type InsertScrapeSource,
   type FacebookAccount,
   type InsertFacebookAccount,
   type AdTemplate,
@@ -210,6 +216,22 @@ export interface IStorage {
   updateModelYearTerm(id: number, dealershipId: number, term: Partial<InsertModelYearTerm>): Promise<ModelYearTerm | undefined>;
   deleteModelYearTerm(id: number, dealershipId: number): Promise<boolean>;
   getAvailableTermsForYear(dealershipId: number, modelYear: number): Promise<string[]>;
+  
+  // Dealership Fees (Multi-Tenant)
+  getDealershipFees(dealershipId: number): Promise<DealershipFee[]>;
+  createDealershipFee(fee: InsertDealershipFee): Promise<DealershipFee>;
+  updateDealershipFee(id: number, dealershipId: number, fee: Partial<InsertDealershipFee>): Promise<DealershipFee | undefined>;
+  deleteDealershipFee(id: number, dealershipId: number): Promise<boolean>;
+  getActiveDealershipFees(dealershipId: number): Promise<DealershipFee[]>;
+  
+  // Scrape Sources (Multi-Tenant)
+  getScrapeSources(dealershipId: number): Promise<ScrapeSource[]>;
+  createScrapeSource(source: InsertScrapeSource): Promise<ScrapeSource>;
+  updateScrapeSource(id: number, dealershipId: number, source: Partial<InsertScrapeSource>): Promise<ScrapeSource | undefined>;
+  deleteScrapeSource(id: number, dealershipId: number): Promise<boolean>;
+  getActiveScrapeSources(dealershipId: number): Promise<ScrapeSource[]>;
+  getAllActiveScrapeSources(): Promise<ScrapeSource[]>;
+  updateScrapeSourceStats(id: number, vehicleCount: number): Promise<void>;
   
   // Facebook Accounts (Multi-Tenant - Defense-in-Depth)
   getFacebookAccountsByUser(userId: number, dealershipId: number): Promise<FacebookAccount[]>;
@@ -951,6 +973,111 @@ export class DatabaseStorage implements IStorage {
       .limit(1);
     
     return result[0]?.availableTerms ?? ["36", "48", "60"]; // Default terms if no rule found
+  }
+
+  // ====== DEALERSHIP FEES (Multi-Tenant) ======
+  async getDealershipFees(dealershipId: number): Promise<DealershipFee[]> {
+    return await db.select().from(dealershipFees)
+      .where(eq(dealershipFees.dealershipId, dealershipId))
+      .orderBy(dealershipFees.displayOrder);
+  }
+
+  async createDealershipFee(fee: InsertDealershipFee): Promise<DealershipFee> {
+    if (!fee.dealershipId) {
+      throw new Error('dealershipId is required when creating a dealership fee');
+    }
+    const result = await db.insert(dealershipFees).values(fee).returning();
+    return result[0];
+  }
+
+  async updateDealershipFee(id: number, dealershipId: number, fee: Partial<InsertDealershipFee>): Promise<DealershipFee | undefined> {
+    const result = await db.update(dealershipFees)
+      .set({ ...fee, updatedAt: new Date() })
+      .where(and(
+        eq(dealershipFees.id, id),
+        eq(dealershipFees.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+
+  async deleteDealershipFee(id: number, dealershipId: number): Promise<boolean> {
+    await db.delete(dealershipFees)
+      .where(and(
+        eq(dealershipFees.id, id),
+        eq(dealershipFees.dealershipId, dealershipId)
+      ));
+    return true;
+  }
+
+  async getActiveDealershipFees(dealershipId: number): Promise<DealershipFee[]> {
+    return await db.select().from(dealershipFees)
+      .where(and(
+        eq(dealershipFees.dealershipId, dealershipId),
+        eq(dealershipFees.isActive, true),
+        eq(dealershipFees.includeInPayment, true)
+      ))
+      .orderBy(dealershipFees.displayOrder);
+  }
+
+  // ====== SCRAPE SOURCES (Multi-Tenant) ======
+  async getScrapeSources(dealershipId: number): Promise<ScrapeSource[]> {
+    return await db.select().from(scrapeSources)
+      .where(eq(scrapeSources.dealershipId, dealershipId))
+      .orderBy(scrapeSources.sourceName);
+  }
+
+  async createScrapeSource(source: InsertScrapeSource): Promise<ScrapeSource> {
+    if (!source.dealershipId) {
+      throw new Error('dealershipId is required when creating a scrape source');
+    }
+    const result = await db.insert(scrapeSources).values(source).returning();
+    return result[0];
+  }
+
+  async updateScrapeSource(id: number, dealershipId: number, source: Partial<InsertScrapeSource>): Promise<ScrapeSource | undefined> {
+    const result = await db.update(scrapeSources)
+      .set({ ...source, updatedAt: new Date() })
+      .where(and(
+        eq(scrapeSources.id, id),
+        eq(scrapeSources.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+
+  async deleteScrapeSource(id: number, dealershipId: number): Promise<boolean> {
+    await db.delete(scrapeSources)
+      .where(and(
+        eq(scrapeSources.id, id),
+        eq(scrapeSources.dealershipId, dealershipId)
+      ));
+    return true;
+  }
+
+  async getActiveScrapeSources(dealershipId: number): Promise<ScrapeSource[]> {
+    return await db.select().from(scrapeSources)
+      .where(and(
+        eq(scrapeSources.dealershipId, dealershipId),
+        eq(scrapeSources.isActive, true)
+      ))
+      .orderBy(scrapeSources.sourceName);
+  }
+
+  async getAllActiveScrapeSources(): Promise<ScrapeSource[]> {
+    return await db.select().from(scrapeSources)
+      .where(eq(scrapeSources.isActive, true))
+      .orderBy(scrapeSources.sourceName);
+  }
+
+  async updateScrapeSourceStats(id: number, vehicleCount: number): Promise<void> {
+    await db.update(scrapeSources)
+      .set({ 
+        vehicleCount, 
+        lastScrapedAt: new Date(),
+        updatedAt: new Date() 
+      })
+      .where(eq(scrapeSources.id, id));
   }
 
   // ====== FACEBOOK ACCOUNTS (Multi-Tenant - Defense-in-Depth) ======

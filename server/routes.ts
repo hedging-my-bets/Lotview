@@ -2674,6 +2674,203 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
   
+  // ===== DEALERSHIP FEES ROUTES (General Manager) =====
+  
+  // Get all fees for dealership
+  app.get("/api/dealership-fees", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const fees = await storage.getDealershipFees(dealershipId);
+      res.json(fees);
+    } catch (error) {
+      console.error("Error fetching dealership fees:", error);
+      res.status(500).json({ error: "Failed to fetch dealership fees" });
+    }
+  });
+  
+  // Get active fees for payment calculation (public)
+  app.get("/api/public/dealership-fees", async (req, res) => {
+    try {
+      const dealershipId = 1; // Default for now
+      const fees = await storage.getActiveDealershipFees(dealershipId);
+      res.json(fees);
+    } catch (error) {
+      console.error("Error fetching active fees:", error);
+      res.status(500).json({ error: "Failed to fetch fees" });
+    }
+  });
+  
+  // Create dealership fee
+  app.post("/api/dealership-fees", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { feeName, feeAmount, isPercentage, includeInPayment, displayOrder } = req.body;
+      
+      if (!feeName || feeAmount === undefined) {
+        return res.status(400).json({ error: "Fee name and amount are required" });
+      }
+      
+      const fee = await storage.createDealershipFee({
+        dealershipId,
+        feeName,
+        feeAmount: parseInt(feeAmount),
+        isPercentage: isPercentage || false,
+        includeInPayment: includeInPayment !== false,
+        displayOrder: displayOrder || 0,
+        isActive: true,
+      });
+      
+      res.status(201).json(fee);
+    } catch (error) {
+      console.error("Error creating dealership fee:", error);
+      res.status(500).json({ error: "Failed to create dealership fee" });
+    }
+  });
+  
+  // Update dealership fee
+  app.patch("/api/dealership-fees/:id", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const dealershipId = req.dealershipId!;
+      
+      const fee = await storage.updateDealershipFee(id, dealershipId, req.body);
+      
+      if (!fee) {
+        return res.status(404).json({ error: "Fee not found" });
+      }
+      
+      res.json(fee);
+    } catch (error) {
+      console.error("Error updating dealership fee:", error);
+      res.status(500).json({ error: "Failed to update dealership fee" });
+    }
+  });
+  
+  // Delete dealership fee
+  app.delete("/api/dealership-fees/:id", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const dealershipId = req.dealershipId!;
+      await storage.deleteDealershipFee(id, dealershipId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting dealership fee:", error);
+      res.status(500).json({ error: "Failed to delete dealership fee" });
+    }
+  });
+  
+  // ===== SCRAPE SOURCES ROUTES (General Manager) =====
+  
+  // Get all scrape sources for dealership
+  app.get("/api/scrape-sources", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const sources = await storage.getScrapeSources(dealershipId);
+      res.json(sources);
+    } catch (error) {
+      console.error("Error fetching scrape sources:", error);
+      res.status(500).json({ error: "Failed to fetch scrape sources" });
+    }
+  });
+  
+  // Create scrape source
+  app.post("/api/scrape-sources", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { sourceName, sourceUrl, sourceType, scrapeFrequency } = req.body;
+      
+      if (!sourceName || !sourceUrl) {
+        return res.status(400).json({ error: "Source name and URL are required" });
+      }
+      
+      // Basic URL validation
+      try {
+        new URL(sourceUrl);
+      } catch {
+        return res.status(400).json({ error: "Invalid URL format" });
+      }
+      
+      const source = await storage.createScrapeSource({
+        dealershipId,
+        sourceName,
+        sourceUrl,
+        sourceType: sourceType || "dealer_website",
+        scrapeFrequency: scrapeFrequency || "daily",
+        isActive: true,
+      });
+      
+      res.status(201).json(source);
+    } catch (error) {
+      console.error("Error creating scrape source:", error);
+      res.status(500).json({ error: "Failed to create scrape source" });
+    }
+  });
+  
+  // Update scrape source
+  app.patch("/api/scrape-sources/:id", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const dealershipId = req.dealershipId!;
+      
+      // Validate URL if provided
+      if (req.body.sourceUrl) {
+        try {
+          new URL(req.body.sourceUrl);
+        } catch {
+          return res.status(400).json({ error: "Invalid URL format" });
+        }
+      }
+      
+      const source = await storage.updateScrapeSource(id, dealershipId, req.body);
+      
+      if (!source) {
+        return res.status(404).json({ error: "Scrape source not found" });
+      }
+      
+      res.json(source);
+    } catch (error) {
+      console.error("Error updating scrape source:", error);
+      res.status(500).json({ error: "Failed to update scrape source" });
+    }
+  });
+  
+  // Delete scrape source
+  app.delete("/api/scrape-sources/:id", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const dealershipId = req.dealershipId!;
+      await storage.deleteScrapeSource(id, dealershipId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting scrape source:", error);
+      res.status(500).json({ error: "Failed to delete scrape source" });
+    }
+  });
+  
+  // Trigger manual scrape for a source
+  app.post("/api/scrape-sources/:id/scrape", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const dealershipId = req.dealershipId!;
+      
+      const sources = await storage.getScrapeSources(dealershipId);
+      const source = sources.find(s => s.id === id);
+      
+      if (!source) {
+        return res.status(404).json({ error: "Scrape source not found" });
+      }
+      
+      // Return immediately, scrape runs in background
+      res.json({ message: `Scrape started for ${source.sourceName}`, sourceId: id });
+      
+      // TODO: Trigger actual scrape in background
+      // This would integrate with the scraper system
+    } catch (error) {
+      console.error("Error triggering scrape:", error);
+      res.status(500).json({ error: "Failed to trigger scrape" });
+    }
+  });
+  
   // ===== FACEBOOK POSTING ROUTES (Salespeople) =====
   
   // Get Facebook accounts for current user

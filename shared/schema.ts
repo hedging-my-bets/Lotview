@@ -422,6 +422,55 @@ export const insertModelYearTermSchema = createInsertSchema(modelYearTerms).omit
 export type InsertModelYearTerm = z.infer<typeof insertModelYearTermSchema>;
 export type ModelYearTerm = typeof modelYearTerms.$inferSelect;
 
+// Dealership fees - fees added to payment calculation but not shown in price
+export const dealershipFees = pgTable("dealership_fees", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  feeName: text("fee_name").notNull(), // e.g., "Admin Fee", "Documentation Fee", "Tire Levy"
+  feeAmount: integer("fee_amount").notNull(), // Stored in cents (e.g., 49900 = $499.00)
+  isPercentage: boolean("is_percentage").notNull().default(false), // If true, feeAmount is percentage * 100 (e.g., 150 = 1.5%)
+  includeInPayment: boolean("include_in_payment").notNull().default(true), // Include in payment calculation
+  isActive: boolean("is_active").notNull().default(true),
+  displayOrder: integer("display_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertDealershipFeeSchema = createInsertSchema(dealershipFees).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertDealershipFee = z.infer<typeof insertDealershipFeeSchema>;
+export type DealershipFee = typeof dealershipFees.$inferSelect;
+
+// Scrape sources - URLs to scrape for inventory
+export const scrapeSources = pgTable("scrape_sources", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  sourceName: text("source_name").notNull(), // e.g., "Olympic Hyundai Vancouver", "Boundary Hyundai"
+  sourceUrl: text("source_url").notNull(), // The URL to scrape
+  sourceType: text("source_type").notNull().default("dealer_website"), // "dealer_website", "cargurus", "autotrader", etc.
+  isActive: boolean("is_active").notNull().default(true),
+  lastScrapedAt: timestamp("last_scraped_at"),
+  vehicleCount: integer("vehicle_count").default(0), // Number of vehicles from this source
+  scrapeFrequency: text("scrape_frequency").notNull().default("daily"), // "hourly", "daily", "weekly"
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertScrapeSourceSchema = createInsertSchema(scrapeSources).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastScrapedAt: true,
+  vehicleCount: true,
+});
+
+export type InsertScrapeSource = z.infer<typeof insertScrapeSourceSchema>;
+export type ScrapeSource = typeof scrapeSources.$inferSelect;
+
 // Facebook accounts for salespeople (up to 5 per user)
 export const facebookAccounts = pgTable("facebook_accounts", {
   id: serial("id").primaryKey(),

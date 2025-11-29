@@ -772,17 +772,17 @@ function EditDealershipDialog({ dealership, onSuccess }: { dealership: Dealershi
               </div>
               
               <div className="space-y-4">
-                <h3 className="font-semibold text-lg border-b pb-2">Master Admin User</h3>
+                <h3 className="font-semibold text-lg border-b pb-2">General Manager</h3>
                 {masterUser && (
                   <div className="bg-muted/50 p-3 rounded-lg mb-4">
-                    <p className="text-sm text-muted-foreground">Current Master Admin:</p>
+                    <p className="text-sm text-muted-foreground">Current General Manager:</p>
                     <p className="font-medium">{masterUser.name} ({masterUser.email})</p>
                   </div>
                 )}
                 <p className="text-sm text-muted-foreground">
                   {masterUser 
-                    ? "Update the password to change credentials for the existing master admin, or enter a new email to create a new master admin."
-                    : "Create a new master admin for this dealership by entering email and password."}
+                    ? "Update the password to change credentials for the existing general manager, or enter a new email to create a new general manager."
+                    : "Create a new general manager for this dealership by entering email and password."}
                 </p>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -1006,7 +1006,7 @@ function CreateDealershipDialog({ onSubmit }: { onSubmit: (data: any) => void })
             </div>
           </div>
           <div className="border-t pt-4">
-            <h4 className="font-medium mb-3">Master Admin Account</h4>
+            <h4 className="font-medium mb-3">General Manager Account</h4>
             <div className="space-y-3">
               <div className="space-y-2">
                 <Label htmlFor="masterAdminName">Name *</Label>
