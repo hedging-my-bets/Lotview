@@ -7,16 +7,13 @@ import { trackCTAClick } from "@/lib/tracking";
 
 // Helper to proxy CDN images that have hotlink protection
 function getProxiedImageUrl(url: string): string {
-  if (!url) return '/placeholder-car.svg';
+  if (!url) return '/placeholder-car.jpg';
   
-  // Check if this is a CDN URL that needs proxying (hotlink protection bypass)
+  // Check if this is a CDN URL that needs proxying
   const needsProxy = url.includes('autotradercdn.ca') || 
                      url.includes('autotrader.ca') ||
                      url.includes('cargurus.com') ||
-                     url.includes('cargurus.ca') ||
-                     url.includes('dealerinspire.com') ||
-                     url.includes('pictures.dealer.com') ||
-                     url.includes('vauto.com');
+                     url.includes('cargurus.ca');
   
   if (needsProxy) {
     return `/api/public/image-proxy?url=${encodeURIComponent(url)}`;
@@ -33,7 +30,6 @@ export function VehicleCard({ car }: VehicleCardProps) {
   const { downPayment, apr, selectedTerm, getAvailableTerms, getMaxTerm } = usePayment();
   const [, setLocation] = useLocation();
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [imageErrors, setImageErrors] = useState<Set<number>>(new Set());
   
   // Get available terms for this vehicle based on its year
   const availableTerms = useMemo(() => getAvailableTerms(car.year), [car.year, getAvailableTerms]);
@@ -95,10 +91,9 @@ export function VehicleCard({ car }: VehicleCardProps) {
         {/* Image Container with Carousel */}
         <div className="relative aspect-[4/3] overflow-hidden">
           <img 
-            src={imageErrors.has(currentImageIndex) ? '/placeholder-car.svg' : getProxiedImageUrl(car.images[currentImageIndex])} 
+            src={getProxiedImageUrl(car.images[currentImageIndex])} 
             alt={`${car.year} ${car.make} ${car.model}`}
             className="w-full h-full object-cover transition-all duration-300"
-            onError={() => setImageErrors(prev => new Set(prev).add(currentImageIndex))}
             data-testid={`img-vehicle-${car.id}`}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-80"></div>
