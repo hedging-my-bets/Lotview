@@ -15,13 +15,16 @@ import useEmblaCarousel from 'embla-carousel-react';
 
 // Helper function to upgrade AutoTrader CDN images to maximum resolution and proxy them
 function upgradeImageUrl(url: string): string {
-  if (!url) return '/placeholder-car.jpg';
+  if (!url) return '/placeholder-car.svg';
   
   // Check if this is a CDN URL that needs proxying (hotlink protection bypass)
   const needsProxy = url.includes('autotradercdn.ca') || 
                      url.includes('autotrader.ca') ||
                      url.includes('cargurus.com') ||
-                     url.includes('cargurus.ca');
+                     url.includes('cargurus.ca') ||
+                     url.includes('dealerinspire.com') ||
+                     url.includes('pictures.dealer.com') ||
+                     url.includes('vauto.com');
   
   if (needsProxy) {
     // Proxy through our backend to bypass hotlink protection
@@ -41,6 +44,7 @@ export default function VehicleDetail() {
   const [localTerm, setLocalTerm] = useState<FinanceTerm | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isLiked, setIsLiked] = useState(false);
+  const [imageErrors, setImageErrors] = useState<Set<number>>(new Set());
   const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true });
 
   const vehicleId = Number(params?.id);
@@ -254,9 +258,10 @@ export default function VehicleDetail() {
                   {car.images.map((img, index) => (
                     <div key={index} className="flex-[0_0_100%] min-w-0">
                       <img 
-                        src={upgradeImageUrl(img) || '/placeholder-car.jpg'} 
+                        src={imageErrors.has(index) ? '/placeholder-car.svg' : upgradeImageUrl(img)} 
                         alt={`${car.model} - Image ${index + 1}`} 
                         className="w-full h-full object-cover" 
+                        onError={() => setImageErrors(prev => new Set(prev).add(index))}
                       />
                     </div>
                   ))}
@@ -386,7 +391,12 @@ export default function VehicleDetail() {
                       }`}
                       data-testid={`thumbnail-${actualIndex}`}
                     >
-                      <img src={upgradeImageUrl(img)} alt={`Thumbnail ${actualIndex + 1}`} className="w-full h-full object-cover" />
+                      <img 
+                        src={imageErrors.has(actualIndex) ? '/placeholder-car.svg' : upgradeImageUrl(img)} 
+                        alt={`Thumbnail ${actualIndex + 1}`} 
+                        className="w-full h-full object-cover"
+                        onError={() => setImageErrors(prev => new Set(prev).add(actualIndex))}
+                      />
                     </button>
                   );
                 });

@@ -1045,7 +1045,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         'www.autotrader.ca',
         'autotrader.ca',
         'static.cargurus.com',
-        'www.cargurus.ca'
+        'www.cargurus.ca',
+        'dealerinspire.com',
+        'images.dealerinspire.com',
+        'pictures.dealer.com',
+        'vehicle-photos-published.vauto.com'
       ];
       
       let url: URL;
