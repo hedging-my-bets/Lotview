@@ -67,7 +67,56 @@ const EXCLUDED_CONTAINERS = [
   '.footer-vehicles',
 ];
 
+// Selectors for the main hero image / gallery trigger that opens fullscreen view
+const GALLERY_TRIGGER_SELECTORS = [
+  // Main hero image / container on typical dealer sites
+  '.photo-gallery__main img',
+  '.photo-gallery__main',
+  '.vehicle-gallery__hero img',
+  '.vehicle-gallery__hero',
+  '.vdp-hero__image-container img',
+  '.vdp-hero__image-container',
+  '.vehicle-media__hero img',
+  '.vehicle-media__hero',
+  '.gallery-main img',
+  '.gallery-main',
+  '.vehicle-main-image',
+  '.vehicle-main-image img',
+  // Generic "open gallery" triggers
+  '[data-gallery-open]',
+  '[data-action="open-gallery"]',
+  '[data-open="gallery"]',
+  '[data-lightbox]',
+  '.lightbox-trigger',
+  '.gallery-trigger',
+  '.fancybox-trigger'
+];
+
+// Selectors for fullscreen / lightbox overlay galleries
+const OVERLAY_GALLERY_SELECTORS = [
+  // Fullscreen / lightbox style galleries
+  '.lightbox',
+  '.lightbox__content',
+  '.gallery-modal',
+  '.gallery-modal__content',
+  '.gallery--fullscreen',
+  '.vehicle-gallery--fullscreen',
+  '.fancybox-container',
+  '.fancybox-stage',
+  '.mfp-wrap',
+  '.mfp-content',
+  '.modal--gallery',
+  // Photo gallery fullscreen modes
+  '.photo-gallery--fullscreen',
+  '.photo-gallery__fullscreen',
+  '[class*="fullscreen-gallery"]',
+  '[class*="gallery-fullscreen"]'
+];
+
 const PRIMARY_GALLERY_SELECTORS = [
+  // Fullscreen / overlay galleries (prefer these - they have full-res images)
+  ...OVERLAY_GALLERY_SELECTORS,
+  // Inline / regular galleries
   '.photo-gallery',
   '.photo-gallery__viewport',
   '.photo-gallery__slides',
@@ -537,6 +586,67 @@ async function useKeyboardNavigation(page: Page, maxClicks: number): Promise<num
   return clicks;
 }
 
+/**
+ * Opens the fullscreen/lightbox gallery by clicking the main hero image
+ * This ensures we get high-resolution images, not thumbnail strips
+ */
+async function openPrimaryGallery(page: Page): Promise<{ opened: boolean; method: string }> {
+  try {
+    const result = await page.evaluate(
+      async (triggerSelectors: string[], overlaySelectors: string[]) => {
+        function hasOverlay(): boolean {
+          return overlaySelectors.some(sel => !!document.querySelector(sel));
+        }
+
+        // If a fullscreen gallery is already open, do nothing
+        if (hasOverlay()) {
+          return { opened: false, method: 'overlay-already-open' };
+        }
+
+        // Find something clickable (hero image / open-gallery button)
+        let trigger: HTMLElement | null = null;
+        for (const sel of triggerSelectors) {
+          const el = document.querySelector(sel) as HTMLElement | null;
+          if (el) {
+            trigger = el;
+            break;
+          }
+        }
+
+        if (!trigger) {
+          // No obvious trigger – we'll just work with the inline gallery
+          return { opened: false, method: 'no-trigger-found' };
+        }
+
+        // Click the hero / trigger
+        trigger.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+        const start = Date.now();
+        const timeout = 1500;
+
+        // Wait up to ~1.5s for an overlay gallery to appear
+        while (Date.now() - start < timeout) {
+          if (hasOverlay()) {
+            return { opened: true, method: 'trigger-clicked-overlay-opened' };
+          }
+          await new Promise(r => setTimeout(r, 50));
+        }
+
+        // Click didn't open a separate overlay – inline gallery only
+        return { opened: false, method: 'trigger-clicked-inline-only' };
+      },
+      GALLERY_TRIGGER_SELECTORS,
+      OVERLAY_GALLERY_SELECTORS
+    );
+
+    console.log('openPrimaryGallery:', result);
+    return result;
+  } catch (err) {
+    console.warn('openPrimaryGallery failed:', err);
+    return { opened: false, method: 'error' };
+  }
+}
+
 export async function navigateEntireGallery(page: Page): Promise<{ clicks: number; method: string }> {
   const slideCount = await page.evaluate(() => {
     const indicators = [
@@ -594,6 +704,16 @@ export async function extractVehicleImages(
   stockNumber: string | null
 ): Promise<ExtractionResult> {
   
+  // 1) Try to open the main hero gallery / fullscreen lightbox
+  // This ensures we get high-resolution images, not thumbnail strips
+  const galleryOpenResult = await openPrimaryGallery(page);
+  
+  // Give lightbox time to fully render if it opened
+  if (galleryOpenResult.opened) {
+    await new Promise(r => setTimeout(r, 800));
+  }
+  
+  // 2) Click through the slides (arrows, dots, keyboard) so all big images load
   const navResult = await navigateEntireGallery(page);
   
   await new Promise(r => setTimeout(r, 600));
@@ -639,6 +759,7 @@ export async function extractVehicleImages(
     debug: {
       ...extractionResult.debug,
       imagesExtracted: processedImages.length,
+      galleryOpening: galleryOpenResult,
       galleryNavigation: navResult
     } as any
   };
