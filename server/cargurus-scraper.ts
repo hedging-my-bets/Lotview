@@ -1,8 +1,9 @@
 import puppeteer from "puppeteer";
 import { execSync } from "child_process";
+import { storage } from "./storage";
 
-// CarGurus dealer page URLs for the three dealerships (PRIMARY DATA SOURCE)
-const DEALER_PAGES = [
+// Fallback dealer pages if no database sources are configured
+const DEFAULT_DEALER_PAGES = [
   {
     name: "Olympic Hyundai Vancouver",
     url: "https://www.cargurus.ca/Cars/m-Olympic-Hyundai-Vancouver-sp459833",
@@ -22,6 +23,31 @@ const DEALER_PAGES = [
     location: "Vancouver",
   },
 ];
+
+// Helper to get scrape sources from database
+async function getScrapeSourcesFromDb(): Promise<{ name: string; url: string; dealershipId: number; location: string }[]> {
+  try {
+    const sources = await storage.getAllActiveScrapeSources();
+    
+    if (sources.length === 0) {
+      console.log("  ℹ No active scrape sources in database, using defaults");
+      return DEFAULT_DEALER_PAGES;
+    }
+    
+    // Map database sources to scraper format
+    return sources.map(source => ({
+      name: source.sourceName,
+      url: source.sourceUrl,
+      dealershipId: source.dealershipId,
+      location: source.sourceName.includes("Vancouver") ? "Vancouver" : 
+                source.sourceName.includes("Burnaby") ? "Burnaby" : "BC",
+    }));
+  } catch (error) {
+    console.error("  ⚠ Error loading scrape sources from database:", error);
+    console.log("  ℹ Falling back to default dealer pages");
+    return DEFAULT_DEALER_PAGES;
+  }
+}
 
 interface CarGurusVehicle {
   year: number;
@@ -960,7 +986,11 @@ export async function scrapeAllCarGurusDealers(): Promise<CarGurusVehicle[]> {
 
   const allVehicles: CarGurusVehicle[] = [];
 
-  for (const dealer of DEALER_PAGES) {
+  // Get scrape sources from database (falls back to defaults if none configured)
+  const dealerPages = await getScrapeSourcesFromDb();
+  console.log(`  ℹ Found ${dealerPages.length} scrape sources`);
+
+  for (const dealer of dealerPages) {
     try {
       console.log(`\nProcessing dealership: ${dealer.name}`);
       const dealerVehicles = await scrapeCarGurusDealerPage(
@@ -972,6 +1002,17 @@ export async function scrapeAllCarGurusDealers(): Promise<CarGurusVehicle[]> {
 
       allVehicles.push(...dealerVehicles);
 
+      // Update vehicle count for this source in database
+      try {
+        const sources = await storage.getAllActiveScrapeSources();
+        const source = sources.find(s => s.sourceUrl === dealer.url);
+        if (source) {
+          await storage.updateScrapeSourceStats(source.id, dealerVehicles.length);
+        }
+      } catch (e) {
+        // Ignore errors updating stats
+      }
+
       // Delay between dealer pages
       await new Promise((resolve) => setTimeout(resolve, 3000));
     } catch (error) {
@@ -982,15 +1023,18 @@ export async function scrapeAllCarGurusDealers(): Promise<CarGurusVehicle[]> {
   console.log(
     `\n✓ Total vehicles scraped from CarGurus: ${allVehicles.length}`,
   );
-  console.log(
-    `  - Olympic Hyundai: ${allVehicles.filter((v) => v.dealershipId === 1).length} vehicles`,
-  );
-  console.log(
-    `  - Boundary Hyundai: ${allVehicles.filter((v) => v.dealershipId === 2).length} vehicles`,
-  );
-  console.log(
-    `  - Kia Vancouver: ${allVehicles.filter((v) => v.dealershipId === 3).length} vehicles`,
-  );
+  
+  // Log per-dealership counts
+  const dealershipCounts: Record<number, number> = {};
+  for (const vehicle of allVehicles) {
+    dealershipCounts[vehicle.dealershipId] = (dealershipCounts[vehicle.dealershipId] || 0) + 1;
+  }
+  for (const dealershipId of Object.keys(dealershipCounts)) {
+    const id = parseInt(dealershipId);
+    const count = dealershipCounts[id];
+    const dealer = dealerPages.find(d => d.dealershipId === id);
+    console.log(`  - ${dealer?.name || `Dealership ${id}`}: ${count} vehicles`);
+  }
 
   return allVehicles;
 }
