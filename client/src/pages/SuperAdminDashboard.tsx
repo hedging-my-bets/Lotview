@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Key, FileText, Plus, Eye, EyeOff, Trash2, LogOut, Settings2, CheckCircle2, XCircle, Loader2, Plug, Pencil, Webhook, Copy, AlertCircle, Clock } from "lucide-react";
+import { Building2, Key, FileText, Plus, Eye, EyeOff, Trash2, LogOut, Settings2, CheckCircle2, XCircle, Loader2, Plug, Pencil, Webhook, Copy, AlertCircle, Clock, Link2, RefreshCw, Car } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 
@@ -99,6 +99,20 @@ interface DealershipApiKeys {
   facebookPixelId: string | null;
 }
 
+interface ScrapeSource {
+  id: number;
+  dealershipId: number;
+  sourceName: string;
+  sourceUrl: string;
+  sourceType: string;
+  scrapeFrequency: string;
+  vehicleCount: number;
+  lastScrapedAt: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export default function SuperAdminDashboard() {
   const [, setLocation] = useLocation();
   const [user, setUser] = useState<User | null>(null);
@@ -158,6 +172,11 @@ export default function SuperAdminDashboard() {
   // Dealerships with integrations status
   const { data: dealershipsWithIntegrations = [], isLoading: integrationsLoading } = useQuery<DealershipWithIntegrations[]>({
     queryKey: ["/api/super-admin/dealerships-with-integrations"],
+  });
+
+  // Scrape Sources (all dealerships)
+  const { data: scrapeSources = [], isLoading: scrapeSourcesLoading, refetch: refetchScrapeSources } = useQuery<ScrapeSource[]>({
+    queryKey: ["/api/super-admin/scrape-sources"],
   });
 
   // Create Dealership Mutation
@@ -308,6 +327,11 @@ export default function SuperAdminDashboard() {
             <FileText className="h-4 w-4 mr-1 sm:mr-2" />
             <span className="hidden sm:inline">Audit Logs</span>
             <span className="sm:hidden">Logs</span>
+          </TabsTrigger>
+          <TabsTrigger value="scrape-sources" data-testid="tab-scrape-sources" className="text-xs sm:text-sm px-2 sm:px-3 py-2">
+            <Link2 className="h-4 w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Scrape Sources</span>
+            <span className="sm:hidden">Scrape</span>
           </TabsTrigger>
         </TabsList>
 
@@ -560,8 +584,380 @@ export default function SuperAdminDashboard() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* Scrape Sources Tab */}
+        <TabsContent value="scrape-sources">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                <div>
+                  <CardTitle>Inventory Scrape Sources</CardTitle>
+                  <CardDescription>Manage inventory scraping URLs for all dealerships</CardDescription>
+                </div>
+                <CreateScrapeSourceDialog 
+                  dealerships={dealerships} 
+                  onSuccess={() => refetchScrapeSources()} 
+                />
+              </div>
+            </CardHeader>
+            <CardContent>
+              {scrapeSourcesLoading ? (
+                <div className="text-center py-8 text-muted-foreground">Loading scrape sources...</div>
+              ) : scrapeSources.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Car className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>No inventory sources configured yet. Add a URL to start scraping vehicles.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {dealerships.map(dealership => {
+                    const dealershipSources = scrapeSources.filter(s => s.dealershipId === dealership.id);
+                    if (dealershipSources.length === 0) return null;
+                    
+                    return (
+                      <div key={dealership.id} className="border rounded-lg p-4" data-testid={`dealership-sources-${dealership.id}`}>
+                        <h3 className="font-semibold mb-3 flex items-center gap-2">
+                          <Building2 className="w-4 h-4" />
+                          {dealership.name}
+                        </h3>
+                        <div className="space-y-3">
+                          {dealershipSources.map(source => (
+                            <ScrapeSourceRow 
+                              key={source.id} 
+                              source={source} 
+                              onUpdate={() => refetchScrapeSources()} 
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  
+                  {/* Sources without dealership or unmatched dealerships */}
+                  {scrapeSources.filter(s => !dealerships.some(d => d.id === s.dealershipId)).length > 0 && (
+                    <div className="border rounded-lg p-4 border-yellow-500/50">
+                      <h3 className="font-semibold mb-3 flex items-center gap-2 text-yellow-600">
+                        <AlertCircle className="w-4 h-4" />
+                        Unassigned Sources
+                      </h3>
+                      <div className="space-y-3">
+                        {scrapeSources.filter(s => !dealerships.some(d => d.id === s.dealershipId)).map(source => (
+                          <ScrapeSourceRow 
+                            key={source.id} 
+                            source={source} 
+                            onUpdate={() => refetchScrapeSources()} 
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="mt-4 p-4 bg-muted rounded-lg">
+                <p className="text-sm text-muted-foreground">
+                  <strong>Tip:</strong> Add multiple inventory sources to aggregate vehicles from different locations 
+                  or platforms. Daily scraping is recommended for accurate inventory.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+function ScrapeSourceRow({ source, onUpdate }: { source: ScrapeSource; onUpdate: () => void }) {
+  const { toast } = useToast();
+
+  const handleToggle = async () => {
+    const token = localStorage.getItem('auth_token');
+    try {
+      const response = await fetch(`/api/super-admin/scrape-sources/${source.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ isActive: !source.isActive }),
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Source Updated",
+          description: `${source.sourceName} has been ${source.isActive ? 'deactivated' : 'activated'}`,
+        });
+        onUpdate();
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update source",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm(`Are you sure you want to delete "${source.sourceName}"?`)) return;
+    
+    const token = localStorage.getItem('auth_token');
+    try {
+      const response = await fetch(`/api/super-admin/scrape-sources/${source.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Source Deleted",
+          description: `${source.sourceName} has been removed`,
+        });
+        onUpdate();
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete source",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleScrapeNow = async () => {
+    const token = localStorage.getItem('auth_token');
+    try {
+      const response = await fetch(`/api/super-admin/scrape-sources/${source.id}/scrape`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Scrape Started",
+          description: "Inventory scrape has been initiated in the background",
+        });
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Error",
+          description: error.error || "Failed to trigger scrape",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to trigger scrape",
+        variant: "destructive",
+      });
+    }
+  };
+
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-muted/50 rounded-lg" data-testid={`source-row-${source.id}`}>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="font-medium truncate">{source.sourceName}</span>
+          <Badge variant={source.isActive ? "default" : "secondary"}>
+            {source.isActive ? "Active" : "Inactive"}
+          </Badge>
+        </div>
+        <p className="text-sm text-muted-foreground truncate mt-1">
+          <Link2 className="w-3 h-3 inline mr-1" />
+          {source.sourceUrl}
+        </p>
+        <div className="flex flex-wrap gap-3 mt-2 text-xs text-muted-foreground">
+          <span>Type: {source.sourceType.replace('_', ' ')}</span>
+          <span>Frequency: {source.scrapeFrequency}</span>
+          <span>Vehicles: {source.vehicleCount || 0}</span>
+          {source.lastScrapedAt && (
+            <span>Last scraped: {format(new Date(source.lastScrapedAt), "PPp")}</span>
+          )}
+        </div>
+      </div>
+      <div className="flex gap-2 shrink-0">
+        <Button variant="outline" size="sm" onClick={handleScrapeNow} data-testid={`button-scrape-${source.id}`}>
+          <RefreshCw className="w-4 h-4 mr-1" />
+          Scrape Now
+        </Button>
+        <Button variant="ghost" size="sm" onClick={handleToggle} data-testid={`button-toggle-${source.id}`}>
+          {source.isActive ? 'Deactivate' : 'Activate'}
+        </Button>
+        <Button variant="ghost" size="sm" onClick={handleDelete} className="text-destructive" data-testid={`button-delete-${source.id}`}>
+          <Trash2 className="w-4 h-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function CreateScrapeSourceDialog({ dealerships, onSuccess }: { dealerships: Dealership[]; onSuccess: () => void }) {
+  const [open, setOpen] = useState(false);
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    dealershipId: "",
+    sourceName: "",
+    sourceUrl: "",
+    sourceType: "dealer_website",
+    scrapeFrequency: "daily",
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.dealershipId) {
+      toast({
+        title: "Error",
+        description: "Please select a dealership",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setLoading(true);
+    const token = localStorage.getItem('auth_token');
+
+    try {
+      const response = await fetch('/api/super-admin/scrape-sources', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ...formData,
+          dealershipId: parseInt(formData.dealershipId),
+        }),
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Source Created",
+          description: `${formData.sourceName} has been added successfully`,
+        });
+        setOpen(false);
+        setFormData({
+          dealershipId: "",
+          sourceName: "",
+          sourceUrl: "",
+          sourceType: "dealer_website",
+          scrapeFrequency: "daily",
+        });
+        onSuccess();
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Error",
+          description: error.error || "Failed to create source",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to create source",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button data-testid="button-add-source" className="w-full sm:w-auto">
+          <Plus className="w-4 h-4 mr-2" />
+          Add Source
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add Inventory Source</DialogTitle>
+          <DialogDescription>
+            Add a URL to scrape vehicle inventory from
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <Label htmlFor="dealershipId">Dealership</Label>
+            <select
+              id="dealershipId"
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              value={formData.dealershipId}
+              onChange={(e) => setFormData({ ...formData, dealershipId: e.target.value })}
+              required
+              data-testid="select-dealership"
+            >
+              <option value="">Select a dealership</option>
+              {dealerships.map(d => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <Label htmlFor="sourceName">Source Name</Label>
+            <Input
+              id="sourceName"
+              value={formData.sourceName}
+              onChange={(e) => setFormData({ ...formData, sourceName: e.target.value })}
+              placeholder="e.g., Main Dealership, Used Car Lot"
+              required
+              data-testid="input-source-name"
+            />
+          </div>
+          <div>
+            <Label htmlFor="sourceUrl">Source URL</Label>
+            <Input
+              id="sourceUrl"
+              type="url"
+              value={formData.sourceUrl}
+              onChange={(e) => setFormData({ ...formData, sourceUrl: e.target.value })}
+              placeholder="https://www.example.com/inventory"
+              required
+              data-testid="input-source-url"
+            />
+          </div>
+          <div>
+            <Label htmlFor="sourceType">Source Type</Label>
+            <select
+              id="sourceType"
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              value={formData.sourceType}
+              onChange={(e) => setFormData({ ...formData, sourceType: e.target.value })}
+              data-testid="select-source-type"
+            >
+              <option value="dealer_website">Dealer Website</option>
+              <option value="autotrader">AutoTrader</option>
+              <option value="cargurus">CarGurus</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div>
+            <Label htmlFor="scrapeFrequency">Scrape Frequency</Label>
+            <select
+              id="scrapeFrequency"
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              value={formData.scrapeFrequency}
+              onChange={(e) => setFormData({ ...formData, scrapeFrequency: e.target.value })}
+              data-testid="select-scrape-frequency"
+            >
+              <option value="hourly">Hourly</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="manual">Manual Only</option>
+            </select>
+          </div>
+          <DialogFooter>
+            <Button type="submit" disabled={loading} data-testid="button-submit-source">
+              {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
+              Add Source
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

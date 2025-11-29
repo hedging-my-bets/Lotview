@@ -228,9 +228,12 @@ export interface IStorage {
   getScrapeSources(dealershipId: number): Promise<ScrapeSource[]>;
   createScrapeSource(source: InsertScrapeSource): Promise<ScrapeSource>;
   updateScrapeSource(id: number, dealershipId: number, source: Partial<InsertScrapeSource>): Promise<ScrapeSource | undefined>;
+  updateScrapeSourceAdmin(id: number, source: Partial<InsertScrapeSource>): Promise<ScrapeSource | undefined>;
   deleteScrapeSource(id: number, dealershipId: number): Promise<boolean>;
+  deleteScrapeSourceAdmin(id: number): Promise<boolean>;
   getActiveScrapeSources(dealershipId: number): Promise<ScrapeSource[]>;
   getAllActiveScrapeSources(): Promise<ScrapeSource[]>;
+  getAllScrapeSources(): Promise<ScrapeSource[]>;
   updateScrapeSourceStats(id: number, vehicleCount: number): Promise<void>;
   
   // Facebook Accounts (Multi-Tenant - Defense-in-Depth)
@@ -1068,6 +1071,25 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(scrapeSources)
       .where(eq(scrapeSources.isActive, true))
       .orderBy(scrapeSources.sourceName);
+  }
+
+  async getAllScrapeSources(): Promise<ScrapeSource[]> {
+    return await db.select().from(scrapeSources)
+      .orderBy(scrapeSources.sourceName);
+  }
+
+  async updateScrapeSourceAdmin(id: number, source: Partial<InsertScrapeSource>): Promise<ScrapeSource | undefined> {
+    const result = await db.update(scrapeSources)
+      .set({ ...source, updatedAt: new Date() })
+      .where(eq(scrapeSources.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async deleteScrapeSourceAdmin(id: number): Promise<boolean> {
+    await db.delete(scrapeSources)
+      .where(eq(scrapeSources.id, id));
+    return true;
   }
 
   async updateScrapeSourceStats(id: number, vehicleCount: number): Promise<void> {

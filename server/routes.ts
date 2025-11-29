@@ -773,6 +773,106 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: "Failed to fetch dealerships with integrations" });
     }
   });
+
+  // ===== SUPER ADMIN SCRAPE SOURCES ROUTES =====
+
+  // Get all scrape sources across all dealerships (super admin only)
+  app.get("/api/super-admin/scrape-sources", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const sources = await storage.getAllScrapeSources();
+      res.json(sources);
+    } catch (error) {
+      console.error("Error fetching scrape sources:", error);
+      res.status(500).json({ error: "Failed to fetch scrape sources" });
+    }
+  });
+
+  // Create a new scrape source (super admin only)
+  app.post("/api/super-admin/scrape-sources", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const { dealershipId, sourceName, sourceUrl, sourceType, scrapeFrequency } = req.body;
+      
+      if (!dealershipId || !sourceName || !sourceUrl) {
+        return res.status(400).json({ error: "Dealership ID, source name, and source URL are required" });
+      }
+      
+      const source = await storage.createScrapeSource({
+        dealershipId: parseInt(dealershipId),
+        sourceName,
+        sourceUrl,
+        sourceType: sourceType || "dealer_website",
+        scrapeFrequency: scrapeFrequency || "daily",
+        isActive: true,
+      });
+      
+      res.status(201).json(source);
+    } catch (error) {
+      console.error("Error creating scrape source:", error);
+      res.status(500).json({ error: "Failed to create scrape source" });
+    }
+  });
+
+  // Update a scrape source (super admin only)
+  app.patch("/api/super-admin/scrape-sources/:id", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updates = req.body;
+      
+      const source = await storage.updateScrapeSourceAdmin(id, updates);
+      if (!source) {
+        return res.status(404).json({ error: "Source not found" });
+      }
+      
+      res.json(source);
+    } catch (error) {
+      console.error("Error updating scrape source:", error);
+      res.status(500).json({ error: "Failed to update scrape source" });
+    }
+  });
+
+  // Delete a scrape source (super admin only)
+  app.delete("/api/super-admin/scrape-sources/:id", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      
+      const deleted = await storage.deleteScrapeSourceAdmin(id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Source not found" });
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting scrape source:", error);
+      res.status(500).json({ error: "Failed to delete scrape source" });
+    }
+  });
+
+  // Trigger scrape for a source (super admin only)
+  app.post("/api/super-admin/scrape-sources/:id/scrape", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      
+      // Get the source
+      const sources = await storage.getAllScrapeSources();
+      const source = sources.find(s => s.id === id);
+      
+      if (!source) {
+        return res.status(404).json({ error: "Source not found" });
+      }
+      
+      // Trigger full inventory scrape in background (don't await)
+      import("./scraper").then(({ scrapeAllDealershipsIncremental }) => {
+        scrapeAllDealershipsIncremental().catch((err: Error) => {
+          console.error(`Error during incremental scrape:`, err);
+        });
+      });
+      
+      res.json({ success: true, message: "Scrape started in background" });
+    } catch (error) {
+      console.error("Error triggering scrape:", error);
+      res.status(500).json({ error: "Failed to trigger scrape" });
+    }
+  });
   
   // ===== USER MANAGEMENT ROUTES (Master Only) =====
   

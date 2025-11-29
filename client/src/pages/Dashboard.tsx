@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { MessageSquare, Settings, Sparkles, Users, LogOut, DollarSign, Plus, Edit2, Trash2, Target, Webhook, Star, X, Code, ExternalLink, Car, Link2, RefreshCw } from "lucide-react";
+import { MessageSquare, Settings, Sparkles, Users, LogOut, DollarSign, Plus, Edit2, Trash2, Target, Webhook, Star, X, Code, ExternalLink, Car } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -103,20 +103,6 @@ interface DealershipFee {
   updatedAt: string;
 }
 
-interface ScrapeSource {
-  id: number;
-  dealershipId: number;
-  sourceName: string;
-  sourceUrl: string;
-  sourceType: string;
-  scrapeFrequency: string;
-  vehicleCount: number;
-  lastScrapedAt: string | null;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export default function Dashboard() {
   const [, setLocation] = useLocation();
   const [user, setUser] = useState<User | null>(null);
@@ -206,17 +192,6 @@ export default function Dashboard() {
     displayOrder: 0,
   });
 
-  // Scrape sources state
-  const [scrapeSources, setScrapeSources] = useState<ScrapeSource[]>([]);
-  const [isSourceDialogOpen, setIsSourceDialogOpen] = useState(false);
-  const [editingSource, setEditingSource] = useState<ScrapeSource | null>(null);
-  const [newSource, setNewSource] = useState({
-    sourceName: "",
-    sourceUrl: "",
-    sourceType: "dealer_website",
-    scrapeFrequency: "daily",
-  });
-
   const scenarios = [
     { value: "test-drive", label: "Test Drive" },
     { value: "get-approved", label: "Get Approved" },
@@ -261,7 +236,6 @@ export default function Dashboard() {
       await loadWebhookEvents(token);
       await loadChatPrompts(token);
       await loadDealershipFees(token);
-      await loadScrapeSources(token);
     } catch (error) {
       console.error("Auth check failed:", error);
       setLocation('/login');
@@ -569,21 +543,6 @@ export default function Dashboard() {
     }
   };
 
-  const loadScrapeSources = async (token: string) => {
-    try {
-      const response = await fetch('/api/scrape-sources', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setScrapeSources(data);
-      }
-    } catch (error) {
-      console.error("Failed to load scrape sources:", error);
-    }
-  };
-
   const handleCreateFee = async (e: React.FormEvent) => {
     e.preventDefault();
     const token = localStorage.getItem('auth_token');
@@ -688,147 +647,6 @@ export default function Dashboard() {
       toast({
         title: "Error",
         description: "Failed to delete fee",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleCreateSource = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const token = localStorage.getItem('auth_token');
-    if (!token) return;
-
-    try {
-      const response = await fetch('/api/scrape-sources', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(newSource),
-      });
-
-      if (response.ok) {
-        toast({
-          title: "Source Created",
-          description: `${newSource.sourceName} has been added successfully`,
-        });
-        setIsSourceDialogOpen(false);
-        setNewSource({ sourceName: "", sourceUrl: "", sourceType: "dealer_website", scrapeFrequency: "daily" });
-        await loadScrapeSources(token);
-      } else {
-        const error = await response.json();
-        toast({
-          title: "Error",
-          description: error.error || "Failed to create source",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to create source",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleUpdateSource = async (id: number, updates: Partial<ScrapeSource>) => {
-    const token = localStorage.getItem('auth_token');
-    if (!token) return;
-
-    try {
-      const response = await fetch(`/api/scrape-sources/${id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(updates),
-      });
-
-      if (response.ok) {
-        toast({
-          title: "Source Updated",
-          description: "Source has been updated successfully",
-        });
-        await loadScrapeSources(token);
-      } else {
-        const error = await response.json();
-        toast({
-          title: "Error",
-          description: error.error || "Failed to update source",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to update source",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleDeleteSource = async (id: number) => {
-    const token = localStorage.getItem('auth_token');
-    if (!token) return;
-
-    try {
-      const response = await fetch(`/api/scrape-sources/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-
-      if (response.ok) {
-        toast({
-          title: "Source Deleted",
-          description: "Source has been removed successfully",
-        });
-        await loadScrapeSources(token);
-      } else {
-        toast({
-          title: "Error",
-          description: "Failed to delete source",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to delete source",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleTriggerScrape = async (id: number) => {
-    const token = localStorage.getItem('auth_token');
-    if (!token) return;
-
-    try {
-      const response = await fetch(`/api/scrape-sources/${id}/scrape`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-
-      if (response.ok) {
-        toast({
-          title: "Scrape Started",
-          description: "Inventory scrape has been initiated in the background",
-        });
-      } else {
-        const error = await response.json();
-        toast({
-          title: "Error",
-          description: error.error || "Failed to trigger scrape",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to trigger scrape",
         variant: "destructive",
       });
     }
@@ -1305,10 +1123,6 @@ export default function Dashboard() {
               <TabsTrigger value="fees" className="flex items-center gap-1 text-xs sm:text-sm px-2 sm:px-3 py-2 flex-1 sm:flex-none" data-testid="tab-fees">
                 <DollarSign className="w-4 h-4" />
                 <span className="hidden sm:inline">Fees</span>
-              </TabsTrigger>
-              <TabsTrigger value="inventory-sources" className="flex items-center gap-1 text-xs sm:text-sm px-2 sm:px-3 py-2 flex-1 sm:flex-none" data-testid="tab-inventory-sources">
-                <Car className="w-4 h-4" />
-                <span className="hidden sm:inline">Sources</span>
               </TabsTrigger>
             </TabsList>
 
@@ -2490,170 +2304,6 @@ export default function Dashboard() {
                     <p className="text-sm text-muted-foreground">
                       <strong>Note:</strong> Fees marked "In Payment" will be added to the vehicle price when calculating monthly payments, 
                       but will not be shown on the vehicle listing price.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="inventory-sources">
-              <Card>
-                <CardHeader>
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div>
-                      <CardTitle>Inventory Sources</CardTitle>
-                      <CardDescription>
-                        Configure URLs to scrape vehicle inventory from your dealership website
-                      </CardDescription>
-                    </div>
-                    <Dialog open={isSourceDialogOpen} onOpenChange={setIsSourceDialogOpen}>
-                      <DialogTrigger asChild>
-                        <Button data-testid="button-add-source" className="w-full sm:w-auto">
-                          <Plus className="w-4 h-4 mr-2" />
-                          Add Source
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Add Inventory Source</DialogTitle>
-                          <DialogDescription>
-                            Add a URL to scrape vehicle inventory from
-                          </DialogDescription>
-                        </DialogHeader>
-                        <form onSubmit={handleCreateSource} className="space-y-4">
-                          <div>
-                            <Label htmlFor="sourceName">Source Name</Label>
-                            <Input
-                              id="sourceName"
-                              value={newSource.sourceName}
-                              onChange={(e) => setNewSource({ ...newSource, sourceName: e.target.value })}
-                              placeholder="e.g., Main Dealership, Used Car Lot"
-                              required
-                              data-testid="input-source-name"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="sourceUrl">Source URL</Label>
-                            <Input
-                              id="sourceUrl"
-                              type="url"
-                              value={newSource.sourceUrl}
-                              onChange={(e) => setNewSource({ ...newSource, sourceUrl: e.target.value })}
-                              placeholder="https://www.example.com/inventory"
-                              required
-                              data-testid="input-source-url"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="sourceType">Source Type</Label>
-                            <Select
-                              value={newSource.sourceType}
-                              onValueChange={(value) => setNewSource({ ...newSource, sourceType: value })}
-                            >
-                              <SelectTrigger data-testid="select-source-type">
-                                <SelectValue placeholder="Select source type" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="dealer_website">Dealer Website</SelectItem>
-                                <SelectItem value="autotrader">AutoTrader</SelectItem>
-                                <SelectItem value="cargurus">CarGurus</SelectItem>
-                                <SelectItem value="other">Other</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <Label htmlFor="scrapeFrequency">Scrape Frequency</Label>
-                            <Select
-                              value={newSource.scrapeFrequency}
-                              onValueChange={(value) => setNewSource({ ...newSource, scrapeFrequency: value })}
-                            >
-                              <SelectTrigger data-testid="select-scrape-frequency">
-                                <SelectValue placeholder="Select frequency" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="hourly">Hourly</SelectItem>
-                                <SelectItem value="daily">Daily</SelectItem>
-                                <SelectItem value="weekly">Weekly</SelectItem>
-                                <SelectItem value="manual">Manual Only</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <Button type="submit" className="w-full" data-testid="button-submit-source">
-                            Add Source
-                          </Button>
-                        </form>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {scrapeSources.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <Car className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                      <p>No inventory sources configured yet. Add a URL to start scraping vehicles.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {scrapeSources.map((source) => (
-                        <div key={source.id} className="border rounded-lg p-4" data-testid={`card-source-${source.id}`}>
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <h3 className="font-medium truncate">{source.sourceName}</h3>
-                                <span className={`px-2 py-0.5 rounded text-xs ${source.isActive ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'}`}>
-                                  {source.isActive ? 'Active' : 'Inactive'}
-                                </span>
-                              </div>
-                              <p className="text-sm text-muted-foreground truncate mt-1">
-                                <Link2 className="w-3 h-3 inline mr-1" />
-                                {source.sourceUrl}
-                              </p>
-                              <div className="flex flex-wrap gap-4 mt-2 text-xs text-muted-foreground">
-                                <span>Type: {source.sourceType.replace('_', ' ')}</span>
-                                <span>Frequency: {source.scrapeFrequency}</span>
-                                <span>Vehicles: {source.vehicleCount || 0}</span>
-                                {source.lastScrapedAt && (
-                                  <span>Last scraped: {new Date(source.lastScrapedAt).toLocaleDateString()}</span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex gap-2 shrink-0">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleTriggerScrape(source.id)}
-                                data-testid={`button-scrape-${source.id}`}
-                              >
-                                <RefreshCw className="w-4 h-4 mr-1" />
-                                Scrape Now
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleUpdateSource(source.id, { isActive: !source.isActive })}
-                                data-testid={`button-toggle-source-${source.id}`}
-                              >
-                                {source.isActive ? 'Deactivate' : 'Activate'}
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleDeleteSource(source.id)}
-                                className="text-red-600 hover:text-red-700"
-                                data-testid={`button-delete-source-${source.id}`}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <div className="mt-4 p-4 bg-muted rounded-lg">
-                    <p className="text-sm text-muted-foreground">
-                      <strong>Tip:</strong> Add multiple inventory sources to aggregate vehicles from different locations 
-                      or platforms. Daily scraping is recommended for accurate inventory.
                     </p>
                   </div>
                 </CardContent>
