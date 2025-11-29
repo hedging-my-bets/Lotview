@@ -1,5 +1,5 @@
-import { usePayment, ALL_TERMS, type FinanceTerm } from '@/contexts/PaymentContext';
-import { DollarSign, TrendingUp, Calendar } from 'lucide-react';
+import { usePayment } from '@/contexts/PaymentContext';
+import { DollarSign, TrendingUp } from 'lucide-react';
 
 function getCreditLabel(score: number): string {
   if (score >= 720) return 'Excellent';
@@ -21,8 +21,6 @@ export function StickyPaymentBar() {
     setCreditScore, 
     downPayment, 
     setDownPayment, 
-    selectedTerm,
-    setSelectedTerm,
     apr,
     creditTierName,
   } = usePayment();
@@ -93,29 +91,6 @@ export function StickyPaymentBar() {
             </div>
           </div>
 
-          {/* Term Selector */}
-          <div className="flex-shrink-0">
-            <div className="flex items-center gap-1 mb-0.5 md:mb-1">
-              <Calendar className="w-3 h-3 hidden md:block" />
-              <label className="text-[10px] md:text-xs font-medium">Term</label>
-            </div>
-            <div className="flex gap-1">
-              {ALL_TERMS.map(term => (
-                <button
-                  key={term}
-                  onClick={() => setSelectedTerm(term)}
-                  className={`px-2 py-1 rounded text-[10px] md:text-xs font-bold transition ${
-                    selectedTerm === term 
-                      ? 'bg-secondary text-white shadow-lg' 
-                      : 'bg-white/20 text-white/80 hover:bg-white/30'
-                  }`}
-                  data-testid={`button-term-${term}`}
-                >
-                  {term}mo
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       </div>
     </div>
