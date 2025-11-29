@@ -13,6 +13,30 @@ import { useChat } from "@/contexts/ChatContext";
 import { trackVehicleView as trackGTMVehicleView, trackCTAClick, trackPaymentCalculation } from "@/lib/tracking";
 import useEmblaCarousel from 'embla-carousel-react';
 
+// Helper function to upgrade AutoTrader CDN images to maximum resolution
+function upgradeImageUrl(url: string): string {
+  if (!url) return url;
+  
+  // AutoTrader CDN pattern: upgrade to 4K resolution
+  if (url.includes('autotradercdn.ca')) {
+    // Remove existing size suffix and upgrade to high res
+    let upgraded = url
+      .replace(/-\d+x\d+(\?|$)/, '$1')  // Remove size suffix like -133x100 or -1024x786
+      .replace(/\.jpg-\d+x\d+/, '.jpg');  // Alternative pattern
+    
+    // Add 4K parameters
+    if (!upgraded.includes('?')) {
+      upgraded += '?w=2048&h=1536&fit=bounds&auto=webp&quality=95';
+    } else if (!upgraded.includes('w=')) {
+      upgraded += '&w=2048&h=1536&fit=bounds&auto=webp&quality=95';
+    }
+    
+    return upgraded;
+  }
+  
+  return url;
+}
+
 export default function VehicleDetail() {
   const [match, params] = useRoute("/vehicle/:id");
   const [location, setLocation] = useLocation();
@@ -236,7 +260,7 @@ export default function VehicleDetail() {
                   {car.images.map((img, index) => (
                     <div key={index} className="flex-[0_0_100%] min-w-0">
                       <img 
-                        src={img || '/placeholder-car.jpg'} 
+                        src={upgradeImageUrl(img) || '/placeholder-car.jpg'} 
                         alt={`${car.model} - Image ${index + 1}`} 
                         className="w-full h-full object-cover" 
                       />
@@ -342,20 +366,37 @@ export default function VehicleDetail() {
               </div>
             )}
 
-            {/* Thumbnail Grid */}
+            {/* Thumbnail Grid - Sliding window that follows carousel position */}
             <div className="grid grid-cols-5 gap-2">
-              {car.images.slice(0, 5).map((img, i) => (
-                <button
-                  key={i}
-                  onClick={() => setCurrentImageIndex(i)}
-                  className={`aspect-[4/3] rounded-lg overflow-hidden shadow-sm cursor-pointer transition-all ${
-                    i === currentImageIndex ? 'ring-2 ring-primary opacity-100' : 'opacity-60 hover:opacity-100'
-                  }`}
-                  data-testid={`thumbnail-${i}`}
-                >
-                  <img src={img} alt={`Thumbnail ${i + 1}`} className="w-full h-full object-cover" />
-                </button>
-              ))}
+              {(() => {
+                const totalImages = car.images.length;
+                const windowSize = 5;
+                // Calculate start index to center current image when possible
+                let start = Math.max(0, currentImageIndex - 2);
+                if (start + windowSize > totalImages) {
+                  start = Math.max(0, totalImages - windowSize);
+                }
+                const visibleImages = car.images.slice(start, start + windowSize);
+                
+                return visibleImages.map((img, idx) => {
+                  const actualIndex = start + idx;
+                  return (
+                    <button
+                      key={actualIndex}
+                      onClick={() => {
+                        setCurrentImageIndex(actualIndex);
+                        emblaApi?.scrollTo(actualIndex);
+                      }}
+                      className={`aspect-[4/3] rounded-lg overflow-hidden shadow-sm cursor-pointer transition-all ${
+                        actualIndex === currentImageIndex ? 'ring-2 ring-primary opacity-100' : 'opacity-60 hover:opacity-100'
+                      }`}
+                      data-testid={`thumbnail-${actualIndex}`}
+                    >
+                      <img src={upgradeImageUrl(img)} alt={`Thumbnail ${actualIndex + 1}`} className="w-full h-full object-cover" />
+                    </button>
+                  );
+                });
+              })()}
             </div>
           </div>
 
