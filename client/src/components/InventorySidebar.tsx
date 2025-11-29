@@ -1,16 +1,18 @@
 import { FilterState } from "@/lib/types";
-import { SlidersHorizontal, CarFront, DollarSign, Check, Building2 } from "lucide-react";
+import { SlidersHorizontal, CarFront, DollarSign, Check, Building2, ArrowUpDown, Car } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
 
 const BODY_STYLES = ["SUV", "Truck", "Sedan"];
 const DEALERSHIPS = ["Olympic Hyundai Vancouver", "Boundary Hyundai Vancouver", "Kia Vancouver"];
-import { Slider } from "@/components/ui/slider";
 
 interface InventorySidebarProps {
   filters: FilterState;
   setFilters: (filters: FilterState) => void;
+  availableMakes?: string[];
 }
 
-export function InventorySidebar({ filters, setFilters }: InventorySidebarProps) {
+export function InventorySidebar({ filters, setFilters, availableMakes = [] }: InventorySidebarProps) {
   
   const handleTypeChange = (type: string) => {
     const newType = filters.type === type ? 'all' : type;
@@ -28,6 +30,51 @@ export function InventorySidebar({ filters, setFilters }: InventorySidebarProps)
         <h3 className="font-bold text-foreground mb-6 flex items-center gap-2">
           <SlidersHorizontal className="w-4 h-4" /> Filters
         </h3>
+
+        {/* Sort By */}
+        <div className="mb-8">
+          <p className="text-xs font-bold text-muted-foreground uppercase mb-3 flex items-center gap-2">
+            <ArrowUpDown className="w-3 h-3" /> Sort By
+          </p>
+          <Select
+            value={filters.sortBy}
+            onValueChange={(value: FilterState['sortBy']) => setFilters({ ...filters, sortBy: value })}
+          >
+            <SelectTrigger className="w-full" data-testid="select-sort">
+              <SelectValue placeholder="Default" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default">Default</SelectItem>
+              <SelectItem value="price_low">Price: Low to High</SelectItem>
+              <SelectItem value="price_high">Price: High to Low</SelectItem>
+              <SelectItem value="km_low">KM: Low to High</SelectItem>
+              <SelectItem value="km_high">KM: High to Low</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Make Filter */}
+        {availableMakes.length > 0 && (
+          <div className="mb-8">
+            <p className="text-xs font-bold text-muted-foreground uppercase mb-3 flex items-center gap-2">
+              <Car className="w-3 h-3" /> Make
+            </p>
+            <Select
+              value={filters.make}
+              onValueChange={(value) => setFilters({ ...filters, make: value })}
+            >
+              <SelectTrigger className="w-full" data-testid="select-make">
+                <SelectValue placeholder="All Makes" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Makes</SelectItem>
+                {availableMakes.map((make) => (
+                  <SelectItem key={make} value={make}>{make}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         {/* Dealership Filter */}
         <div className="mb-8">

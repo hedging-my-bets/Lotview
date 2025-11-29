@@ -2,8 +2,8 @@ import { createContext, useContext, useState, useEffect, ReactNode, useCallback,
 import { useQuery } from '@tanstack/react-query';
 import { getFinancingRules, type FinancingRules, type CreditTier, type ModelYearTerm } from '@/lib/api';
 
-export type FinanceTerm = 36 | 48 | 60 | 72 | 84;
-export const ALL_TERMS: FinanceTerm[] = [36, 48, 60, 72, 84];
+export type FinanceTerm = 24 | 36 | 48 | 60 | 72 | 84;
+export const ALL_TERMS: FinanceTerm[] = [24, 36, 48, 60, 72, 84];
 
 interface PaymentContextType {
   creditScore: number;
@@ -31,10 +31,10 @@ const DEFAULT_CREDIT_TIERS: CreditTier[] = [
 ];
 
 const DEFAULT_MODEL_YEAR_TERMS: ModelYearTerm[] = [
-  { minModelYear: 2022, maxModelYear: 2099, availableTerms: [36, 48, 60, 72, 84] },
-  { minModelYear: 2019, maxModelYear: 2021, availableTerms: [36, 48, 60, 72] },
-  { minModelYear: 2016, maxModelYear: 2018, availableTerms: [36, 48, 60] },
-  { minModelYear: 2000, maxModelYear: 2015, availableTerms: [36, 48] },
+  { minModelYear: 2025, maxModelYear: 2099, availableTerms: [24, 36, 48, 60, 72, 84] },
+  { minModelYear: 2022, maxModelYear: 2024, availableTerms: [24, 36, 48, 60, 72] },
+  { minModelYear: 2018, maxModelYear: 2021, availableTerms: [24, 36, 48, 60] },
+  { minModelYear: 2010, maxModelYear: 2017, availableTerms: [24, 36, 48] },
 ];
 
 export function PaymentProvider({ children }: { children: ReactNode }) {

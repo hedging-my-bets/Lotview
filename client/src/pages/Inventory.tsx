@@ -19,7 +19,9 @@ export default function Inventory() {
     priceMax: 100000,
     location: 'all',
     dealership: 'all',
-    search: ''
+    search: '',
+    make: 'all',
+    sortBy: 'default'
   });
 
   const { data: vehicles = [], isLoading, refetch, isFetching } = useQuery({
@@ -27,13 +29,32 @@ export default function Inventory() {
     queryFn: getVehicles,
   });
 
-  const filteredInventory = vehicles.filter(car => {
-    const matchesType = filters.type === 'all' || car.type === filters.type;
-    const matchesPrice = car.price <= filters.priceMax;
-    const matchesLocation = filters.location === 'all' || car.location === filters.location;
-    const matchesDealership = filters.dealership === 'all' || car.dealership === filters.dealership;
-    return matchesType && matchesPrice && matchesLocation && matchesDealership;
-  });
+  // Get unique makes from vehicles for the filter dropdown
+  const uniqueMakes = Array.from(new Set(vehicles.map(car => car.make))).sort();
+
+  const filteredInventory = vehicles
+    .filter(car => {
+      const matchesType = filters.type === 'all' || car.type === filters.type;
+      const matchesPrice = car.price <= filters.priceMax;
+      const matchesLocation = filters.location === 'all' || car.location === filters.location;
+      const matchesDealership = filters.dealership === 'all' || car.dealership === filters.dealership;
+      const matchesMake = filters.make === 'all' || car.make === filters.make;
+      return matchesType && matchesPrice && matchesLocation && matchesDealership && matchesMake;
+    })
+    .sort((a, b) => {
+      switch (filters.sortBy) {
+        case 'price_low':
+          return a.price - b.price;
+        case 'price_high':
+          return b.price - a.price;
+        case 'km_low':
+          return a.odometer - b.odometer;
+        case 'km_high':
+          return b.odometer - a.odometer;
+        default:
+          return 0; // Keep original order
+      }
+    });
 
   const handleRefresh = () => {
     toast({ title: "Checking for updates...", description: "Syncing with dealer networks." });
@@ -55,7 +76,7 @@ export default function Inventory() {
         <div className="flex flex-col lg:flex-row gap-8">
           {/* Desktop Sidebar - Hidden on Mobile */}
           <div className="hidden lg:block">
-            <InventorySidebar filters={filters} setFilters={setFilters} />
+            <InventorySidebar filters={filters} setFilters={setFilters} availableMakes={uniqueMakes} />
           </div>
           
           <main className="flex-1">
@@ -80,7 +101,7 @@ export default function Inventory() {
             ) : filteredInventory.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
                 <p>No vehicles match your criteria.</p>
-                <button onClick={() => setFilters({ type: 'all', priceMax: 100000, location: 'all', dealership: 'all', search: '' })} className="text-primary font-bold mt-2 hover:underline">Clear Filters</button>
+                <button onClick={() => setFilters({ type: 'all', priceMax: 100000, location: 'all', dealership: 'all', search: '', make: 'all', sortBy: 'default' })} className="text-primary font-bold mt-2 hover:underline">Clear Filters</button>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -114,7 +135,7 @@ export default function Inventory() {
                 data-testid="button-filters-mobile"
               >
                 <SlidersHorizontal className="w-4 h-4" />
-                Filters {filters.dealership !== 'all' || filters.location !== 'all' || filters.type !== 'all' || filters.priceMax !== 100000 ? '(Active)' : ''}
+                Filters {filters.dealership !== 'all' || filters.location !== 'all' || filters.type !== 'all' || filters.priceMax !== 100000 || filters.make !== 'all' || filters.sortBy !== 'default' ? '(Active)' : ''}
               </button>
             </SheetTrigger>
             <SheetContent side="left" className="w-[300px] overflow-y-auto p-0">
@@ -122,7 +143,7 @@ export default function Inventory() {
                 <SheetTitle>Filter Vehicles</SheetTitle>
               </SheetHeader>
               <div className="p-6">
-                <InventorySidebar filters={filters} setFilters={setFilters} />
+                <InventorySidebar filters={filters} setFilters={setFilters} availableMakes={uniqueMakes} />
               </div>
             </SheetContent>
           </Sheet>

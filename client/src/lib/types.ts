@@ -29,9 +29,11 @@ export interface FilterState {
   location: string;
   dealership: string;
   search: string;
+  make: string;
+  sortBy: 'default' | 'price_low' | 'price_high' | 'km_low' | 'km_high';
 }
 
-export const FINANCE_TERMS = [36, 48, 60, 72, 84] as const;
+export const FINANCE_TERMS = [24, 36, 48, 60, 72, 84] as const;
 export type FinanceTerm = typeof FINANCE_TERMS[number];
 
 export function calculateMonthlyPayment(price: number, termMonths: FinanceTerm, downPayment: number = 0, apr: number = 6.99): number {
