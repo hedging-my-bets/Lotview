@@ -26,18 +26,23 @@ export interface OnboardingInput {
     defaultCurrency?: string;
   };
   
-  // Step 2: Branding & Contact
+  // Step 2: Branding & Visual Identity
   branding: {
     logoUrl?: string;
     faviconUrl?: string;
+    heroImageUrl?: string;
     primaryColor?: string;
     secondaryColor?: string;
+    tagline?: string;
+    customCss?: string;
     heroHeadline?: string;
     heroSubheadline?: string;
     promoBannerText?: string;
     promoBannerActive?: boolean;
   };
-  contacts: {
+  
+  // Optional contacts
+  contacts?: {
     supportEmail?: string;
     salesEmail?: string;
     salesPhone?: string;
@@ -65,7 +70,19 @@ export interface OnboardingInput {
     facebookPixelId?: string;
   };
   
-  // Step 4: Inventory Sources (Scrapers)
+  // Step 4: Financing Settings
+  financing?: {
+    defaultDownPayment?: number;
+    minDownPayment?: number;
+    maxTerm?: number;
+    defaultAdminFee?: number;
+    defaultDocFee?: number;
+    defaultLienFee?: number;
+    ppsa?: number;
+    taxRate?: number;
+  };
+  
+  // Inventory Sources (Scrapers)
   scrapeSources: Array<{
     sourceName: string;
     sourceUrl: string;
@@ -85,8 +102,16 @@ export interface OnboardingInput {
     role: 'manager' | 'salesperson';
   }>;
   
-  // Step 6: Subscription Plan
-  subscription: {
+  // Auto-seeding options
+  seedDefaults?: {
+    creditTiers?: boolean;
+    modelYearTerms?: boolean;
+    chatPrompts?: boolean;
+    adTemplates?: boolean;
+  };
+  
+  // Optional subscription plan
+  subscription?: {
     plan: 'starter' | 'professional' | 'enterprise';
   };
 }
@@ -243,15 +268,23 @@ export class OnboardingService {
       .where(eq(onboardingRuns.id, run.id));
     
     try {
+      // Get seedDefaults with fallback to all true
+      const seedDefaults = input.seedDefaults || {
+        creditTiers: true,
+        modelYearTerms: true,
+        chatPrompts: true,
+        adTemplates: true,
+      };
+      
       // Execute each step
       await this.executeStep('create_dealership', () => this.createDealership(input.dealership));
       await this.executeStep('create_subscription', () => this.createSubscription(input.subscription));
       await this.executeStep('create_branding', () => this.createBranding(input.branding));
-      await this.executeStep('create_contacts', () => this.createContacts(input.contacts));
+      await this.executeStep('create_contacts', () => this.createContacts(input.contacts || {}));
       await this.executeStep('create_api_keys', () => this.createApiKeys(input.apiKeys));
-      await this.executeStep('seed_financing', () => this.seedFinancing());
-      await this.executeStep('seed_chat_prompts', () => this.seedChatPrompts(input.dealership.name));
-      await this.executeStep('seed_ai_templates', () => this.seedAiTemplates());
+      await this.executeStep('seed_financing', () => this.seedFinancing(seedDefaults, input.financing));
+      await this.executeStep('seed_chat_prompts', () => this.seedChatPrompts(input.dealership.name, seedDefaults));
+      await this.executeStep('seed_ai_templates', () => this.seedAiTemplates(seedDefaults));
       await this.executeStep('create_scrape_sources', () => this.createScrapeSources(input.scrapeSources));
       const masterAdminId = await this.executeStep('create_master_admin', () => this.createMasterAdmin(input.masterAdmin));
       await this.executeStep('create_staff_invites', () => this.createStaffInvites(input.additionalStaff, masterAdminId as number));
@@ -351,7 +384,7 @@ export class OnboardingService {
     this.dealershipId = dealership.id;
   }
   
-  private async createSubscription(data: OnboardingInput['subscription']): Promise<void> {
+  private async createSubscription(data?: OnboardingInput['subscription']): Promise<void> {
     if (!this.dealershipId) throw new Error('Dealership not created');
     
     const trialEnd = new Date();
@@ -359,7 +392,7 @@ export class OnboardingService {
     
     await db.insert(dealershipSubscriptions).values({
       dealershipId: this.dealershipId,
-      plan: data.plan,
+      plan: data?.plan || 'starter',
       status: 'trial',
       currentPeriodEnd: trialEnd,
     });
@@ -381,19 +414,19 @@ export class OnboardingService {
     });
   }
   
-  private async createContacts(data: OnboardingInput['contacts']): Promise<void> {
+  private async createContacts(data: NonNullable<OnboardingInput['contacts']>): Promise<void> {
     if (!this.dealershipId) throw new Error('Dealership not created');
     
     await db.insert(dealershipContacts).values({
       dealershipId: this.dealershipId,
-      supportEmail: data.supportEmail,
-      salesEmail: data.salesEmail,
-      salesPhone: data.salesPhone,
-      smsNumber: data.smsNumber,
-      websiteUrl: data.websiteUrl,
-      privacyPolicyUrl: data.privacyPolicyUrl,
-      termsOfServiceUrl: data.termsOfServiceUrl,
-      businessHours: data.businessHours,
+      supportEmail: data.supportEmail || null,
+      salesEmail: data.salesEmail || null,
+      salesPhone: data.salesPhone || null,
+      smsNumber: data.smsNumber || null,
+      websiteUrl: data.websiteUrl || null,
+      privacyPolicyUrl: data.privacyPolicyUrl || null,
+      termsOfServiceUrl: data.termsOfServiceUrl || null,
+      businessHours: data.businessHours || null,
     });
   }
   
@@ -418,34 +451,50 @@ export class OnboardingService {
     });
   }
   
-  private async seedFinancing(): Promise<void> {
+  private async seedFinancing(
+    seedDefaults: { creditTiers?: boolean; modelYearTerms?: boolean },
+    financingSettings?: OnboardingInput['financing']
+  ): Promise<void> {
     if (!this.dealershipId) throw new Error('Dealership not created');
     
-    // Seed credit score tiers
-    for (const tier of DEFAULT_CREDIT_TIERS) {
-      await db.insert(creditScoreTiers).values({
-        dealershipId: this.dealershipId,
-        tierName: tier.tierName,
-        minScore: tier.minScore,
-        maxScore: tier.maxScore,
-        interestRate: tier.interestRate,
-        isActive: true,
-      });
+    // Seed credit score tiers if enabled
+    if (seedDefaults.creditTiers !== false) {
+      for (const tier of DEFAULT_CREDIT_TIERS) {
+        await db.insert(creditScoreTiers).values({
+          dealershipId: this.dealershipId,
+          tierName: tier.tierName,
+          minScore: tier.minScore,
+          maxScore: tier.maxScore,
+          interestRate: tier.interestRate,
+          isActive: true,
+        });
+      }
     }
     
-    // Seed model year terms
-    for (const term of DEFAULT_MODEL_YEAR_TERMS) {
-      await db.insert(modelYearTerms).values({
-        dealershipId: this.dealershipId,
-        minModelYear: term.minModelYear,
-        maxModelYear: term.maxModelYear,
-        availableTerms: term.availableTerms,
-        isActive: true,
-      });
+    // Seed model year terms if enabled
+    if (seedDefaults.modelYearTerms !== false) {
+      for (const term of DEFAULT_MODEL_YEAR_TERMS) {
+        await db.insert(modelYearTerms).values({
+          dealershipId: this.dealershipId,
+          minModelYear: term.minModelYear,
+          maxModelYear: term.maxModelYear,
+          availableTerms: term.availableTerms,
+          isActive: true,
+        });
+      }
     }
     
-    // Seed default fees
-    for (const fee of DEFAULT_FEES) {
+    // Seed default fees (always, but use custom values if provided)
+    const adminFee = financingSettings?.defaultAdminFee ?? 499;
+    const docFee = financingSettings?.defaultDocFee ?? 199;
+    const fees = [
+      { feeName: 'Admin Fee', feeAmount: adminFee * 100, isPercentage: false, includeInPayment: true, displayOrder: 1 },
+      { feeName: 'Documentation Fee', feeAmount: docFee * 100, isPercentage: false, includeInPayment: true, displayOrder: 2 },
+      { feeName: 'Lien Fee', feeAmount: (financingSettings?.defaultLienFee ?? 80) * 100, isPercentage: false, includeInPayment: true, displayOrder: 3 },
+      { feeName: 'PPSA', feeAmount: (financingSettings?.ppsa ?? 85) * 100, isPercentage: false, includeInPayment: true, displayOrder: 4 },
+    ];
+    
+    for (const fee of fees) {
       await db.insert(dealershipFees).values({
         dealershipId: this.dealershipId,
         feeName: fee.feeName,
@@ -458,8 +507,14 @@ export class OnboardingService {
     }
   }
   
-  private async seedChatPrompts(dealershipName: string): Promise<void> {
+  private async seedChatPrompts(
+    dealershipName: string, 
+    seedDefaults: { chatPrompts?: boolean }
+  ): Promise<void> {
     if (!this.dealershipId) throw new Error('Dealership not created');
+    
+    // Skip if chat prompts are disabled
+    if (seedDefaults.chatPrompts === false) return;
     
     for (const prompt of DEFAULT_CHAT_PROMPTS) {
       await db.insert(chatPrompts).values({
@@ -472,12 +527,11 @@ export class OnboardingService {
     }
   }
   
-  private async seedAiTemplates(): Promise<void> {
+  private async seedAiTemplates(seedDefaults: { adTemplates?: boolean }): Promise<void> {
     if (!this.dealershipId) throw new Error('Dealership not created');
     
-    // Get the master admin user for this dealership (needed for ad templates)
-    const [masterUser] = await db.select().from(users)
-      .where(eq(users.dealershipId, this.dealershipId));
+    // Skip if ad templates are disabled
+    if (seedDefaults.adTemplates === false) return;
     
     for (const template of DEFAULT_AI_TEMPLATES) {
       await db.insert(aiPromptTemplates).values({

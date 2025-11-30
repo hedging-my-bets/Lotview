@@ -13,7 +13,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Key, FileText, Plus, Eye, EyeOff, Trash2, LogOut, Settings2, CheckCircle2, XCircle, Loader2, Plug, Pencil, Webhook, Copy, AlertCircle, Clock, Link2, RefreshCw, Car } from "lucide-react";
+import { Building2, Key, FileText, Plus, Eye, EyeOff, Trash2, LogOut, Settings2, CheckCircle2, XCircle, Loader2, Plug, Pencil, Webhook, Copy, AlertCircle, Clock, Link2, RefreshCw, Car, Rocket } from "lucide-react";
+import OnboardingWizard from "@/components/OnboardingWizard";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 
@@ -332,6 +333,11 @@ export default function SuperAdminDashboard() {
             <Link2 className="h-4 w-4 mr-1 sm:mr-2" />
             <span className="hidden sm:inline">Scrape Sources</span>
             <span className="sm:hidden">Scrape</span>
+          </TabsTrigger>
+          <TabsTrigger value="onboarding" data-testid="tab-onboarding" className="text-xs sm:text-sm px-2 sm:px-3 py-2 bg-green-600/10 hover:bg-green-600/20">
+            <Rocket className="h-4 w-4 mr-1 sm:mr-2 text-green-600" />
+            <span className="hidden sm:inline text-green-600 font-medium">Onboard New</span>
+            <span className="sm:hidden text-green-600">+New</span>
           </TabsTrigger>
         </TabsList>
 
@@ -661,6 +667,16 @@ export default function SuperAdminDashboard() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Onboarding Tab */}
+        <TabsContent value="onboarding">
+          <OnboardingWizard 
+            onComplete={() => {
+              queryClient.invalidateQueries({ queryKey: ["/api/super-admin/dealerships"] });
+              queryClient.invalidateQueries({ queryKey: ["/api/super-admin/audit-logs"] });
+            }} 
+          />
         </TabsContent>
       </Tabs>
     </div>
