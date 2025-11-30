@@ -103,8 +103,16 @@ function determineBodyType(text: string): string {
   return 'SUV'; // Default
 }
 
+// Check if vehicle has low km based on 12,000 km per year threshold
+function isLowKilometers(year: number, odometer: number): boolean {
+  const currentYear = new Date().getFullYear();
+  const vehicleAge = Math.max(1, currentYear - year); // At least 1 year old
+  const expectedMaxKm = vehicleAge * 12000; // 12,000 km per year average
+  return odometer > 0 && odometer <= expectedMaxKm;
+}
+
 // Helper function to detect badges from text
-function detectBadges(text: string): string[] {
+function detectBadges(text: string, year?: number, odometer?: number): string[] {
   const badges: string[] = [];
   const lowerText = text.toLowerCase();
   
@@ -120,8 +128,14 @@ function detectBadges(text: string): string[] {
   if (/\b(certified pre-?owned|cpo\b|hyundai certified|manufacturer certified|factory certified)\b/.test(lowerText)) {
     badges.push('Certified Pre-Owned');
   }
-  if (/\b(low km|low kilometers|low mileage|low km's)\b/.test(lowerText)) {
+  // Low Kilometers: Calculate based on 12,000 km/year if year and odometer provided
+  if (year && odometer && isLowKilometers(year, odometer)) {
     badges.push('Low Kilometers');
+  } else if (/\b(low km|low kilometers|low mileage|low km's)\b/.test(lowerText)) {
+    // Only use keyword detection if we don't have year/odometer data
+    if (!year || !odometer) {
+      badges.push('Low Kilometers');
+    }
   }
   
   return badges;
@@ -1139,6 +1153,17 @@ async function scrapeDealerListings(
         }
       }
       
+      // Recalculate badges with year and odometer for accurate Low Kilometers detection
+      // (12,000 km per year threshold)
+      const recalculatedBadges = detectBadges(
+        detailData.description || '',
+        urlData.year,
+        detailData.odometer || undefined
+      );
+      // Merge with any existing badges from VDP that we didn't detect
+      const existingBadges = detailData.badges.filter(b => !recalculatedBadges.includes(b) && b !== 'Low Kilometers');
+      const finalBadges = [...recalculatedBadges, ...existingBadges];
+      
       const vehicleData: DealerVehicleListing = {
         vin: detailData.vin,
         year: urlData.year,
@@ -1149,7 +1174,7 @@ async function scrapeDealerListings(
         price: detailData.price,
         images: detailData.images,
         description: detailData.description,
-        badges: detailData.badges,
+        badges: finalBadges,
         type: detailData.type,
         stockNumber: detailData.stockNumber,
         vdpUrl: urlData.vdpUrl,

@@ -146,7 +146,15 @@ const BADGE_KEYWORDS = {
   fullyLoaded: ['fully loaded', 'loaded'],
 };
 
-function detectBadges(text: string): string[] {
+// Check if vehicle has low km based on 12,000 km per year threshold
+function isLowKilometers(year: number, odometer: number): boolean {
+  const currentYear = new Date().getFullYear();
+  const vehicleAge = Math.max(1, currentYear - year); // At least 1 year old
+  const expectedMaxKm = vehicleAge * 12000; // 12,000 km per year average
+  return odometer > 0 && odometer <= expectedMaxKm;
+}
+
+function detectBadges(text: string, year?: number, odometer?: number): string[] {
   const badges: string[] = [];
   const lowerText = text.toLowerCase();
 
@@ -162,8 +170,15 @@ function detectBadges(text: string): string[] {
   if (BADGE_KEYWORDS.certifiedPreOwned.some(keyword => lowerText.includes(keyword))) {
     badges.push('Certified Pre-Owned');
   }
-  if (BADGE_KEYWORDS.lowKm.some(keyword => lowerText.includes(keyword))) {
+  // Low Kilometers: Calculate based on 12,000 km/year if year and odometer provided
+  // Otherwise fall back to keyword detection
+  if (year && odometer && isLowKilometers(year, odometer)) {
     badges.push('Low Kilometers');
+  } else if (BADGE_KEYWORDS.lowKm.some(keyword => lowerText.includes(keyword))) {
+    // Only use keyword detection if we don't have year/odometer data
+    if (!year || !odometer) {
+      badges.push('Low Kilometers');
+    }
   }
   if (BADGE_KEYWORDS.managerSpecial.some(keyword => lowerText.includes(keyword))) {
     badges.push('Manager Special');
@@ -798,7 +813,6 @@ async function scrapeInventoryPage(inventoryUrl: string, dealershipName: string,
           };
         });
         
-        const badges = detectBadges(v.cardText + ' ' + v.heading);
         const type = determineBodyType(detailData.bodyStyle || v.bodyStyle);
         const finalDescription = detailData.description || `${v.year} ${v.make} ${v.model} ${v.trim}`.trim();
         
@@ -807,6 +821,9 @@ async function scrapeInventoryPage(inventoryUrl: string, dealershipName: string,
         
         // Use detail page odometer if found, otherwise fall back to card extraction
         const finalOdometer = detailData.odometer > 0 ? detailData.odometer : v.odometer;
+        
+        // Detect badges with year and odometer for accurate Low Kilometers calculation
+        const badges = detectBadges(v.cardText + ' ' + v.heading, v.year, finalOdometer);
         
         scrapedVehicles.push({
           year: v.year,
@@ -833,8 +850,8 @@ async function scrapeInventoryPage(inventoryUrl: string, dealershipName: string,
         
       } catch (error) {
         console.error(`  Error fetching details for ${v.year} ${v.make} ${v.model}:`, error);
-        // Fallback to basic data
-        const badges = detectBadges(v.cardText + ' ' + v.heading);
+        // Fallback to basic data - pass year and odometer for Low Kilometers calculation
+        const badges = detectBadges(v.cardText + ' ' + v.heading, v.year, v.odometer);
         const type = determineBodyType(v.bodyStyle);
         
         scrapedVehicles.push({
