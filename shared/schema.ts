@@ -677,3 +677,149 @@ export const insertMarketListingSchema = createInsertSchema(marketListings).omit
 
 export type InsertMarketListing = z.infer<typeof insertMarketListingSchema>;
 export type MarketListing = typeof marketListings.$inferSelect;
+
+// ====== ONBOARDING SYSTEM TABLES ======
+
+// Dealership branding - logos, colors, content
+export const dealershipBranding = pgTable("dealership_branding", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }).unique(),
+  logoUrl: text("logo_url"), // Main logo URL
+  faviconUrl: text("favicon_url"), // Favicon URL
+  primaryColor: text("primary_color").default('#022d60'), // Primary brand color (hex)
+  secondaryColor: text("secondary_color").default('#00aad2'), // Secondary brand color (hex)
+  heroHeadline: text("hero_headline"), // Main headline for inventory page
+  heroSubheadline: text("hero_subheadline"), // Subheadline
+  promoBannerText: text("promo_banner_text"), // Optional promo banner
+  promoBannerActive: boolean("promo_banner_active").default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertDealershipBrandingSchema = createInsertSchema(dealershipBranding).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertDealershipBranding = z.infer<typeof insertDealershipBrandingSchema>;
+export type DealershipBranding = typeof dealershipBranding.$inferSelect;
+
+// Dealership contact channels
+export const dealershipContacts = pgTable("dealership_contacts", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }).unique(),
+  supportEmail: text("support_email"), // Customer support email
+  salesEmail: text("sales_email"), // Sales team email
+  salesPhone: text("sales_phone"), // Sales hotline
+  smsNumber: text("sms_number"), // SMS/text number
+  websiteUrl: text("website_url"), // Main website
+  privacyPolicyUrl: text("privacy_policy_url"), // Privacy policy link
+  termsOfServiceUrl: text("terms_of_service_url"), // Terms of service link
+  businessHours: text("business_hours"), // JSON with hours per day
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertDealershipContactsSchema = createInsertSchema(dealershipContacts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertDealershipContacts = z.infer<typeof insertDealershipContactsSchema>;
+export type DealershipContacts = typeof dealershipContacts.$inferSelect;
+
+// Staff invitations - pending user accounts
+export const staffInvites = pgTable("staff_invites", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  email: text("email").notNull(),
+  name: text("name").notNull(),
+  role: text("role").notNull(), // 'master', 'manager', 'salesperson'
+  inviteToken: text("invite_token").notNull().unique(), // Hashed token for signup link
+  status: text("status").notNull().default('pending'), // 'pending', 'accepted', 'expired'
+  invitedBy: integer("invited_by").references(() => users.id),
+  expiresAt: timestamp("expires_at").notNull(),
+  acceptedAt: timestamp("accepted_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertStaffInviteSchema = createInsertSchema(staffInvites).omit({
+  id: true,
+  createdAt: true,
+  acceptedAt: true,
+});
+
+export type InsertStaffInvite = z.infer<typeof insertStaffInviteSchema>;
+export type StaffInvite = typeof staffInvites.$inferSelect;
+
+// Onboarding runs - track each onboarding execution
+export const onboardingRuns = pgTable("onboarding_runs", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").references(() => dealerships.id, { onDelete: 'cascade' }),
+  status: text("status").notNull().default('pending'), // 'pending', 'in_progress', 'completed', 'failed', 'partial'
+  initiatedBy: integer("initiated_by").notNull().references(() => users.id),
+  inputData: text("input_data").notNull(), // JSON of all onboarding form data
+  errorMessage: text("error_message"), // Overall error if failed
+  completedSteps: integer("completed_steps").default(0),
+  totalSteps: integer("total_steps").default(0),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertOnboardingRunSchema = createInsertSchema(onboardingRuns).omit({
+  id: true,
+  createdAt: true,
+  startedAt: true,
+  completedAt: true,
+});
+
+export type InsertOnboardingRun = z.infer<typeof insertOnboardingRunSchema>;
+export type OnboardingRun = typeof onboardingRuns.$inferSelect;
+
+// Onboarding run steps - detailed progress for each step
+export const onboardingRunSteps = pgTable("onboarding_run_steps", {
+  id: serial("id").primaryKey(),
+  runId: integer("run_id").notNull().references(() => onboardingRuns.id, { onDelete: 'cascade' }),
+  stepName: text("step_name").notNull(), // e.g., 'create_dealership', 'seed_financing', 'create_users'
+  stepOrder: integer("step_order").notNull(),
+  status: text("status").notNull().default('pending'), // 'pending', 'in_progress', 'completed', 'failed', 'skipped'
+  details: text("details"), // JSON with step-specific results
+  errorMessage: text("error_message"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+});
+
+export const insertOnboardingRunStepSchema = createInsertSchema(onboardingRunSteps).omit({
+  id: true,
+  startedAt: true,
+  completedAt: true,
+});
+
+export type InsertOnboardingRunStep = z.infer<typeof insertOnboardingRunStepSchema>;
+export type OnboardingRunStep = typeof onboardingRunSteps.$inferSelect;
+
+// Integration status tracking - monitor each integration's health
+export const integrationStatus = pgTable("integration_status", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  integrationName: text("integration_name").notNull(), // 'openai', 'facebook', 'marketcheck', etc.
+  status: text("status").notNull().default('not_configured'), // 'not_configured', 'pending', 'active', 'error', 'expired'
+  lastCheckedAt: timestamp("last_checked_at"),
+  lastSuccessAt: timestamp("last_success_at"),
+  errorMessage: text("error_message"),
+  configDetails: text("config_details"), // JSON with non-sensitive config info
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertIntegrationStatusSchema = createInsertSchema(integrationStatus).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertIntegrationStatus = z.infer<typeof insertIntegrationStatusSchema>;
+export type IntegrationStatus = typeof integrationStatus.$inferSelect;
