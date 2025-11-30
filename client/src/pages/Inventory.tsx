@@ -80,10 +80,19 @@ export default function Inventory() {
           </div>
           
           <main className="flex-1">
-            <div className="mb-6 flex justify-between items-end">
+            <div className="mb-6 flex justify-between items-center">
               <h2 className="text-2xl font-bold text-foreground">
                 Inventory <span className="text-muted-foreground font-normal text-lg ml-2">{filteredInventory.length} Vehicles</span>
               </h2>
+              {/* Mobile: Filter button, Desktop: Live Updates button */}
+              <button 
+                onClick={() => setIsFilterOpen(true)}
+                className="lg:hidden flex text-xs font-bold text-primary bg-primary/10 px-3 py-1.5 rounded-full hover:bg-primary/20 transition items-center gap-2"
+                data-testid="button-filters-header"
+              >
+                <SlidersHorizontal className="w-3 h-3" />
+                Filters {filters.dealership !== 'all' || filters.location !== 'all' || filters.type !== 'all' || filters.priceMax !== 100000 || filters.make !== 'all' || filters.sortBy !== 'default' ? '(Active)' : ''}
+              </button>
               <button 
                 onClick={handleRefresh}
                 disabled={isFetching}
@@ -125,30 +134,17 @@ export default function Inventory() {
         </div>
       </div>
 
-      {/* Mobile Filter Button - Sticky Bottom Bar */}
-      <div className="lg:hidden fixed bottom-16 md:bottom-0 left-0 right-0 z-30 bg-card border-t border-border shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex gap-3">
-          <Sheet open={isFilterOpen} onOpenChange={setIsFilterOpen}>
-            <SheetTrigger asChild>
-              <button
-                className="flex-1 bg-primary text-white py-3 rounded-lg font-bold text-sm hover:bg-blue-900 transition flex items-center justify-center gap-2"
-                data-testid="button-filters-mobile"
-              >
-                <SlidersHorizontal className="w-4 h-4" />
-                Filters {filters.dealership !== 'all' || filters.location !== 'all' || filters.type !== 'all' || filters.priceMax !== 100000 || filters.make !== 'all' || filters.sortBy !== 'default' ? '(Active)' : ''}
-              </button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-[300px] overflow-y-auto p-0">
-              <SheetHeader className="p-6 pb-4 border-b">
-                <SheetTitle>Filter Vehicles</SheetTitle>
-              </SheetHeader>
-              <div className="p-6">
-                <InventorySidebar filters={filters} setFilters={setFilters} availableMakes={uniqueMakes} />
-              </div>
-            </SheetContent>
-          </Sheet>
-        </div>
-      </div>
+      {/* Mobile Filter Sheet - triggered from header button */}
+      <Sheet open={isFilterOpen} onOpenChange={setIsFilterOpen}>
+        <SheetContent side="left" className="w-[300px] overflow-y-auto p-0">
+          <SheetHeader className="p-6 pb-4 border-b">
+            <SheetTitle>Filter Vehicles</SheetTitle>
+          </SheetHeader>
+          <div className="p-6">
+            <InventorySidebar filters={filters} setFilters={setFilters} availableMakes={uniqueMakes} />
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <ChatBot />
     </div>
