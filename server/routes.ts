@@ -873,6 +873,130 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: "Failed to trigger scrape" });
     }
   });
+
+  // ===== SUPER ADMIN ONBOARDING ROUTES =====
+  
+  // Validate onboarding input (dry run)
+  app.post("/api/super-admin/onboarding/validate", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const { OnboardingService } = await import("./onboarding-service");
+      const validation = OnboardingService.validateInput(req.body);
+      
+      // Also check for duplicate slug/subdomain/email
+      const errors = [...validation.errors];
+      
+      if (req.body.dealership?.slug) {
+        const existing = await storage.getDealershipBySlug(req.body.dealership.slug);
+        if (existing) {
+          errors.push(`Slug "${req.body.dealership.slug}" is already in use`);
+        }
+      }
+      
+      if (req.body.dealership?.subdomain) {
+        const existing = await storage.getDealershipBySubdomain(req.body.dealership.subdomain);
+        if (existing) {
+          errors.push(`Subdomain "${req.body.dealership.subdomain}" is already in use`);
+        }
+      }
+      
+      if (req.body.masterAdmin?.email) {
+        const existing = await storage.getUserByEmail(req.body.masterAdmin.email);
+        if (existing) {
+          errors.push(`Email "${req.body.masterAdmin.email}" is already in use`);
+        }
+      }
+      
+      res.json({ valid: errors.length === 0, errors });
+    } catch (error) {
+      console.error("Error validating onboarding input:", error);
+      res.status(500).json({ error: "Failed to validate input" });
+    }
+  });
+  
+  // Execute onboarding (one-click setup)
+  app.post("/api/super-admin/onboarding/start", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const authReq = req as AuthRequest;
+      const { OnboardingService, onboardingService } = await import("./onboarding-service");
+      
+      // Validate input first
+      const validation = OnboardingService.validateInput(req.body);
+      if (!validation.valid) {
+        return res.status(400).json({ error: "Validation failed", errors: validation.errors });
+      }
+      
+      // Check for duplicates
+      if (req.body.dealership?.slug) {
+        const existing = await storage.getDealershipBySlug(req.body.dealership.slug);
+        if (existing) {
+          return res.status(400).json({ error: `Slug "${req.body.dealership.slug}" is already in use` });
+        }
+      }
+      
+      if (req.body.dealership?.subdomain) {
+        const existing = await storage.getDealershipBySubdomain(req.body.dealership.subdomain);
+        if (existing) {
+          return res.status(400).json({ error: `Subdomain "${req.body.dealership.subdomain}" is already in use` });
+        }
+      }
+      
+      if (req.body.masterAdmin?.email) {
+        const existing = await storage.getUserByEmail(req.body.masterAdmin.email);
+        if (existing) {
+          return res.status(400).json({ error: `Email "${req.body.masterAdmin.email}" is already in use` });
+        }
+      }
+      
+      // Start onboarding
+      const result = await onboardingService.startOnboarding(req.body, authReq.user!.id);
+      
+      // Log audit
+      await storage.logAuditAction({
+        userId: authReq.user!.id,
+        action: 'onboard_dealership',
+        resource: 'dealership',
+        resourceId: result.dealershipId.toString(),
+        details: JSON.stringify({ runId: result.runId, dealershipName: req.body.dealership.name }),
+        ipAddress: req.ip || null,
+        userAgent: req.get('user-agent') || null,
+      });
+      
+      res.status(201).json(result);
+    } catch (error) {
+      console.error("Error starting onboarding:", error);
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to start onboarding" });
+    }
+  });
+  
+  // Get onboarding run status
+  app.get("/api/super-admin/onboarding/runs/:runId", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const { OnboardingService } = await import("./onboarding-service");
+      const runId = parseInt(req.params.runId);
+      const status = await OnboardingService.getRunStatus(runId);
+      
+      if (!status) {
+        return res.status(404).json({ error: "Onboarding run not found" });
+      }
+      
+      res.json(status);
+    } catch (error) {
+      console.error("Error fetching onboarding status:", error);
+      res.status(500).json({ error: "Failed to fetch onboarding status" });
+    }
+  });
+  
+  // Get all onboarding runs
+  app.get("/api/super-admin/onboarding/runs", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const { OnboardingService } = await import("./onboarding-service");
+      const runs = await OnboardingService.getAllRuns();
+      res.json(runs);
+    } catch (error) {
+      console.error("Error fetching onboarding runs:", error);
+      res.status(500).json({ error: "Failed to fetch onboarding runs" });
+    }
+  });
   
   // ===== USER MANAGEMENT ROUTES (Master Only) =====
   
