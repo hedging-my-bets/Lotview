@@ -92,7 +92,10 @@ import {
   type ExternalApiToken,
   type InsertExternalApiToken,
   staffInvites,
-  type StaffInvite
+  type StaffInvite,
+  launchChecklist,
+  type LaunchChecklist,
+  type InsertLaunchChecklist
 } from "@shared/schema";
 import { eq, desc, sql, and, gte, lte } from "drizzle-orm";
 
@@ -314,6 +317,17 @@ export interface IStorage {
   getStaffInviteByToken(token: string): Promise<StaffInvite | undefined>;
   acceptStaffInvite(id: number): Promise<void>;
   getDealershipById(id: number): Promise<Dealership | undefined>;
+  
+  // Launch Checklist (Multi-Tenant)
+  getLaunchChecklist(dealershipId: number): Promise<LaunchChecklist[]>;
+  getLaunchChecklistByCategory(dealershipId: number, category: string): Promise<LaunchChecklist[]>;
+  getLaunchChecklistProgress(dealershipId: number): Promise<{ total: number; completed: number; required: number; requiredCompleted: number }>;
+  createLaunchChecklistItem(item: InsertLaunchChecklist): Promise<LaunchChecklist>;
+  createLaunchChecklistItems(items: InsertLaunchChecklist[]): Promise<LaunchChecklist[]>;
+  updateLaunchChecklistItem(id: number, dealershipId: number, item: Partial<InsertLaunchChecklist>): Promise<LaunchChecklist | undefined>;
+  completeLaunchChecklistItem(id: number, dealershipId: number, userId: number): Promise<LaunchChecklist | undefined>;
+  skipLaunchChecklistItem(id: number, dealershipId: number, notes?: string): Promise<LaunchChecklist | undefined>;
+  deleteLaunchChecklistItem(id: number, dealershipId: number): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1997,6 +2011,97 @@ export class DatabaseStorage implements IStorage {
       .where(eq(dealerships.id, id))
       .limit(1);
     return result[0];
+  }
+  
+  // ====== LAUNCH CHECKLIST ======
+  async getLaunchChecklist(dealershipId: number): Promise<LaunchChecklist[]> {
+    return await db.select().from(launchChecklist)
+      .where(eq(launchChecklist.dealershipId, dealershipId))
+      .orderBy(launchChecklist.category, launchChecklist.sortOrder);
+  }
+  
+  async getLaunchChecklistByCategory(dealershipId: number, category: string): Promise<LaunchChecklist[]> {
+    return await db.select().from(launchChecklist)
+      .where(and(
+        eq(launchChecklist.dealershipId, dealershipId),
+        eq(launchChecklist.category, category)
+      ))
+      .orderBy(launchChecklist.sortOrder);
+  }
+  
+  async getLaunchChecklistProgress(dealershipId: number): Promise<{ total: number; completed: number; required: number; requiredCompleted: number }> {
+    const items = await db.select().from(launchChecklist)
+      .where(eq(launchChecklist.dealershipId, dealershipId));
+    
+    const total = items.length;
+    const completed = items.filter(i => i.status === 'completed' || i.status === 'skipped').length;
+    const required = items.filter(i => i.isRequired).length;
+    const requiredCompleted = items.filter(i => i.isRequired && (i.status === 'completed' || i.status === 'skipped')).length;
+    
+    return { total, completed, required, requiredCompleted };
+  }
+  
+  async createLaunchChecklistItem(item: InsertLaunchChecklist): Promise<LaunchChecklist> {
+    const result = await db.insert(launchChecklist).values(item).returning();
+    return result[0];
+  }
+  
+  async createLaunchChecklistItems(items: InsertLaunchChecklist[]): Promise<LaunchChecklist[]> {
+    if (items.length === 0) return [];
+    const result = await db.insert(launchChecklist).values(items).returning();
+    return result;
+  }
+  
+  async updateLaunchChecklistItem(id: number, dealershipId: number, item: Partial<InsertLaunchChecklist>): Promise<LaunchChecklist | undefined> {
+    const result = await db.update(launchChecklist)
+      .set({ ...item, updatedAt: new Date() })
+      .where(and(
+        eq(launchChecklist.id, id),
+        eq(launchChecklist.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+  
+  async completeLaunchChecklistItem(id: number, dealershipId: number, userId: number): Promise<LaunchChecklist | undefined> {
+    const result = await db.update(launchChecklist)
+      .set({ 
+        status: 'completed', 
+        completedBy: userId, 
+        completedAt: new Date(),
+        updatedAt: new Date() 
+      })
+      .where(and(
+        eq(launchChecklist.id, id),
+        eq(launchChecklist.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+  
+  async skipLaunchChecklistItem(id: number, dealershipId: number, notes?: string): Promise<LaunchChecklist | undefined> {
+    const result = await db.update(launchChecklist)
+      .set({ 
+        status: 'skipped', 
+        notes: notes || null,
+        updatedAt: new Date() 
+      })
+      .where(and(
+        eq(launchChecklist.id, id),
+        eq(launchChecklist.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+  
+  async deleteLaunchChecklistItem(id: number, dealershipId: number): Promise<boolean> {
+    const result = await db.delete(launchChecklist)
+      .where(and(
+        eq(launchChecklist.id, id),
+        eq(launchChecklist.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result.length > 0;
   }
 }
 

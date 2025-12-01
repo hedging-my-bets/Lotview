@@ -4,7 +4,7 @@ import {
   creditScoreTiers, modelYearTerms, dealershipFees, scrapeSources,
   chatPrompts, aiPromptTemplates, adTemplates, postingSchedule,
   dealershipBranding, dealershipContacts, staffInvites,
-  onboardingRuns, onboardingRunSteps, integrationStatus
+  onboardingRuns, onboardingRunSteps, integrationStatus, launchChecklist
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import bcrypt from "bcryptjs";
@@ -234,6 +234,49 @@ const ONBOARDING_STEPS = [
   { name: 'create_master_admin', order: 10, description: 'Create master admin account' },
   { name: 'create_staff_invites', order: 11, description: 'Send staff invitations' },
   { name: 'initialize_integrations', order: 12, description: 'Initialize integration status' },
+  { name: 'seed_launch_checklist', order: 13, description: 'Create launch checklist tasks' },
+];
+
+// Default launch checklist items that are created for each new dealership
+const DEFAULT_LAUNCH_CHECKLIST = [
+  // External Accounts
+  { category: 'accounts', taskName: 'Create Facebook Business Page', taskDescription: 'Create a Facebook Business Page for the dealership to enable social media posting and Marketplace integration.', isRequired: true, sortOrder: 1, externalUrl: 'https://business.facebook.com/create' },
+  { category: 'accounts', taskName: 'Create Google Business Profile', taskDescription: 'Set up Google Business Profile for local search visibility. Requires address verification via postcard.', isRequired: true, sortOrder: 2, externalUrl: 'https://business.google.com' },
+  { category: 'accounts', taskName: 'Set up Stripe Payment Account', taskDescription: 'Create Stripe account for processing customer payments and deposits.', isRequired: false, sortOrder: 3, externalUrl: 'https://dashboard.stripe.com/register' },
+  { category: 'accounts', taskName: 'Create GoHighLevel Sub-Account', taskDescription: 'Set up GoHighLevel sub-account for CRM and marketing automation.', isRequired: false, sortOrder: 4, externalUrl: 'https://app.gohighlevel.com' },
+  
+  // Legal & Compliance
+  { category: 'legal', taskName: 'Verify Dealer License', taskDescription: 'Confirm valid dealer license is on file and entered in system settings.', isRequired: true, sortOrder: 1 },
+  { category: 'legal', taskName: 'Confirm HST/GST Registration', taskDescription: 'Ensure business tax registration number is entered for proper invoicing.', isRequired: true, sortOrder: 2 },
+  { category: 'legal', taskName: 'Upload Privacy Policy', taskDescription: 'Create or upload privacy policy document and add URL to dealership contacts.', isRequired: true, sortOrder: 3 },
+  { category: 'legal', taskName: 'Upload Terms of Service', taskDescription: 'Create or upload terms of service document and add URL to dealership contacts.', isRequired: true, sortOrder: 4 },
+  { category: 'legal', taskName: 'Review Finance Disclosure Terms', taskDescription: 'Ensure all financing disclosures comply with provincial regulations.', isRequired: true, sortOrder: 5 },
+  
+  // Branding Assets
+  { category: 'branding', taskName: 'Upload Logo', taskDescription: 'Upload high-resolution dealership logo (PNG or SVG, transparent background recommended).', isRequired: true, sortOrder: 1 },
+  { category: 'branding', taskName: 'Upload Favicon', taskDescription: 'Upload favicon for browser tabs (32x32 or 64x64 pixels).', isRequired: false, sortOrder: 2 },
+  { category: 'branding', taskName: 'Upload Hero Image', taskDescription: 'Upload hero image for inventory page (recommended: 1920x600 pixels).', isRequired: false, sortOrder: 3 },
+  { category: 'branding', taskName: 'Set Business Hours', taskDescription: 'Configure business hours for each day of the week in dealership contacts.', isRequired: true, sortOrder: 4 },
+  { category: 'branding', taskName: 'Add Social Media Links', taskDescription: 'Add Facebook, Instagram, Twitter/X, and YouTube links if available.', isRequired: false, sortOrder: 5 },
+  
+  // API Integrations
+  { category: 'integrations', taskName: 'Add OpenAI API Key', taskDescription: 'Get an OpenAI API key for AI-powered chatbot and vehicle descriptions.', isRequired: false, sortOrder: 1, externalUrl: 'https://platform.openai.com/api-keys' },
+  { category: 'integrations', taskName: 'Add MarketCheck API Key', taskDescription: 'Contact MarketCheck sales for API access to vehicle market pricing data.', isRequired: false, sortOrder: 2, externalUrl: 'https://www.marketcheck.com/automotive' },
+  { category: 'integrations', taskName: 'Add Apify Token', taskDescription: 'Create Apify account and generate API token for inventory scraping.', isRequired: false, sortOrder: 3, externalUrl: 'https://console.apify.com/account/integrations' },
+  { category: 'integrations', taskName: 'Connect Facebook App', taskDescription: 'Set up Facebook App ID and Secret for Marketplace posting automation.', isRequired: false, sortOrder: 4, externalUrl: 'https://developers.facebook.com/apps' },
+  { category: 'integrations', taskName: 'Add Google Analytics', taskDescription: 'Create Google Analytics 4 property and add measurement ID for traffic tracking.', isRequired: false, sortOrder: 5, externalUrl: 'https://analytics.google.com' },
+  
+  // Staff Onboarding
+  { category: 'staff', taskName: 'Staff Accept Invitations', taskDescription: 'Ensure all invited staff members have accepted their email invitations and set passwords.', isRequired: true, sortOrder: 1 },
+  { category: 'staff', taskName: 'Complete Staff Training', taskDescription: 'Walk staff through the system: inventory browsing, customer management, and sales tools.', isRequired: true, sortOrder: 2 },
+  { category: 'staff', taskName: 'Assign Sales Territories', taskDescription: 'If applicable, assign sales territories or lead routing rules to sales staff.', isRequired: false, sortOrder: 3 },
+  
+  // Content & Testing
+  { category: 'content', taskName: 'Run First Inventory Scrape', taskDescription: 'Trigger the first inventory sync to populate vehicle listings from configured sources.', isRequired: true, sortOrder: 1 },
+  { category: 'content', taskName: 'Verify Financing Calculator', taskDescription: 'Test the financing calculator with a sample vehicle to ensure rates and fees are correct.', isRequired: true, sortOrder: 2 },
+  { category: 'content', taskName: 'Test AI Chatbot', taskDescription: 'Have a conversation with the chatbot to verify it responds correctly with dealership info.', isRequired: true, sortOrder: 3 },
+  { category: 'content', taskName: 'Review Vehicle Descriptions', taskDescription: 'Check that AI-generated vehicle descriptions are accurate and on-brand.', isRequired: false, sortOrder: 4 },
+  { category: 'content', taskName: 'Customize Chat Prompts', taskDescription: 'Review and customize AI chat prompts if default prompts need adjustment.', isRequired: false, sortOrder: 5 },
 ];
 
 export class OnboardingService {
@@ -289,6 +332,7 @@ export class OnboardingService {
       const masterAdminId = await this.executeStep('create_master_admin', () => this.createMasterAdmin(input.masterAdmin));
       await this.executeStep('create_staff_invites', () => this.createStaffInvites(input.additionalStaff, masterAdminId as number));
       await this.executeStep('initialize_integrations', () => this.initializeIntegrations(input.apiKeys));
+      await this.executeStep('seed_launch_checklist', () => this.seedLaunchChecklist());
       
       // Mark onboarding as completed
       await db.update(onboardingRuns)
@@ -655,6 +699,24 @@ export class OnboardingService {
         dealershipId: this.dealershipId,
         integrationName: integration.name,
         status: integration.hasKey ? 'pending' : 'not_configured',
+      });
+    }
+  }
+  
+  private async seedLaunchChecklist(): Promise<void> {
+    if (!this.dealershipId) throw new Error('Dealership not created');
+    
+    // Create all launch checklist items for this dealership
+    for (const item of DEFAULT_LAUNCH_CHECKLIST) {
+      await db.insert(launchChecklist).values({
+        dealershipId: this.dealershipId,
+        category: item.category,
+        taskName: item.taskName,
+        taskDescription: item.taskDescription,
+        isRequired: item.isRequired,
+        sortOrder: item.sortOrder,
+        externalUrl: item.externalUrl || null,
+        status: 'pending',
       });
     }
   }

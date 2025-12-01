@@ -1098,6 +1098,91 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // ===== LAUNCH CHECKLIST ROUTES (Super Admin) =====
+  
+  // Get launch checklist for a dealership
+  app.get("/api/super-admin/dealerships/:dealershipId/launch-checklist", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const dealershipId = parseInt(req.params.dealershipId);
+      const items = await storage.getLaunchChecklist(dealershipId);
+      const progress = await storage.getLaunchChecklistProgress(dealershipId);
+      res.json({ items, progress });
+    } catch (error) {
+      console.error("Error fetching launch checklist:", error);
+      res.status(500).json({ error: "Failed to fetch launch checklist" });
+    }
+  });
+  
+  // Get launch checklist progress for a dealership
+  app.get("/api/super-admin/dealerships/:dealershipId/launch-checklist/progress", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const dealershipId = parseInt(req.params.dealershipId);
+      const progress = await storage.getLaunchChecklistProgress(dealershipId);
+      res.json(progress);
+    } catch (error) {
+      console.error("Error fetching launch checklist progress:", error);
+      res.status(500).json({ error: "Failed to fetch progress" });
+    }
+  });
+  
+  // Complete a launch checklist item
+  app.post("/api/super-admin/dealerships/:dealershipId/launch-checklist/:itemId/complete", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const authReq = req as AuthRequest;
+      const dealershipId = parseInt(req.params.dealershipId);
+      const itemId = parseInt(req.params.itemId);
+      
+      const item = await storage.completeLaunchChecklistItem(itemId, dealershipId, authReq.user!.id);
+      if (!item) {
+        return res.status(404).json({ error: "Checklist item not found" });
+      }
+      res.json(item);
+    } catch (error) {
+      console.error("Error completing checklist item:", error);
+      res.status(500).json({ error: "Failed to complete item" });
+    }
+  });
+  
+  // Skip a launch checklist item
+  app.post("/api/super-admin/dealerships/:dealershipId/launch-checklist/:itemId/skip", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const dealershipId = parseInt(req.params.dealershipId);
+      const itemId = parseInt(req.params.itemId);
+      const { notes } = req.body;
+      
+      const item = await storage.skipLaunchChecklistItem(itemId, dealershipId, notes);
+      if (!item) {
+        return res.status(404).json({ error: "Checklist item not found" });
+      }
+      res.json(item);
+    } catch (error) {
+      console.error("Error skipping checklist item:", error);
+      res.status(500).json({ error: "Failed to skip item" });
+    }
+  });
+  
+  // Update checklist item notes
+  app.patch("/api/super-admin/dealerships/:dealershipId/launch-checklist/:itemId", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const dealershipId = parseInt(req.params.dealershipId);
+      const itemId = parseInt(req.params.itemId);
+      const { notes, status } = req.body;
+      
+      const updates: any = {};
+      if (notes !== undefined) updates.notes = notes;
+      if (status !== undefined) updates.status = status;
+      
+      const item = await storage.updateLaunchChecklistItem(itemId, dealershipId, updates);
+      if (!item) {
+        return res.status(404).json({ error: "Checklist item not found" });
+      }
+      res.json(item);
+    } catch (error) {
+      console.error("Error updating checklist item:", error);
+      res.status(500).json({ error: "Failed to update item" });
+    }
+  });
+  
   // ===== USER MANAGEMENT ROUTES (Master Only) =====
   
   // Get all users (master only)

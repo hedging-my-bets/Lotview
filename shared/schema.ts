@@ -826,3 +826,32 @@ export const insertIntegrationStatusSchema = createInsertSchema(integrationStatu
 
 export type InsertIntegrationStatus = z.infer<typeof insertIntegrationStatusSchema>;
 export type IntegrationStatus = typeof integrationStatus.$inferSelect;
+
+// Launch checklist - tracks manual tasks needed before dealership goes live
+export const launchChecklist = pgTable("launch_checklist", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  category: text("category").notNull(), // 'accounts', 'legal', 'branding', 'integrations', 'staff', 'content'
+  taskName: text("task_name").notNull(), // e.g., 'Create Facebook Business Page'
+  taskDescription: text("task_description"), // Detailed instructions
+  isRequired: boolean("is_required").notNull().default(true), // Required vs optional
+  status: text("status").notNull().default('pending'), // 'pending', 'in_progress', 'completed', 'skipped'
+  completedBy: integer("completed_by").references(() => users.id),
+  completedAt: timestamp("completed_at"),
+  dueDate: timestamp("due_date"), // Optional deadline
+  sortOrder: integer("sort_order").notNull().default(0), // For ordering within category
+  externalUrl: text("external_url"), // Link to external service (e.g., Stripe signup)
+  notes: text("notes"), // User notes about the task
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertLaunchChecklistSchema = createInsertSchema(launchChecklist).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  completedAt: true,
+});
+
+export type InsertLaunchChecklist = z.infer<typeof insertLaunchChecklistSchema>;
+export type LaunchChecklist = typeof launchChecklist.$inferSelect;
