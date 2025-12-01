@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Key, FileText, Plus, Eye, EyeOff, Trash2, LogOut, Settings2, CheckCircle2, XCircle, Loader2, Plug, Pencil, Webhook, Copy, AlertCircle, Clock, Link2, RefreshCw, Car, Rocket } from "lucide-react";
+import { Building2, Key, FileText, Plus, Eye, EyeOff, Trash2, LogOut, Settings2, CheckCircle2, XCircle, Loader2, Plug, Pencil, Webhook, Copy, AlertCircle, Clock, Link2, RefreshCw, Car, Rocket, Users, UserX, KeyRound, Search } from "lucide-react";
 import OnboardingWizard from "@/components/OnboardingWizard";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
@@ -65,6 +65,11 @@ interface User {
   role: string;
   dealershipId: number | null;
   isActive: boolean;
+}
+
+interface UserWithDealership extends User {
+  dealershipName?: string;
+  createdAt?: string;
 }
 
 interface DealershipWithIntegrations extends Dealership {
@@ -179,6 +184,21 @@ export default function SuperAdminDashboard() {
   const { data: scrapeSources = [], isLoading: scrapeSourcesLoading, refetch: refetchScrapeSources } = useQuery<ScrapeSource[]>({
     queryKey: ["/api/super-admin/scrape-sources"],
   });
+  
+  // All Users (for super admin user management)
+  const [userFilters, setUserFilters] = useState<{ dealershipId?: number; role?: string; search?: string }>({});
+  const { data: allUsers = [], isLoading: usersLoading, refetch: refetchUsers } = useQuery<UserWithDealership[]>({
+    queryKey: ["/api/super-admin/users", userFilters],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (userFilters.dealershipId) params.set('dealershipId', userFilters.dealershipId.toString());
+      if (userFilters.role) params.set('role', userFilters.role);
+      if (userFilters.search) params.set('search', userFilters.search);
+      const response = await fetch(`/api/super-admin/users?${params}`, { credentials: 'include' });
+      if (!response.ok) throw new Error('Failed to fetch users');
+      return response.json();
+    }
+  });
 
   // Create Dealership Mutation
   const createDealershipMutation = useMutation({
@@ -280,6 +300,78 @@ export default function SuperAdminDashboard() {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
+  
+  // Delete User Mutation
+  const deleteUserMutation = useMutation({
+    mutationFn: async (userId: number) => {
+      const response = await fetch(`/api/super-admin/users/${userId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to delete user");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/audit-logs"] });
+      toast({ title: "Success", description: "User deleted successfully" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+  
+  // Update User Status Mutation
+  const updateUserStatusMutation = useMutation({
+    mutationFn: async ({ userId, isActive }: { userId: number; isActive: boolean }) => {
+      const response = await fetch(`/api/super-admin/users/${userId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ isActive }),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to update user status");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/audit-logs"] });
+      toast({ title: "Success", description: "User status updated successfully" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+  
+  // Reset User Password Mutation
+  const resetPasswordMutation = useMutation({
+    mutationFn: async ({ userId, newPassword }: { userId: number; newPassword: string }) => {
+      const response = await fetch(`/api/super-admin/users/${userId}/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ newPassword }),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to reset password");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/audit-logs"] });
+      toast({ title: "Success", description: "Password reset successfully" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
 
   if (user?.role !== "super_admin") {
     return (
@@ -333,6 +425,11 @@ export default function SuperAdminDashboard() {
             <Link2 className="h-4 w-4 mr-1 sm:mr-2" />
             <span className="hidden sm:inline">Scrape Sources</span>
             <span className="sm:hidden">Scrape</span>
+          </TabsTrigger>
+          <TabsTrigger value="users" data-testid="tab-users" className="text-xs sm:text-sm px-2 sm:px-3 py-2">
+            <Users className="h-4 w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">User Management</span>
+            <span className="sm:hidden">Users</span>
           </TabsTrigger>
           <TabsTrigger value="onboarding" data-testid="tab-onboarding" className="text-xs sm:text-sm px-2 sm:px-3 py-2 bg-green-600/10 hover:bg-green-600/20">
             <Rocket className="h-4 w-4 mr-1 sm:mr-2 text-green-600" />
@@ -664,6 +761,157 @@ export default function SuperAdminDashboard() {
                   <strong>Tip:</strong> Add multiple inventory sources to aggregate vehicles from different locations 
                   or platforms. Daily scraping is recommended for accurate inventory.
                 </p>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Users Management Tab */}
+        <TabsContent value="users">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                <div>
+                  <CardTitle>User Management</CardTitle>
+                  <CardDescription>Manage users across all dealerships</CardDescription>
+                </div>
+                <Button 
+                  variant="outline" 
+                  onClick={() => refetchUsers()}
+                  data-testid="refresh-users"
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Refresh
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {/* Filters */}
+              <div className="flex flex-col sm:flex-row gap-4 mb-6">
+                <div className="flex-1">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search by name or email..."
+                      className="pl-10"
+                      value={userFilters.search || ''}
+                      onChange={(e) => setUserFilters(prev => ({ ...prev, search: e.target.value }))}
+                      data-testid="search-users"
+                    />
+                  </div>
+                </div>
+                <select
+                  className="border rounded-md px-3 py-2 text-sm bg-background"
+                  value={userFilters.dealershipId || ''}
+                  onChange={(e) => setUserFilters(prev => ({ 
+                    ...prev, 
+                    dealershipId: e.target.value ? parseInt(e.target.value) : undefined 
+                  }))}
+                  data-testid="filter-dealership"
+                >
+                  <option value="">All Dealerships</option>
+                  {dealerships.map((d) => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+                <select
+                  className="border rounded-md px-3 py-2 text-sm bg-background"
+                  value={userFilters.role || ''}
+                  onChange={(e) => setUserFilters(prev => ({ ...prev, role: e.target.value || undefined }))}
+                  data-testid="filter-role"
+                >
+                  <option value="">All Roles</option>
+                  <option value="super_admin">Super Admin</option>
+                  <option value="master">Master Admin</option>
+                  <option value="admin">Admin</option>
+                  <option value="manager">Manager</option>
+                  <option value="salesperson">Salesperson</option>
+                </select>
+              </div>
+              
+              {usersLoading ? (
+                <div className="text-center py-8 text-muted-foreground">Loading users...</div>
+              ) : allUsers.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">No users found</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Dealership</TableHead>
+                        <TableHead>Role</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {allUsers.map((u) => (
+                        <TableRow key={u.id} data-testid={`user-row-${u.id}`}>
+                          <TableCell className="font-medium">{u.name}</TableCell>
+                          <TableCell>{u.email}</TableCell>
+                          <TableCell>
+                            {u.dealershipName || (u.dealershipId ? `ID: ${u.dealershipId}` : 'N/A')}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={
+                              u.role === 'super_admin' ? 'default' :
+                              u.role === 'master' ? 'default' :
+                              u.role === 'admin' ? 'secondary' : 'outline'
+                            }>
+                              {u.role.replace('_', ' ')}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={u.isActive ? "default" : "destructive"}>
+                              {u.isActive ? "Active" : "Inactive"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              {u.role !== 'super_admin' && (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => updateUserStatusMutation.mutate({ 
+                                      userId: u.id, 
+                                      isActive: !u.isActive 
+                                    })}
+                                    title={u.isActive ? "Deactivate user" : "Activate user"}
+                                    data-testid={`toggle-status-${u.id}`}
+                                  >
+                                    {u.isActive ? (
+                                      <XCircle className="h-4 w-4 text-orange-500" />
+                                    ) : (
+                                      <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                    )}
+                                  </Button>
+                                  <ResetPasswordDialog 
+                                    user={u}
+                                    onReset={(newPassword) => resetPasswordMutation.mutate({ 
+                                      userId: u.id, 
+                                      newPassword 
+                                    })}
+                                  />
+                                  <DeleteUserDialog
+                                    user={u}
+                                    onDelete={() => deleteUserMutation.mutate(u.id)}
+                                  />
+                                </>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+              
+              <div className="mt-4 text-sm text-muted-foreground">
+                Total: {allUsers.length} user{allUsers.length !== 1 ? 's' : ''}
               </div>
             </CardContent>
           </Card>
@@ -2601,6 +2849,140 @@ function EditApiKeysDialog({
             </DialogFooter>
           </form>
         )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Delete User Dialog Component
+function DeleteUserDialog({ user, onDelete }: { user: UserWithDealership; onDelete: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
+  
+  const handleDelete = () => {
+    onDelete();
+    setOpen(false);
+    setConfirmText('');
+  };
+  
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="sm" title="Delete user" data-testid={`delete-user-${user.id}`}>
+          <Trash2 className="h-4 w-4 text-destructive" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Delete User</DialogTitle>
+          <DialogDescription>
+            Are you sure you want to delete this user? This action cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="p-4 border rounded-lg bg-muted">
+            <p className="font-medium">{user.name}</p>
+            <p className="text-sm text-muted-foreground">{user.email}</p>
+            <p className="text-sm text-muted-foreground">
+              {user.dealershipName || 'No dealership'} • {user.role.replace('_', ' ')}
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="confirm">Type "DELETE" to confirm</Label>
+            <Input
+              id="confirm"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder="DELETE"
+              data-testid="input-confirm-delete"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button 
+            variant="destructive" 
+            onClick={handleDelete}
+            disabled={confirmText !== 'DELETE'}
+            data-testid="button-confirm-delete"
+          >
+            Delete User
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Reset Password Dialog Component
+function ResetPasswordDialog({ user, onReset }: { user: UserWithDealership; onReset: (newPassword: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  
+  const handleReset = () => {
+    if (newPassword.length >= 6) {
+      onReset(newPassword);
+      setOpen(false);
+      setNewPassword('');
+    }
+  };
+  
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="sm" title="Reset password" data-testid={`reset-password-${user.id}`}>
+          <KeyRound className="h-4 w-4 text-blue-500" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Reset Password</DialogTitle>
+          <DialogDescription>
+            Set a new password for {user.name} ({user.email})
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="newPassword">New Password</Label>
+            <div className="flex gap-2">
+              <Input
+                id="newPassword"
+                type={showPassword ? "text" : "password"}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Enter new password (min 6 chars)"
+                className="flex-1"
+                data-testid="input-new-password"
+              />
+              <Button 
+                type="button" 
+                variant="ghost" 
+                size="icon"
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </Button>
+            </div>
+            {newPassword.length > 0 && newPassword.length < 6 && (
+              <p className="text-sm text-destructive mt-1">Password must be at least 6 characters</p>
+            )}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleReset}
+            disabled={newPassword.length < 6}
+            data-testid="button-reset-password"
+          >
+            Reset Password
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
