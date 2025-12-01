@@ -3119,8 +3119,8 @@ Format your response in clear sections with actionable recommendations.`;
         return res.status(400).json({ error: "Credit scores must be between 300 and 850" });
       }
       
-      if (interestRate < 0 || interestRate > 100) {
-        return res.status(400).json({ error: "Interest rate must be between 0 and 100" });
+      if (interestRate < 0 || interestRate > 10000) {
+        return res.status(400).json({ error: "Interest rate must be between 0 and 10000 basis points (0% - 100%)" });
       }
       
       const dealershipId = req.dealershipId!;
@@ -3158,8 +3158,8 @@ Format your response in clear sections with actionable recommendations.`;
         return res.status(400).json({ error: "Max score must be between 300 and 850" });
       }
       
-      if (interestRate !== undefined && (interestRate < 0 || interestRate > 100)) {
-        return res.status(400).json({ error: "Interest rate must be between 0 and 100" });
+      if (interestRate !== undefined && (interestRate < 0 || interestRate > 10000)) {
+        return res.status(400).json({ error: "Interest rate must be between 0 and 10000 basis points (0% - 100%)" });
       }
       
       const dealershipId = req.dealershipId!;
@@ -3218,8 +3218,10 @@ Format your response in clear sections with actionable recommendations.`;
         return res.status(400).json({ error: "At least one term must be selected" });
       }
       
+      // Convert terms to strings for validation (frontend may send numbers or strings)
+      const termsAsStrings = availableTerms.map(t => String(t));
       const validTerms = ["36", "48", "60", "72", "84"];
-      if (!availableTerms.every(term => validTerms.includes(term))) {
+      if (!termsAsStrings.every(term => validTerms.includes(term))) {
         return res.status(400).json({ error: "Invalid term selected" });
       }
       
@@ -3254,8 +3256,10 @@ Format your response in clear sections with actionable recommendations.`;
           return res.status(400).json({ error: "At least one term must be selected" });
         }
         
+        // Convert terms to strings for validation (frontend may send numbers or strings)
+        const termsAsStrings = availableTerms.map((t: string | number) => String(t));
         const validTerms = ["36", "48", "60", "72", "84"];
-        if (!availableTerms.every(term => validTerms.includes(term))) {
+        if (!termsAsStrings.every(term => validTerms.includes(term))) {
           return res.status(400).json({ error: "Invalid term selected" });
         }
       }
