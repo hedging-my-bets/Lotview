@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck } from "lucide-react";
+import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck, ClipboardCheck, BarChart3, Bot } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -31,8 +31,8 @@ export default function Manager() {
     postalCode: "",
     defaultRadiusKm: 50
   });
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [activeManagerTab, setActiveManagerTab] = useState<'appraisal' | 'inventory' | 'prompts' | 'settings'>('appraisal');
 
   // Market pricing state
   const [pricingForm, setPricingForm] = useState({
@@ -361,7 +361,6 @@ export default function Manager() {
           title: "Settings Saved",
           description: "Your postal code and default radius have been saved",
         });
-        setSettingsOpen(false);
         setPricingForm(prev => ({ ...prev, radiusKm: String(settings.defaultRadiusKm) }));
       } else {
         const error = await response.json();
@@ -399,7 +398,7 @@ export default function Manager() {
         description: "Please configure your postal code in Settings first",
         variant: "destructive",
       });
-      setSettingsOpen(true);
+      setActiveManagerTab('settings');
       return;
     }
 
@@ -579,7 +578,7 @@ export default function Manager() {
         description: "Please configure your postal code in Settings first to enable market pricing",
         variant: "destructive",
       });
-      setSettingsOpen(true);
+      setActiveManagerTab('settings');
       return;
     }
 
@@ -754,734 +753,731 @@ export default function Manager() {
             </Card>
           </div>
 
-          {/* Chat Prompts Card */}
-          <Card className="mb-6" data-testid="prompts-card">
+          {/* Manager Settings with Tabs */}
+          <Card className="mb-6" data-testid="manager-settings-card">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <MessageSquare className="w-5 h-5" />
-                Chat Prompts (Read-Only)
+                <Settings className="w-5 h-5" />
+                Manager Settings
               </CardTitle>
               <CardDescription>
-                View AI chat scenarios configured for your dealership
+                Vehicle appraisal, inventory analysis, chat prompts, and configuration
               </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {isLoadingPrompts ? (
-                <div className="space-y-2">
-                  <div className="h-12 bg-muted rounded animate-pulse" />
-                  <div className="h-12 bg-muted rounded animate-pulse" />
-                  <div className="h-12 bg-muted rounded animate-pulse" />
-                </div>
-              ) : chatPrompts.length > 0 ? (
-                <Accordion type="single" collapsible>
-                  {chatPrompts.map((prompt) => (
-                    <AccordionItem 
-                      key={prompt.id} 
-                      value={prompt.scenario}
-                      data-testid={`prompt-${prompt.scenario}`}
-                    >
-                      <AccordionTrigger className="text-left">
-                        {formatScenario(prompt.scenario)}
-                      </AccordionTrigger>
-                      <AccordionContent>
-                        <div className="text-sm text-muted-foreground whitespace-pre-wrap">
-                          {prompt.greeting}
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  ))}
-                </Accordion>
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  <MessageSquare className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
-                  <p className="text-sm">No chat prompts configured yet</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Settings Card */}
-          <Card className="mb-6">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Settings className="w-5 h-5" />
-                    Manager Settings
-                  </CardTitle>
-                  <CardDescription>
-                    Configure your location for market pricing searches
-                  </CardDescription>
-                </div>
+              <div className="flex flex-wrap gap-2 pt-4">
                 <Button
-                  variant="outline"
+                  variant={activeManagerTab === 'appraisal' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => setSettingsOpen(!settingsOpen)}
-                  data-testid="button-toggle-settings"
+                  onClick={() => setActiveManagerTab('appraisal')}
+                  data-testid="tab-vehicle-appraisal"
+                  className="flex items-center gap-2"
                 >
-                  {settingsOpen ? "Hide Settings" : "Show Settings"}
+                  <ClipboardCheck className="w-4 h-4" />
+                  Vehicle Appraisal
+                </Button>
+                <Button
+                  variant={activeManagerTab === 'inventory' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setActiveManagerTab('inventory')}
+                  data-testid="tab-inventory-analysis"
+                  className="flex items-center gap-2"
+                >
+                  <BarChart3 className="w-4 h-4" />
+                  Inventory Analysis
+                </Button>
+                <Button
+                  variant={activeManagerTab === 'prompts' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setActiveManagerTab('prompts')}
+                  data-testid="tab-ai-chat-prompts"
+                  className="flex items-center gap-2"
+                >
+                  <Bot className="w-4 h-4" />
+                  AI Chat Prompts
+                </Button>
+                <Button
+                  variant={activeManagerTab === 'settings' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setActiveManagerTab('settings')}
+                  data-testid="tab-settings"
+                  className="flex items-center gap-2"
+                >
+                  <Settings className="w-4 h-4" />
+                  Settings
                 </Button>
               </div>
             </CardHeader>
-            {settingsOpen && (
-              <CardContent>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <Label htmlFor="postal-code">Postal Code *</Label>
-                    <Input
-                      id="postal-code"
-                      placeholder="e.g., V6B 5J3"
-                      value={settings.postalCode}
-                      onChange={(e) => setSettings({ ...settings, postalCode: e.target.value.toUpperCase() })}
-                      data-testid="input-postal-code"
-                      className="mt-2"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Used for geocoding and radius-based market searches
-                    </p>
-                  </div>
-                  <div>
-                    <Label htmlFor="default-radius">Default Search Radius (KM)</Label>
-                    <Input
-                      id="default-radius"
-                      type="number"
-                      value={settings.defaultRadiusKm}
-                      onChange={(e) => setSettings({ ...settings, defaultRadiusKm: parseInt(e.target.value) || 50 })}
-                      data-testid="input-default-radius"
-                      className="mt-2"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Default radius for searching nearby listings
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  onClick={handleSaveSettings}
-                  disabled={isSavingSettings || !settings.postalCode}
-                  className="mt-4"
-                  data-testid="button-save-settings"
-                >
-                  {isSavingSettings ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                      Saving...
-                    </>
-                  ) : (
-                    "Save Settings"
-                  )}
-                </Button>
-              </CardContent>
-            )}
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>VIN Decoder & Market Pricing Analysis</CardTitle>
-              <CardDescription>
-                Decode VINs to get vehicle specifications and automatic market pricing analysis
-              </CardDescription>
-            </CardHeader>
             <CardContent>
-              <div className="space-y-8">
-                {/* VIN Decoder Section */}
-                <div className="space-y-4">
+              {/* Vehicle Appraisal Tab */}
+              {activeManagerTab === 'appraisal' && (
+                <div className="space-y-8" data-testid="tab-content-appraisal">
                   <div>
-                    <Label htmlFor="vin">Vehicle Identification Number (VIN)</Label>
-                    <div className="flex flex-col sm:flex-row gap-2 mt-2">
-                      <Input
-                        id="vin"
-                        placeholder="Enter 17-character VIN"
-                        value={vin}
-                        onChange={(e) => setVin(e.target.value.toUpperCase())}
-                        maxLength={17}
-                        className="font-mono flex-1"
-                        data-testid="input-vin"
-                      />
-                      <Button 
-                        onClick={handleVinDecode}
-                        disabled={vin.length !== 17 || isDecoding}
-                        data-testid="button-decode-vin"
-                        className="w-full sm:w-auto"
+                    <h3 className="text-lg font-semibold mb-4">VIN Decoder & Market Pricing Analysis</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Decode VINs to get vehicle specifications and automatic market pricing analysis
+                    </p>
+                  </div>
+                  
+                  {/* VIN Decoder Section */}
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="vin">Vehicle Identification Number (VIN)</Label>
+                      <div className="flex flex-col sm:flex-row gap-2 mt-2">
+                        <Input
+                          id="vin"
+                          placeholder="Enter 17-character VIN"
+                          value={vin}
+                          onChange={(e) => setVin(e.target.value.toUpperCase())}
+                          maxLength={17}
+                          className="font-mono flex-1"
+                          data-testid="input-vin"
+                        />
+                        <Button 
+                          onClick={handleVinDecode}
+                          disabled={vin.length !== 17 || isDecoding}
+                          data-testid="button-decode-vin"
+                          className="w-full sm:w-auto"
+                        >
+                          {isDecoding ? (
+                            <>
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                              Decoding...
+                            </>
+                          ) : (
+                            <>
+                              <Search className="w-4 h-4 mr-2" />
+                              Decode VIN
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Enter a valid 17-character VIN to decode and auto-populate market analysis
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* VIN Results */}
+                  {vinResults && (
+                    <div className="border-t pt-6" data-testid="vin-results">
+                      <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-lg p-6">
+                        <h3 className="text-xl font-bold text-foreground mb-4">
+                          {vinResults.year} {vinResults.make} {vinResults.model}
+                          {vinResults.trim && ` ${vinResults.trim}`}
+                        </h3>
+                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                          {vinResults.year && (
+                            <div data-testid="result-year">
+                              <div className="text-xs text-muted-foreground font-medium">Year</div>
+                              <div className="text-sm font-semibold">{vinResults.year}</div>
+                            </div>
+                          )}
+                          {vinResults.make && (
+                            <div data-testid="result-make">
+                              <div className="text-xs text-muted-foreground font-medium">Make</div>
+                              <div className="text-sm font-semibold">{vinResults.make}</div>
+                            </div>
+                          )}
+                          {vinResults.model && (
+                            <div data-testid="result-model">
+                              <div className="text-xs text-muted-foreground font-medium">Model</div>
+                              <div className="text-sm font-semibold">{vinResults.model}</div>
+                            </div>
+                          )}
+                          {vinResults.trim && (
+                            <div data-testid="result-trim">
+                              <div className="text-xs text-muted-foreground font-medium">Trim</div>
+                              <div className="text-sm font-semibold">{vinResults.trim}</div>
+                            </div>
+                          )}
+                          {vinResults.bodyClass && (
+                            <div data-testid="result-body-class">
+                              <div className="text-xs text-muted-foreground font-medium">Body Class</div>
+                              <div className="text-sm font-semibold">{vinResults.bodyClass}</div>
+                            </div>
+                          )}
+                          {vinResults.vehicleType && (
+                            <div data-testid="result-vehicle-type">
+                              <div className="text-xs text-muted-foreground font-medium">Vehicle Type</div>
+                              <div className="text-sm font-semibold">{vinResults.vehicleType}</div>
+                            </div>
+                          )}
+                          {vinResults.fuelType && (
+                            <div data-testid="result-fuel-type">
+                              <div className="text-xs text-muted-foreground font-medium">Fuel Type</div>
+                              <div className="text-sm font-semibold">{vinResults.fuelType}</div>
+                            </div>
+                          )}
+                          {vinResults.transmission && (
+                            <div data-testid="result-transmission">
+                              <div className="text-xs text-muted-foreground font-medium">Transmission</div>
+                              <div className="text-sm font-semibold">{vinResults.transmission}</div>
+                            </div>
+                          )}
+                          {vinResults.driveType && (
+                            <div data-testid="result-drive-type">
+                              <div className="text-xs text-muted-foreground font-medium">Drive Type</div>
+                              <div className="text-sm font-semibold">{vinResults.driveType}</div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Market Pricing Section */}
+                  <div className="border-t pt-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-foreground">Market Pricing Analysis</h3>
+                      <Button
+                        onClick={handleRefreshMarketData}
+                        disabled={isScraping || !pricingForm.make || !pricingForm.model}
+                        variant="outline"
+                        size="sm"
+                        data-testid="button-refresh-market"
                       >
-                        {isDecoding ? (
+                        {isScraping ? (
                           <>
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                            Decoding...
+                            <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin mr-2" />
+                            Refreshing...
                           </>
                         ) : (
                           <>
-                            <Search className="w-4 h-4 mr-2" />
-                            Decode VIN
+                            <RefreshCw className="w-3 h-3 mr-2" />
+                            Refresh Market Data
                           </>
                         )}
                       </Button>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Enter a valid 17-character VIN to decode and auto-populate market analysis
-                    </p>
-                  </div>
-                </div>
-
-                {/* VIN Results */}
-                {vinResults && (
-                  <div className="border-t pt-6" data-testid="vin-results">
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-                      <h3 className="text-xl font-bold text-foreground mb-4">
-                        {vinResults.year} {vinResults.make} {vinResults.model}
-                        {vinResults.trim && ` ${vinResults.trim}`}
-                      </h3>
-                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                        {vinResults.year && (
-                          <div data-testid="result-year">
-                            <div className="text-xs text-muted-foreground font-medium">Year</div>
-                            <div className="text-sm font-semibold">{vinResults.year}</div>
-                          </div>
-                        )}
-                        {vinResults.make && (
-                          <div data-testid="result-make">
-                            <div className="text-xs text-muted-foreground font-medium">Make</div>
-                            <div className="text-sm font-semibold">{vinResults.make}</div>
-                          </div>
-                        )}
-                        {vinResults.model && (
-                          <div data-testid="result-model">
-                            <div className="text-xs text-muted-foreground font-medium">Model</div>
-                            <div className="text-sm font-semibold">{vinResults.model}</div>
-                          </div>
-                        )}
-                        {vinResults.trim && (
-                          <div data-testid="result-trim">
-                            <div className="text-xs text-muted-foreground font-medium">Trim</div>
-                            <div className="text-sm font-semibold">{vinResults.trim}</div>
-                          </div>
-                        )}
-                        {vinResults.bodyClass && (
-                          <div data-testid="result-body-class">
-                            <div className="text-xs text-muted-foreground font-medium">Body Class</div>
-                            <div className="text-sm font-semibold">{vinResults.bodyClass}</div>
-                          </div>
-                        )}
-                        {vinResults.vehicleType && (
-                          <div data-testid="result-vehicle-type">
-                            <div className="text-xs text-muted-foreground font-medium">Vehicle Type</div>
-                            <div className="text-sm font-semibold">{vinResults.vehicleType}</div>
-                          </div>
-                        )}
-                        {vinResults.fuelType && (
-                          <div data-testid="result-fuel-type">
-                            <div className="text-xs text-muted-foreground font-medium">Fuel Type</div>
-                            <div className="text-sm font-semibold">{vinResults.fuelType}</div>
-                          </div>
-                        )}
-                        {vinResults.transmission && (
-                          <div data-testid="result-transmission">
-                            <div className="text-xs text-muted-foreground font-medium">Transmission</div>
-                            <div className="text-sm font-semibold">{vinResults.transmission}</div>
-                          </div>
-                        )}
-                        {vinResults.driveType && (
-                          <div data-testid="result-drive-type">
-                            <div className="text-xs text-muted-foreground font-medium">Drive Type</div>
-                            <div className="text-sm font-semibold">{vinResults.driveType}</div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Market Pricing Section */}
-                <div className="border-t pt-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-foreground">Market Pricing Analysis</h3>
-                    <Button
-                      onClick={handleRefreshMarketData}
-                      disabled={isScraping || !pricingForm.make || !pricingForm.model}
-                      variant="outline"
-                      size="sm"
-                      data-testid="button-refresh-market"
-                    >
-                      {isScraping ? (
-                        <>
-                          <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin mr-2" />
-                          Refreshing...
-                        </>
-                      ) : (
-                        <>
-                          <RefreshCw className="w-3 h-3 mr-2" />
-                          Refresh Market Data
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {/* Year Multi-Select */}
-                    <div>
-                      <Label>Year (Select Multiple)</Label>
-                      <div className="mt-2">
-                        <Popover open={yearOpen} onOpenChange={setYearOpen}>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              role="combobox"
-                              aria-expanded={yearOpen}
-                              className="w-full justify-between"
-                              data-testid="select-year"
-                            >
-                              <span className="truncate">
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                      {/* Year Multi-Select */}
+                      <div>
+                        <Label>Year (Select Multiple)</Label>
+                        <div className="mt-2">
+                          <Popover open={yearOpen} onOpenChange={setYearOpen}>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                aria-expanded={yearOpen}
+                                className="w-full justify-between"
+                                data-testid="select-years"
+                              >
                                 {pricingForm.selectedYears.length > 0 
                                   ? `${pricingForm.selectedYears.length} year(s) selected`
-                                  : "Select years..."}
-                              </span>
-                              <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-[250px] p-0" align="start">
-                            <Command>
-                              <CommandInput placeholder="Search year..." />
-                              <CommandList>
-                                <CommandEmpty>No year found.</CommandEmpty>
-                                <CommandGroup>
-                                  {Array.from({ length: 20 }, (_, i) => new Date().getFullYear() + 1 - i).map((year) => {
-                                    const isSelected = pricingForm.selectedYears.includes(year);
-                                    return (
+                                  : "Select years"}
+                                <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[200px] p-0">
+                              <Command>
+                                <CommandInput placeholder="Search year..." />
+                                <CommandList>
+                                  <CommandEmpty>No year found.</CommandEmpty>
+                                  <CommandGroup>
+                                    {Array.from({ length: 10 }, (_, i) => new Date().getFullYear() + 1 - i).map((year) => (
                                       <CommandItem
                                         key={year}
                                         value={String(year)}
                                         onSelect={() => {
-                                          const newYears = isSelected
-                                            ? pricingForm.selectedYears.filter(y => y !== year)
-                                            : [...pricingForm.selectedYears, year].sort((a, b) => b - a);
-                                          setPricingForm({ ...pricingForm, selectedYears: newYears });
+                                          setPricingForm(prev => ({
+                                            ...prev,
+                                            selectedYears: prev.selectedYears.includes(year)
+                                              ? prev.selectedYears.filter(y => y !== year)
+                                              : [...prev.selectedYears, year].sort((a, b) => b - a)
+                                          }));
                                         }}
-                                        data-testid={`option-year-${year}`}
                                       >
                                         <Check
                                           className={cn(
                                             "mr-2 h-4 w-4",
-                                            isSelected ? "opacity-100" : "opacity-0"
+                                            pricingForm.selectedYears.includes(year) ? "opacity-100" : "opacity-0"
                                           )}
                                         />
                                         {year}
                                       </CommandItem>
-                                    );
-                                  })}
-                                </CommandGroup>
-                              </CommandList>
-                            </Command>
-                          </PopoverContent>
-                        </Popover>
-                        {pricingForm.selectedYears.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            {pricingForm.selectedYears.sort((a, b) => b - a).map((year) => (
-                              <Badge
-                                key={year}
-                                variant="secondary"
-                                className="text-xs"
-                                data-testid={`badge-year-${year}`}
-                              >
-                                {year}
-                                <X
-                                  className="ml-1 h-3 w-3 cursor-pointer"
-                                  onClick={() => {
-                                    setPricingForm({
-                                      ...pricingForm,
-                                      selectedYears: pricingForm.selectedYears.filter(y => y !== year)
-                                    });
-                                  }}
-                                />
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
+                                    ))}
+                                  </CommandGroup>
+                                </CommandList>
+                              </Command>
+                            </PopoverContent>
+                          </Popover>
+                        </div>
                       </div>
-                    </div>
 
-                    {/* Make Autocomplete */}
-                    <div>
-                      <Label>Make *</Label>
-                      <Popover open={makeOpen} onOpenChange={setMakeOpen}>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            role="combobox"
-                            aria-expanded={makeOpen}
-                            className="w-full justify-between mt-2"
-                            data-testid="select-make"
-                          >
-                            {pricingForm.make || "Select make..."}
-                            <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-[300px] p-0">
-                          <Command>
-                            <CommandInput placeholder="Search make..." />
-                            <CommandList>
-                              <CommandEmpty>No make found.</CommandEmpty>
-                              <CommandGroup>
-                                {makes.map((make) => (
-                                  <CommandItem
-                                    key={make}
-                                    value={make}
-                                    onSelect={() => {
-                                      setPricingForm({ ...pricingForm, make, model: "", selectedTrims: [] });
-                                      setMakeOpen(false);
-                                    }}
-                                    data-testid={`option-make-${make.toLowerCase()}`}
-                                  >
-                                    <Check
-                                      className={cn(
-                                        "mr-2 h-4 w-4",
-                                        pricingForm.make === make ? "opacity-100" : "opacity-0"
-                                      )}
-                                    />
-                                    {make}
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
-                            </CommandList>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-
-                    {/* Model Autocomplete */}
-                    <div>
-                      <Label>Model *</Label>
-                      <Popover open={modelOpen} onOpenChange={setModelOpen}>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            role="combobox"
-                            aria-expanded={modelOpen}
-                            className="w-full justify-between mt-2"
-                            disabled={!pricingForm.make}
-                            data-testid="select-model"
-                          >
-                            {pricingForm.model || "Select model..."}
-                            <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-[300px] p-0">
-                          <Command>
-                            <CommandInput placeholder="Search model..." />
-                            <CommandList>
-                              <CommandEmpty>No model found.</CommandEmpty>
-                              <CommandGroup>
-                                {models.map((model) => (
-                                  <CommandItem
-                                    key={model}
-                                    value={model}
-                                    onSelect={() => {
-                                      setPricingForm({ ...pricingForm, model, selectedTrims: [] });
-                                      setModelOpen(false);
-                                    }}
-                                    data-testid={`option-model-${model.toLowerCase()}`}
-                                  >
-                                    <Check
-                                      className={cn(
-                                        "mr-2 h-4 w-4",
-                                        pricingForm.model === model ? "opacity-100" : "opacity-0"
-                                      )}
-                                    />
-                                    {model}
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
-                            </CommandList>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-
-                    {/* Trim Multi-Select */}
-                    <div className="md:col-span-3">
-                      <Label>Trims (Optional - Select Multiple)</Label>
-                      <div className="mt-2">
-                        <Popover open={trimOpen} onOpenChange={setTrimOpen}>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              role="combobox"
-                              aria-expanded={trimOpen}
-                              className="w-full justify-between"
-                              disabled={!pricingForm.model}
-                              data-testid="select-trim"
-                            >
-                              <span className="truncate">
-                                {pricingForm.selectedTrims.length > 0 
-                                  ? `${pricingForm.selectedTrims.length} trim(s) selected`
-                                  : "Select trims..."}
-                              </span>
-                              <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-[400px] p-0">
-                            <Command>
-                              <CommandInput placeholder="Search trim..." />
-                              <CommandList>
-                                <CommandEmpty>No trim found.</CommandEmpty>
-                                <CommandGroup>
-                                  {trims.map((trim) => {
-                                    const isSelected = pricingForm.selectedTrims.includes(trim);
-                                    return (
+                      {/* Make Select */}
+                      <div>
+                        <Label>Make</Label>
+                        <div className="mt-2">
+                          <Popover open={makeOpen} onOpenChange={setMakeOpen}>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                aria-expanded={makeOpen}
+                                className="w-full justify-between"
+                                data-testid="select-make"
+                              >
+                                {pricingForm.make || "Select make"}
+                                <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[200px] p-0">
+                              <Command>
+                                <CommandInput placeholder="Search make..." />
+                                <CommandList>
+                                  <CommandEmpty>No make found.</CommandEmpty>
+                                  <CommandGroup>
+                                    {makes.map((make) => (
                                       <CommandItem
-                                        key={trim}
-                                        value={trim}
-                                        onSelect={() => {
-                                          const newTrims = isSelected
-                                            ? pricingForm.selectedTrims.filter(t => t !== trim)
-                                            : [...pricingForm.selectedTrims, trim];
-                                          setPricingForm({ ...pricingForm, selectedTrims: newTrims });
+                                        key={make}
+                                        value={make}
+                                        onSelect={(value) => {
+                                          setPricingForm(prev => ({ ...prev, make: value }));
+                                          setMakeOpen(false);
                                         }}
-                                        data-testid={`option-trim-${trim.toLowerCase().replace(/\s+/g, '-')}`}
                                       >
                                         <Check
                                           className={cn(
                                             "mr-2 h-4 w-4",
-                                            isSelected ? "opacity-100" : "opacity-0"
+                                            pricingForm.make === make ? "opacity-100" : "opacity-0"
+                                          )}
+                                        />
+                                        {make}
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                </CommandList>
+                              </Command>
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                      </div>
+
+                      {/* Model Select */}
+                      <div>
+                        <Label>Model</Label>
+                        <div className="mt-2">
+                          <Popover open={modelOpen} onOpenChange={setModelOpen}>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                aria-expanded={modelOpen}
+                                className="w-full justify-between"
+                                disabled={!pricingForm.make}
+                                data-testid="select-model"
+                              >
+                                {pricingForm.model || "Select model"}
+                                <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[200px] p-0">
+                              <Command>
+                                <CommandInput placeholder="Search model..." />
+                                <CommandList>
+                                  <CommandEmpty>No model found.</CommandEmpty>
+                                  <CommandGroup>
+                                    {models.map((model) => (
+                                      <CommandItem
+                                        key={model}
+                                        value={model}
+                                        onSelect={(value) => {
+                                          setPricingForm(prev => ({ ...prev, model: value }));
+                                          setModelOpen(false);
+                                        }}
+                                      >
+                                        <Check
+                                          className={cn(
+                                            "mr-2 h-4 w-4",
+                                            pricingForm.model === model ? "opacity-100" : "opacity-0"
+                                          )}
+                                        />
+                                        {model}
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                </CommandList>
+                              </Command>
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                      </div>
+
+                      {/* Trim Multi-Select */}
+                      <div>
+                        <Label>Trim (Select Multiple)</Label>
+                        <div className="mt-2">
+                          <Popover open={trimOpen} onOpenChange={setTrimOpen}>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                aria-expanded={trimOpen}
+                                className="w-full justify-between"
+                                disabled={!pricingForm.model}
+                                data-testid="select-trims"
+                              >
+                                {pricingForm.selectedTrims.length > 0 
+                                  ? `${pricingForm.selectedTrims.length} trim(s) selected`
+                                  : "Select trims (optional)"}
+                                <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[200px] p-0">
+                              <Command>
+                                <CommandInput placeholder="Search trim..." />
+                                <CommandList>
+                                  <CommandEmpty>No trim found.</CommandEmpty>
+                                  <CommandGroup>
+                                    {trims.map((trim) => (
+                                      <CommandItem
+                                        key={trim}
+                                        value={trim}
+                                        onSelect={() => {
+                                          setPricingForm(prev => ({
+                                            ...prev,
+                                            selectedTrims: prev.selectedTrims.includes(trim)
+                                              ? prev.selectedTrims.filter(t => t !== trim)
+                                              : [...prev.selectedTrims, trim]
+                                          }));
+                                        }}
+                                      >
+                                        <Check
+                                          className={cn(
+                                            "mr-2 h-4 w-4",
+                                            pricingForm.selectedTrims.includes(trim) ? "opacity-100" : "opacity-0"
                                           )}
                                         />
                                         {trim}
                                       </CommandItem>
-                                    );
-                                  })}
-                                </CommandGroup>
-                              </CommandList>
-                            </Command>
-                          </PopoverContent>
-                        </Popover>
-                        {/* Selected trims badges */}
-                        {pricingForm.selectedTrims.length > 0 && (
-                          <div className="flex flex-wrap gap-2 mt-2">
-                            {pricingForm.selectedTrims.map((trim) => (
-                              <Badge
-                                key={trim}
-                                variant="secondary"
-                                className="gap-1"
-                                data-testid={`badge-trim-${trim.toLowerCase().replace(/\s+/g, '-')}`}
-                              >
-                                {trim}
-                                <X
-                                  className="w-3 h-3 cursor-pointer hover:text-destructive"
-                                  onClick={() => {
-                                    setPricingForm({
-                                      ...pricingForm,
-                                      selectedTrims: pricingForm.selectedTrims.filter(t => t !== trim)
-                                    });
-                                  }}
-                                />
-                              </Badge>
-                            ))}
+                                    ))}
+                                  </CommandGroup>
+                                </CommandList>
+                              </Command>
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                      </div>
+
+                      {/* Mileage */}
+                      <div>
+                        <Label htmlFor="mileage">Mileage (Optional)</Label>
+                        <Input
+                          id="mileage"
+                          type="number"
+                          placeholder="e.g., 50000"
+                          value={pricingForm.mileage}
+                          onChange={(e) => setPricingForm(prev => ({ ...prev, mileage: e.target.value }))}
+                          data-testid="input-mileage"
+                          className="mt-2"
+                        />
+                      </div>
+
+                      {/* Radius */}
+                      <div>
+                        <Label htmlFor="radius">Search Radius (KM)</Label>
+                        <Select
+                          value={pricingForm.radiusKm}
+                          onValueChange={(value) => setPricingForm(prev => ({ ...prev, radiusKm: value }))}
+                        >
+                          <SelectTrigger className="mt-2" data-testid="select-radius">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="25">25 km</SelectItem>
+                            <SelectItem value="50">50 km</SelectItem>
+                            <SelectItem value="100">100 km</SelectItem>
+                            <SelectItem value="200">200 km</SelectItem>
+                            <SelectItem value="500">500 km</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <Button
+                      onClick={handleMarketSearch}
+                      disabled={isAnalyzing || !pricingForm.make || !pricingForm.model}
+                      className="mt-4"
+                      data-testid="button-analyze-pricing"
+                    >
+                      {isAnalyzing ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                          Analyzing...
+                        </>
+                      ) : (
+                        <>
+                          <TrendingUp className="w-4 h-4 mr-2" />
+                          Analyze Market Pricing
+                        </>
+                      )}
+                    </Button>
+                  </div>
+
+                  {/* Market Pricing Results */}
+                  {pricingResults && (
+                    <div className="border-t pt-6" data-testid="pricing-results">
+                      <div className="space-y-6">
+                        {/* Data Source Info */}
+                        {pricingResults.meta && (
+                          <div className="bg-muted border border-border rounded-lg p-4">
+                            <div className="space-y-3">
+                              <div className="flex flex-wrap items-center gap-4 text-sm">
+                                <div>
+                                  <span className="font-medium text-foreground">Data Source:</span>{' '}
+                                  <span className="text-foreground">{pricingResults.meta.dataSource === 'external_market' ? 'External Market Listings' : 'No Data'}</span>
+                                </div>
+                                {pricingResults.meta.year && (
+                                  <div>
+                                    <span className="font-medium text-foreground">Year:</span>{' '}
+                                    <span className="text-foreground">{pricingResults.meta.year}</span>
+                                  </div>
+                                )}
+                                {pricingResults.meta.searchRadius && (
+                                  <div>
+                                    <span className="font-medium text-foreground">Search Radius:</span>{' '}
+                                    <span className="text-foreground">{pricingResults.meta.searchRadius} KM</span>
+                                  </div>
+                                )}
+                                {pricingResults.meta.postalCode && (
+                                  <div>
+                                    <span className="font-medium text-foreground">Location:</span>{' '}
+                                    <span className="text-foreground">{pricingResults.meta.postalCode}</span>
+                                  </div>
+                                )}
+                              </div>
+                              
+                              {pricingResults.meta.sourceBreakdown && (
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="text-sm font-medium text-foreground">Data Sources:</span>
+                                  {pricingResults.meta.sourceBreakdown.marketcheck > 0 && (
+                                    <Badge variant="default" className="bg-green-600 hover:bg-green-700">
+                                      MarketCheck: {pricingResults.meta.sourceBreakdown.marketcheck}
+                                    </Badge>
+                                  )}
+                                  {pricingResults.meta.sourceBreakdown.apify > 0 && (
+                                    <Badge variant="default" className="bg-blue-600 hover:bg-blue-700">
+                                      Apify: {pricingResults.meta.sourceBreakdown.apify}
+                                    </Badge>
+                                  )}
+                                  {pricingResults.meta.sourceBreakdown.autotrader_scraper > 0 && (
+                                    <Badge variant="outline" className="border-border">
+                                      Scraper: {pricingResults.meta.sourceBreakdown.autotrader_scraper}
+                                    </Badge>
+                                  )}
+                                  {pricingResults.meta.totalListings > 0 && (
+                                    <Badge variant="secondary" className="ml-2">
+                                      Total: {pricingResults.meta.totalListings}
+                                    </Badge>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Market Statistics */}
+                        <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-lg p-6">
+                          <h3 className="text-xl font-bold text-foreground mb-4">
+                            Market Analysis: {pricingForm.make} {pricingForm.model}
+                            {pricingForm.selectedTrims.length > 0 && ` - ${pricingForm.selectedTrims.join(', ')}`}
+                          </h3>
+                          <div className="grid gap-4 md:grid-cols-4">
+                            <div data-testid="stat-average-price">
+                              <div className="text-xs text-muted-foreground font-medium">Average Price</div>
+                              <div className="text-2xl font-bold text-green-600">
+                                ${pricingResults.averagePrice.toLocaleString()}
+                              </div>
+                            </div>
+                            <div data-testid="stat-median-price">
+                              <div className="text-xs text-muted-foreground font-medium">Median Price</div>
+                              <div className="text-2xl font-bold">${pricingResults.medianPrice.toLocaleString()}</div>
+                            </div>
+                            <div data-testid="stat-price-range">
+                              <div className="text-xs text-muted-foreground font-medium">Price Range</div>
+                              <div className="text-lg font-semibold">
+                                ${pricingResults.minPrice.toLocaleString()} - ${pricingResults.maxPrice.toLocaleString()}
+                              </div>
+                            </div>
+                            <div data-testid="stat-total-comps">
+                              <div className="text-xs text-muted-foreground font-medium">Comparables Found</div>
+                              <div className="text-2xl font-bold">{pricingResults.totalComps}</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Recommendation */}
+                        <div className="bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-900 rounded-lg p-4">
+                          <h4 className="font-semibold text-foreground mb-2">Market Recommendation</h4>
+                          <p className="text-sm text-foreground">{pricingResults.recommendation}</p>
+                          <div className="mt-3 text-sm">
+                            <span className="font-medium">Recommended Price Range:</span>{' '}
+                            <span className="font-semibold text-green-600">
+                              ${pricingResults.priceRange.low.toLocaleString()} - ${pricingResults.priceRange.high.toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Comparable Vehicles */}
+                        {pricingResults.comparisons && pricingResults.comparisons.length > 0 && (
+                          <div>
+                            <h4 className="font-semibold text-foreground mb-4">Comparable Vehicles</h4>
+                            <div className="space-y-3">
+                              {pricingResults.comparisons.slice(0, 10).map((comp: any, index: number) => (
+                                <div 
+                                  key={index}
+                                  className="border rounded-lg p-4 hover:bg-muted"
+                                  data-testid={`comparison-${index}`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex-1">
+                                      <div className="font-medium">
+                                        {comp.year} {comp.make} {comp.model}
+                                        {comp.trim && ` ${comp.trim}`}
+                                      </div>
+                                      <div className="text-sm text-muted-foreground mt-1">
+                                        Stock #{comp.stockNumber} • {comp.location} • {comp.dealership}
+                                        {comp.mileage && ` • ${comp.mileage.toLocaleString()} mi`}
+                                      </div>
+                                    </div>
+                                    <div className="text-right ml-4">
+                                      <div className="font-bold text-lg">${comp.price.toLocaleString()}</div>
+                                      <div className={`text-sm ${comp.priceDifference >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                        {comp.priceDifference >= 0 ? '+' : ''}{comp.percentageDifference}% vs avg
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         )}
                       </div>
                     </div>
+                  )}
 
-                    {/* Mileage Input */}
-                    <div>
-                      <Label htmlFor="mileage">Mileage (Optional)</Label>
-                      <Input
-                        id="mileage"
-                        type="number"
-                        placeholder="e.g., 25000"
-                        value={pricingForm.mileage}
-                        onChange={(e) => setPricingForm({ ...pricingForm, mileage: e.target.value })}
-                        data-testid="input-mileage"
-                        className="mt-2"
-                      />
+                  {!pricingResults && !vinResults && (
+                    <div className="border-t pt-6">
+                      <div className="text-center py-12 text-muted-foreground">
+                        <Car className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+                        <h3 className="text-lg font-medium mb-2">Get Started</h3>
+                        <p className="text-sm mb-4">
+                          Enter a VIN to decode and automatically analyze market pricing, or manually enter vehicle details
+                        </p>
+                      </div>
                     </div>
-
-                    {/* Radius Input */}
-                    <div>
-                      <Label htmlFor="radius-km">Search Radius (KM)</Label>
-                      <Input
-                        id="radius-km"
-                        type="number"
-                        value={pricingForm.radiusKm}
-                        onChange={(e) => setPricingForm({ ...pricingForm, radiusKm: e.target.value })}
-                        data-testid="input-radius"
-                        className="mt-2"
-                      />
-                    </div>
-                  </div>
-
-                  <Button 
-                    onClick={handleMarketSearch} 
-                    className="w-full md:w-auto mt-6"
-                    disabled={isAnalyzing || !pricingForm.make || !pricingForm.model}
-                    data-testid="button-search-market"
-                  >
-                    {isAnalyzing ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                        Analyzing...
-                      </>
-                    ) : (
-                      <>
-                        <TrendingUp className="w-4 h-4 mr-2" />
-                        Analyze Market Pricing
-                      </>
-                    )}
-                  </Button>
+                  )}
                 </div>
+              )}
 
-                {/* Market Pricing Results */}
-                {pricingResults && (
-                  <div className="border-t pt-6" data-testid="pricing-results">
-                    <div className="space-y-6">
-                      {/* Data Source Info */}
-                      {pricingResults.meta && (
-                        <div className="bg-muted border border-border rounded-lg p-4">
-                          <div className="space-y-3">
-                            {/* Primary metadata row */}
-                            <div className="flex flex-wrap items-center gap-4 text-sm">
-                              <div>
-                                <span className="font-medium text-foreground">Data Source:</span>{' '}
-                                <span className="text-foreground">{pricingResults.meta.dataSource === 'external_market' ? 'External Market Listings' : 'No Data'}</span>
-                              </div>
-                              {pricingResults.meta.year && (
-                                <div>
-                                  <span className="font-medium text-foreground">Year:</span>{' '}
-                                  <span className="text-foreground">{pricingResults.meta.year}</span>
-                                </div>
-                              )}
-                              {pricingResults.meta.searchRadius && (
-                                <div>
-                                  <span className="font-medium text-foreground">Search Radius:</span>{' '}
-                                  <span className="text-foreground">{pricingResults.meta.searchRadius} KM</span>
-                                </div>
-                              )}
-                              {pricingResults.meta.postalCode && (
-                                <div>
-                                  <span className="font-medium text-foreground">Location:</span>{' '}
-                                  <span className="text-foreground">{pricingResults.meta.postalCode}</span>
-                                </div>
-                              )}
-                            </div>
-                            
-                            {/* Source breakdown badges */}
-                            {pricingResults.meta.sourceBreakdown && (
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="text-sm font-medium text-foreground">Data Sources:</span>
-                                {pricingResults.meta.sourceBreakdown.marketcheck > 0 && (
-                                  <Badge variant="default" className="bg-green-600 hover:bg-green-700">
-                                    MarketCheck: {pricingResults.meta.sourceBreakdown.marketcheck}
-                                  </Badge>
-                                )}
-                                {pricingResults.meta.sourceBreakdown.apify > 0 && (
-                                  <Badge variant="default" className="bg-blue-600 hover:bg-blue-700">
-                                    Apify: {pricingResults.meta.sourceBreakdown.apify}
-                                  </Badge>
-                                )}
-                                {pricingResults.meta.sourceBreakdown.autotrader_scraper > 0 && (
-                                  <Badge variant="outline" className="border-border">
-                                    Scraper: {pricingResults.meta.sourceBreakdown.autotrader_scraper}
-                                  </Badge>
-                                )}
-                                {pricingResults.meta.totalListings > 0 && (
-                                  <Badge variant="secondary" className="ml-2">
-                                    Total: {pricingResults.meta.totalListings}
-                                  </Badge>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Market Statistics */}
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-                        <h3 className="text-xl font-bold text-foreground mb-4">
-                          Market Analysis: {pricingForm.make} {pricingForm.model}
-                          {pricingForm.selectedTrims.length > 0 && ` - ${pricingForm.selectedTrims.join(', ')}`}
-                        </h3>
-                        <div className="grid gap-4 md:grid-cols-4">
-                          <div data-testid="stat-average-price">
-                            <div className="text-xs text-muted-foreground font-medium">Average Price</div>
-                            <div className="text-2xl font-bold text-green-600">
-                              ${pricingResults.averagePrice.toLocaleString()}
-                            </div>
-                          </div>
-                          <div data-testid="stat-median-price">
-                            <div className="text-xs text-muted-foreground font-medium">Median Price</div>
-                            <div className="text-2xl font-bold">${pricingResults.medianPrice.toLocaleString()}</div>
-                          </div>
-                          <div data-testid="stat-price-range">
-                            <div className="text-xs text-muted-foreground font-medium">Price Range</div>
-                            <div className="text-lg font-semibold">
-                              ${pricingResults.minPrice.toLocaleString()} - ${pricingResults.maxPrice.toLocaleString()}
-                            </div>
-                          </div>
-                          <div data-testid="stat-total-comps">
-                            <div className="text-xs text-muted-foreground font-medium">Comparables Found</div>
-                            <div className="text-2xl font-bold">{pricingResults.totalComps}</div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Recommendation */}
-                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                        <h4 className="font-semibold text-foreground mb-2">Market Recommendation</h4>
-                        <p className="text-sm text-foreground">{pricingResults.recommendation}</p>
-                        <div className="mt-3 text-sm">
-                          <span className="font-medium">Recommended Price Range:</span>{' '}
-                          <span className="font-semibold text-green-600">
-                            ${pricingResults.priceRange.low.toLocaleString()} - ${pricingResults.priceRange.high.toLocaleString()}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Comparable Vehicles */}
-                      {pricingResults.comparisons && pricingResults.comparisons.length > 0 && (
-                        <div>
-                          <h4 className="font-semibold text-foreground mb-4">Comparable Vehicles</h4>
-                          <div className="space-y-3">
-                            {pricingResults.comparisons.slice(0, 10).map((comp: any, index: number) => (
-                              <div 
-                                key={index}
-                                className="border rounded-lg p-4 hover:bg-muted"
-                                data-testid={`comparison-${index}`}
-                              >
-                                <div className="flex items-center justify-between">
-                                  <div className="flex-1">
-                                    <div className="font-medium">
-                                      {comp.year} {comp.make} {comp.model}
-                                      {comp.trim && ` ${comp.trim}`}
-                                    </div>
-                                    <div className="text-sm text-muted-foreground mt-1">
-                                      Stock #{comp.stockNumber} • {comp.location} • {comp.dealership}
-                                      {comp.mileage && ` • ${comp.mileage.toLocaleString()} mi`}
-                                    </div>
-                                  </div>
-                                  <div className="text-right ml-4">
-                                    <div className="font-bold text-lg">${comp.price.toLocaleString()}</div>
-                                    <div className={`text-sm ${comp.priceDifference >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                      {comp.priceDifference >= 0 ? '+' : ''}{comp.percentageDifference}% vs avg
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
+              {/* Inventory Analysis Tab */}
+              {activeManagerTab === 'inventory' && (
+                <div data-testid="tab-content-inventory">
+                  <div className="text-center py-12 text-muted-foreground">
+                    <BarChart3 className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+                    <h3 className="text-lg font-medium mb-2">Inventory Analysis</h3>
+                    <p className="text-sm">
+                      Inventory analytics and insights coming soon. Track aging inventory, price trends, and market demand.
+                    </p>
                   </div>
-                )}
+                </div>
+              )}
 
-                {!pricingResults && !vinResults && (
-                  <div className="border-t pt-6">
-                    <div className="text-center py-12 text-muted-foreground">
-                      <Car className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
-                      <h3 className="text-lg font-medium mb-2">Get Started</h3>
-                      <p className="text-sm mb-4">
-                        Enter a VIN to decode and automatically analyze market pricing, or manually enter vehicle details
+              {/* AI Chat Prompts Tab */}
+              {activeManagerTab === 'prompts' && (
+                <div data-testid="tab-content-prompts">
+                  <div className="mb-4">
+                    <h3 className="text-lg font-semibold">AI Chat Prompts (Read-Only)</h3>
+                    <p className="text-sm text-muted-foreground">View AI chat scenarios configured for your dealership</p>
+                  </div>
+                  {isLoadingPrompts ? (
+                    <div className="space-y-2">
+                      <div className="h-12 bg-muted rounded animate-pulse" />
+                      <div className="h-12 bg-muted rounded animate-pulse" />
+                      <div className="h-12 bg-muted rounded animate-pulse" />
+                    </div>
+                  ) : chatPrompts.length > 0 ? (
+                    <Accordion type="single" collapsible>
+                      {chatPrompts.map((prompt) => (
+                        <AccordionItem 
+                          key={prompt.id} 
+                          value={prompt.scenario}
+                          data-testid={`prompt-${prompt.scenario}`}
+                        >
+                          <AccordionTrigger className="text-left">
+                            {formatScenario(prompt.scenario)}
+                          </AccordionTrigger>
+                          <AccordionContent>
+                            <div className="text-sm text-muted-foreground whitespace-pre-wrap">
+                              {prompt.greeting}
+                            </div>
+                          </AccordionContent>
+                        </AccordionItem>
+                      ))}
+                    </Accordion>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <MessageSquare className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
+                      <p className="text-sm">No chat prompts configured yet</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Settings Tab */}
+              {activeManagerTab === 'settings' && (
+                <div data-testid="tab-content-settings">
+                  <div className="mb-4">
+                    <h3 className="text-lg font-semibold">Location Settings</h3>
+                    <p className="text-sm text-muted-foreground">Configure your location for market pricing searches</p>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <Label htmlFor="postal-code">Postal Code *</Label>
+                      <Input
+                        id="postal-code"
+                        placeholder="e.g., V6B 5J3"
+                        value={settings.postalCode}
+                        onChange={(e) => setSettings({ ...settings, postalCode: e.target.value.toUpperCase() })}
+                        data-testid="input-postal-code"
+                        className="mt-2"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Used for geocoding and radius-based market searches
+                      </p>
+                    </div>
+                    <div>
+                      <Label htmlFor="default-radius">Default Search Radius (KM)</Label>
+                      <Input
+                        id="default-radius"
+                        type="number"
+                        value={settings.defaultRadiusKm}
+                        onChange={(e) => setSettings({ ...settings, defaultRadiusKm: parseInt(e.target.value) || 50 })}
+                        data-testid="input-default-radius"
+                        className="mt-2"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Default radius for searching nearby listings
                       </p>
                     </div>
                   </div>
-                )}
-              </div>
+                  <Button
+                    onClick={handleSaveSettings}
+                    disabled={isSavingSettings || !settings.postalCode}
+                    className="mt-4"
+                    data-testid="button-save-settings"
+                  >
+                    {isSavingSettings ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                        Saving...
+                      </>
+                    ) : (
+                      "Save Settings"
+                    )}
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
