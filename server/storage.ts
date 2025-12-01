@@ -90,7 +90,9 @@ import {
   type InsertAuditLog,
   externalApiTokens,
   type ExternalApiToken,
-  type InsertExternalApiToken
+  type InsertExternalApiToken,
+  staffInvites,
+  type StaffInvite
 } from "@shared/schema";
 import { eq, desc, sql, and, gte, lte } from "drizzle-orm";
 
@@ -307,6 +309,11 @@ export interface IStorage {
   updateExternalApiToken(id: number, dealershipId: number, token: Partial<InsertExternalApiToken>): Promise<ExternalApiToken | undefined>;
   deleteExternalApiToken(id: number, dealershipId: number): Promise<boolean>;
   updateExternalApiTokenLastUsed(id: number): Promise<void>;
+  
+  // Staff Invites
+  getStaffInviteByToken(token: string): Promise<StaffInvite | undefined>;
+  acceptStaffInvite(id: number): Promise<void>;
+  getDealershipById(id: number): Promise<Dealership | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1966,6 +1973,30 @@ export class DatabaseStorage implements IStorage {
     await db.update(externalApiTokens)
       .set({ lastUsedAt: new Date() })
       .where(eq(externalApiTokens.id, id));
+  }
+  
+  // ====== STAFF INVITES ======
+  async getStaffInviteByToken(token: string): Promise<StaffInvite | undefined> {
+    const result = await db.select().from(staffInvites)
+      .where(eq(staffInvites.inviteToken, token))
+      .limit(1);
+    return result[0];
+  }
+  
+  async acceptStaffInvite(id: number): Promise<void> {
+    await db.update(staffInvites)
+      .set({ 
+        status: 'accepted',
+        acceptedAt: new Date(),
+      })
+      .where(eq(staffInvites.id, id));
+  }
+  
+  async getDealershipById(id: number): Promise<Dealership | undefined> {
+    const result = await db.select().from(dealerships)
+      .where(eq(dealerships.id, id))
+      .limit(1);
+    return result[0];
   }
 }
 

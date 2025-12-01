@@ -159,6 +159,101 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // ===== STAFF INVITE ROUTES =====
+  
+  // Validate staff invite token (public - used to show accept form)
+  app.get("/api/invites/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const invite = await storage.getStaffInviteByToken(token);
+      
+      if (!invite) {
+        return res.status(404).json({ error: "Invalid invite link" });
+      }
+      
+      if (invite.status !== 'pending') {
+        return res.status(400).json({ error: "This invite has already been used" });
+      }
+      
+      if (new Date() > invite.expiresAt) {
+        return res.status(400).json({ error: "This invite has expired" });
+      }
+      
+      // Get dealership info for display
+      const dealership = await storage.getDealershipById(invite.dealershipId);
+      
+      res.json({
+        email: invite.email,
+        name: invite.name,
+        role: invite.role,
+        dealershipName: dealership?.name || 'Unknown Dealership',
+      });
+    } catch (error) {
+      console.error("Error validating invite:", error);
+      res.status(500).json({ error: "Failed to validate invite" });
+    }
+  });
+  
+  // Accept staff invite and create account (public)
+  app.post("/api/invites/:token/accept", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const { password } = req.body;
+      
+      if (!password || password.length < 8) {
+        return res.status(400).json({ error: "Password must be at least 8 characters" });
+      }
+      
+      const invite = await storage.getStaffInviteByToken(token);
+      
+      if (!invite) {
+        return res.status(404).json({ error: "Invalid invite link" });
+      }
+      
+      if (invite.status !== 'pending') {
+        return res.status(400).json({ error: "This invite has already been used" });
+      }
+      
+      if (new Date() > invite.expiresAt) {
+        return res.status(400).json({ error: "This invite has expired" });
+      }
+      
+      // Check if email already exists
+      const existingUser = await storage.getUserByEmail(invite.email);
+      if (existingUser) {
+        return res.status(400).json({ error: "An account with this email already exists" });
+      }
+      
+      // Create user account
+      const passwordHash = await hashPassword(password);
+      const user = await storage.createUser({
+        email: invite.email,
+        name: invite.name,
+        passwordHash,
+        role: invite.role,
+        dealershipId: invite.dealershipId,
+        isActive: true,
+      });
+      
+      // Mark invite as accepted
+      await storage.acceptStaffInvite(invite.id);
+      
+      // Generate JWT token for auto-login
+      const authToken = generateToken(user);
+      
+      const { passwordHash: _, ...userWithoutPassword } = user;
+      res.json({
+        success: true,
+        token: authToken,
+        user: userWithoutPassword,
+        message: "Account created successfully",
+      });
+    } catch (error) {
+      console.error("Error accepting invite:", error);
+      res.status(500).json({ error: "Failed to create account" });
+    }
+  });
+  
   // ===== SUPER ADMIN ROUTES (Super Admin Only) =====
   
   // Get all dealerships (super admin only)

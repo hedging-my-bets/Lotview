@@ -690,6 +690,9 @@ export const dealershipBranding = pgTable("dealership_branding", {
   secondaryColor: text("secondary_color").default('#00aad2'), // Secondary brand color (hex)
   heroHeadline: text("hero_headline"), // Main headline for inventory page
   heroSubheadline: text("hero_subheadline"), // Subheadline
+  heroImageUrl: text("hero_image_url"), // Hero background image URL
+  tagline: text("tagline"), // Dealership tagline
+  customCss: text("custom_css"), // Custom CSS overrides
   promoBannerText: text("promo_banner_text"), // Optional promo banner
   promoBannerActive: boolean("promo_banner_active").default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),

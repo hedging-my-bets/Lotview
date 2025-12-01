@@ -36,8 +36,12 @@ interface OnboardingFormData {
     logoUrl?: string;
     faviconUrl?: string;
     heroImageUrl?: string;
+    heroHeadline?: string;
+    heroSubheadline?: string;
     tagline?: string;
     customCss?: string;
+    promoBannerText?: string;
+    promoBannerActive?: boolean;
   };
   apiKeys: {
     openaiApiKey?: string;
@@ -140,8 +144,12 @@ const defaultFormData: OnboardingFormData = {
     logoUrl: '',
     faviconUrl: '',
     heroImageUrl: '',
+    heroHeadline: '',
+    heroSubheadline: '',
     tagline: '',
     customCss: '',
+    promoBannerText: '',
+    promoBannerActive: false,
   },
   apiKeys: {
     openaiApiKey: '',
@@ -609,6 +617,55 @@ export default function OnboardingWizard({ onComplete }: { onComplete?: () => vo
                 onChange={(e) => updateField('branding', 'tagline', e.target.value)}
                 placeholder="Your trusted auto partner since 1990"
               />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="branding-headline">Hero Headline</Label>
+                <Input
+                  id="branding-headline"
+                  data-testid="input-branding-headline"
+                  value={formData.branding.heroHeadline}
+                  onChange={(e) => updateField('branding', 'heroHeadline', e.target.value)}
+                  placeholder="Find Your Perfect Vehicle"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="branding-subheadline">Hero Subheadline</Label>
+                <Input
+                  id="branding-subheadline"
+                  data-testid="input-branding-subheadline"
+                  value={formData.branding.heroSubheadline}
+                  onChange={(e) => updateField('branding', 'heroSubheadline', e.target.value)}
+                  placeholder="Browse our premium selection"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>Promotional Banner</Label>
+                  <p className="text-xs text-muted-foreground">Show a promo banner at the top of the site</p>
+                </div>
+                <Switch
+                  data-testid="switch-promo-banner"
+                  checked={formData.branding.promoBannerActive || false}
+                  onCheckedChange={(checked) => updateField('branding', 'promoBannerActive', checked)}
+                />
+              </div>
+              {formData.branding.promoBannerActive && (
+                <div className="space-y-2">
+                  <Label htmlFor="branding-promo">Banner Text</Label>
+                  <Input
+                    id="branding-promo"
+                    data-testid="input-branding-promo"
+                    value={formData.branding.promoBannerText}
+                    onChange={(e) => updateField('branding', 'promoBannerText', e.target.value)}
+                    placeholder="🎉 Boxing Week Sale - Save up to $5,000!"
+                  />
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">

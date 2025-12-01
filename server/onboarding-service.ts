@@ -6,7 +6,7 @@ import {
   dealershipBranding, dealershipContacts, staffInvites,
   onboardingRuns, onboardingRunSteps, integrationStatus
 } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 
@@ -318,22 +318,32 @@ export class OnboardingService {
   private async executeStep<T>(stepName: string, fn: () => Promise<T>): Promise<T> {
     if (!this.runId) throw new Error('Onboarding run not initialized');
     
-    // Mark step as in_progress
+    // Mark step as in_progress - scope by both runId AND stepName
     await db.update(onboardingRunSteps)
       .set({ status: 'in_progress', startedAt: new Date() })
-      .where(eq(onboardingRunSteps.runId, this.runId));
+      .where(
+        and(
+          eq(onboardingRunSteps.runId, this.runId),
+          eq(onboardingRunSteps.stepName, stepName)
+        )
+      );
     
     try {
       const result = await fn();
       
-      // Mark step as completed
+      // Mark step as completed - scope by both runId AND stepName
       await db.update(onboardingRunSteps)
         .set({ 
           status: 'completed', 
           completedAt: new Date(),
           details: JSON.stringify({ success: true }),
         })
-        .where(eq(onboardingRunSteps.runId, this.runId));
+        .where(
+          and(
+            eq(onboardingRunSteps.runId, this.runId),
+            eq(onboardingRunSteps.stepName, stepName)
+          )
+        );
       
       // Update completed steps count
       await db.update(onboardingRuns)
@@ -343,14 +353,19 @@ export class OnboardingService {
       return result;
       
     } catch (error) {
-      // Mark step as failed
+      // Mark step as failed - scope by both runId AND stepName
       await db.update(onboardingRunSteps)
         .set({ 
           status: 'failed', 
           completedAt: new Date(),
           errorMessage: error instanceof Error ? error.message : 'Unknown error',
         })
-        .where(eq(onboardingRunSteps.runId, this.runId));
+        .where(
+          and(
+            eq(onboardingRunSteps.runId, this.runId),
+            eq(onboardingRunSteps.stepName, stepName)
+          )
+        );
       
       throw error;
     }
@@ -409,6 +424,9 @@ export class OnboardingService {
       secondaryColor: data.secondaryColor || '#00aad2',
       heroHeadline: data.heroHeadline,
       heroSubheadline: data.heroSubheadline,
+      heroImageUrl: data.heroImageUrl,
+      tagline: data.tagline,
+      customCss: data.customCss,
       promoBannerText: data.promoBannerText,
       promoBannerActive: data.promoBannerActive || false,
     });
