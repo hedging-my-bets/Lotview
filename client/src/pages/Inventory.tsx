@@ -7,7 +7,7 @@ import { ChatBot } from "@/components/ChatBot";
 import { StickyPaymentBar } from "@/components/StickyPaymentBar";
 import { getVehicles } from "@/lib/api";
 import { FilterState } from "@/lib/types";
-import { Loader2, LogIn, SlidersHorizontal } from "lucide-react";
+import { Loader2, LogIn, SlidersHorizontal, Car, Truck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
@@ -31,6 +31,10 @@ export default function Inventory() {
 
   // Get unique makes from vehicles for the filter dropdown
   const uniqueMakes = Array.from(new Set(vehicles.map(car => car.make))).sort();
+
+  // Body type priority for grouping (default sort)
+  const typeOrder: Record<string, number> = { 'SUV': 1, 'Truck': 2, 'Sedan': 3 };
+  const getTypeOrder = (type: string) => typeOrder[type] || 99;
 
   const filteredInventory = vehicles
     .filter(car => {
@@ -59,7 +63,8 @@ export default function Inventory() {
         case 'km_high':
           return b.odometer - a.odometer;
         default:
-          return 0; // Keep original order
+          // Group by body type (SUV, Truck, Sedan)
+          return getTypeOrder(a.type) - getTypeOrder(b.type);
       }
     });
 
@@ -87,7 +92,7 @@ export default function Inventory() {
           </div>
           
           <main className="flex-1">
-            <div className="mb-6 flex justify-between items-center">
+            <div className="mb-4 flex justify-between items-center">
               <h2 className="text-2xl font-bold text-foreground">
                 Inventory <span className="text-muted-foreground font-normal text-lg ml-2">{filteredInventory.length} Vehicles</span>
               </h2>
@@ -107,6 +112,46 @@ export default function Inventory() {
               >
                 {isFetching ? <Loader2 className="w-3 h-3 animate-spin" /> : <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span></span>}
                 {isFetching ? "Updating..." : "Live Updates"}
+              </button>
+            </div>
+
+            {/* Mobile Quick Type Filters - Hidden on Desktop */}
+            <div className="lg:hidden flex gap-2 mb-6 overflow-x-auto pb-1">
+              <button
+                onClick={() => setFilters({ ...filters, type: filters.type === 'SUV' ? 'all' : 'SUV' })}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
+                  filters.type === 'SUV' 
+                    ? 'bg-primary text-white' 
+                    : 'bg-muted text-foreground hover:bg-muted/80'
+                }`}
+                data-testid="button-filter-suv"
+              >
+                <Car className="w-4 h-4" />
+                SUV
+              </button>
+              <button
+                onClick={() => setFilters({ ...filters, type: filters.type === 'Truck' ? 'all' : 'Truck' })}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
+                  filters.type === 'Truck' 
+                    ? 'bg-primary text-white' 
+                    : 'bg-muted text-foreground hover:bg-muted/80'
+                }`}
+                data-testid="button-filter-truck"
+              >
+                <Truck className="w-4 h-4" />
+                Truck
+              </button>
+              <button
+                onClick={() => setFilters({ ...filters, type: filters.type === 'Sedan' ? 'all' : 'Sedan' })}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
+                  filters.type === 'Sedan' 
+                    ? 'bg-primary text-white' 
+                    : 'bg-muted text-foreground hover:bg-muted/80'
+                }`}
+                data-testid="button-filter-sedan"
+              >
+                <Car className="w-4 h-4" />
+                Sedan
               </button>
             </div>
 
