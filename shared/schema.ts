@@ -678,6 +678,92 @@ export const insertMarketListingSchema = createInsertSchema(marketListings).omit
 export type InsertMarketListing = z.infer<typeof insertMarketListingSchema>;
 export type MarketListing = typeof marketListings.$inferSelect;
 
+// Price History Tracking (for trend analysis)
+export const priceHistory = pgTable("price_history", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  marketListingId: integer("market_listing_id").references(() => marketListings.id, { onDelete: 'cascade' }),
+  externalId: text("external_id").notNull(), // Link to original listing
+  source: text("source").notNull(), // 'autotrader', 'kijiji', 'cargurus', etc.
+  year: integer("year").notNull(),
+  make: text("make").notNull(),
+  model: text("model").notNull(),
+  trim: text("trim"),
+  price: integer("price").notNull(),
+  mileage: integer("mileage"),
+  location: text("location").notNull(),
+  sellerName: text("seller_name"),
+  recordedAt: timestamp("recorded_at").defaultNow().notNull(),
+});
+
+export const insertPriceHistorySchema = createInsertSchema(priceHistory).omit({
+  id: true,
+  recordedAt: true,
+});
+
+export type InsertPriceHistory = z.infer<typeof insertPriceHistorySchema>;
+export type PriceHistory = typeof priceHistory.$inferSelect;
+
+// Competitor Dealers (tracked nearby competitors)
+export const competitorDealers = pgTable("competitor_dealers", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  competitorName: text("competitor_name").notNull(),
+  competitorUrl: text("competitor_url"),
+  competitorAddress: text("competitor_address"),
+  city: text("city"),
+  province: text("province"),
+  postalCode: text("postal_code"),
+  distanceKm: integer("distance_km"), // Distance from home dealership
+  totalListings: integer("total_listings").default(0),
+  averagePrice: integer("average_price"),
+  lastScrapedAt: timestamp("last_scraped_at"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertCompetitorDealerSchema = createInsertSchema(competitorDealers).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertCompetitorDealer = z.infer<typeof insertCompetitorDealerSchema>;
+export type CompetitorDealer = typeof competitorDealers.$inferSelect;
+
+// Market Analysis Snapshots (daily/weekly summaries)
+export const marketSnapshots = pgTable("market_snapshots", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  snapshotDate: timestamp("snapshot_date").notNull(),
+  make: text("make").notNull(),
+  model: text("model").notNull(),
+  yearMin: integer("year_min"),
+  yearMax: integer("year_max"),
+  totalListings: integer("total_listings").notNull(),
+  averagePrice: integer("average_price").notNull(),
+  medianPrice: integer("median_price").notNull(),
+  minPrice: integer("min_price").notNull(),
+  maxPrice: integer("max_price").notNull(),
+  p10Price: integer("p10_price"), // 10th percentile
+  p25Price: integer("p25_price"), // 25th percentile
+  p75Price: integer("p75_price"), // 75th percentile
+  p90Price: integer("p90_price"), // 90th percentile
+  averageMileage: integer("average_mileage"),
+  averageDaysOnMarket: integer("average_days_on_market"),
+  sources: text("sources").array(), // Which sources contributed
+  searchRadiusKm: integer("search_radius_km"),
+  searchPostalCode: text("search_postal_code"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertMarketSnapshotSchema = createInsertSchema(marketSnapshots).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertMarketSnapshot = z.infer<typeof insertMarketSnapshotSchema>;
+export type MarketSnapshot = typeof marketSnapshots.$inferSelect;
+
 // ====== ONBOARDING SYSTEM TABLES ======
 
 // Dealership branding - logos, colors, content

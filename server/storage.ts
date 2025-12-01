@@ -95,7 +95,16 @@ import {
   type StaffInvite,
   launchChecklist,
   type LaunchChecklist,
-  type InsertLaunchChecklist
+  type InsertLaunchChecklist,
+  priceHistory,
+  type PriceHistory,
+  type InsertPriceHistory,
+  competitorDealers,
+  type CompetitorDealer,
+  type InsertCompetitorDealer,
+  marketSnapshots,
+  type MarketSnapshot,
+  type InsertMarketSnapshot
 } from "@shared/schema";
 import { eq, desc, sql, and, gte, lte } from "drizzle-orm";
 
@@ -328,6 +337,24 @@ export interface IStorage {
   completeLaunchChecklistItem(id: number, dealershipId: number, userId: number): Promise<LaunchChecklist | undefined>;
   skipLaunchChecklistItem(id: number, dealershipId: number, notes?: string): Promise<LaunchChecklist | undefined>;
   deleteLaunchChecklistItem(id: number, dealershipId: number): Promise<boolean>;
+  
+  // Price History (Multi-Tenant)
+  getPriceHistory(dealershipId: number, filters: { make?: string; model?: string; externalId?: string }, limit?: number): Promise<PriceHistory[]>;
+  createPriceHistory(record: InsertPriceHistory): Promise<PriceHistory>;
+  createPriceHistoryBatch(records: InsertPriceHistory[]): Promise<PriceHistory[]>;
+  getPriceHistoryForListing(dealershipId: number, externalId: string): Promise<PriceHistory[]>;
+  
+  // Competitor Dealers (Multi-Tenant)
+  getCompetitorDealers(dealershipId: number): Promise<CompetitorDealer[]>;
+  getCompetitorDealerById(id: number, dealershipId: number): Promise<CompetitorDealer | undefined>;
+  createCompetitorDealer(dealer: InsertCompetitorDealer): Promise<CompetitorDealer>;
+  updateCompetitorDealer(id: number, dealershipId: number, dealer: Partial<InsertCompetitorDealer>): Promise<CompetitorDealer | undefined>;
+  deleteCompetitorDealer(id: number, dealershipId: number): Promise<boolean>;
+  
+  // Market Snapshots (Multi-Tenant)
+  getMarketSnapshots(dealershipId: number, filters: { make?: string; model?: string; limit?: number }): Promise<MarketSnapshot[]>;
+  createMarketSnapshot(snapshot: InsertMarketSnapshot): Promise<MarketSnapshot>;
+  getLatestMarketSnapshot(dealershipId: number, make: string, model: string): Promise<MarketSnapshot | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2102,6 +2129,126 @@ export class DatabaseStorage implements IStorage {
       ))
       .returning();
     return result.length > 0;
+  }
+  
+  // ====== PRICE HISTORY ======
+  async getPriceHistory(dealershipId: number, filters: { make?: string; model?: string; externalId?: string }, limit: number = 100): Promise<PriceHistory[]> {
+    const conditions = [eq(priceHistory.dealershipId, dealershipId)];
+    
+    if (filters.make) {
+      conditions.push(sql`LOWER(${priceHistory.make}) = LOWER(${filters.make})`);
+    }
+    if (filters.model) {
+      conditions.push(sql`LOWER(${priceHistory.model}) = LOWER(${filters.model})`);
+    }
+    if (filters.externalId) {
+      conditions.push(eq(priceHistory.externalId, filters.externalId));
+    }
+    
+    return await db.select().from(priceHistory)
+      .where(and(...conditions))
+      .orderBy(desc(priceHistory.recordedAt))
+      .limit(limit);
+  }
+  
+  async createPriceHistory(record: InsertPriceHistory): Promise<PriceHistory> {
+    const result = await db.insert(priceHistory).values(record).returning();
+    return result[0];
+  }
+  
+  async createPriceHistoryBatch(records: InsertPriceHistory[]): Promise<PriceHistory[]> {
+    if (records.length === 0) return [];
+    const result = await db.insert(priceHistory).values(records).returning();
+    return result;
+  }
+  
+  async getPriceHistoryForListing(dealershipId: number, externalId: string): Promise<PriceHistory[]> {
+    return await db.select().from(priceHistory)
+      .where(and(
+        eq(priceHistory.dealershipId, dealershipId),
+        eq(priceHistory.externalId, externalId)
+      ))
+      .orderBy(desc(priceHistory.recordedAt));
+  }
+  
+  // ====== COMPETITOR DEALERS ======
+  async getCompetitorDealers(dealershipId: number): Promise<CompetitorDealer[]> {
+    return await db.select().from(competitorDealers)
+      .where(and(
+        eq(competitorDealers.dealershipId, dealershipId),
+        eq(competitorDealers.isActive, true)
+      ))
+      .orderBy(competitorDealers.competitorName);
+  }
+  
+  async getCompetitorDealerById(id: number, dealershipId: number): Promise<CompetitorDealer | undefined> {
+    const result = await db.select().from(competitorDealers)
+      .where(and(
+        eq(competitorDealers.id, id),
+        eq(competitorDealers.dealershipId, dealershipId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+  
+  async createCompetitorDealer(dealer: InsertCompetitorDealer): Promise<CompetitorDealer> {
+    const result = await db.insert(competitorDealers).values(dealer).returning();
+    return result[0];
+  }
+  
+  async updateCompetitorDealer(id: number, dealershipId: number, dealer: Partial<InsertCompetitorDealer>): Promise<CompetitorDealer | undefined> {
+    const result = await db.update(competitorDealers)
+      .set(dealer)
+      .where(and(
+        eq(competitorDealers.id, id),
+        eq(competitorDealers.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+  
+  async deleteCompetitorDealer(id: number, dealershipId: number): Promise<boolean> {
+    const result = await db.delete(competitorDealers)
+      .where(and(
+        eq(competitorDealers.id, id),
+        eq(competitorDealers.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result.length > 0;
+  }
+  
+  // ====== MARKET SNAPSHOTS ======
+  async getMarketSnapshots(dealershipId: number, filters: { make?: string; model?: string; limit?: number }): Promise<MarketSnapshot[]> {
+    const conditions = [eq(marketSnapshots.dealershipId, dealershipId)];
+    
+    if (filters.make) {
+      conditions.push(sql`LOWER(${marketSnapshots.make}) = LOWER(${filters.make})`);
+    }
+    if (filters.model) {
+      conditions.push(sql`LOWER(${marketSnapshots.model}) = LOWER(${filters.model})`);
+    }
+    
+    return await db.select().from(marketSnapshots)
+      .where(and(...conditions))
+      .orderBy(desc(marketSnapshots.snapshotDate))
+      .limit(filters.limit || 30);
+  }
+  
+  async createMarketSnapshot(snapshot: InsertMarketSnapshot): Promise<MarketSnapshot> {
+    const result = await db.insert(marketSnapshots).values(snapshot).returning();
+    return result[0];
+  }
+  
+  async getLatestMarketSnapshot(dealershipId: number, make: string, model: string): Promise<MarketSnapshot | undefined> {
+    const result = await db.select().from(marketSnapshots)
+      .where(and(
+        eq(marketSnapshots.dealershipId, dealershipId),
+        sql`LOWER(${marketSnapshots.make}) = LOWER(${make})`,
+        sql`LOWER(${marketSnapshots.model}) = LOWER(${model})`
+      ))
+      .orderBy(desc(marketSnapshots.snapshotDate))
+      .limit(1);
+    return result[0];
   }
 }
 

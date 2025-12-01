@@ -1,0 +1,535 @@
+import { storage } from './storage';
+import { marketAggregationService, MarketAggregationParams } from './market-aggregation-service';
+import type { MarketListing, InsertMarketSnapshot, InsertPriceHistory } from '@shared/schema';
+import OpenAI from 'openai';
+
+export interface EnhancedMarketAnalysisParams {
+  make: string;
+  model: string;
+  years: number[];
+  trims?: string[];
+  mileage?: number;
+  postalCode: string;
+  radiusKm: number;
+  dealershipId: number;
+  targetPrice?: number;
+}
+
+export interface PercentileBreakdown {
+  p10: number;
+  p25: number;
+  p50: number;
+  p75: number;
+  p90: number;
+}
+
+export interface CompetitorInfo {
+  sellerName: string;
+  listingCount: number;
+  averagePrice: number;
+  lowestPrice: number;
+  highestPrice: number;
+  priceRange: string;
+}
+
+export interface DaysOnMarketInfo {
+  average: number;
+  median: number;
+  fastest: number;
+  slowest: number;
+  distribution: {
+    under7Days: number;
+    under14Days: number;
+    under30Days: number;
+    over30Days: number;
+  };
+}
+
+export interface PriceTrend {
+  date: string;
+  averagePrice: number;
+  medianPrice: number;
+  listingCount: number;
+}
+
+export interface EnhancedMarketAnalysisResult {
+  success: boolean;
+  dataSource: string;
+  searchParams: {
+    make: string;
+    model: string;
+    years: number[];
+    location: string;
+    radiusKm: number;
+  };
+  summary: {
+    totalListings: number;
+    averagePrice: number;
+    medianPrice: number;
+    minPrice: number;
+    maxPrice: number;
+    averageMileage: number;
+  };
+  percentiles: PercentileBreakdown;
+  daysOnMarket: DaysOnMarketInfo;
+  competitors: CompetitorInfo[];
+  priceTrends: PriceTrend[];
+  priceRecommendation: {
+    suggestedPrice: number;
+    priceRange: { low: number; high: number };
+    marketPosition: 'below_market' | 'at_market' | 'above_market' | 'competitive';
+    confidence: 'high' | 'medium' | 'low';
+    reasoning: string;
+  };
+  aiInsights?: string;
+  sources: string[];
+  scrapedAt: string;
+  errors: string[];
+}
+
+export class EnhancedMarketAnalysisService {
+  private openai: OpenAI | null = null;
+
+  constructor() {
+    const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+    if (apiKey) {
+      this.openai = new OpenAI({ 
+        apiKey,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined
+      });
+    }
+  }
+
+  async analyze(params: EnhancedMarketAnalysisParams): Promise<EnhancedMarketAnalysisResult> {
+    const startTime = Date.now();
+    const errors: string[] = [];
+    const sources: string[] = [];
+
+    console.log(`[EnhancedMarketAnalysis] Starting analysis for ${params.make} ${params.model}`);
+
+    const yearMin = Math.min(...params.years);
+    const yearMax = Math.max(...params.years);
+
+    const aggregationParams: MarketAggregationParams = {
+      make: params.make,
+      model: params.model,
+      yearMin,
+      yearMax,
+      postalCode: params.postalCode,
+      radiusKm: params.radiusKm,
+      maxResults: 150,
+      dealershipId: params.dealershipId
+    };
+
+    let aggResult;
+    try {
+      aggResult = await marketAggregationService.aggregateMarketData(aggregationParams);
+      if (aggResult.sources) {
+        sources.push(...aggResult.sources);
+      }
+      if (aggResult.errors) {
+        errors.push(...aggResult.errors);
+      }
+    } catch (error) {
+      console.error('[EnhancedMarketAnalysis] Aggregation error:', error);
+      errors.push(`Aggregation: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+
+    const { listings } = await storage.getMarketListings(params.dealershipId, {
+      make: params.make,
+      model: params.model,
+      yearMin,
+      yearMax
+    }, 500);
+
+    let filteredListings = listings;
+    if (params.trims && params.trims.length > 0) {
+      filteredListings = listings.filter(l => {
+        if (!l.trim) return true;
+        return params.trims!.some(t => 
+          l.trim!.toLowerCase().includes(t.toLowerCase()) ||
+          t.toLowerCase().includes(l.trim!.toLowerCase())
+        );
+      });
+    }
+
+    if (filteredListings.length === 0) {
+      return this.createEmptyResult(params, sources, errors);
+    }
+
+    const prices = filteredListings.map(l => l.price).sort((a, b) => a - b);
+    const mileages = filteredListings.filter(l => l.mileage).map(l => l.mileage!);
+
+    const summary = {
+      totalListings: filteredListings.length,
+      averagePrice: Math.round(prices.reduce((a, b) => a + b, 0) / prices.length),
+      medianPrice: this.calculateMedian(prices),
+      minPrice: prices[0],
+      maxPrice: prices[prices.length - 1],
+      averageMileage: mileages.length > 0 
+        ? Math.round(mileages.reduce((a, b) => a + b, 0) / mileages.length)
+        : 0
+    };
+
+    const percentiles = this.calculatePercentiles(prices);
+
+    const daysOnMarket = this.calculateDaysOnMarket(filteredListings);
+
+    const competitors = this.analyzeCompetitors(filteredListings);
+
+    const priceTrends = await this.getPriceTrends(params.dealershipId, params.make, params.model);
+
+    const priceRecommendation = this.generatePriceRecommendation(
+      summary,
+      percentiles,
+      params.targetPrice,
+      params.mileage,
+      summary.averageMileage
+    );
+
+    await this.recordPriceHistory(params.dealershipId, filteredListings);
+
+    await this.createSnapshot(params.dealershipId, params, summary, percentiles, daysOnMarket, sources);
+
+    let aiInsights: string | undefined;
+    if (this.openai && filteredListings.length >= 5) {
+      try {
+        aiInsights = await this.generateAIInsights(params, summary, percentiles, competitors);
+      } catch (error) {
+        console.error('[EnhancedMarketAnalysis] AI insights error:', error);
+      }
+    }
+
+    const elapsed = Date.now() - startTime;
+    console.log(`[EnhancedMarketAnalysis] Complete in ${elapsed}ms - ${filteredListings.length} listings analyzed`);
+
+    return {
+      success: true,
+      dataSource: sources.join(', ') || 'database',
+      searchParams: {
+        make: params.make,
+        model: params.model,
+        years: params.years,
+        location: params.postalCode,
+        radiusKm: params.radiusKm
+      },
+      summary,
+      percentiles,
+      daysOnMarket,
+      competitors,
+      priceTrends,
+      priceRecommendation,
+      aiInsights,
+      sources,
+      scrapedAt: new Date().toISOString(),
+      errors
+    };
+  }
+
+  private calculateMedian(sortedArray: number[]): number {
+    const mid = Math.floor(sortedArray.length / 2);
+    return sortedArray.length % 2 !== 0
+      ? sortedArray[mid]
+      : Math.round((sortedArray[mid - 1] + sortedArray[mid]) / 2);
+  }
+
+  private calculatePercentiles(sortedPrices: number[]): PercentileBreakdown {
+    const getPercentile = (arr: number[], p: number) => {
+      const index = Math.floor((p / 100) * arr.length);
+      return arr[Math.min(index, arr.length - 1)];
+    };
+
+    return {
+      p10: getPercentile(sortedPrices, 10),
+      p25: getPercentile(sortedPrices, 25),
+      p50: getPercentile(sortedPrices, 50),
+      p75: getPercentile(sortedPrices, 75),
+      p90: getPercentile(sortedPrices, 90)
+    };
+  }
+
+  private calculateDaysOnMarket(listings: MarketListing[]): DaysOnMarketInfo {
+    const now = new Date();
+    const daysOnMarket = listings
+      .filter(l => l.postedDate)
+      .map(l => {
+        const posted = new Date(l.postedDate!);
+        return Math.floor((now.getTime() - posted.getTime()) / (1000 * 60 * 60 * 24));
+      })
+      .filter(d => d >= 0 && d < 365);
+
+    if (daysOnMarket.length === 0) {
+      return {
+        average: 0,
+        median: 0,
+        fastest: 0,
+        slowest: 0,
+        distribution: { under7Days: 0, under14Days: 0, under30Days: 0, over30Days: 0 }
+      };
+    }
+
+    const sorted = daysOnMarket.sort((a, b) => a - b);
+
+    return {
+      average: Math.round(daysOnMarket.reduce((a, b) => a + b, 0) / daysOnMarket.length),
+      median: this.calculateMedian(sorted),
+      fastest: sorted[0],
+      slowest: sorted[sorted.length - 1],
+      distribution: {
+        under7Days: daysOnMarket.filter(d => d < 7).length,
+        under14Days: daysOnMarket.filter(d => d < 14).length,
+        under30Days: daysOnMarket.filter(d => d < 30).length,
+        over30Days: daysOnMarket.filter(d => d >= 30).length
+      }
+    };
+  }
+
+  private analyzeCompetitors(listings: MarketListing[]): CompetitorInfo[] {
+    const dealerListings = listings.filter(l => l.listingType === 'dealer' && l.sellerName);
+    
+    const dealerMap = new Map<string, MarketListing[]>();
+    for (const listing of dealerListings) {
+      const name = listing.sellerName || 'Unknown Dealer';
+      if (!dealerMap.has(name)) {
+        dealerMap.set(name, []);
+      }
+      dealerMap.get(name)!.push(listing);
+    }
+
+    const competitors: CompetitorInfo[] = [];
+    for (const [sellerName, sellerListings] of Array.from(dealerMap.entries())) {
+      const prices = sellerListings.map((l: MarketListing) => l.price).sort((a: number, b: number) => a - b);
+      const avgPrice = Math.round(prices.reduce((a: number, b: number) => a + b, 0) / prices.length);
+      
+      competitors.push({
+        sellerName,
+        listingCount: sellerListings.length,
+        averagePrice: avgPrice,
+        lowestPrice: prices[0],
+        highestPrice: prices[prices.length - 1],
+        priceRange: `$${prices[0].toLocaleString()} - $${prices[prices.length - 1].toLocaleString()}`
+      });
+    }
+
+    return competitors.sort((a, b) => b.listingCount - a.listingCount).slice(0, 10);
+  }
+
+  private async getPriceTrends(dealershipId: number, make: string, model: string): Promise<PriceTrend[]> {
+    try {
+      const snapshots = await storage.getMarketSnapshots(dealershipId, { make, model, limit: 30 });
+      
+      return snapshots.map(s => ({
+        date: new Date(s.snapshotDate).toISOString().split('T')[0],
+        averagePrice: s.averagePrice,
+        medianPrice: s.medianPrice,
+        listingCount: s.totalListings
+      }));
+    } catch (error) {
+      console.error('[EnhancedMarketAnalysis] Price trends error:', error);
+      return [];
+    }
+  }
+
+  private generatePriceRecommendation(
+    summary: { totalListings: number; averagePrice: number; medianPrice: number; minPrice: number; maxPrice: number },
+    percentiles: PercentileBreakdown,
+    targetPrice?: number,
+    vehicleMileage?: number,
+    averageMileage?: number
+  ): EnhancedMarketAnalysisResult['priceRecommendation'] {
+    let mileageAdjustment = 0;
+    if (vehicleMileage && averageMileage && averageMileage > 0) {
+      const mileageDiff = vehicleMileage - averageMileage;
+      const pricePerKm = (percentiles.p75 - percentiles.p25) / (averageMileage * 0.5);
+      mileageAdjustment = Math.round(mileageDiff * pricePerKm * -0.5);
+    }
+
+    const suggestedPrice = Math.round(summary.medianPrice + mileageAdjustment);
+    const priceRange = {
+      low: Math.round(percentiles.p25 + mileageAdjustment),
+      high: Math.round(percentiles.p75 + mileageAdjustment)
+    };
+
+    let marketPosition: 'below_market' | 'at_market' | 'above_market' | 'competitive' = 'at_market';
+    let reasoning = '';
+
+    if (targetPrice) {
+      if (targetPrice < percentiles.p25) {
+        marketPosition = 'below_market';
+        reasoning = `Your price of $${targetPrice.toLocaleString()} is below the 25th percentile ($${percentiles.p25.toLocaleString()}). This is very competitive and should sell quickly.`;
+      } else if (targetPrice < percentiles.p50) {
+        marketPosition = 'competitive';
+        reasoning = `Your price of $${targetPrice.toLocaleString()} is between the 25th and 50th percentile. This is competitively priced.`;
+      } else if (targetPrice <= percentiles.p75) {
+        marketPosition = 'at_market';
+        reasoning = `Your price of $${targetPrice.toLocaleString()} is at market average. Consider pricing at $${suggestedPrice.toLocaleString()} for faster sale.`;
+      } else {
+        marketPosition = 'above_market';
+        reasoning = `Your price of $${targetPrice.toLocaleString()} is above the 75th percentile ($${percentiles.p75.toLocaleString()}). Consider reducing to $${suggestedPrice.toLocaleString()} to be more competitive.`;
+      }
+    } else {
+      reasoning = `Based on ${summary.totalListings} comparable listings, we recommend pricing between $${priceRange.low.toLocaleString()} and $${priceRange.high.toLocaleString()}. The median market price is $${summary.medianPrice.toLocaleString()}.`;
+    }
+
+    const confidence = summary.totalListings >= 20 ? 'high' : summary.totalListings >= 10 ? 'medium' : 'low';
+
+    return {
+      suggestedPrice,
+      priceRange,
+      marketPosition,
+      confidence,
+      reasoning
+    };
+  }
+
+  private async recordPriceHistory(dealershipId: number, listings: MarketListing[]): Promise<void> {
+    const records: InsertPriceHistory[] = listings.slice(0, 50).map(l => ({
+      dealershipId,
+      marketListingId: l.id,
+      externalId: l.externalId,
+      source: l.source,
+      year: l.year,
+      make: l.make,
+      model: l.model,
+      trim: l.trim,
+      price: l.price,
+      mileage: l.mileage,
+      location: l.location,
+      sellerName: l.sellerName
+    }));
+
+    try {
+      await storage.createPriceHistoryBatch(records);
+    } catch (error) {
+      console.error('[EnhancedMarketAnalysis] Price history recording error:', error);
+    }
+  }
+
+  private async createSnapshot(
+    dealershipId: number,
+    params: EnhancedMarketAnalysisParams,
+    summary: any,
+    percentiles: PercentileBreakdown,
+    daysOnMarket: DaysOnMarketInfo,
+    sources: string[]
+  ): Promise<void> {
+    const snapshot: InsertMarketSnapshot = {
+      dealershipId,
+      snapshotDate: new Date(),
+      make: params.make,
+      model: params.model,
+      yearMin: Math.min(...params.years),
+      yearMax: Math.max(...params.years),
+      totalListings: summary.totalListings,
+      averagePrice: summary.averagePrice,
+      medianPrice: summary.medianPrice,
+      minPrice: summary.minPrice,
+      maxPrice: summary.maxPrice,
+      p10Price: percentiles.p10,
+      p25Price: percentiles.p25,
+      p75Price: percentiles.p75,
+      p90Price: percentiles.p90,
+      averageMileage: summary.averageMileage,
+      averageDaysOnMarket: daysOnMarket.average,
+      sources,
+      searchRadiusKm: params.radiusKm,
+      searchPostalCode: params.postalCode
+    };
+
+    try {
+      await storage.createMarketSnapshot(snapshot);
+    } catch (error) {
+      console.error('[EnhancedMarketAnalysis] Snapshot creation error:', error);
+    }
+  }
+
+  private async generateAIInsights(
+    params: EnhancedMarketAnalysisParams,
+    summary: any,
+    percentiles: PercentileBreakdown,
+    competitors: CompetitorInfo[]
+  ): Promise<string> {
+    if (!this.openai) return '';
+
+    const prompt = `You are an automotive market analyst. Analyze this market data and provide 2-3 brief, actionable insights for a car dealer:
+
+Vehicle: ${params.years.join('-')} ${params.make} ${params.model}
+Location: ${params.postalCode}, ${params.radiusKm}km radius
+
+Market Summary:
+- Total Listings: ${summary.totalListings}
+- Average Price: $${summary.averagePrice.toLocaleString()}
+- Median Price: $${summary.medianPrice.toLocaleString()}
+- Price Range: $${summary.minPrice.toLocaleString()} - $${summary.maxPrice.toLocaleString()}
+- Average Mileage: ${summary.averageMileage.toLocaleString()} km
+
+Price Distribution:
+- 10th Percentile: $${percentiles.p10.toLocaleString()}
+- 25th Percentile: $${percentiles.p25.toLocaleString()}
+- Median: $${percentiles.p50.toLocaleString()}
+- 75th Percentile: $${percentiles.p75.toLocaleString()}
+- 90th Percentile: $${percentiles.p90.toLocaleString()}
+
+Top Competitors: ${competitors.slice(0, 3).map(c => `${c.sellerName} (${c.listingCount} listings, avg $${c.averagePrice.toLocaleString()})`).join(', ')}
+
+Provide brief, professional insights focusing on pricing strategy and market positioning.`;
+
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 300,
+        temperature: 0.7
+      });
+
+      return response.choices[0]?.message?.content || '';
+    } catch (error) {
+      console.error('[EnhancedMarketAnalysis] OpenAI error:', error);
+      return '';
+    }
+  }
+
+  private createEmptyResult(params: EnhancedMarketAnalysisParams, sources: string[], errors: string[]): EnhancedMarketAnalysisResult {
+    return {
+      success: false,
+      dataSource: 'none',
+      searchParams: {
+        make: params.make,
+        model: params.model,
+        years: params.years,
+        location: params.postalCode,
+        radiusKm: params.radiusKm
+      },
+      summary: {
+        totalListings: 0,
+        averagePrice: 0,
+        medianPrice: 0,
+        minPrice: 0,
+        maxPrice: 0,
+        averageMileage: 0
+      },
+      percentiles: { p10: 0, p25: 0, p50: 0, p75: 0, p90: 0 },
+      daysOnMarket: {
+        average: 0,
+        median: 0,
+        fastest: 0,
+        slowest: 0,
+        distribution: { under7Days: 0, under14Days: 0, under30Days: 0, over30Days: 0 }
+      },
+      competitors: [],
+      priceTrends: [],
+      priceRecommendation: {
+        suggestedPrice: 0,
+        priceRange: { low: 0, high: 0 },
+        marketPosition: 'at_market',
+        confidence: 'low',
+        reasoning: 'No market data found. Please try refreshing market data first.'
+      },
+      sources,
+      scrapedAt: new Date().toISOString(),
+      errors: [...errors, 'No listings found matching your criteria']
+    };
+  }
+}
+
+export const enhancedMarketAnalysis = new EnhancedMarketAnalysisService();

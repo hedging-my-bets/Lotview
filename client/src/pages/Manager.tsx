@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck, ClipboardCheck, BarChart3, Bot } from "lucide-react";
+import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck, ClipboardCheck, BarChart3, Bot, Clock, Sparkles } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -44,8 +44,10 @@ export default function Manager() {
     radiusKm: "50"
   });
   const [pricingResults, setPricingResults] = useState<any>(null);
+  const [enhancedResults, setEnhancedResults] = useState<any>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isScraping, setIsScraping] = useState(false);
+  const [showEnhancedView, setShowEnhancedView] = useState(true);
 
   // Autocomplete data
   const [makes, setMakes] = useState<string[]>([]);
@@ -584,6 +586,7 @@ export default function Manager() {
 
     setIsAnalyzing(true);
     setPricingResults(null);
+    setEnhancedResults(null);
 
     try {
       const token = localStorage.getItem('auth_token');
@@ -591,7 +594,8 @@ export default function Manager() {
       const currentYear = new Date().getFullYear();
       const years = pricingForm.selectedYears.length > 0 ? pricingForm.selectedYears : [currentYear];
       
-      const response = await fetch('/api/manager/market-pricing', {
+      // Call enhanced market analysis API for comprehensive data
+      const enhancedResponse = await fetch('/api/manager/enhanced-market-analysis', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -608,25 +612,69 @@ export default function Manager() {
         }),
       });
 
-      const result = await response.json();
+      if (!enhancedResponse.ok) {
+        throw new Error(`Server error: ${enhancedResponse.status}`);
+      }
       
-      if (result.error) {
+      const enhancedResult = await enhancedResponse.json();
+      
+      if (enhancedResult.error) {
         toast({
           title: "Analysis Failed",
-          description: result.message || "Unable to analyze market pricing",
+          description: enhancedResult.message || "Unable to analyze market pricing",
           variant: "destructive",
         });
       } else {
-        setPricingResults(result);
-        if (result.totalComps > 0) {
+        setEnhancedResults(enhancedResult);
+        
+        // Build legacy pricingResults for backward compatibility with proper defaults
+        const summary = enhancedResult.summary || {};
+        const priceRec = enhancedResult.priceRecommendation || {};
+        const sourceBreakdown: Record<string, number> = {};
+        
+        // Build source breakdown from sources array
+        if (enhancedResult.sources && Array.isArray(enhancedResult.sources)) {
+          enhancedResult.sources.forEach((src: string) => {
+            sourceBreakdown[src] = (sourceBreakdown[src] || 0) + 1;
+          });
+        }
+        
+        // Count listings by source from comparisons if available
+        if (enhancedResult.comparisons && Array.isArray(enhancedResult.comparisons)) {
+          enhancedResult.comparisons.forEach((comp: any) => {
+            const source = comp.source || 'unknown';
+            sourceBreakdown[source] = (sourceBreakdown[source] || 0) + 1;
+          });
+        }
+        
+        setPricingResults({
+          averagePrice: summary.averagePrice || 0,
+          medianPrice: summary.medianPrice || 0,
+          minPrice: summary.minPrice || 0,
+          maxPrice: summary.maxPrice || 0,
+          totalComps: summary.totalListings || 0,
+          priceRange: priceRec.priceRange || { low: summary.minPrice || 0, high: summary.maxPrice || 0 },
+          recommendation: priceRec.reasoning || 'Market analysis complete. Review the price percentiles for optimal pricing.',
+          comparisons: enhancedResult.comparisons || [],
+          meta: {
+            dataSource: 'external_market',
+            totalListings: summary.totalListings || 0,
+            sourceBreakdown,
+            searchRadius: enhancedResult.searchParams?.radiusKm || parseInt(pricingForm.radiusKm),
+            postalCode: enhancedResult.searchParams?.location || settings.postalCode,
+            year: enhancedResult.searchParams?.years?.[0] || new Date().getFullYear()
+          }
+        });
+        
+        if (summary.totalListings > 0) {
           toast({
             title: "Analysis Complete",
-            description: `Found ${result.totalComps} comparable vehicles`,
+            description: `Found ${summary.totalListings} comparable vehicles from ${enhancedResult.sources?.length || 1} source(s)`,
           });
         } else {
           toast({
             title: "No Results",
-            description: result.recommendation || "No comparable vehicles found",
+            description: "No comparable vehicles found. Try expanding your search criteria.",
             variant: "default",
           });
         }
@@ -1317,6 +1365,157 @@ export default function Manager() {
                             </span>
                           </div>
                         </div>
+
+                        {/* Enhanced Analysis Section */}
+                        {enhancedResults && showEnhancedView && (
+                          <>
+                            {/* Price Percentile Breakdown */}
+                            {enhancedResults.percentiles && Object.keys(enhancedResults.percentiles).length > 0 && (
+                              <div className="bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-950/20 dark:to-indigo-950/20 border border-purple-200 dark:border-purple-900 rounded-lg p-6">
+                                <h4 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+                                  <BarChart3 className="w-5 h-5" />
+                                  Price Distribution Percentiles
+                                </h4>
+                                <div className="grid gap-3 md:grid-cols-5">
+                                  <div className="text-center p-3 bg-white/50 dark:bg-black/20 rounded-lg">
+                                    <div className="text-xs text-muted-foreground font-medium">10th Percentile</div>
+                                    <div className="text-lg font-bold text-green-600">${enhancedResults.percentiles.p10?.toLocaleString()}</div>
+                                    <div className="text-xs text-muted-foreground">Low Range</div>
+                                  </div>
+                                  <div className="text-center p-3 bg-white/50 dark:bg-black/20 rounded-lg">
+                                    <div className="text-xs text-muted-foreground font-medium">25th Percentile</div>
+                                    <div className="text-lg font-bold text-blue-600">${enhancedResults.percentiles.p25?.toLocaleString()}</div>
+                                    <div className="text-xs text-muted-foreground">Competitive</div>
+                                  </div>
+                                  <div className="text-center p-3 bg-white/50 dark:bg-black/20 rounded-lg border-2 border-primary">
+                                    <div className="text-xs text-muted-foreground font-medium">50th (Median)</div>
+                                    <div className="text-xl font-bold text-primary">${enhancedResults.percentiles.p50?.toLocaleString()}</div>
+                                    <div className="text-xs text-muted-foreground">Market Center</div>
+                                  </div>
+                                  <div className="text-center p-3 bg-white/50 dark:bg-black/20 rounded-lg">
+                                    <div className="text-xs text-muted-foreground font-medium">75th Percentile</div>
+                                    <div className="text-lg font-bold text-orange-600">${enhancedResults.percentiles.p75?.toLocaleString()}</div>
+                                    <div className="text-xs text-muted-foreground">Premium</div>
+                                  </div>
+                                  <div className="text-center p-3 bg-white/50 dark:bg-black/20 rounded-lg">
+                                    <div className="text-xs text-muted-foreground font-medium">90th Percentile</div>
+                                    <div className="text-lg font-bold text-red-600">${enhancedResults.percentiles.p90?.toLocaleString()}</div>
+                                    <div className="text-xs text-muted-foreground">High Range</div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Days on Market Analysis */}
+                            {enhancedResults.daysOnMarket && enhancedResults.daysOnMarket.average > 0 && (
+                              <div className="bg-gradient-to-r from-teal-50 to-cyan-50 dark:from-teal-950/20 dark:to-cyan-950/20 border border-teal-200 dark:border-teal-900 rounded-lg p-6">
+                                <h4 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+                                  <Clock className="w-5 h-5" />
+                                  Days on Market Analysis
+                                </h4>
+                                <div className="grid gap-4 md:grid-cols-4">
+                                  <div className="text-center">
+                                    <div className="text-3xl font-bold text-teal-600">{enhancedResults.daysOnMarket.average}</div>
+                                    <div className="text-xs text-muted-foreground">Average Days</div>
+                                  </div>
+                                  <div className="text-center">
+                                    <div className="text-3xl font-bold">{enhancedResults.daysOnMarket.median}</div>
+                                    <div className="text-xs text-muted-foreground">Median Days</div>
+                                  </div>
+                                  <div className="text-center">
+                                    <div className="text-3xl font-bold text-green-600">{enhancedResults.daysOnMarket.fastest}</div>
+                                    <div className="text-xs text-muted-foreground">Fastest Sale</div>
+                                  </div>
+                                  <div className="text-center">
+                                    <div className="text-3xl font-bold text-red-600">{enhancedResults.daysOnMarket.slowest}</div>
+                                    <div className="text-xs text-muted-foreground">Slowest Sale</div>
+                                  </div>
+                                </div>
+                                {enhancedResults.daysOnMarket.distribution && (
+                                  <div className="mt-4 pt-4 border-t border-teal-200 dark:border-teal-800">
+                                    <div className="text-sm text-muted-foreground mb-2">Sell-Through Distribution:</div>
+                                    <div className="flex gap-4 flex-wrap text-sm">
+                                      <span className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 px-2 py-1 rounded">
+                                        &lt;7 days: {enhancedResults.daysOnMarket.distribution.under7Days}
+                                      </span>
+                                      <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 px-2 py-1 rounded">
+                                        &lt;14 days: {enhancedResults.daysOnMarket.distribution.under14Days}
+                                      </span>
+                                      <span className="bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 px-2 py-1 rounded">
+                                        &lt;30 days: {enhancedResults.daysOnMarket.distribution.under30Days}
+                                      </span>
+                                      <span className="bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 px-2 py-1 rounded">
+                                        30+ days: {enhancedResults.daysOnMarket.distribution.over30Days}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Competitor Dealers */}
+                            {enhancedResults.competitors && enhancedResults.competitors.length > 0 && (
+                              <div className="bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/20 dark:to-amber-950/20 border border-orange-200 dark:border-orange-900 rounded-lg p-6">
+                                <h4 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+                                  <Users className="w-5 h-5" />
+                                  Competitor Dealer Radar ({enhancedResults.competitors.length} dealers)
+                                </h4>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-sm">
+                                    <thead>
+                                      <tr className="text-left border-b border-orange-200 dark:border-orange-800">
+                                        <th className="pb-2 font-medium">Dealer Name</th>
+                                        <th className="pb-2 font-medium text-center">Listings</th>
+                                        <th className="pb-2 font-medium text-right">Avg Price</th>
+                                        <th className="pb-2 font-medium text-right">Price Range</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {enhancedResults.competitors.slice(0, 5).map((comp: any, idx: number) => (
+                                        <tr key={idx} className="border-b border-orange-100 dark:border-orange-900/50">
+                                          <td className="py-2 font-medium">{comp.sellerName}</td>
+                                          <td className="py-2 text-center">
+                                            <Badge variant="secondary">{comp.listingCount}</Badge>
+                                          </td>
+                                          <td className="py-2 text-right font-semibold">${comp.averagePrice?.toLocaleString()}</td>
+                                          <td className="py-2 text-right text-muted-foreground">{comp.priceRange}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* AI Insights */}
+                            {enhancedResults.aiInsights && (
+                              <div className="bg-gradient-to-r from-violet-50 to-fuchsia-50 dark:from-violet-950/20 dark:to-fuchsia-950/20 border border-violet-200 dark:border-violet-900 rounded-lg p-6">
+                                <h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
+                                  <Sparkles className="w-5 h-5" />
+                                  AI Market Insights
+                                </h4>
+                                <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+                                  {enhancedResults.aiInsights}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Data Sources */}
+                            {enhancedResults.sources && enhancedResults.sources.length > 0 && (
+                              <div className="flex flex-wrap gap-2 items-center text-sm text-muted-foreground">
+                                <span className="font-medium">Data from:</span>
+                                {enhancedResults.sources.map((source: string, idx: number) => (
+                                  <Badge key={idx} variant="outline" className="capitalize">
+                                    {source}
+                                  </Badge>
+                                ))}
+                                <span className="ml-2 text-xs">
+                                  Last updated: {new Date(enhancedResults.scrapedAt).toLocaleString()}
+                                </span>
+                              </div>
+                            )}
+                          </>
+                        )}
 
                         {/* Comparable Vehicles */}
                         {pricingResults.comparisons && pricingResults.comparisons.length > 0 && (

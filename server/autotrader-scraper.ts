@@ -350,12 +350,13 @@ export class AutoTraderScraper {
   /**
    * Save scraped listings to database
    */
-  async saveListings(listings: AutoTraderListing[]): Promise<number> {
+  async saveListings(listings: AutoTraderListing[], dealershipId: number = 1): Promise<number> {
     let savedCount = 0;
     
     for (const listing of listings) {
       try {
         const marketListing: InsertMarketListing = {
+          dealershipId,
           externalId: listing.externalId,
           source: 'autotrader',
           listingType: listing.listingType,
@@ -377,12 +378,12 @@ export class AutoTraderScraper {
         };
         
         // Check if listing already exists
-        const existing = await storage.getMarketListings({
+        const existing = await storage.getMarketListings(dealershipId, {
           make: listing.make,
           model: listing.model
         });
         
-        const alreadyExists = existing.some(e => e.externalId === listing.externalId);
+        const alreadyExists = existing.listings.some(e => e.externalId === listing.externalId);
         
         if (!alreadyExists) {
           await storage.createMarketListing(marketListing);

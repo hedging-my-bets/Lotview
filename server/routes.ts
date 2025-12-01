@@ -4450,6 +4450,101 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
 
+  // Enhanced market analysis with percentiles, competitors, trends, and AI insights
+  app.post("/api/manager/enhanced-market-analysis", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const { years, make, model, trims, mileage, radiusKm, postalCode, targetPrice } = req.body;
+      
+      if (!make || !model) {
+        return res.status(400).json({
+          error: 'Missing required fields',
+          message: 'Make and model are required'
+        });
+      }
+
+      const authReq = req as AuthRequest;
+      const dealershipId = authReq.dealershipId || 1;
+      
+      // Get settings for defaults
+      const settings = authReq.user ? await storage.getManagerSettings(authReq.user.id, dealershipId) : null;
+      const searchPostalCode = postalCode || settings?.postalCode || 'V6B 1A1';
+      const searchRadiusKm = radiusKm || settings?.defaultRadiusKm || 100;
+      const searchYears = years || [new Date().getFullYear()];
+      
+      const { enhancedMarketAnalysis } = await import('./enhanced-market-analysis');
+      
+      const result = await enhancedMarketAnalysis.analyze({
+        make,
+        model,
+        years: searchYears,
+        trims,
+        mileage: mileage ? parseInt(mileage) : undefined,
+        postalCode: searchPostalCode,
+        radiusKm: searchRadiusKm,
+        dealershipId,
+        targetPrice: targetPrice ? parseInt(targetPrice) : undefined
+      });
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Error in enhanced market analysis:", error);
+      res.status(500).json({
+        error: 'ANALYSIS_ERROR',
+        message: error instanceof Error ? error.message : "Failed to perform market analysis"
+      });
+    }
+  });
+
+  // Get price history for trend visualization
+  app.get("/api/manager/price-history", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const { make, model, externalId } = req.query;
+      const dealershipId = (req as AuthRequest).dealershipId || 1;
+      
+      const history = await storage.getPriceHistory(dealershipId, {
+        make: make as string,
+        model: model as string,
+        externalId: externalId as string
+      }, 100);
+      
+      res.json(history);
+    } catch (error) {
+      console.error("Error fetching price history:", error);
+      res.status(500).json({ error: "Failed to fetch price history" });
+    }
+  });
+
+  // Get market snapshots for trend analysis
+  app.get("/api/manager/market-snapshots", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const { make, model, limit } = req.query;
+      const dealershipId = (req as AuthRequest).dealershipId || 1;
+      
+      const snapshots = await storage.getMarketSnapshots(dealershipId, {
+        make: make as string,
+        model: model as string,
+        limit: limit ? parseInt(limit as string) : 30
+      });
+      
+      res.json(snapshots);
+    } catch (error) {
+      console.error("Error fetching market snapshots:", error);
+      res.status(500).json({ error: "Failed to fetch market snapshots" });
+    }
+  });
+
+  // Get competitor dealers
+  app.get("/api/manager/competitors", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const dealershipId = (req as AuthRequest).dealershipId || 1;
+      const competitors = await storage.getCompetitorDealers(dealershipId);
+      res.json(competitors);
+    } catch (error) {
+      console.error("Error fetching competitors:", error);
+      res.status(500).json({ error: "Failed to fetch competitors" });
+    }
+  });
+
   // Get unique makes from market listings (for autocomplete)
   app.get("/api/inventory/makes", authMiddleware, requireRole("manager"), async (req, res) => {
     try {

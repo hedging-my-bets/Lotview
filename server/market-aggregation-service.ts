@@ -2,6 +2,8 @@ import { storage } from './storage';
 import { getMarketCheckService, getMarketCheckServiceForDealership } from './marketcheck-service';
 import { getApifyService, getApifyServiceForDealership } from './apify-service';
 import { autoTraderScraper } from './autotrader-scraper';
+import { kijijiScraper } from './kijiji-scraper';
+import { craigslistScraper } from './craigslist-scraper';
 import type { InsertMarketListing } from '@shared/schema';
 
 export interface MarketAggregationParams {
@@ -20,9 +22,12 @@ export interface MarketAggregationResult {
   marketCheckCount: number;
   apifyCount: number;
   scraperCount: number;
+  kijijiCount: number;
+  craigslistCount: number;
   duplicatesRemoved: number;
   success: boolean;
   errors: string[];
+  sources: string[];
 }
 
 /**
@@ -45,9 +50,12 @@ export class MarketAggregationService {
       marketCheckCount: 0,
       apifyCount: 0,
       scraperCount: 0,
+      kijijiCount: 0,
+      craigslistCount: 0,
       duplicatesRemoved: 0,
       success: true,
-      errors: []
+      errors: [],
+      sources: []
     };
 
     const allListings: InsertMarketListing[] = [];
@@ -169,6 +177,7 @@ export class MarketAggregationService {
         }
         
         console.log(`[MarketAggregation] Scraper: ${result.scraperCount} unique listings`);
+        if (result.scraperCount > 0) result.sources.push('autotrader');
       } catch (error) {
         console.error('[MarketAggregation] Scraper error:', error);
         result.errors.push(`Scraper: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -176,6 +185,72 @@ export class MarketAggregationService {
     } else {
       console.log('[MarketAggregation] Skipping scraper (sufficient premium data)');
     }
+
+    // 4. Try Kijiji Autos scraper
+    try {
+      console.log('[MarketAggregation] Fetching from Kijiji Autos...');
+      const kijijiListings = await kijijiScraper.searchAndConvert({
+        make: params.make,
+        model: params.model,
+        yearMin: params.yearMin,
+        yearMax: params.yearMax,
+        postalCode: params.postalCode,
+        radiusKm: params.radiusKm,
+        maxResults: Math.floor((params.maxResults || 50) / 2)
+      });
+      
+      const dealershipId = params.dealershipId || 1;
+      for (const listing of kijijiListings) {
+        listing.dealershipId = dealershipId;
+        if (!seenUrls.has(listing.listingUrl)) {
+          allListings.push(listing);
+          seenUrls.add(listing.listingUrl);
+          result.kijijiCount++;
+        } else {
+          result.duplicatesRemoved++;
+        }
+      }
+      
+      console.log(`[MarketAggregation] Kijiji: ${result.kijijiCount} unique listings`);
+      if (result.kijijiCount > 0) result.sources.push('kijiji');
+    } catch (error) {
+      console.error('[MarketAggregation] Kijiji error:', error);
+      result.errors.push(`Kijiji: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+
+    // 5. Try Craigslist scraper
+    try {
+      console.log('[MarketAggregation] Fetching from Craigslist...');
+      const craigslistListings = await craigslistScraper.searchAndConvert({
+        make: params.make,
+        model: params.model,
+        yearMin: params.yearMin,
+        yearMax: params.yearMax,
+        maxResults: Math.floor((params.maxResults || 50) / 3)
+      });
+      
+      const dealershipId = params.dealershipId || 1;
+      for (const listing of craigslistListings) {
+        listing.dealershipId = dealershipId;
+        if (!seenUrls.has(listing.listingUrl)) {
+          allListings.push(listing);
+          seenUrls.add(listing.listingUrl);
+          result.craigslistCount++;
+        } else {
+          result.duplicatesRemoved++;
+        }
+      }
+      
+      console.log(`[MarketAggregation] Craigslist: ${result.craigslistCount} unique listings`);
+      if (result.craigslistCount > 0) result.sources.push('craigslist');
+    } catch (error) {
+      console.error('[MarketAggregation] Craigslist error:', error);
+      result.errors.push(`Craigslist: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+
+    // Add premium source markers
+    if (result.marketCheckCount > 0) result.sources.push('marketcheck');
+    if (result.apifyCount > 0) result.sources.push('apify');
 
     // Save all unique listings to database (batch check existing URLs)
     let savedCount = 0;
