@@ -113,6 +113,22 @@ const PROVINCES = [
   'Quebec', 'Saskatchewan', 'Yukon'
 ];
 
+const PROVINCE_TAX_RATES: Record<string, { rate: number; breakdown: string }> = {
+  'Alberta': { rate: 5, breakdown: '5% GST' },
+  'British Columbia': { rate: 12, breakdown: '5% GST + 7% PST' },
+  'Manitoba': { rate: 12, breakdown: '5% GST + 7% PST' },
+  'New Brunswick': { rate: 15, breakdown: '15% HST' },
+  'Newfoundland and Labrador': { rate: 15, breakdown: '15% HST' },
+  'Northwest Territories': { rate: 5, breakdown: '5% GST' },
+  'Nova Scotia': { rate: 15, breakdown: '15% HST' },
+  'Nunavut': { rate: 5, breakdown: '5% GST' },
+  'Ontario': { rate: 13, breakdown: '13% HST' },
+  'Prince Edward Island': { rate: 15, breakdown: '15% HST' },
+  'Quebec': { rate: 14.975, breakdown: '5% GST + 9.975% QST' },
+  'Saskatchewan': { rate: 11, breakdown: '5% GST + 6% PST' },
+  'Yukon': { rate: 5, breakdown: '5% GST' },
+};
+
 const TIMEZONES = [
   { value: 'America/Vancouver', label: 'Pacific (Vancouver)' },
   { value: 'America/Edmonton', label: 'Mountain (Edmonton)' },
@@ -228,6 +244,21 @@ export default function OnboardingWizard({ onComplete }: { onComplete?: () => vo
       updateField('dealership', 'subdomain', slug);
     }
   }, [formData.dealership.name]);
+
+  // Auto-populate tax rate when province changes
+  useEffect(() => {
+    const province = formData.dealership.province;
+    if (province && PROVINCE_TAX_RATES[province]) {
+      const provinceTax = PROVINCE_TAX_RATES[province].rate;
+      setFormData(prev => ({
+        ...prev,
+        financing: {
+          ...prev.financing,
+          taxRate: provinceTax,
+        },
+      }));
+    }
+  }, [formData.dealership.province]);
 
   const validateMutation = useMutation({
     mutationFn: async (data: OnboardingFormData) => {
@@ -936,6 +967,11 @@ export default function OnboardingWizard({ onComplete }: { onComplete?: () => vo
                       value={formData.financing.taxRate}
                       onChange={(e) => updateField('financing', 'taxRate', Number(e.target.value))}
                     />
+                    {formData.dealership.province && PROVINCE_TAX_RATES[formData.dealership.province] && (
+                      <p className="text-xs text-muted-foreground">
+                        {formData.dealership.province}: {PROVINCE_TAX_RATES[formData.dealership.province].breakdown}
+                      </p>
+                    )}
                   </div>
                 </div>
 
