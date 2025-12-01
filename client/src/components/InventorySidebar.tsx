@@ -1,7 +1,8 @@
 import { FilterState } from "@/lib/types";
-import { SlidersHorizontal, CarFront, DollarSign, Check, Building2, ArrowUpDown, Car } from "lucide-react";
+import { SlidersHorizontal, CarFront, DollarSign, Check, Building2, ArrowUpDown, Car, Search } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
+import { Input } from "@/components/ui/input";
 
 const BODY_STYLES = ["SUV", "Truck", "Sedan"];
 const DEALERSHIPS = ["Olympic Hyundai Vancouver", "Boundary Hyundai Vancouver", "Kia Vancouver"];
@@ -30,6 +31,21 @@ export function InventorySidebar({ filters, setFilters, availableMakes = [] }: I
         <h3 className="font-bold text-foreground mb-6 flex items-center gap-2">
           <SlidersHorizontal className="w-4 h-4" /> Filters
         </h3>
+
+        {/* Search */}
+        <div className="mb-8">
+          <p className="text-xs font-bold text-muted-foreground uppercase mb-3 flex items-center gap-2">
+            <Search className="w-3 h-3" /> Search
+          </p>
+          <Input
+            type="text"
+            placeholder="Make, model, VIN..."
+            value={filters.search}
+            onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+            className="w-full"
+            data-testid="input-search"
+          />
+        </div>
 
         {/* Sort By */}
         <div className="mb-8">

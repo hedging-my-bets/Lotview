@@ -138,7 +138,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const { passwordHash, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      res.json({ user: userWithoutPassword });
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ error: "Failed to fetch user info" });
@@ -2295,7 +2295,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Chat endpoint for AI responses
   app.post("/api/chat", async (req, res) => {
     try {
-      const { messages, vehicleContext, scenario, dealershipId } = req.body;
+      const { messages, vehicleContext, scenario } = req.body;
 
       if (!Array.isArray(messages) || messages.length === 0) {
         return res.status(400).json({ error: "Messages array is required" });
@@ -2311,8 +2311,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Use dealershipId from request, fallback to default (1 for backward compatibility)
-      const finalDealershipId = dealershipId || 1;
+      // Use dealershipId from tenant middleware (proper tenant isolation)
+      const finalDealershipId = req.dealershipId!;
       const finalScenario = scenario || 'general';
 
       const response = await generateChatResponse(

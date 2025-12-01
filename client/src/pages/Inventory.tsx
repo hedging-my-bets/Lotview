@@ -39,7 +39,14 @@ export default function Inventory() {
       const matchesLocation = filters.location === 'all' || car.location === filters.location;
       const matchesDealership = filters.dealership === 'all' || car.dealership === filters.dealership;
       const matchesMake = filters.make === 'all' || car.make === filters.make;
-      return matchesType && matchesPrice && matchesLocation && matchesDealership && matchesMake;
+      const searchLower = filters.search.toLowerCase().trim();
+      const matchesSearch = !searchLower || 
+        car.make.toLowerCase().includes(searchLower) ||
+        car.model.toLowerCase().includes(searchLower) ||
+        `${car.year}`.includes(searchLower) ||
+        (car.vin && car.vin.toLowerCase().includes(searchLower)) ||
+        (car.stockNumber && car.stockNumber.toLowerCase().includes(searchLower));
+      return matchesType && matchesPrice && matchesLocation && matchesDealership && matchesMake && matchesSearch;
     })
     .sort((a, b) => {
       switch (filters.sortBy) {

@@ -90,10 +90,9 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
         : action === 'get-approved' ? 'get-approved'
         : action === 'value-trade' ? 'value-trade'
         : 'general';
-      const dealershipId = 1;
 
-      // Send full conversation including assistant greeting for context
-      sendChatMessage(conversationWithUser, vehicleName || "", scenario, dealershipId).then(response => {
+      // Send full conversation including assistant greeting for context (dealershipId resolved by backend from tenant middleware)
+      sendChatMessage(conversationWithUser, vehicleName || "", scenario).then(response => {
         setMessages(prev => {
           const updated = [...prev, { role: "assistant" as const, content: response }];
           trackChatMessage(vehicle, updated.length);
@@ -157,14 +156,13 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
           : action === 'get-approved' ? 'get-approved'
           : action === 'value-trade' ? 'value-trade'
           : 'general';
-        const dealershipId = 1;
         
         // Use functional setState to ensure we have the latest messages
         setMessages(currentMessages => {
           const fullConversation = [...currentMessages, userMessage];
           
-          // Send full conversation to backend from within setState
-          sendChatMessage(fullConversation, vehicleName, scenario, dealershipId).then(response => {
+          // Send full conversation to backend from within setState (dealershipId resolved by backend from tenant middleware)
+          sendChatMessage(fullConversation, vehicleName, scenario).then(response => {
             setMessages(prevMessages => {
               const updated = [...prevMessages, { role: "assistant" as const, content: response }];
               trackChatMessage(vehicle, updated.length);
@@ -354,15 +352,11 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
         ? `${contextPrefix}Vehicle: ${vehicleName}`
         : contextPrefix;
 
-      // For now, defaulting to dealershipId=1 (Olympic Hyundai Vancouver)
-      // In the future, this could be derived from subdomain or vehicle dealership
-      const dealershipId = 1;
-
+      // DealershipId is now resolved by backend from tenant middleware (subdomain/header)
       const response = await sendChatMessage(
         [...messages, userMessage],
         vehicleContextWithAction,
-        scenario,
-        dealershipId
+        scenario
       );
 
       setMessages(prev => {
