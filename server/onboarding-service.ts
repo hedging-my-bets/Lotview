@@ -302,12 +302,22 @@ export class OnboardingService {
       return { runId: run.id, dealershipId: this.dealershipId! };
       
     } catch (error) {
+      // Clean up partially created dealership on failure (cascades to all related data)
+      if (this.dealershipId) {
+        try {
+          await db.delete(dealerships).where(eq(dealerships.id, this.dealershipId));
+          console.log(`Rolled back dealership ${this.dealershipId} due to onboarding failure`);
+        } catch (cleanupError) {
+          console.error('Failed to clean up dealership after onboarding failure:', cleanupError);
+        }
+      }
+      
       // Mark onboarding as failed
       await db.update(onboardingRuns)
         .set({ 
           status: 'failed', 
           errorMessage: error instanceof Error ? error.message : 'Unknown error',
-          dealershipId: this.dealershipId,
+          dealershipId: null, // Clear dealershipId since it was rolled back
         })
         .where(eq(onboardingRuns.id, run.id));
       
