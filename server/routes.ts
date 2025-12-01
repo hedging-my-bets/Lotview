@@ -168,25 +168,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const invite = await storage.getStaffInviteByToken(token);
       
       if (!invite) {
-        return res.status(404).json({ error: "Invalid invite link" });
+        return res.json({ valid: false });
       }
       
       if (invite.status !== 'pending') {
-        return res.status(400).json({ error: "This invite has already been used" });
+        return res.json({ valid: false, alreadyAccepted: true });
       }
       
       if (new Date() > invite.expiresAt) {
-        return res.status(400).json({ error: "This invite has expired" });
+        return res.json({ valid: false, expired: true });
       }
       
       // Get dealership info for display
       const dealership = await storage.getDealershipById(invite.dealershipId);
       
       res.json({
-        email: invite.email,
-        name: invite.name,
-        role: invite.role,
-        dealershipName: dealership?.name || 'Unknown Dealership',
+        valid: true,
+        invite: {
+          id: invite.id,
+          email: invite.email,
+          name: invite.name,
+          role: invite.role,
+          dealershipName: dealership?.name || 'Unknown Dealership',
+          expiresAt: invite.expiresAt.toISOString(),
+        },
       });
     } catch (error) {
       console.error("Error validating invite:", error);

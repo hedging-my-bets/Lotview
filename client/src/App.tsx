@@ -17,6 +17,7 @@ import Manager from "@/pages/Manager";
 import Sales from "@/pages/Sales";
 import SuperAdminDashboard from "@/pages/SuperAdminDashboard";
 import N8nIntegration from "@/pages/N8nIntegration";
+import InviteAccept from "@/pages/InviteAccept";
 
 function Router() {
   return (
@@ -30,6 +31,7 @@ function Router() {
       <Route path="/sales" component={Sales} />
       <Route path="/admin" component={Admin} />
       <Route path="/super-admin" component={SuperAdminDashboard} />
+      <Route path="/invite/:token" component={InviteAccept} />
       <Route path="/embed" component={EmbedWidget} />
       <Route component={NotFound} />
     </Switch>
