@@ -19,6 +19,7 @@ import { authMiddleware, requireRole, generateToken, comparePassword, hashPasswo
 import { requireDealership, superAdminOnly } from "./tenant-middleware";
 import { facebookService } from "./facebook-service";
 import crypto from "crypto";
+import bcrypt from "bcryptjs";
 import { decodeVIN } from "./vin-decoder";
 
 // OAuth state store for CSRF protection (in production, use Redis or signed JWTs)
@@ -580,6 +581,151 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching audit logs:", error);
       res.status(500).json({ error: "Failed to fetch audit logs" });
+    }
+  });
+  
+  // Get all users across all dealerships (super admin only)
+  app.get("/api/super-admin/users", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const dealershipId = req.query.dealershipId ? parseInt(req.query.dealershipId as string) : undefined;
+      const role = req.query.role as string | undefined;
+      const search = req.query.search as string | undefined;
+      
+      const users = await storage.getAllUsersForSuperAdmin({ dealershipId, role, search });
+      res.json(users);
+    } catch (error) {
+      console.error("Error fetching all users:", error);
+      res.status(500).json({ error: "Failed to fetch users" });
+    }
+  });
+  
+  // Delete a user (super admin only)
+  app.delete("/api/super-admin/users/:userId", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const userId = parseInt(req.params.userId);
+      const authReq = req as AuthRequest;
+      
+      // Prevent deleting yourself
+      if (userId === authReq.user!.id) {
+        return res.status(400).json({ error: "Cannot delete your own account" });
+      }
+      
+      // Get user to check if it's a super admin
+      const userToDelete = await storage.getUserById(userId);
+      if (!userToDelete) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      // Prevent deleting other super admins (only allow self-delete which is blocked above)
+      if (userToDelete.role === 'super_admin') {
+        return res.status(403).json({ error: "Cannot delete super admin accounts" });
+      }
+      
+      // Delete the user
+      const deleted = await storage.deleteUser(userId);
+      if (!deleted) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      // Log audit action
+      await storage.logAuditAction({
+        userId: authReq.user!.id,
+        action: "DELETE_USER",
+        resource: "user",
+        resourceId: userId.toString(),
+        details: `Deleted user: ${userToDelete.email} (${userToDelete.name}) from dealership ${userToDelete.dealershipId}`,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent']
+      });
+      
+      res.json({ success: true, message: "User deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      res.status(500).json({ error: "Failed to delete user" });
+    }
+  });
+  
+  // Update user status (activate/deactivate) (super admin only)
+  app.patch("/api/super-admin/users/:userId/status", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const userId = parseInt(req.params.userId);
+      const { isActive } = req.body;
+      const authReq = req as AuthRequest;
+      
+      if (typeof isActive !== 'boolean') {
+        return res.status(400).json({ error: "isActive must be a boolean" });
+      }
+      
+      // Prevent deactivating yourself
+      if (userId === authReq.user!.id && !isActive) {
+        return res.status(400).json({ error: "Cannot deactivate your own account" });
+      }
+      
+      const user = await storage.getUserById(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      // Prevent changing super admin status
+      if (user.role === 'super_admin') {
+        return res.status(403).json({ error: "Cannot modify super admin accounts" });
+      }
+      
+      const updated = await storage.updateUserStatus(userId, isActive);
+      
+      // Log audit action
+      await storage.logAuditAction({
+        userId: authReq.user!.id,
+        action: isActive ? "ACTIVATE_USER" : "DEACTIVATE_USER",
+        resource: "user",
+        resourceId: userId.toString(),
+        details: `${isActive ? 'Activated' : 'Deactivated'} user: ${user.email}`,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent']
+      });
+      
+      res.json({ success: true, user: updated });
+    } catch (error) {
+      console.error("Error updating user status:", error);
+      res.status(500).json({ error: "Failed to update user status" });
+    }
+  });
+  
+  // Reset user password (super admin only)
+  app.post("/api/super-admin/users/:userId/reset-password", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const userId = parseInt(req.params.userId);
+      const { newPassword } = req.body;
+      const authReq = req as AuthRequest;
+      
+      if (!newPassword || newPassword.length < 6) {
+        return res.status(400).json({ error: "Password must be at least 6 characters" });
+      }
+      
+      const user = await storage.getUserById(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      // Hash new password and update
+      const passwordHash = await bcrypt.hash(newPassword, 10);
+      await storage.updateUserPassword(userId, passwordHash);
+      
+      // Log audit action
+      await storage.logAuditAction({
+        userId: authReq.user!.id,
+        action: "RESET_USER_PASSWORD",
+        resource: "user",
+        resourceId: userId.toString(),
+        details: `Reset password for user: ${user.email}`,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent']
+      });
+      
+      res.json({ success: true, message: "Password reset successfully" });
+    } catch (error) {
+      console.error("Error resetting user password:", error);
+      res.status(500).json({ error: "Failed to reset password" });
     }
   });
   

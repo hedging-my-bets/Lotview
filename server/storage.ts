@@ -217,6 +217,12 @@ export interface IStorage {
   getUsersByRole(role: string): Promise<User[]>;
   getUsersByDealership(dealershipId: number): Promise<User[]>; // Get all users for a specific dealership
   
+  // Super Admin User Management
+  getAllUsersForSuperAdmin(filters?: { dealershipId?: number; role?: string; search?: string }): Promise<(User & { dealershipName?: string })[]>;
+  deleteUser(userId: number): Promise<boolean>;
+  updateUserStatus(userId: number, isActive: boolean): Promise<User | undefined>;
+  updateUserPassword(userId: number, passwordHash: string): Promise<boolean>;
+  
   // Financing rules - Credit score tiers (Multi-Tenant)
   getCreditScoreTiers(dealershipId: number): Promise<CreditScoreTier[]>;
   createCreditScoreTier(tier: InsertCreditScoreTier): Promise<CreditScoreTier>;
@@ -902,6 +908,68 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(users)
       .where(eq(users.dealershipId, dealershipId))
       .orderBy(desc(users.createdAt));
+  }
+  
+  // ====== SUPER ADMIN USER MANAGEMENT ======
+  async getAllUsersForSuperAdmin(filters?: { dealershipId?: number; role?: string; search?: string }): Promise<(User & { dealershipName?: string })[]> {
+    // Build dynamic conditions
+    const conditions = [];
+    
+    if (filters?.dealershipId) {
+      conditions.push(eq(users.dealershipId, filters.dealershipId));
+    }
+    
+    if (filters?.role) {
+      conditions.push(eq(users.role, filters.role));
+    }
+    
+    // Get all users with dealership info
+    const allUsers = await db
+      .select({
+        user: users,
+        dealershipName: dealerships.name
+      })
+      .from(users)
+      .leftJoin(dealerships, eq(users.dealershipId, dealerships.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(users.dealershipId, users.role, desc(users.createdAt));
+    
+    // Filter by search if provided
+    let result = allUsers.map(row => ({
+      ...row.user,
+      dealershipName: row.dealershipName || undefined
+    }));
+    
+    if (filters?.search) {
+      const searchLower = filters.search.toLowerCase();
+      result = result.filter(u => 
+        u.email.toLowerCase().includes(searchLower) ||
+        u.name.toLowerCase().includes(searchLower)
+      );
+    }
+    
+    return result;
+  }
+  
+  async deleteUser(userId: number): Promise<boolean> {
+    const result = await db.delete(users).where(eq(users.id, userId)).returning();
+    return result.length > 0;
+  }
+  
+  async updateUserStatus(userId: number, isActive: boolean): Promise<User | undefined> {
+    const result = await db.update(users)
+      .set({ isActive, updatedAt: new Date() })
+      .where(eq(users.id, userId))
+      .returning();
+    return result[0];
+  }
+  
+  async updateUserPassword(userId: number, passwordHash: string): Promise<boolean> {
+    const result = await db.update(users)
+      .set({ passwordHash, updatedAt: new Date() })
+      .where(eq(users.id, userId))
+      .returning();
+    return result.length > 0;
   }
 
   // ====== FINANCING RULES - CREDIT SCORE TIERS (Multi-Tenant) ======
