@@ -194,7 +194,13 @@ export default function SuperAdminDashboard() {
       if (userFilters.dealershipId) params.set('dealershipId', userFilters.dealershipId.toString());
       if (userFilters.role) params.set('role', userFilters.role);
       if (userFilters.search) params.set('search', userFilters.search);
-      const response = await fetch(`/api/super-admin/users?${params}`, { credentials: 'include' });
+      const token = localStorage.getItem('auth_token');
+      const headers: HeadersInit = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const response = await fetch(`/api/super-admin/users?${params}`, { 
+        credentials: 'include',
+        headers 
+      });
       if (!response.ok) throw new Error('Failed to fetch users');
       return response.json();
     }
@@ -301,11 +307,20 @@ export default function SuperAdminDashboard() {
     },
   });
   
+  // Helper to get auth headers
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('auth_token');
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    return headers;
+  };
+  
   // Delete User Mutation
   const deleteUserMutation = useMutation({
     mutationFn: async (userId: number) => {
       const response = await fetch(`/api/super-admin/users/${userId}`, {
         method: "DELETE",
+        headers: getAuthHeaders(),
         credentials: "include",
       });
       if (!response.ok) {
@@ -324,12 +339,37 @@ export default function SuperAdminDashboard() {
     },
   });
   
+  // Update User Mutation
+  const updateUserMutation = useMutation({
+    mutationFn: async ({ userId, updates }: { userId: number; updates: Partial<{ name: string; email: string; role: string; dealershipId: number | null; isActive: boolean }> }) => {
+      const response = await fetch(`/api/super-admin/users/${userId}`, {
+        method: "PATCH",
+        headers: getAuthHeaders(),
+        credentials: "include",
+        body: JSON.stringify(updates),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to update user");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/audit-logs"] });
+      toast({ title: "Success", description: "User updated successfully" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+  
   // Update User Status Mutation
   const updateUserStatusMutation = useMutation({
     mutationFn: async ({ userId, isActive }: { userId: number; isActive: boolean }) => {
       const response = await fetch(`/api/super-admin/users/${userId}/status`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         credentials: "include",
         body: JSON.stringify({ isActive }),
       });
@@ -354,7 +394,7 @@ export default function SuperAdminDashboard() {
     mutationFn: async ({ userId, newPassword }: { userId: number; newPassword: string }) => {
       const response = await fetch(`/api/super-admin/users/${userId}/reset-password`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         credentials: "include",
         body: JSON.stringify({ newPassword }),
       });
@@ -888,6 +928,14 @@ export default function SuperAdminDashboard() {
                                       <CheckCircle2 className="h-4 w-4 text-green-500" />
                                     )}
                                   </Button>
+                                  <EditUserDialog
+                                    user={u}
+                                    dealerships={dealerships}
+                                    onSave={(updates) => updateUserMutation.mutate({ 
+                                      userId: u.id, 
+                                      updates 
+                                    })}
+                                  />
                                   <ResetPasswordDialog 
                                     user={u}
                                     onReset={(newPassword) => resetPasswordMutation.mutate({ 
@@ -2981,6 +3029,150 @@ function ResetPasswordDialog({ user, onReset }: { user: UserWithDealership; onRe
             data-testid="button-reset-password"
           >
             Reset Password
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Edit User Dialog Component
+function EditUserDialog({ 
+  user, 
+  dealerships, 
+  onSave 
+}: { 
+  user: UserWithDealership; 
+  dealerships: Dealership[];
+  onSave: (updates: Partial<{ name: string; email: string; role: string; dealershipId: number | null; isActive: boolean }>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [formData, setFormData] = useState({
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    dealershipId: user.dealershipId,
+    isActive: user.isActive
+  });
+  
+  const handleSave = () => {
+    const updates: Partial<{ name: string; email: string; role: string; dealershipId: number | null; isActive: boolean }> = {};
+    if (formData.name !== user.name) updates.name = formData.name;
+    if (formData.email !== user.email) updates.email = formData.email;
+    if (formData.role !== user.role) updates.role = formData.role;
+    if (formData.dealershipId !== user.dealershipId) updates.dealershipId = formData.dealershipId;
+    if (formData.isActive !== user.isActive) updates.isActive = formData.isActive;
+    
+    if (Object.keys(updates).length > 0) {
+      onSave(updates);
+    }
+    setOpen(false);
+  };
+  
+  const handleOpenChange = (isOpen: boolean) => {
+    if (isOpen) {
+      setFormData({
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        dealershipId: user.dealershipId,
+        isActive: user.isActive
+      });
+    }
+    setOpen(isOpen);
+  };
+  
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="sm" title="Edit user" data-testid={`edit-user-${user.id}`}>
+          <Pencil className="h-4 w-4 text-muted-foreground" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit User</DialogTitle>
+          <DialogDescription>
+            Update user information for {user.name}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="edit-name">Name</Label>
+            <Input
+              id="edit-name"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="Full name"
+              data-testid="input-edit-name"
+            />
+          </div>
+          <div>
+            <Label htmlFor="edit-email">Email</Label>
+            <Input
+              id="edit-email"
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              placeholder="Email address"
+              data-testid="input-edit-email"
+            />
+          </div>
+          <div>
+            <Label htmlFor="edit-role">Role</Label>
+            <select
+              id="edit-role"
+              className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+              value={formData.role}
+              onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+              data-testid="select-edit-role"
+            >
+              <option value="master">Master Admin</option>
+              <option value="admin">Admin</option>
+              <option value="manager">Manager</option>
+              <option value="salesperson">Salesperson</option>
+            </select>
+          </div>
+          <div>
+            <Label htmlFor="edit-dealership">Dealership</Label>
+            <select
+              id="edit-dealership"
+              className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+              value={formData.dealershipId || ''}
+              onChange={(e) => setFormData({ 
+                ...formData, 
+                dealershipId: e.target.value ? parseInt(e.target.value) : null 
+              })}
+              data-testid="select-edit-dealership"
+            >
+              <option value="">No Dealership</option>
+              {dealerships.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="edit-active"
+              checked={formData.isActive}
+              onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+              className="h-4 w-4"
+              data-testid="checkbox-edit-active"
+            />
+            <Label htmlFor="edit-active">Active Account</Label>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleSave}
+            disabled={!formData.name || !formData.email}
+            data-testid="button-save-user"
+          >
+            Save Changes
           </Button>
         </DialogFooter>
       </DialogContent>

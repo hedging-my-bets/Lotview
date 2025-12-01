@@ -729,6 +729,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Update user information (super admin only)
+  app.patch("/api/super-admin/users/:userId", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const userId = parseInt(req.params.userId);
+      const { name, email, role, dealershipId, isActive } = req.body;
+      const authReq = req as AuthRequest;
+      
+      const user = await storage.getUserById(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      // Prevent editing super admin accounts (except by themselves)
+      if (user.role === 'super_admin' && userId !== authReq.user!.id) {
+        return res.status(403).json({ error: "Cannot modify other super admin accounts" });
+      }
+      
+      // Prevent changing role to super_admin
+      if (role === 'super_admin' && user.role !== 'super_admin') {
+        return res.status(403).json({ error: "Cannot promote users to super admin" });
+      }
+      
+      // Validate email uniqueness if changing email
+      if (email && email !== user.email) {
+        const existingUser = await storage.getUserByEmail(email);
+        if (existingUser && existingUser.id !== userId) {
+          return res.status(400).json({ error: "Email already in use" });
+        }
+      }
+      
+      // Build update object with only provided fields
+      const updates: Partial<{ name: string; email: string; role: string; dealershipId: number | null; isActive: boolean }> = {};
+      if (name !== undefined) updates.name = name;
+      if (email !== undefined) updates.email = email;
+      if (role !== undefined) updates.role = role;
+      if (dealershipId !== undefined) updates.dealershipId = dealershipId;
+      if (isActive !== undefined) updates.isActive = isActive;
+      
+      const updatedUser = await storage.updateUser(userId, updates);
+      
+      // Log audit action
+      await storage.logAuditAction({
+        userId: authReq.user!.id,
+        action: "UPDATE_USER",
+        resource: "user",
+        resourceId: userId.toString(),
+        details: `Updated user ${user.email}: ${JSON.stringify(updates)}`,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent']
+      });
+      
+      res.json(updatedUser);
+    } catch (error) {
+      console.error("Error updating user:", error);
+      res.status(500).json({ error: "Failed to update user" });
+    }
+  });
+  
   // Get API keys for a specific dealership (super admin only)
   app.get("/api/super-admin/dealerships/:dealershipId/api-keys", authMiddleware, superAdminOnly, async (req, res) => {
     try {
