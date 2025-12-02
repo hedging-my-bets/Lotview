@@ -323,7 +323,16 @@ export default function Manager() {
     defaultRadiusKm: 50
   });
   const [isSavingSettings, setIsSavingSettings] = useState(false);
-  const [activeManagerTab, setActiveManagerTab] = useState<'appraisal' | 'inventory' | 'prompts' | 'settings'>('appraisal');
+  const [activeManagerTab, setActiveManagerTab] = useState<'appraisal' | 'inventory' | 'conversations' | 'prompts' | 'settings'>('appraisal');
+
+  // Conversations state
+  const [allConversations, setAllConversations] = useState<{
+    websiteChats: any[];
+    messengerConversations: any[];
+    totalWebsiteChats: number;
+    totalMessengerConversations: number;
+  } | null>(null);
+  const [isLoadingConversations, setIsLoadingConversations] = useState(false);
 
   // Market pricing state
   const [pricingForm, setPricingForm] = useState({
@@ -404,6 +413,36 @@ export default function Manager() {
       setPricingForm(prev => ({ ...prev, selectedTrims: [] }));
     }
   }, [pricingForm.make, pricingForm.model]);
+
+  // Load conversations when tab is selected
+  useEffect(() => {
+    if (activeManagerTab === 'conversations' && user && !allConversations) {
+      loadConversations();
+    }
+  }, [activeManagerTab, user]);
+
+  const loadConversations = async () => {
+    setIsLoadingConversations(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('/api/all-conversations', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setAllConversations(data);
+      }
+    } catch (error) {
+      console.error('Error loading conversations:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load conversations",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoadingConversations(false);
+    }
+  };
 
   const checkAuth = async () => {
     const token = localStorage.getItem('auth_token');
@@ -1185,6 +1224,16 @@ export default function Manager() {
                   Inventory Analysis
                 </Button>
                 <Button
+                  variant={activeManagerTab === 'conversations' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setActiveManagerTab('conversations')}
+                  data-testid="tab-conversations"
+                  className="flex items-center gap-2"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  Conversations
+                </Button>
+                <Button
                   variant={activeManagerTab === 'prompts' ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setActiveManagerTab('prompts')}
@@ -1924,6 +1973,172 @@ export default function Manager() {
               {/* Inventory Analysis Tab */}
               {activeManagerTab === 'inventory' && (
                 <InventoryAnalysisTab />
+              )}
+
+              {/* Conversations Tab */}
+              {activeManagerTab === 'conversations' && (
+                <div data-testid="tab-content-conversations" className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-semibold">All Conversations</h3>
+                      <p className="text-sm text-muted-foreground">
+                        View website chat leads and Facebook Messenger conversations
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setAllConversations(null);
+                        loadConversations();
+                      }}
+                      disabled={isLoadingConversations}
+                      data-testid="button-refresh-conversations"
+                    >
+                      {isLoadingConversations ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="w-4 h-4" />
+                      )}
+                    </Button>
+                  </div>
+
+                  {isLoadingConversations ? (
+                    <div className="space-y-4">
+                      <div className="h-32 bg-muted rounded animate-pulse" />
+                      <div className="h-32 bg-muted rounded animate-pulse" />
+                    </div>
+                  ) : allConversations ? (
+                    <div className="space-y-8">
+                      {/* Website Chat Leads Section */}
+                      <div>
+                        <div className="flex items-center gap-2 mb-4">
+                          <MessageSquare className="w-5 h-5 text-blue-600" />
+                          <h4 className="font-semibold">Website Chat Leads</h4>
+                          <Badge variant="secondary">{allConversations.totalWebsiteChats}</Badge>
+                        </div>
+                        {allConversations.websiteChats.length > 0 ? (
+                          <div className="space-y-3">
+                            {allConversations.websiteChats.map((chat: any) => (
+                              <Card key={chat.id} className="p-4" data-testid={`website-chat-${chat.id}`}>
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <Badge variant={chat.category === 'test-drive' ? 'default' : chat.category === 'get-approved' ? 'secondary' : 'outline'}>
+                                        {chat.category?.replace('-', ' ') || 'General'}
+                                      </Badge>
+                                      {chat.vehicleName && (
+                                        <span className="text-sm font-medium">{chat.vehicleName}</span>
+                                      )}
+                                      {chat.handoffSent && (
+                                        <Badge variant="outline" className="text-green-600 border-green-600">
+                                          <Check className="w-3 h-3 mr-1" />
+                                          SMS Sent
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <div className="text-sm text-muted-foreground mb-2">
+                                      {chat.messages && chat.messages.length > 0 && (
+                                        <p className="line-clamp-2">
+                                          {chat.messages[chat.messages.length - 1]?.content || 'No messages'}
+                                        </p>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                      <span className="flex items-center gap-1">
+                                        <Clock className="w-3 h-3" />
+                                        {new Date(chat.createdAt).toLocaleString('en-CA', {
+                                          month: 'short',
+                                          day: 'numeric',
+                                          hour: '2-digit',
+                                          minute: '2-digit'
+                                        })}
+                                      </span>
+                                      {chat.handoffPhone && (
+                                        <span className="flex items-center gap-1">
+                                          📱 {chat.handoffPhone}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </Card>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-8 text-muted-foreground border rounded-lg">
+                            <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                            <p className="text-sm">No website chat leads yet</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Facebook Messenger Conversations Section */}
+                      <div>
+                        <div className="flex items-center gap-2 mb-4">
+                          <Users className="w-5 h-5 text-blue-600" />
+                          <h4 className="font-semibold">Facebook Messenger</h4>
+                          <Badge variant="secondary">{allConversations.totalMessengerConversations}</Badge>
+                        </div>
+                        {allConversations.messengerConversations.length > 0 ? (
+                          <div className="space-y-3">
+                            {allConversations.messengerConversations.map((conv: any) => (
+                              <Card key={conv.id} className="p-4" data-testid={`messenger-conv-${conv.id}`}>
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <span className="font-medium">{conv.participantName}</span>
+                                      {conv.unreadCount > 0 && (
+                                        <Badge variant="destructive" className="text-xs">
+                                          {conv.unreadCount} new
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <div className="text-sm text-muted-foreground mb-2">
+                                      <p className="line-clamp-2">{conv.lastMessage || 'No messages yet'}</p>
+                                    </div>
+                                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                      <span className="flex items-center gap-1">
+                                        <Clock className="w-3 h-3" />
+                                        {conv.lastMessageAt ? new Date(conv.lastMessageAt).toLocaleString('en-CA', {
+                                          month: 'short',
+                                          day: 'numeric',
+                                          hour: '2-digit',
+                                          minute: '2-digit'
+                                        }) : 'No messages'}
+                                      </span>
+                                      <span className="flex items-center gap-1">
+                                        📄 {conv.pageName}
+                                      </span>
+                                      {conv.ownerName && (
+                                        <span className="flex items-center gap-1">
+                                          <Users className="w-3 h-3" />
+                                          {conv.ownerName}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </Card>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-8 text-muted-foreground border rounded-lg">
+                            <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                            <p className="text-sm">No Messenger conversations yet</p>
+                            <p className="text-xs mt-1">Connect Facebook pages to see conversations here</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <MessageSquare className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                      <h3 className="text-lg font-medium mb-2">No Conversations</h3>
+                      <p className="text-sm">Website chat leads and Messenger conversations will appear here</p>
+                    </div>
+                  )}
+                </div>
               )}
 
               {/* AI Chat Prompts Tab */}

@@ -2705,6 +2705,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== MESSENGER CONVERSATIONS ROUTES =====
+  
+  // Get all messenger conversations (role-based filtering)
+  // Managers see all, salespeople see only their connected pages
+  app.get("/api/messenger-conversations", authMiddleware, requireRole("salesperson"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const userId = req.user?.id;
+      const userRole = req.user?.role;
+      
+      const conversations = await storage.getMessengerConversations(dealershipId, userId, userRole);
+      res.json(conversations);
+    } catch (error) {
+      console.error("Error fetching messenger conversations:", error);
+      res.status(500).json({ error: "Failed to fetch messenger conversations" });
+    }
+  });
+
+  // ===== ALL CONVERSATIONS UNIFIED ENDPOINT =====
+  
+  // Get all conversations (both website chat and messenger) with role-based filtering
+  // General Manager/Sales Manager see all, salespeople see only their connected pages' messenger
+  app.get("/api/all-conversations", authMiddleware, requireRole("salesperson"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const userId = req.user?.id;
+      const userRole = req.user?.role;
+      
+      // Managers get website chat conversations
+      let websiteChats: any[] = [];
+      if (userRole === 'manager' || userRole === 'general_manager' || userRole === 'master' || userRole === 'super_admin') {
+        const { conversations } = await storage.getAllConversations(dealershipId, undefined, 1000, 0);
+        websiteChats = conversations.map(conv => ({
+          ...conv,
+          type: 'website_chat',
+          messages: JSON.parse(conv.messages)
+        }));
+      }
+      
+      // Get messenger conversations (role-filtered)
+      const messengerConvs = await storage.getMessengerConversations(dealershipId, userId, userRole);
+      const messengerChats = messengerConvs.map(conv => ({
+        ...conv,
+        type: 'messenger'
+      }));
+      
+      res.json({
+        websiteChats,
+        messengerConversations: messengerChats,
+        totalWebsiteChats: websiteChats.length,
+        totalMessengerConversations: messengerChats.length
+      });
+    } catch (error) {
+      console.error("Error fetching all conversations:", error);
+      res.status(500).json({ error: "Failed to fetch conversations" });
+    }
+  });
+
   // ===== CHAT PROMPT ROUTES =====
 
   // Get all chat prompts - Manager and above
