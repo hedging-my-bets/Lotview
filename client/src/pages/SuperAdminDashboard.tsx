@@ -15,6 +15,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { Building2, Key, FileText, Plus, Eye, EyeOff, Trash2, LogOut, Settings2, CheckCircle2, XCircle, Loader2, Plug, Pencil, Webhook, Copy, AlertCircle, Clock, Link2, RefreshCw, Car, Rocket, Users, UserX, KeyRound, Search, Facebook } from "lucide-react";
 import OnboardingWizard from "@/components/OnboardingWizard";
+import { GhlIntegrationDialog } from "@/components/GhlIntegrationDialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 
@@ -614,7 +615,14 @@ export default function SuperAdminDashboard() {
                           <IntegrationStatus label="Facebook" active={dealership.integrations.facebook} />
                           <IntegrationStatus label="MarketCheck" active={dealership.integrations.marketcheck} />
                           <IntegrationStatus label="Apify" active={dealership.integrations.apify} />
-                          <IntegrationStatus label="GoHighLevel" active={dealership.integrations.ghl} />
+                          <GhlIntegrationDialog
+                            dealershipId={dealership.id}
+                            dealershipName={dealership.name}
+                            active={dealership.integrations.ghl}
+                            onSuccess={() => {
+                              queryClient.invalidateQueries({ queryKey: ["/api/super-admin/dealerships-with-integrations"] });
+                            }}
+                          />
                           <IntegrationStatus label="GA4" active={dealership.integrations.googleAnalytics} />
                           <IntegrationStatus label="Google Ads" active={dealership.integrations.googleAds} />
                           <IntegrationStatus label="FB Pixel" active={dealership.integrations.facebookPixel} />

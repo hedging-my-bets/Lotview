@@ -361,3 +361,45 @@ async function refreshAllDealershipMarketData(): Promise<void> {
     throw error;
   }
 }
+
+// ===== GOHIGHLEVEL CRM SYNC SCHEDULER =====
+
+let ghlSyncSchedulerInitialized = false;
+
+/**
+ * Start the GoHighLevel CRM sync scheduler.
+ * Runs daily at 5 AM to sync contacts and appointments between GHL, Lotview, and PBS.
+ */
+export function startGhlSyncScheduler() {
+  if (ghlSyncSchedulerInitialized) {
+    console.log('GHL sync scheduler already running');
+    return;
+  }
+
+  // Sync GHL data daily at 5 AM (after Facebook Catalog sync at 4 AM)
+  cron.schedule('0 5 * * *', async () => {
+    console.log('🔄 Running scheduled GHL CRM sync...');
+    try {
+      await runGhlBatchSync();
+      console.log('✓ GHL CRM sync complete');
+    } catch (error) {
+      console.error('✗ GHL CRM sync failed:', error);
+    }
+  });
+
+  ghlSyncSchedulerInitialized = true;
+  console.log('✓ GHL sync scheduler started (runs daily at 5 AM)');
+}
+
+/**
+ * Run batch sync for all dealerships with GHL bidirectional sync enabled.
+ */
+async function runGhlBatchSync(): Promise<void> {
+  try {
+    const { runGhlSyncForAllDealerships } = await import('./ghl-sync-service');
+    await runGhlSyncForAllDealerships();
+  } catch (error) {
+    console.error('[GHL Sync] Error in batch sync:', error);
+    throw error;
+  }
+}

@@ -31,6 +31,7 @@ Preferred communication style: Simple, everyday language.
 - **Facebook Catalog**: `facebook_catalog_config` (stores Catalog ID, System User Access Token, sync status per dealership).
 - **Remarketing**: `remarketing_vehicles`.
 - **PBS DMS Integration**: `pbs_config`, `pbs_webhook_events`, `pbs_sessions`, `pbs_contact_cache`, `pbs_appointment_cache`, `pbs_parts_cache`, `pbs_api_logs`.
+- **GoHighLevel CRM Integration**: `ghl_accounts` (OAuth tokens per dealership), `ghl_config` (sync settings), `ghl_webhook_events`, `ghl_contact_sync` (track synced contacts between GHL/PBS/Lotview), `ghl_appointment_sync` (track synced appointments), `ghl_api_logs`.
 - **AI Chat**: `chat_prompts`, `chat_conversations`.
 - **Dealership API Keys**: `dealership_api_keys`.
 - **Super Admin**: `global_settings`, `audit_logs`.
@@ -56,7 +57,7 @@ Preferred communication style: Simple, everyday language.
     - **VIN Decoder**: NHTSA API.
     - **Market Pricing Analysis**: MarketCheck API, Apify AutoTrader.ca Actor.
     - **Geocoding**: Geocoder.ca API.
-- **Cron Scheduling**: Node-cron for inventory sync (midnight), Facebook token refresh (3 AM), market analysis (3 AM), Facebook Catalog sync (4 AM).
+- **Cron Scheduling**: Node-cron for inventory sync (midnight), Facebook token refresh (3 AM), market analysis (3 AM), Facebook Catalog sync (4 AM), GHL CRM sync (5 AM).
 - **AI/LLM**: OpenAI GPT-5 via Replit AI Integrations (fallback) or per-dealership OpenAI API keys.
 - **Carfax Integration**: Automated scraping of Carfax URLs from dealership websites.
 - **Facebook Integration**: OAuth 2.0 flow for page connections, page posting APIs, vehicle posting automation. Routes in `server/routes.ts` for `/api/facebook/auth`, `/api/facebook/callback`, page management endpoints.
@@ -70,6 +71,16 @@ Preferred communication style: Simple, everyday language.
     - **API Logging**: All PBS API calls logged to `pbs_api_logs` for debugging and monitoring.
     - **Retry Logic**: Exponential backoff for rate limits (429), network errors, and session expiration (401).
     - **Multi-Tenant Isolation**: All operations scoped to dealershipId from JWT or tenant middleware.
+- **GoHighLevel CRM Integration**: Full OAuth 2.0 integration for CRM synchronization. Services in `server/ghl-api-service.ts`, `server/ghl-sync-service.ts`, `server/ghl-pbs-bridge.ts` provide:
+    - **OAuth 2.0 Flow**: Each dealership connects their own GHL sub-account via OAuth. Token refresh with 5-minute buffer.
+    - **Contacts API**: Create, update, search contacts. Bidirectional sync with PBS DMS contacts.
+    - **Calendars API**: List calendars, create/update/delete calendar events. Map sales/service calendars for appointment sync.
+    - **Opportunities API**: Create/update opportunities in pipelines. Auto-create opportunities for vehicle interests.
+    - **Webhooks**: Signature-verified webhook receiver at `/api/ghl/webhook`. Multi-tenant routing via locationId with active account validation.
+    - **Outbound Sync**: Push Lotview leads and PBS contacts/appointments to GHL. Queue-based pending sync processing.
+    - **PBS Bridge**: Bidirectional sync between GHL and PBS DMS. Contact and appointment mapping with sync status tracking.
+    - **Dashboard UI**: GhlIntegrationDialog in Super Admin for OAuth connection, sync settings, calendar/pipeline mappings.
+    - **Scheduled Sync**: Daily batch reconciliation at 5 AM for all dealerships with bidirectional sync enabled.
 
 ## Legal Compliance Pages
 

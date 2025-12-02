@@ -6775,6 +6775,19 @@ Format your response in clear sections with actionable recommendations.`;
       const account = accounts[0];
       const dealershipId = account.dealershipId;
       
+      // Security: Validate the account is active and locationId matches exactly
+      if (!account.isActive) {
+        console.warn(`GHL webhook rejected: account inactive for dealership ${dealershipId}`);
+        return res.status(403).json({ error: "Account not active" });
+      }
+      
+      if (account.locationId !== locationId) {
+        console.error(`GHL webhook security: locationId mismatch - expected ${account.locationId}, got ${locationId}`);
+        return res.status(403).json({ error: "Location mismatch" });
+      }
+      
+      console.log(`GHL webhook: verified account ${account.id} for dealership ${dealershipId}, location ${locationId}`);
+      
       // Verify webhook signature if configured
       const config = await storage.getGhlConfig(dealershipId);
       if (config?.webhookVerifyToken && signature) {
