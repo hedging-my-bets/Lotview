@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck, ClipboardCheck, BarChart3, Bot, Clock, Sparkles } from "lucide-react";
+import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck, ClipboardCheck, BarChart3, Bot, Clock, Sparkles, Pencil, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -72,6 +72,9 @@ export default function Manager() {
   // Chat prompts state
   const [chatPrompts, setChatPrompts] = useState<any[]>([]);
   const [isLoadingPrompts, setIsLoadingPrompts] = useState(true);
+  const [editingPromptId, setEditingPromptId] = useState<number | null>(null);
+  const [editedPrompt, setEditedPrompt] = useState<{ greeting: string; systemPrompt: string }>({ greeting: '', systemPrompt: '' });
+  const [isSavingPrompt, setIsSavingPrompt] = useState(false);
 
   useEffect(() => {
     checkAuth();
@@ -314,6 +317,64 @@ export default function Manager() {
       console.error("Error loading chat prompts:", error);
     } finally {
       setIsLoadingPrompts(false);
+    }
+  };
+
+  const startEditingPrompt = (prompt: any) => {
+    setEditingPromptId(prompt.id);
+    setEditedPrompt({
+      greeting: prompt.greeting,
+      systemPrompt: prompt.systemPrompt
+    });
+  };
+
+  const cancelEditingPrompt = () => {
+    setEditingPromptId(null);
+    setEditedPrompt({ greeting: '', systemPrompt: '' });
+  };
+
+  const savePrompt = async (prompt: any) => {
+    setIsSavingPrompt(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('/api/chat-prompts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          scenario: prompt.scenario,
+          greeting: editedPrompt.greeting,
+          systemPrompt: editedPrompt.systemPrompt
+        })
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Success",
+          description: "Chat prompt saved successfully",
+        });
+        setEditingPromptId(null);
+        setEditedPrompt({ greeting: '', systemPrompt: '' });
+        loadChatPrompts();
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Error",
+          description: error.error || "Failed to save prompt",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error saving chat prompt:", error);
+      toast({
+        title: "Error",
+        description: "Failed to save prompt",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingPrompt(false);
     }
   };
 
@@ -1586,38 +1647,119 @@ export default function Manager() {
               {activeManagerTab === 'prompts' && (
                 <div data-testid="tab-content-prompts">
                   <div className="mb-4">
-                    <h3 className="text-lg font-semibold">AI Chat Prompts (Read-Only)</h3>
-                    <p className="text-sm text-muted-foreground">View AI chat scenarios configured for your dealership</p>
+                    <h3 className="text-lg font-semibold">AI Chatbot Prompts</h3>
+                    <p className="text-sm text-muted-foreground">Configure AI chat scenarios for your dealership website chatbot</p>
                   </div>
                   {isLoadingPrompts ? (
-                    <div className="space-y-2">
-                      <div className="h-12 bg-muted rounded animate-pulse" />
-                      <div className="h-12 bg-muted rounded animate-pulse" />
-                      <div className="h-12 bg-muted rounded animate-pulse" />
+                    <div className="space-y-4">
+                      <div className="h-32 bg-muted rounded animate-pulse" />
+                      <div className="h-32 bg-muted rounded animate-pulse" />
                     </div>
                   ) : chatPrompts.length > 0 ? (
-                    <Accordion type="single" collapsible>
+                    <div className="space-y-6">
                       {chatPrompts.map((prompt) => (
-                        <AccordionItem 
+                        <div 
                           key={prompt.id} 
-                          value={prompt.scenario}
+                          className="border rounded-lg p-4"
                           data-testid={`prompt-${prompt.scenario}`}
                         >
-                          <AccordionTrigger className="text-left">
-                            {formatScenario(prompt.scenario)}
-                          </AccordionTrigger>
-                          <AccordionContent>
-                            <div className="text-sm text-muted-foreground whitespace-pre-wrap">
-                              {prompt.greeting}
+                          <div className="flex items-center justify-between mb-4">
+                            <h4 className="font-semibold text-lg">{formatScenario(prompt.scenario)}</h4>
+                            {editingPromptId !== prompt.id && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => startEditingPrompt(prompt)}
+                                data-testid={`edit-prompt-${prompt.scenario}`}
+                              >
+                                <Pencil className="w-4 h-4 mr-2" />
+                                Edit
+                              </Button>
+                            )}
+                          </div>
+                          
+                          {editingPromptId === prompt.id ? (
+                            <div className="space-y-4">
+                              <div>
+                                <Label htmlFor={`greeting-${prompt.id}`}>Greeting Message</Label>
+                                <p className="text-xs text-muted-foreground mb-2">
+                                  The first message shown to customers when they open the chat
+                                </p>
+                                <textarea
+                                  id={`greeting-${prompt.id}`}
+                                  className="w-full min-h-[100px] p-3 border rounded-md bg-background resize-y"
+                                  value={editedPrompt.greeting}
+                                  onChange={(e) => setEditedPrompt({ ...editedPrompt, greeting: e.target.value })}
+                                  placeholder="Enter greeting message..."
+                                  data-testid={`input-greeting-${prompt.scenario}`}
+                                />
+                              </div>
+                              <div>
+                                <Label htmlFor={`system-${prompt.id}`}>System Instructions</Label>
+                                <p className="text-xs text-muted-foreground mb-2">
+                                  Background instructions that guide the AI's behavior and responses
+                                </p>
+                                <textarea
+                                  id={`system-${prompt.id}`}
+                                  className="w-full min-h-[200px] p-3 border rounded-md bg-background resize-y font-mono text-sm"
+                                  value={editedPrompt.systemPrompt}
+                                  onChange={(e) => setEditedPrompt({ ...editedPrompt, systemPrompt: e.target.value })}
+                                  placeholder="Enter system instructions..."
+                                  data-testid={`input-system-${prompt.scenario}`}
+                                />
+                              </div>
+                              <div className="flex gap-2 pt-2">
+                                <Button
+                                  onClick={() => savePrompt(prompt)}
+                                  disabled={isSavingPrompt || !editedPrompt.greeting.trim() || !editedPrompt.systemPrompt.trim()}
+                                  data-testid={`save-prompt-${prompt.scenario}`}
+                                >
+                                  {isSavingPrompt ? (
+                                    <>
+                                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                                      Saving...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Save className="w-4 h-4 mr-2" />
+                                      Save Changes
+                                    </>
+                                  )}
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  onClick={cancelEditingPrompt}
+                                  disabled={isSavingPrompt}
+                                  data-testid={`cancel-prompt-${prompt.scenario}`}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
                             </div>
-                          </AccordionContent>
-                        </AccordionItem>
+                          ) : (
+                            <div className="space-y-4">
+                              <div>
+                                <p className="text-sm font-medium text-muted-foreground mb-1">Greeting:</p>
+                                <p className="text-sm bg-muted/50 p-3 rounded-md whitespace-pre-wrap">
+                                  {prompt.greeting}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-muted-foreground mb-1">System Instructions:</p>
+                                <p className="text-xs bg-muted/50 p-3 rounded-md font-mono whitespace-pre-wrap max-h-[150px] overflow-y-auto">
+                                  {prompt.systemPrompt}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       ))}
-                    </Accordion>
+                    </div>
                   ) : (
                     <div className="text-center py-8 text-muted-foreground">
                       <MessageSquare className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
-                      <p className="text-sm">No chat prompts configured yet</p>
+                      <p className="text-sm mb-4">No chat prompts configured yet</p>
+                      <p className="text-xs">Chat prompts will appear here once they are created by the system administrator.</p>
                     </div>
                   )}
                 </div>

@@ -2707,8 +2707,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ===== CHAT PROMPT ROUTES =====
 
-  // Get all chat prompts - ADMIN ONLY
-  app.get("/api/chat-prompts", authMiddleware, requireRole("master"), async (req, res) => {
+  // Get all chat prompts - Manager and above
+  app.get("/api/chat-prompts", authMiddleware, requireRole("manager"), async (req, res) => {
     try {
       const dealershipId = req.dealershipId!;
       const prompts = await storage.getChatPrompts(dealershipId);
@@ -2719,8 +2719,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get chat prompt by scenario - ADMIN ONLY
-  app.get("/api/chat-prompts/:scenario", authMiddleware, requireRole("master"), async (req, res) => {
+  // Get chat prompt by scenario - Manager and above
+  app.get("/api/chat-prompts/:scenario", authMiddleware, requireRole("manager"), async (req, res) => {
     try {
       const dealershipId = req.dealershipId!;
       const scenario = req.params.scenario;
@@ -2737,8 +2737,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Create or update chat prompt - ADMIN ONLY
-  app.post("/api/chat-prompts", authMiddleware, requireRole("master"), async (req, res) => {
+  // Create or update chat prompt - Manager and above
+  app.post("/api/chat-prompts", authMiddleware, requireRole("manager"), async (req, res) => {
     try {
       const dealershipId = req.dealershipId!;
       const { scenario, systemPrompt, greeting } = req.body;
