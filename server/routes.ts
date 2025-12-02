@@ -2709,7 +2709,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Get all messenger conversations (role-based filtering)
   // Managers see all, salespeople see only their connected pages
-  app.get("/api/messenger-conversations", authMiddleware, requireRole("salesperson"), async (req, res) => {
+  app.get("/api/messenger-conversations", authMiddleware, requireRole("salesperson", "manager", "general_manager", "master", "super_admin"), async (req, res) => {
     try {
       const dealershipId = req.dealershipId!;
       const userId = req.user?.id;
@@ -2727,7 +2727,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Get all conversations (both website chat and messenger) with role-based filtering
   // General Manager/Sales Manager see all, salespeople see only their connected pages' messenger
-  app.get("/api/all-conversations", authMiddleware, requireRole("salesperson"), async (req, res) => {
+  app.get("/api/all-conversations", authMiddleware, requireRole("salesperson", "manager", "general_manager", "master", "super_admin"), async (req, res) => {
     try {
       const dealershipId = req.dealershipId!;
       const userId = req.user?.id;
