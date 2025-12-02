@@ -107,7 +107,10 @@ import {
   type InsertCompetitorDealer,
   marketSnapshots,
   type MarketSnapshot,
-  type InsertMarketSnapshot
+  type InsertMarketSnapshot,
+  facebookCatalogConfig,
+  type FacebookCatalogConfig,
+  type InsertFacebookCatalogConfig
 } from "@shared/schema";
 import { eq, desc, sql, and, gte, lte, inArray } from "drizzle-orm";
 
@@ -178,6 +181,14 @@ export interface IStorage {
   getFacebookPageByPageId(pageId: string): Promise<FacebookPage | undefined>;
   createFacebookPage(page: InsertFacebookPage): Promise<FacebookPage>;
   updateFacebookPage(id: number, page: Partial<InsertFacebookPage>): Promise<FacebookPage | undefined>;
+  
+  // Facebook Catalog Config (for Automotive Inventory Ads)
+  getFacebookCatalogConfig(dealershipId: number): Promise<FacebookCatalogConfig | undefined>;
+  getAllFacebookCatalogConfigs(): Promise<(FacebookCatalogConfig & { dealershipName?: string })[]>;
+  saveFacebookCatalogConfig(config: InsertFacebookCatalogConfig): Promise<FacebookCatalogConfig>;
+  updateFacebookCatalogConfig(dealershipId: number, config: Partial<InsertFacebookCatalogConfig>): Promise<FacebookCatalogConfig | undefined>;
+  updateCatalogSyncStatus(dealershipId: number, status: { lastSyncAt?: Date; lastSyncStatus?: string; lastSyncMessage?: string; vehiclesSynced?: number }): Promise<FacebookCatalogConfig | undefined>;
+  deleteFacebookCatalogConfig(dealershipId: number): Promise<boolean>;
   
   // Priority vehicles
   getPagePriorityVehicles(pageId: number): Promise<PagePriorityVehicle[]>;
@@ -653,6 +664,73 @@ export class DatabaseStorage implements IStorage {
   async updateFacebookPage(id: number, page: Partial<InsertFacebookPage>): Promise<FacebookPage | undefined> {
     const result = await db.update(facebookPages).set(page).where(eq(facebookPages.id, id)).returning();
     return result[0];
+  }
+
+  // Facebook Catalog Config (for Automotive Inventory Ads)
+  async getFacebookCatalogConfig(dealershipId: number): Promise<FacebookCatalogConfig | undefined> {
+    const result = await db.select().from(facebookCatalogConfig).where(eq(facebookCatalogConfig.dealershipId, dealershipId));
+    return result[0];
+  }
+
+  async getAllFacebookCatalogConfigs(): Promise<(FacebookCatalogConfig & { dealershipName?: string })[]> {
+    const result = await db.select({
+      id: facebookCatalogConfig.id,
+      dealershipId: facebookCatalogConfig.dealershipId,
+      catalogId: facebookCatalogConfig.catalogId,
+      accessToken: facebookCatalogConfig.accessToken,
+      catalogName: facebookCatalogConfig.catalogName,
+      isActive: facebookCatalogConfig.isActive,
+      lastSyncAt: facebookCatalogConfig.lastSyncAt,
+      lastSyncStatus: facebookCatalogConfig.lastSyncStatus,
+      lastSyncMessage: facebookCatalogConfig.lastSyncMessage,
+      vehiclesSynced: facebookCatalogConfig.vehiclesSynced,
+      autoSyncEnabled: facebookCatalogConfig.autoSyncEnabled,
+      createdAt: facebookCatalogConfig.createdAt,
+      updatedAt: facebookCatalogConfig.updatedAt,
+      dealershipName: dealerships.name,
+    }).from(facebookCatalogConfig)
+      .leftJoin(dealerships, eq(facebookCatalogConfig.dealershipId, dealerships.id));
+    return result;
+  }
+
+  async saveFacebookCatalogConfig(config: InsertFacebookCatalogConfig): Promise<FacebookCatalogConfig> {
+    const result = await db.insert(facebookCatalogConfig).values(config)
+      .onConflictDoUpdate({
+        target: facebookCatalogConfig.dealershipId,
+        set: {
+          catalogId: config.catalogId,
+          accessToken: config.accessToken,
+          catalogName: config.catalogName,
+          isActive: config.isActive,
+          autoSyncEnabled: config.autoSyncEnabled,
+          updatedAt: new Date(),
+        }
+      })
+      .returning();
+    return result[0];
+  }
+
+  async updateFacebookCatalogConfig(dealershipId: number, config: Partial<InsertFacebookCatalogConfig>): Promise<FacebookCatalogConfig | undefined> {
+    const result = await db.update(facebookCatalogConfig)
+      .set({ ...config, updatedAt: new Date() })
+      .where(eq(facebookCatalogConfig.dealershipId, dealershipId))
+      .returning();
+    return result[0];
+  }
+
+  async updateCatalogSyncStatus(dealershipId: number, status: { lastSyncAt?: Date; lastSyncStatus?: string; lastSyncMessage?: string; vehiclesSynced?: number }): Promise<FacebookCatalogConfig | undefined> {
+    const result = await db.update(facebookCatalogConfig)
+      .set({ ...status, updatedAt: new Date() })
+      .where(eq(facebookCatalogConfig.dealershipId, dealershipId))
+      .returning();
+    return result[0];
+  }
+
+  async deleteFacebookCatalogConfig(dealershipId: number): Promise<boolean> {
+    const result = await db.delete(facebookCatalogConfig)
+      .where(eq(facebookCatalogConfig.dealershipId, dealershipId))
+      .returning();
+    return result.length > 0;
   }
 
   // Priority vehicles
