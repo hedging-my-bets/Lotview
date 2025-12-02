@@ -200,24 +200,6 @@ export const insertPagePriorityVehicleSchema = createInsertSchema(pagePriorityVe
 export type InsertPagePriorityVehicle = z.infer<typeof insertPagePriorityVehicleSchema>;
 export type PagePriorityVehicle = typeof pagePriorityVehicles.$inferSelect;
 
-// GoHighLevel configuration (LEGACY - being moved to dealershipApiKeys)
-export const ghlConfig = pgTable("ghl_config", {
-  id: serial("id").primaryKey(),
-  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
-  apiKey: text("api_key").notNull(), // GHL API access token
-  locationId: text("location_id").notNull(), // GHL location ID
-  isActive: boolean("is_active").notNull().default(true),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-
-export const insertGhlConfigSchema = createInsertSchema(ghlConfig).omit({
-  id: true,
-  updatedAt: true,
-});
-
-export type InsertGhlConfig = z.infer<typeof insertGhlConfigSchema>;
-export type GhlConfig = typeof ghlConfig.$inferSelect;
-
 // GHL Webhook configuration for SMS handoff
 export const ghlWebhookConfig = pgTable("ghl_webhook_config", {
   id: serial("id").primaryKey(),
@@ -1113,3 +1095,178 @@ export const insertLaunchChecklistSchema = createInsertSchema(launchChecklist).o
 
 export type InsertLaunchChecklist = z.infer<typeof insertLaunchChecklistSchema>;
 export type LaunchChecklist = typeof launchChecklist.$inferSelect;
+
+// ===== GOHIGHLEVEL INTEGRATION TABLES =====
+
+// GoHighLevel Accounts - OAuth tokens and account info per dealership
+export const ghlAccounts = pgTable("ghl_accounts", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  locationId: text("location_id").notNull(), // GHL location/sub-account ID
+  companyId: text("company_id"), // GHL agency company ID (if applicable)
+  accessToken: text("access_token").notNull(), // OAuth access token (encrypted in production)
+  refreshToken: text("refresh_token").notNull(), // OAuth refresh token
+  tokenType: text("token_type").notNull().default('Bearer'),
+  expiresAt: timestamp("expires_at").notNull(), // When access token expires
+  scope: text("scope"), // OAuth scopes granted
+  userName: text("user_name"), // GHL user name who connected
+  userEmail: text("user_email"), // GHL user email
+  locationName: text("location_name"), // Sub-account/location name
+  isActive: boolean("is_active").notNull().default(true),
+  lastSyncAt: timestamp("last_sync_at"), // Last successful sync
+  syncStatus: text("sync_status").default('pending'), // 'pending', 'syncing', 'synced', 'error'
+  syncError: text("sync_error"), // Last sync error message
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertGhlAccountSchema = createInsertSchema(ghlAccounts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertGhlAccount = z.infer<typeof insertGhlAccountSchema>;
+export type GhlAccount = typeof ghlAccounts.$inferSelect;
+
+// GoHighLevel Configuration - calendars, pipelines, custom field mappings per dealership
+export const ghlConfig = pgTable("ghl_config", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  ghlAccountId: integer("ghl_account_id").notNull().references(() => ghlAccounts.id, { onDelete: 'cascade' }),
+  // Calendar settings
+  salesCalendarId: text("sales_calendar_id"), // GHL calendar ID for sales appointments
+  serviceCalendarId: text("service_calendar_id"), // GHL calendar ID for service appointments
+  // Pipeline settings
+  salesPipelineId: text("sales_pipeline_id"), // GHL pipeline for vehicle sales
+  servicePipelineId: text("service_pipeline_id"), // GHL pipeline for service leads
+  // Stage mappings (JSON)
+  pipelineStages: text("pipeline_stages"), // JSON: { "new_lead": "stage_id", "contacted": "stage_id", ... }
+  // Custom field mappings (JSON)
+  customFieldMappings: text("custom_field_mappings"), // JSON: { "vin": "field_id", "vehicle_interest": "field_id", ... }
+  // Tag settings
+  autoTagNewLeads: boolean("auto_tag_new_leads").notNull().default(true),
+  leadSourceTag: text("lead_source_tag").default('Lotview.ai'),
+  // Sync settings
+  syncContacts: boolean("sync_contacts").notNull().default(true),
+  syncAppointments: boolean("sync_appointments").notNull().default(true),
+  syncOpportunities: boolean("sync_opportunities").notNull().default(true),
+  bidirectionalSync: boolean("bidirectional_sync").notNull().default(true), // Sync both ways
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertGhlConfigSchema = createInsertSchema(ghlConfig).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertGhlConfig = z.infer<typeof insertGhlConfigSchema>;
+export type GhlConfig = typeof ghlConfig.$inferSelect;
+
+// GoHighLevel Webhook Events - incoming webhooks from GHL
+export const ghlWebhookEvents = pgTable("ghl_webhook_events", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  eventType: text("event_type").notNull(), // e.g., 'ContactCreate', 'AppointmentCreate', 'OpportunityStageUpdate'
+  eventId: text("event_id").notNull(), // GHL event ID for deduplication
+  locationId: text("location_id").notNull(), // GHL location ID to route to correct dealership
+  resourceId: text("resource_id"), // ID of the affected resource (contact ID, appointment ID, etc.)
+  payload: text("payload").notNull(), // Full webhook payload JSON
+  status: text("status").notNull().default('pending'), // 'pending', 'processing', 'processed', 'failed', 'skipped'
+  processingAttempts: integer("processing_attempts").notNull().default(0),
+  errorMessage: text("error_message"),
+  processedAt: timestamp("processed_at"),
+  receivedAt: timestamp("received_at").defaultNow().notNull(),
+});
+
+export const insertGhlWebhookEventSchema = createInsertSchema(ghlWebhookEvents).omit({
+  id: true,
+  receivedAt: true,
+});
+
+export type InsertGhlWebhookEvent = z.infer<typeof insertGhlWebhookEventSchema>;
+export type GhlWebhookEvent = typeof ghlWebhookEvents.$inferSelect;
+
+// GoHighLevel Contact Sync - track synced contacts between GHL, PBS, and Lotview
+export const ghlContactSync = pgTable("ghl_contact_sync", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  ghlContactId: text("ghl_contact_id").notNull(), // GoHighLevel contact ID
+  pbsContactId: text("pbs_contact_id"), // PBS DMS contact ID (if synced)
+  lotviewLeadId: integer("lotview_lead_id"), // Internal Lotview lead ID (future)
+  // Contact snapshot for quick access
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  email: text("email"),
+  phone: text("phone"),
+  // Sync metadata
+  ghlUpdatedAt: timestamp("ghl_updated_at"), // Last update time in GHL
+  pbsUpdatedAt: timestamp("pbs_updated_at"), // Last update time in PBS
+  syncDirection: text("sync_direction").notNull().default('bidirectional'), // 'ghl_to_pbs', 'pbs_to_ghl', 'bidirectional'
+  syncStatus: text("sync_status").notNull().default('synced'), // 'synced', 'pending', 'conflict', 'error'
+  lastSyncAt: timestamp("last_sync_at").defaultNow().notNull(),
+  syncError: text("sync_error"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertGhlContactSyncSchema = createInsertSchema(ghlContactSync).omit({
+  id: true,
+  createdAt: true,
+  lastSyncAt: true,
+});
+
+export type InsertGhlContactSync = z.infer<typeof insertGhlContactSyncSchema>;
+export type GhlContactSync = typeof ghlContactSync.$inferSelect;
+
+// GoHighLevel Appointment Sync - track synced appointments between GHL and PBS
+export const ghlAppointmentSync = pgTable("ghl_appointment_sync", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  ghlAppointmentId: text("ghl_appointment_id").notNull(), // GoHighLevel appointment ID
+  ghlCalendarId: text("ghl_calendar_id").notNull(), // GHL calendar ID
+  pbsAppointmentId: text("pbs_appointment_id"), // PBS appointment ID (if synced)
+  ghlContactId: text("ghl_contact_id"), // GHL contact ID
+  pbsContactId: text("pbs_contact_id"), // PBS contact ID
+  appointmentType: text("appointment_type").notNull().default('sales'), // 'sales', 'service', 'test_drive'
+  scheduledStart: timestamp("scheduled_start").notNull(),
+  scheduledEnd: timestamp("scheduled_end"),
+  title: text("title"),
+  status: text("status"), // 'confirmed', 'cancelled', 'completed', 'no_show'
+  syncStatus: text("sync_status").notNull().default('synced'), // 'synced', 'pending', 'conflict', 'error'
+  lastSyncAt: timestamp("last_sync_at").defaultNow().notNull(),
+  syncError: text("sync_error"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertGhlAppointmentSyncSchema = createInsertSchema(ghlAppointmentSync).omit({
+  id: true,
+  createdAt: true,
+  lastSyncAt: true,
+});
+
+export type InsertGhlAppointmentSync = z.infer<typeof insertGhlAppointmentSyncSchema>;
+export type GhlAppointmentSync = typeof ghlAppointmentSync.$inferSelect;
+
+// GoHighLevel API Logs - track API calls for debugging and rate limiting
+export const ghlApiLogs = pgTable("ghl_api_logs", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  endpoint: text("endpoint").notNull(), // e.g., 'contacts', 'calendars/events', 'opportunities'
+  method: text("method").notNull(), // 'GET', 'POST', 'PUT', 'DELETE'
+  requestPayload: text("request_payload"), // Request body (sanitized)
+  responseStatus: integer("response_status"), // HTTP status code
+  responsePayload: text("response_payload"), // Response body (truncated)
+  durationMs: integer("duration_ms"), // Request duration
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertGhlApiLogSchema = createInsertSchema(ghlApiLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertGhlApiLog = z.infer<typeof insertGhlApiLogSchema>;
+export type GhlApiLog = typeof ghlApiLogs.$inferSelect;

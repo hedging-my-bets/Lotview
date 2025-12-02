@@ -125,7 +125,22 @@ import {
   type InsertMarketSnapshot,
   facebookCatalogConfig,
   type FacebookCatalogConfig,
-  type InsertFacebookCatalogConfig
+  type InsertFacebookCatalogConfig,
+  ghlAccounts,
+  type GhlAccount,
+  type InsertGhlAccount,
+  ghlWebhookEvents,
+  type GhlWebhookEvent,
+  type InsertGhlWebhookEvent,
+  ghlContactSync,
+  type GhlContactSync,
+  type InsertGhlContactSync,
+  ghlAppointmentSync,
+  type GhlAppointmentSync,
+  type InsertGhlAppointmentSync,
+  ghlApiLogs,
+  type GhlApiLog,
+  type InsertGhlApiLog
 } from "@shared/schema";
 import { eq, desc, sql, and, gte, lte, lt, gt, inArray, or, ilike } from "drizzle-orm";
 
@@ -215,6 +230,41 @@ export interface IStorage {
   // GHL Webhook config
   saveGHLWebhookConfig(config: InsertGhlWebhookConfig): Promise<GhlWebhookConfig>;
   getActiveGHLWebhookConfig(dealershipId: number): Promise<GhlWebhookConfig | undefined>;
+  
+  // GHL Accounts (OAuth integration) - Multi-Tenant
+  getGhlAccountByDealership(dealershipId: number): Promise<GhlAccount | undefined>;
+  getGhlAccountById(id: number, dealershipId: number): Promise<GhlAccount | undefined>;
+  createGhlAccount(account: InsertGhlAccount): Promise<GhlAccount>;
+  updateGhlAccount(id: number, dealershipId: number, updates: Partial<InsertGhlAccount>): Promise<GhlAccount | undefined>;
+  deleteGhlAccount(id: number, dealershipId: number): Promise<boolean>;
+  
+  // GHL Config (calendars, pipelines, mappings) - Multi-Tenant
+  getGhlConfig(dealershipId: number): Promise<GhlConfig | undefined>;
+  createGhlConfig(config: InsertGhlConfig): Promise<GhlConfig>;
+  updateGhlConfig(id: number, dealershipId: number, updates: Partial<InsertGhlConfig>): Promise<GhlConfig | undefined>;
+  
+  // GHL Webhook Events - Multi-Tenant
+  createGhlWebhookEvent(event: InsertGhlWebhookEvent): Promise<GhlWebhookEvent>;
+  getGhlWebhookEvents(dealershipId: number, status?: string, limit?: number): Promise<GhlWebhookEvent[]>;
+  updateGhlWebhookEvent(id: number, dealershipId: number, updates: Partial<InsertGhlWebhookEvent>): Promise<GhlWebhookEvent | undefined>;
+  getGhlWebhookEventByEventId(dealershipId: number, eventId: string): Promise<GhlWebhookEvent | undefined>;
+  
+  // GHL Contact Sync - Multi-Tenant
+  getGhlContactSync(dealershipId: number, ghlContactId: string): Promise<GhlContactSync | undefined>;
+  getGhlContactSyncByPbsId(dealershipId: number, pbsContactId: string): Promise<GhlContactSync | undefined>;
+  createGhlContactSync(sync: InsertGhlContactSync): Promise<GhlContactSync>;
+  updateGhlContactSync(id: number, dealershipId: number, updates: Partial<InsertGhlContactSync>): Promise<GhlContactSync | undefined>;
+  getPendingGhlContactSyncs(dealershipId: number, limit?: number): Promise<GhlContactSync[]>;
+  
+  // GHL Appointment Sync - Multi-Tenant
+  getGhlAppointmentSync(dealershipId: number, ghlAppointmentId: string): Promise<GhlAppointmentSync | undefined>;
+  createGhlAppointmentSync(sync: InsertGhlAppointmentSync): Promise<GhlAppointmentSync>;
+  updateGhlAppointmentSync(id: number, dealershipId: number, updates: Partial<InsertGhlAppointmentSync>): Promise<GhlAppointmentSync | undefined>;
+  getPendingGhlAppointmentSyncs(dealershipId: number, limit?: number): Promise<GhlAppointmentSync[]>;
+  
+  // GHL API Logs - Multi-Tenant
+  createGhlApiLog(log: InsertGhlApiLog): Promise<GhlApiLog>;
+  getGhlApiLogs(dealershipId: number, limit?: number): Promise<GhlApiLog[]>;
   
   // AI prompt templates
   saveAIPromptTemplate(template: InsertAiPromptTemplate): Promise<AiPromptTemplate>;
@@ -810,12 +860,18 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  // GoHighLevel config
+  // GoHighLevel config (Legacy - use createGhlConfig for new code)
   async saveGHLConfig(config: InsertGhlConfig): Promise<GhlConfig> {
-    // Deactivate all existing configs
-    await db.update(ghlConfig).set({ isActive: false });
+    // Check if config exists for this dealership, upsert if so
+    if (config.dealershipId) {
+      const existing = await this.getGhlConfig(config.dealershipId);
+      if (existing) {
+        const updated = await this.updateGhlConfig(existing.id, config.dealershipId, config);
+        if (updated) return updated;
+      }
+    }
     
-    // Insert new active config
+    // Insert new config
     const result = await db.insert(ghlConfig).values(config).returning();
     return result[0];
   }
@@ -2120,6 +2176,266 @@ export class DatabaseStorage implements IStorage {
       .from(pbsApiLogs)
       .where(eq(pbsApiLogs.dealershipId, dealershipId))
       .orderBy(desc(pbsApiLogs.createdAt))
+      .limit(limit);
+  }
+
+  // ====== GOHIGHLEVEL ACCOUNTS (Multi-Tenant) ======
+  async getGhlAccountByDealership(dealershipId: number): Promise<GhlAccount | undefined> {
+    const result = await db
+      .select()
+      .from(ghlAccounts)
+      .where(and(
+        eq(ghlAccounts.dealershipId, dealershipId),
+        eq(ghlAccounts.isActive, true)
+      ))
+      .orderBy(desc(ghlAccounts.createdAt))
+      .limit(1);
+    return result[0];
+  }
+
+  async getGhlAccountById(id: number, dealershipId: number): Promise<GhlAccount | undefined> {
+    const result = await db
+      .select()
+      .from(ghlAccounts)
+      .where(and(
+        eq(ghlAccounts.id, id),
+        eq(ghlAccounts.dealershipId, dealershipId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+
+  async createGhlAccount(account: InsertGhlAccount): Promise<GhlAccount> {
+    if (!account.dealershipId) {
+      throw new Error('dealershipId is required when creating GHL account');
+    }
+    // Deactivate any existing accounts for this dealership
+    await db
+      .update(ghlAccounts)
+      .set({ isActive: false })
+      .where(eq(ghlAccounts.dealershipId, account.dealershipId));
+    
+    const result = await db.insert(ghlAccounts).values(account).returning();
+    return result[0];
+  }
+
+  async updateGhlAccount(id: number, dealershipId: number, updates: Partial<InsertGhlAccount>): Promise<GhlAccount | undefined> {
+    const result = await db
+      .update(ghlAccounts)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(
+        eq(ghlAccounts.id, id),
+        eq(ghlAccounts.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+
+  async deleteGhlAccount(id: number, dealershipId: number): Promise<boolean> {
+    const result = await db
+      .delete(ghlAccounts)
+      .where(and(
+        eq(ghlAccounts.id, id),
+        eq(ghlAccounts.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result.length > 0;
+  }
+
+  // ====== GOHIGHLEVEL CONFIG (Multi-Tenant) ======
+  async getGhlConfig(dealershipId: number): Promise<GhlConfig | undefined> {
+    const result = await db
+      .select()
+      .from(ghlConfig)
+      .where(eq(ghlConfig.dealershipId, dealershipId))
+      .limit(1);
+    return result[0];
+  }
+
+  async createGhlConfig(config: InsertGhlConfig): Promise<GhlConfig> {
+    if (!config.dealershipId) {
+      throw new Error('dealershipId is required when creating GHL config');
+    }
+    const result = await db.insert(ghlConfig).values(config).returning();
+    return result[0];
+  }
+
+  async updateGhlConfig(id: number, dealershipId: number, updates: Partial<InsertGhlConfig>): Promise<GhlConfig | undefined> {
+    const result = await db
+      .update(ghlConfig)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(
+        eq(ghlConfig.id, id),
+        eq(ghlConfig.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+
+  // ====== GOHIGHLEVEL WEBHOOK EVENTS (Multi-Tenant) ======
+  async createGhlWebhookEvent(event: InsertGhlWebhookEvent): Promise<GhlWebhookEvent> {
+    if (!event.dealershipId) {
+      throw new Error('dealershipId is required when creating GHL webhook event');
+    }
+    const result = await db.insert(ghlWebhookEvents).values(event).returning();
+    return result[0];
+  }
+
+  async getGhlWebhookEvents(dealershipId: number, status?: string, limit: number = 100): Promise<GhlWebhookEvent[]> {
+    const conditions = [eq(ghlWebhookEvents.dealershipId, dealershipId)];
+    if (status) {
+      conditions.push(eq(ghlWebhookEvents.status, status));
+    }
+    
+    return await db
+      .select()
+      .from(ghlWebhookEvents)
+      .where(and(...conditions))
+      .orderBy(desc(ghlWebhookEvents.receivedAt))
+      .limit(limit);
+  }
+
+  async updateGhlWebhookEvent(id: number, dealershipId: number, updates: Partial<InsertGhlWebhookEvent>): Promise<GhlWebhookEvent | undefined> {
+    const result = await db
+      .update(ghlWebhookEvents)
+      .set(updates)
+      .where(and(
+        eq(ghlWebhookEvents.id, id),
+        eq(ghlWebhookEvents.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+
+  async getGhlWebhookEventByEventId(dealershipId: number, eventId: string): Promise<GhlWebhookEvent | undefined> {
+    const result = await db
+      .select()
+      .from(ghlWebhookEvents)
+      .where(and(
+        eq(ghlWebhookEvents.dealershipId, dealershipId),
+        eq(ghlWebhookEvents.eventId, eventId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+
+  // ====== GOHIGHLEVEL CONTACT SYNC (Multi-Tenant) ======
+  async getGhlContactSync(dealershipId: number, ghlContactId: string): Promise<GhlContactSync | undefined> {
+    const result = await db
+      .select()
+      .from(ghlContactSync)
+      .where(and(
+        eq(ghlContactSync.dealershipId, dealershipId),
+        eq(ghlContactSync.ghlContactId, ghlContactId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+
+  async getGhlContactSyncByPbsId(dealershipId: number, pbsContactId: string): Promise<GhlContactSync | undefined> {
+    const result = await db
+      .select()
+      .from(ghlContactSync)
+      .where(and(
+        eq(ghlContactSync.dealershipId, dealershipId),
+        eq(ghlContactSync.pbsContactId, pbsContactId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+
+  async createGhlContactSync(sync: InsertGhlContactSync): Promise<GhlContactSync> {
+    if (!sync.dealershipId) {
+      throw new Error('dealershipId is required when creating GHL contact sync');
+    }
+    const result = await db.insert(ghlContactSync).values(sync).returning();
+    return result[0];
+  }
+
+  async updateGhlContactSync(id: number, dealershipId: number, updates: Partial<InsertGhlContactSync>): Promise<GhlContactSync | undefined> {
+    const result = await db
+      .update(ghlContactSync)
+      .set({ ...updates, lastSyncAt: new Date() })
+      .where(and(
+        eq(ghlContactSync.id, id),
+        eq(ghlContactSync.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+
+  async getPendingGhlContactSyncs(dealershipId: number, limit: number = 100): Promise<GhlContactSync[]> {
+    return await db
+      .select()
+      .from(ghlContactSync)
+      .where(and(
+        eq(ghlContactSync.dealershipId, dealershipId),
+        eq(ghlContactSync.syncStatus, 'pending')
+      ))
+      .orderBy(ghlContactSync.createdAt)
+      .limit(limit);
+  }
+
+  // ====== GOHIGHLEVEL APPOINTMENT SYNC (Multi-Tenant) ======
+  async getGhlAppointmentSync(dealershipId: number, ghlAppointmentId: string): Promise<GhlAppointmentSync | undefined> {
+    const result = await db
+      .select()
+      .from(ghlAppointmentSync)
+      .where(and(
+        eq(ghlAppointmentSync.dealershipId, dealershipId),
+        eq(ghlAppointmentSync.ghlAppointmentId, ghlAppointmentId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+
+  async createGhlAppointmentSync(sync: InsertGhlAppointmentSync): Promise<GhlAppointmentSync> {
+    if (!sync.dealershipId) {
+      throw new Error('dealershipId is required when creating GHL appointment sync');
+    }
+    const result = await db.insert(ghlAppointmentSync).values(sync).returning();
+    return result[0];
+  }
+
+  async updateGhlAppointmentSync(id: number, dealershipId: number, updates: Partial<InsertGhlAppointmentSync>): Promise<GhlAppointmentSync | undefined> {
+    const result = await db
+      .update(ghlAppointmentSync)
+      .set({ ...updates, lastSyncAt: new Date() })
+      .where(and(
+        eq(ghlAppointmentSync.id, id),
+        eq(ghlAppointmentSync.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+
+  async getPendingGhlAppointmentSyncs(dealershipId: number, limit: number = 100): Promise<GhlAppointmentSync[]> {
+    return await db
+      .select()
+      .from(ghlAppointmentSync)
+      .where(and(
+        eq(ghlAppointmentSync.dealershipId, dealershipId),
+        eq(ghlAppointmentSync.syncStatus, 'pending')
+      ))
+      .orderBy(ghlAppointmentSync.createdAt)
+      .limit(limit);
+  }
+
+  // ====== GOHIGHLEVEL API LOGS (Multi-Tenant) ======
+  async createGhlApiLog(log: InsertGhlApiLog): Promise<GhlApiLog> {
+    if (!log.dealershipId) {
+      throw new Error('dealershipId is required when creating GHL API log');
+    }
+    const result = await db.insert(ghlApiLogs).values(log).returning();
+    return result[0];
+  }
+
+  async getGhlApiLogs(dealershipId: number, limit: number = 100): Promise<GhlApiLog[]> {
+    return await db
+      .select()
+      .from(ghlApiLogs)
+      .where(eq(ghlApiLogs.dealershipId, dealershipId))
+      .orderBy(desc(ghlApiLogs.createdAt))
       .limit(limit);
   }
 
