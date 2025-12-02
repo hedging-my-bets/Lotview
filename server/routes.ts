@@ -21,6 +21,7 @@ import { facebookService } from "./facebook-service";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { decodeVIN } from "./vin-decoder";
+import { createPbsApiService } from "./pbs-api-service";
 
 // OAuth state store for CSRF protection (in production, use Redis or signed JWTs)
 // Includes dealershipId for proper multi-tenant isolation during OAuth callback
@@ -5718,6 +5719,689 @@ Format your response in clear sections with actionable recommendations.`;
     } catch (error) {
       console.error("Error updating webhook event:", error);
       res.status(500).json({ error: "Failed to update webhook event" });
+    }
+  });
+
+  // ===== PBS PARTNER HUB API ROUTES =====
+  // These routes expose PBS DMS functionality to the frontend and AI assistant
+
+  // Test PBS connection
+  app.post("/api/pbs/test-connection", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.testConnection();
+      res.json(result);
+    } catch (error) {
+      console.error("Error testing PBS connection:", error);
+      res.status(500).json({ success: false, message: error instanceof Error ? error.message : "Connection test failed" });
+    }
+  });
+
+  // Get PBS API logs
+  app.get("/api/pbs/api-logs", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
+      const pbsService = createPbsApiService(dealershipId);
+      const logs = await pbsService.getApiLogs(limit);
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching PBS API logs:", error);
+      res.status(500).json({ error: "Failed to fetch API logs" });
+    }
+  });
+
+  // Clear PBS session and cache
+  app.post("/api/pbs/clear-cache", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const pbsService = createPbsApiService(dealershipId);
+      await pbsService.clearSession();
+      const cleared = await pbsService.clearCache();
+      res.json({ success: true, cleared });
+    } catch (error) {
+      console.error("Error clearing PBS cache:", error);
+      res.status(500).json({ error: "Failed to clear cache" });
+    }
+  });
+
+  // ===== PBS SALES MODULE =====
+
+  // Search contacts by phone, email, or name
+  app.get("/api/pbs/sales/contacts/search", authMiddleware, requireRole("master", "sales_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { phone, email, firstName, lastName } = req.query;
+      
+      if (!phone && !email && !firstName && !lastName) {
+        return res.status(400).json({ error: "At least one search parameter required (phone, email, firstName, lastName)" });
+      }
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.contactSearch({
+        phone: phone as string | undefined,
+        email: email as string | undefined,
+        firstName: firstName as string | undefined,
+        lastName: lastName as string | undefined,
+      });
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error searching PBS contacts:", error);
+      res.status(500).json({ error: "Failed to search contacts" });
+    }
+  });
+
+  // Get contact by ID
+  app.get("/api/pbs/sales/contacts/:contactId", authMiddleware, requireRole("master", "sales_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { contactId } = req.params;
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.contactGet(contactId);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error fetching PBS contact:", error);
+      res.status(500).json({ error: "Failed to fetch contact" });
+    }
+  });
+
+  // Create new contact
+  app.post("/api/pbs/sales/contacts", authMiddleware, requireRole("master", "sales_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const contactData = req.body;
+      
+      if (!contactData.FirstName && !contactData.LastName && !contactData.Phone && !contactData.Email) {
+        return res.status(400).json({ error: "At least one contact field required" });
+      }
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.contactSave(contactData);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error creating PBS contact:", error);
+      res.status(500).json({ error: "Failed to create contact" });
+    }
+  });
+
+  // Update contact
+  app.patch("/api/pbs/sales/contacts/:contactId", authMiddleware, requireRole("master", "sales_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { contactId } = req.params;
+      const updates = req.body;
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.contactChange(contactId, updates);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error updating PBS contact:", error);
+      res.status(500).json({ error: "Failed to update contact" });
+    }
+  });
+
+  // Get contact vehicles
+  app.get("/api/pbs/sales/contacts/:contactId/vehicles", authMiddleware, requireRole("master", "sales_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { contactId } = req.params;
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.contactVehicleGet(contactId);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error fetching PBS contact vehicles:", error);
+      res.status(500).json({ error: "Failed to fetch contact vehicles" });
+    }
+  });
+
+  // Get workplan events for contact
+  app.get("/api/pbs/sales/workplan/events", authMiddleware, requireRole("master", "sales_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { contactId } = req.query;
+      
+      if (!contactId) {
+        return res.status(400).json({ error: "contactId is required" });
+      }
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.workplanEventsByContact(contactId as string);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error fetching PBS workplan events:", error);
+      res.status(500).json({ error: "Failed to fetch workplan events" });
+    }
+  });
+
+  // Get single workplan event
+  app.get("/api/pbs/sales/workplan/events/:eventId", authMiddleware, requireRole("master", "sales_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { eventId } = req.params;
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.workplanEventGet(eventId);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error fetching PBS workplan event:", error);
+      res.status(500).json({ error: "Failed to fetch workplan event" });
+    }
+  });
+
+  // Update workplan event
+  app.patch("/api/pbs/sales/workplan/events/:eventId", authMiddleware, requireRole("master", "sales_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { eventId } = req.params;
+      const updates = req.body;
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.workplanEventChange(eventId, updates);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error updating PBS workplan event:", error);
+      res.status(500).json({ error: "Failed to update workplan event" });
+    }
+  });
+
+  // Get workplan appointments for contact
+  app.get("/api/pbs/sales/workplan/appointments", authMiddleware, requireRole("master", "sales_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { contactId } = req.query;
+      
+      if (!contactId) {
+        return res.status(400).json({ error: "contactId is required" });
+      }
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.workplanAppointmentContactGet(contactId as string);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error fetching PBS workplan appointments:", error);
+      res.status(500).json({ error: "Failed to fetch workplan appointments" });
+    }
+  });
+
+  // Get single workplan appointment
+  app.get("/api/pbs/sales/workplan/appointments/:appointmentId", authMiddleware, requireRole("master", "sales_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { appointmentId } = req.params;
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.workplanAppointmentGet(appointmentId);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error fetching PBS workplan appointment:", error);
+      res.status(500).json({ error: "Failed to fetch workplan appointment" });
+    }
+  });
+
+  // Create workplan appointment
+  app.post("/api/pbs/sales/workplan/appointments", authMiddleware, requireRole("master", "sales_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const appointmentData = req.body;
+      
+      if (!appointmentData.ContactID) {
+        return res.status(400).json({ error: "ContactID is required" });
+      }
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.workplanAppointmentCreate(appointmentData);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error creating PBS workplan appointment:", error);
+      res.status(500).json({ error: "Failed to create workplan appointment" });
+    }
+  });
+
+  // Update workplan appointment
+  app.patch("/api/pbs/sales/workplan/appointments/:appointmentId", authMiddleware, requireRole("master", "sales_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { appointmentId } = req.params;
+      const updates = req.body;
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.workplanAppointmentChange(appointmentId, updates);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error updating PBS workplan appointment:", error);
+      res.status(500).json({ error: "Failed to update workplan appointment" });
+    }
+  });
+
+  // Get reminders for contact
+  app.get("/api/pbs/sales/workplan/reminders", authMiddleware, requireRole("master", "sales_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { contactId } = req.query;
+      
+      if (!contactId) {
+        return res.status(400).json({ error: "contactId is required" });
+      }
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.workplanReminderGet(contactId as string);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error fetching PBS workplan reminders:", error);
+      res.status(500).json({ error: "Failed to fetch workplan reminders" });
+    }
+  });
+
+  // ===== PBS SERVICE MODULE =====
+
+  // Get service appointment bookings
+  app.get("/api/pbs/service/appointments/booking", authMiddleware, requireRole("master", "service_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { date } = req.query;
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.appointmentBookingGet(date as string | undefined);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error fetching PBS service bookings:", error);
+      res.status(500).json({ error: "Failed to fetch service bookings" });
+    }
+  });
+
+  // Get service appointments for contact
+  app.get("/api/pbs/service/appointments", authMiddleware, requireRole("master", "service_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { contactId, vehicleId } = req.query;
+      
+      if (!contactId) {
+        return res.status(400).json({ error: "contactId is required" });
+      }
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = vehicleId 
+        ? await pbsService.appointmentContactVehicleInfoGet(contactId as string, vehicleId as string)
+        : await pbsService.appointmentContactVehicleGet(contactId as string);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error fetching PBS service appointments:", error);
+      res.status(500).json({ error: "Failed to fetch service appointments" });
+    }
+  });
+
+  // Get single service appointment
+  app.get("/api/pbs/service/appointments/:appointmentId", authMiddleware, requireRole("master", "service_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { appointmentId } = req.params;
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.appointmentGet(appointmentId);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error fetching PBS service appointment:", error);
+      res.status(500).json({ error: "Failed to fetch service appointment" });
+    }
+  });
+
+  // Create service appointment
+  app.post("/api/pbs/service/appointments", authMiddleware, requireRole("master", "service_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const appointmentData = req.body;
+      
+      if (!appointmentData.ContactID) {
+        return res.status(400).json({ error: "ContactID is required" });
+      }
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.appointmentCreate(appointmentData);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error creating PBS service appointment:", error);
+      res.status(500).json({ error: "Failed to create service appointment" });
+    }
+  });
+
+  // Update service appointment
+  app.patch("/api/pbs/service/appointments/:appointmentId", authMiddleware, requireRole("master", "service_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { appointmentId } = req.params;
+      const updates = req.body;
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.appointmentChange(appointmentId, updates);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error updating PBS service appointment:", error);
+      res.status(500).json({ error: "Failed to update service appointment" });
+    }
+  });
+
+  // Update service appointment contact/vehicle
+  app.patch("/api/pbs/service/appointments/:appointmentId/vehicle", authMiddleware, requireRole("master", "service_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { appointmentId } = req.params;
+      const { contactId, vehicleId } = req.body;
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.appointmentContactVehicleChange(appointmentId, { contactId, vehicleId });
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error updating PBS service appointment vehicle:", error);
+      res.status(500).json({ error: "Failed to update service appointment vehicle" });
+    }
+  });
+
+  // Get repair orders for contact
+  app.get("/api/pbs/service/repair-orders", authMiddleware, requireRole("master", "service_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { contactId } = req.query;
+      
+      if (!contactId) {
+        return res.status(400).json({ error: "contactId is required" });
+      }
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.repairOrderContactVehicleGet(contactId as string);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error fetching PBS repair orders:", error);
+      res.status(500).json({ error: "Failed to fetch repair orders" });
+    }
+  });
+
+  // Get single repair order
+  app.get("/api/pbs/service/repair-orders/:repairOrderId", authMiddleware, requireRole("master", "service_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { repairOrderId } = req.params;
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.repairOrderGet(repairOrderId);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error fetching PBS repair order:", error);
+      res.status(500).json({ error: "Failed to fetch repair order" });
+    }
+  });
+
+  // Update repair order
+  app.patch("/api/pbs/service/repair-orders/:repairOrderId", authMiddleware, requireRole("master", "service_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { repairOrderId } = req.params;
+      const updates = req.body;
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.repairOrderChange(repairOrderId, updates);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error updating PBS repair order:", error);
+      res.status(500).json({ error: "Failed to update repair order" });
+    }
+  });
+
+  // Update repair order contact/vehicle
+  app.patch("/api/pbs/service/repair-orders/:repairOrderId/vehicle", authMiddleware, requireRole("master", "service_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { repairOrderId } = req.params;
+      const { contactId, vehicleId } = req.body;
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.repairOrderContactVehicleChange(repairOrderId, { contactId, vehicleId });
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error updating PBS repair order vehicle:", error);
+      res.status(500).json({ error: "Failed to update repair order vehicle" });
+    }
+  });
+
+  // ===== PBS PARTS MODULE (Read-Only) =====
+
+  // Search parts inventory
+  app.get("/api/pbs/parts/inventory/search", authMiddleware, requireRole("master", "service_manager", "parts_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { q } = req.query;
+      
+      if (!q) {
+        return res.status(400).json({ error: "Search query (q) is required" });
+      }
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.partsInventorySearch(q as string);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error searching PBS parts inventory:", error);
+      res.status(500).json({ error: "Failed to search parts inventory" });
+    }
+  });
+
+  // Get part by part number
+  app.get("/api/pbs/parts/inventory/:partNumber", authMiddleware, requireRole("master", "service_manager", "parts_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { partNumber } = req.params;
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.partsInventoryGet(partNumber);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error fetching PBS part:", error);
+      res.status(500).json({ error: "Failed to fetch part" });
+    }
+  });
+
+  // Get parts order
+  app.get("/api/pbs/parts/orders/:orderId", authMiddleware, requireRole("master", "parts_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { orderId } = req.params;
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.partsOrderGet(orderId);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error fetching PBS parts order:", error);
+      res.status(500).json({ error: "Failed to fetch parts order" });
+    }
+  });
+
+  // Get purchase order
+  app.get("/api/pbs/parts/purchase-orders/:purchaseOrderId", authMiddleware, requireRole("master", "parts_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { purchaseOrderId } = req.params;
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.purchaseOrderGet(purchaseOrderId);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error fetching PBS purchase order:", error);
+      res.status(500).json({ error: "Failed to fetch purchase order" });
+    }
+  });
+
+  // Get tire storage
+  app.get("/api/pbs/parts/tire-storage", authMiddleware, requireRole("master", "service_manager", "parts_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { contactId, vin } = req.query;
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.tireStorageGet(contactId as string | undefined, vin as string | undefined);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error fetching PBS tire storage:", error);
+      res.status(500).json({ error: "Failed to fetch tire storage" });
+    }
+  });
+
+  // Get shops
+  app.get("/api/pbs/service/shops", authMiddleware, requireRole("master", "service_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      
+      const pbsService = createPbsApiService(dealershipId);
+      const result = await pbsService.shopGet();
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error fetching PBS shops:", error);
+      res.status(500).json({ error: "Failed to fetch shops" });
     }
   });
 

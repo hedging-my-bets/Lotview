@@ -79,6 +79,21 @@ import {
   pbsWebhookEvents,
   type PbsWebhookEvent,
   type InsertPbsWebhookEvent,
+  pbsSessions,
+  type PbsSession,
+  type InsertPbsSession,
+  pbsContactCache,
+  type PbsContactCache,
+  type InsertPbsContactCache,
+  pbsAppointmentCache,
+  type PbsAppointmentCache,
+  type InsertPbsAppointmentCache,
+  pbsPartsCache,
+  type PbsPartsCache,
+  type InsertPbsPartsCache,
+  pbsApiLogs,
+  type PbsApiLog,
+  type InsertPbsApiLog,
   managerSettings,
   type ManagerSettings,
   type InsertManagerSettings,
@@ -112,7 +127,7 @@ import {
   type FacebookCatalogConfig,
   type InsertFacebookCatalogConfig
 } from "@shared/schema";
-import { eq, desc, sql, and, gte, lte, inArray } from "drizzle-orm";
+import { eq, desc, sql, and, gte, lte, lt, gt, inArray, or, ilike } from "drizzle-orm";
 
 export interface IStorage {
   // ====== SUPER ADMIN - GLOBAL SETTINGS ======
@@ -324,6 +339,39 @@ export interface IStorage {
   createPbsWebhookEvent(event: InsertPbsWebhookEvent): Promise<PbsWebhookEvent>;
   updatePbsWebhookEvent(id: number, dealershipId: number, event: Partial<InsertPbsWebhookEvent>): Promise<PbsWebhookEvent | undefined>;
   
+  // PBS Sessions (Multi-Tenant)
+  getPbsSession(dealershipId: number): Promise<PbsSession | undefined>;
+  createPbsSession(session: InsertPbsSession): Promise<PbsSession>;
+  updatePbsSessionLastUsed(id: number, dealershipId: number): Promise<void>;
+  deletePbsSession(id: number, dealershipId: number): Promise<boolean>;
+  deleteExpiredPbsSessions(dealershipId: number): Promise<number>;
+
+  // PBS Contact Cache (Multi-Tenant)
+  getPbsContactByPbsId(dealershipId: number, pbsContactId: string): Promise<PbsContactCache | undefined>;
+  getPbsContactByPhone(dealershipId: number, phone: string): Promise<PbsContactCache | undefined>;
+  getPbsContactByEmail(dealershipId: number, email: string): Promise<PbsContactCache | undefined>;
+  createPbsContactCache(contact: InsertPbsContactCache): Promise<PbsContactCache>;
+  updatePbsContactCache(id: number, dealershipId: number, contact: Partial<InsertPbsContactCache>): Promise<PbsContactCache | undefined>;
+  deleteExpiredPbsContactCache(dealershipId: number): Promise<number>;
+
+  // PBS Appointment Cache (Multi-Tenant)
+  getPbsAppointmentByPbsId(dealershipId: number, pbsAppointmentId: string): Promise<PbsAppointmentCache | undefined>;
+  getPbsAppointmentsByContact(dealershipId: number, pbsContactId: string): Promise<PbsAppointmentCache[]>;
+  createPbsAppointmentCache(appointment: InsertPbsAppointmentCache): Promise<PbsAppointmentCache>;
+  updatePbsAppointmentCache(id: number, dealershipId: number, appointment: Partial<InsertPbsAppointmentCache>): Promise<PbsAppointmentCache | undefined>;
+  deleteExpiredPbsAppointmentCache(dealershipId: number): Promise<number>;
+
+  // PBS Parts Cache (Multi-Tenant)
+  getPbsPartByNumber(dealershipId: number, partNumber: string): Promise<PbsPartsCache | undefined>;
+  searchPbsParts(dealershipId: number, query: string): Promise<PbsPartsCache[]>;
+  createPbsPartsCache(part: InsertPbsPartsCache): Promise<PbsPartsCache>;
+  updatePbsPartsCache(id: number, dealershipId: number, part: Partial<InsertPbsPartsCache>): Promise<PbsPartsCache | undefined>;
+  deleteExpiredPbsPartsCache(dealershipId: number): Promise<number>;
+
+  // PBS API Logs (Multi-Tenant)
+  createPbsApiLog(log: InsertPbsApiLog): Promise<PbsApiLog>;
+  getPbsApiLogs(dealershipId: number, limit?: number): Promise<PbsApiLog[]>;
+
   // Manager Settings (Multi-Tenant)
   getManagerSettings(userId: number, dealershipId: number): Promise<ManagerSettings | undefined>;
   getManagerSettingsByDealership(dealershipId: number): Promise<ManagerSettings | undefined>;
@@ -1787,6 +1835,292 @@ export class DatabaseStorage implements IStorage {
       ))
       .returning();
     return result[0];
+  }
+
+  // ====== PBS SESSIONS (Multi-Tenant) ======
+  async getPbsSession(dealershipId: number): Promise<PbsSession | undefined> {
+    // Get active, non-expired session for this dealership
+    const result = await db
+      .select()
+      .from(pbsSessions)
+      .where(and(
+        eq(pbsSessions.dealershipId, dealershipId),
+        eq(pbsSessions.isActive, true),
+        gt(pbsSessions.expiresAt, new Date())
+      ))
+      .orderBy(desc(pbsSessions.lastUsedAt))
+      .limit(1);
+    return result[0];
+  }
+
+  async createPbsSession(session: InsertPbsSession): Promise<PbsSession> {
+    if (!session.dealershipId) {
+      throw new Error('dealershipId is required when creating PBS session');
+    }
+    const result = await db.insert(pbsSessions).values(session).returning();
+    return result[0];
+  }
+
+  async updatePbsSessionLastUsed(id: number, dealershipId: number): Promise<void> {
+    await db
+      .update(pbsSessions)
+      .set({ lastUsedAt: new Date() })
+      .where(and(
+        eq(pbsSessions.id, id),
+        eq(pbsSessions.dealershipId, dealershipId)
+      ));
+  }
+
+  async deletePbsSession(id: number, dealershipId: number): Promise<boolean> {
+    const result = await db
+      .delete(pbsSessions)
+      .where(and(
+        eq(pbsSessions.id, id),
+        eq(pbsSessions.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result.length > 0;
+  }
+
+  async deleteExpiredPbsSessions(dealershipId: number): Promise<number> {
+    const result = await db
+      .delete(pbsSessions)
+      .where(and(
+        eq(pbsSessions.dealershipId, dealershipId),
+        lt(pbsSessions.expiresAt, new Date())
+      ))
+      .returning();
+    return result.length;
+  }
+
+  // ====== PBS CONTACT CACHE (Multi-Tenant) ======
+  async getPbsContactByPbsId(dealershipId: number, pbsContactId: string): Promise<PbsContactCache | undefined> {
+    const result = await db
+      .select()
+      .from(pbsContactCache)
+      .where(and(
+        eq(pbsContactCache.dealershipId, dealershipId),
+        eq(pbsContactCache.pbsContactId, pbsContactId),
+        gt(pbsContactCache.expiresAt, new Date())
+      ))
+      .limit(1);
+    return result[0];
+  }
+
+  async getPbsContactByPhone(dealershipId: number, phone: string): Promise<PbsContactCache | undefined> {
+    // Normalize phone number for lookup
+    const normalizedPhone = phone.replace(/\D/g, '');
+    const result = await db
+      .select()
+      .from(pbsContactCache)
+      .where(and(
+        eq(pbsContactCache.dealershipId, dealershipId),
+        gt(pbsContactCache.expiresAt, new Date())
+      ))
+      .limit(100);
+    
+    // Check if any cached contact's phone matches (normalized)
+    return result.find(c => 
+      (c.phone?.replace(/\D/g, '') === normalizedPhone) ||
+      (c.cellPhone?.replace(/\D/g, '') === normalizedPhone)
+    );
+  }
+
+  async getPbsContactByEmail(dealershipId: number, email: string): Promise<PbsContactCache | undefined> {
+    const result = await db
+      .select()
+      .from(pbsContactCache)
+      .where(and(
+        eq(pbsContactCache.dealershipId, dealershipId),
+        eq(pbsContactCache.email, email.toLowerCase()),
+        gt(pbsContactCache.expiresAt, new Date())
+      ))
+      .limit(1);
+    return result[0];
+  }
+
+  async createPbsContactCache(contact: InsertPbsContactCache): Promise<PbsContactCache> {
+    if (!contact.dealershipId) {
+      throw new Error('dealershipId is required when caching PBS contact');
+    }
+    const result = await db.insert(pbsContactCache).values({
+      ...contact,
+      email: contact.email?.toLowerCase()
+    }).returning();
+    return result[0];
+  }
+
+  async updatePbsContactCache(id: number, dealershipId: number, contact: Partial<InsertPbsContactCache>): Promise<PbsContactCache | undefined> {
+    const result = await db
+      .update(pbsContactCache)
+      .set({
+        ...contact,
+        email: contact.email?.toLowerCase(),
+        fetchedAt: new Date()
+      })
+      .where(and(
+        eq(pbsContactCache.id, id),
+        eq(pbsContactCache.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+
+  async deleteExpiredPbsContactCache(dealershipId: number): Promise<number> {
+    const result = await db
+      .delete(pbsContactCache)
+      .where(and(
+        eq(pbsContactCache.dealershipId, dealershipId),
+        lt(pbsContactCache.expiresAt, new Date())
+      ))
+      .returning();
+    return result.length;
+  }
+
+  // ====== PBS APPOINTMENT CACHE (Multi-Tenant) ======
+  async getPbsAppointmentByPbsId(dealershipId: number, pbsAppointmentId: string): Promise<PbsAppointmentCache | undefined> {
+    const result = await db
+      .select()
+      .from(pbsAppointmentCache)
+      .where(and(
+        eq(pbsAppointmentCache.dealershipId, dealershipId),
+        eq(pbsAppointmentCache.pbsAppointmentId, pbsAppointmentId),
+        gt(pbsAppointmentCache.expiresAt, new Date())
+      ))
+      .limit(1);
+    return result[0];
+  }
+
+  async getPbsAppointmentsByContact(dealershipId: number, pbsContactId: string): Promise<PbsAppointmentCache[]> {
+    return await db
+      .select()
+      .from(pbsAppointmentCache)
+      .where(and(
+        eq(pbsAppointmentCache.dealershipId, dealershipId),
+        eq(pbsAppointmentCache.pbsContactId, pbsContactId),
+        gt(pbsAppointmentCache.expiresAt, new Date())
+      ))
+      .orderBy(desc(pbsAppointmentCache.scheduledDate));
+  }
+
+  async createPbsAppointmentCache(appointment: InsertPbsAppointmentCache): Promise<PbsAppointmentCache> {
+    if (!appointment.dealershipId) {
+      throw new Error('dealershipId is required when caching PBS appointment');
+    }
+    const result = await db.insert(pbsAppointmentCache).values(appointment).returning();
+    return result[0];
+  }
+
+  async updatePbsAppointmentCache(id: number, dealershipId: number, appointment: Partial<InsertPbsAppointmentCache>): Promise<PbsAppointmentCache | undefined> {
+    const result = await db
+      .update(pbsAppointmentCache)
+      .set({
+        ...appointment,
+        fetchedAt: new Date()
+      })
+      .where(and(
+        eq(pbsAppointmentCache.id, id),
+        eq(pbsAppointmentCache.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+
+  async deleteExpiredPbsAppointmentCache(dealershipId: number): Promise<number> {
+    const result = await db
+      .delete(pbsAppointmentCache)
+      .where(and(
+        eq(pbsAppointmentCache.dealershipId, dealershipId),
+        lt(pbsAppointmentCache.expiresAt, new Date())
+      ))
+      .returning();
+    return result.length;
+  }
+
+  // ====== PBS PARTS CACHE (Multi-Tenant) ======
+  async getPbsPartByNumber(dealershipId: number, partNumber: string): Promise<PbsPartsCache | undefined> {
+    const result = await db
+      .select()
+      .from(pbsPartsCache)
+      .where(and(
+        eq(pbsPartsCache.dealershipId, dealershipId),
+        eq(pbsPartsCache.partNumber, partNumber.toUpperCase()),
+        gt(pbsPartsCache.expiresAt, new Date())
+      ))
+      .limit(1);
+    return result[0];
+  }
+
+  async searchPbsParts(dealershipId: number, query: string): Promise<PbsPartsCache[]> {
+    const searchPattern = `%${query.toUpperCase()}%`;
+    return await db
+      .select()
+      .from(pbsPartsCache)
+      .where(and(
+        eq(pbsPartsCache.dealershipId, dealershipId),
+        gt(pbsPartsCache.expiresAt, new Date()),
+        or(
+          ilike(pbsPartsCache.partNumber, searchPattern),
+          ilike(pbsPartsCache.description, searchPattern)
+        )
+      ))
+      .limit(50);
+  }
+
+  async createPbsPartsCache(part: InsertPbsPartsCache): Promise<PbsPartsCache> {
+    if (!part.dealershipId) {
+      throw new Error('dealershipId is required when caching PBS part');
+    }
+    const result = await db.insert(pbsPartsCache).values({
+      ...part,
+      partNumber: part.partNumber.toUpperCase()
+    }).returning();
+    return result[0];
+  }
+
+  async updatePbsPartsCache(id: number, dealershipId: number, part: Partial<InsertPbsPartsCache>): Promise<PbsPartsCache | undefined> {
+    const result = await db
+      .update(pbsPartsCache)
+      .set({
+        ...part,
+        partNumber: part.partNumber?.toUpperCase(),
+        fetchedAt: new Date()
+      })
+      .where(and(
+        eq(pbsPartsCache.id, id),
+        eq(pbsPartsCache.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+
+  async deleteExpiredPbsPartsCache(dealershipId: number): Promise<number> {
+    const result = await db
+      .delete(pbsPartsCache)
+      .where(and(
+        eq(pbsPartsCache.dealershipId, dealershipId),
+        lt(pbsPartsCache.expiresAt, new Date())
+      ))
+      .returning();
+    return result.length;
+  }
+
+  // ====== PBS API LOGS (Multi-Tenant) ======
+  async createPbsApiLog(log: InsertPbsApiLog): Promise<PbsApiLog> {
+    if (!log.dealershipId) {
+      throw new Error('dealershipId is required when creating PBS API log');
+    }
+    const result = await db.insert(pbsApiLogs).values(log).returning();
+    return result[0];
+  }
+
+  async getPbsApiLogs(dealershipId: number, limit: number = 100): Promise<PbsApiLog[]> {
+    return await db
+      .select()
+      .from(pbsApiLogs)
+      .where(eq(pbsApiLogs.dealershipId, dealershipId))
+      .orderBy(desc(pbsApiLogs.createdAt))
+      .limit(limit);
   }
 
   // ====== MANAGER SETTINGS (Multi-Tenant via User) ======
