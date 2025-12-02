@@ -106,7 +106,7 @@ import {
   type MarketSnapshot,
   type InsertMarketSnapshot
 } from "@shared/schema";
-import { eq, desc, sql, and, gte, lte } from "drizzle-orm";
+import { eq, desc, sql, and, gte, lte, inArray } from "drizzle-orm";
 
 export interface IStorage {
   // ====== SUPER ADMIN - GLOBAL SETTINGS ======
@@ -1707,13 +1707,20 @@ export class DatabaseStorage implements IStorage {
       return [];
     }
     
+    // Filter out any empty or invalid URLs
+    const validUrls = urls.filter(url => url && typeof url === 'string' && url.length > 0);
+    if (validUrls.length === 0) {
+      return [];
+    }
+    
     // REQUIRED: Filter by dealership
+    // Use proper PostgreSQL array syntax
     const result = await db
       .select()
       .from(marketListings)
       .where(and(
         eq(marketListings.dealershipId, dealershipId),
-        sql`${marketListings.listingUrl} = ANY(${urls})`
+        inArray(marketListings.listingUrl, validUrls)
       ));
     return result;
   }

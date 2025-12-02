@@ -121,7 +121,13 @@ export class MarketCheckService {
   /**
    * Convert MarketCheck listing to our database format
    */
-  convertToMarketListing(listing: MarketCheckListing, dealershipId: number): InsertMarketListing {
+  convertToMarketListing(listing: MarketCheckListing, dealershipId: number): InsertMarketListing | null {
+    // Validate required fields
+    if (!listing.make || !listing.model) {
+      console.warn(`[MarketCheck] Skipping listing ${listing.id} - missing make or model`);
+      return null;
+    }
+
     // Convert miles to kilometers
     const mileage = listing.miles ? Math.round(listing.miles * 1.60934) : null;
     
@@ -166,7 +172,8 @@ export class MarketCheckService {
     const listings = await this.searchListings(params);
     return listings
       .filter(l => l.price > 0) // Filter out listings without prices
-      .map(l => this.convertToMarketListing(l, dealershipId));
+      .map(l => this.convertToMarketListing(l, dealershipId))
+      .filter((l): l is InsertMarketListing => l !== null); // Filter out null results
   }
 }
 
