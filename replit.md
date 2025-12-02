@@ -28,6 +28,7 @@ Preferred communication style: Simple, everyday language.
 - **User Management**: `users`.
 - **Financing Rules**: `credit_score_tiers`, `model_year_terms`.
 - **Facebook Posting**: `facebook_accounts`, `ad_templates`, `posting_queue`, `posting_schedule`.
+- **Facebook Catalog**: `facebook_catalog_config` (stores Catalog ID, System User Access Token, sync status per dealership).
 - **Remarketing**: `remarketing_vehicles`.
 - **PBS DMS Integration**: `pbs_config`, `pbs_webhook_events`.
 - **AI Chat**: `chat_prompts`, `chat_conversations`.
@@ -55,7 +56,8 @@ Preferred communication style: Simple, everyday language.
     - **VIN Decoder**: NHTSA API.
     - **Market Pricing Analysis**: MarketCheck API, Apify AutoTrader.ca Actor.
     - **Geocoding**: Geocoder.ca API.
-- **Cron Scheduling**: Node-cron.
+- **Cron Scheduling**: Node-cron for inventory sync (midnight), Facebook token refresh (3 AM), market analysis (3 AM), Facebook Catalog sync (4 AM).
 - **AI/LLM**: OpenAI GPT-5 via Replit AI Integrations (fallback) or per-dealership OpenAI API keys.
 - **Carfax Integration**: Automated scraping of Carfax URLs from dealership websites.
 - **Facebook Integration**: OAuth 2.0 flow for page connections, page posting APIs, vehicle posting automation. Routes in `server/routes.ts` for `/api/facebook/auth`, `/api/facebook/callback`, page management endpoints.
+- **Facebook Catalog API**: Super Admin-managed Catalog ID and System User Access Token per dealership for paid automotive inventory ads. Service in `server/facebook-catalog-service.ts` formats vehicles for Facebook's automotive feed format. Daily auto-sync at 4 AM for catalogs with auto-sync enabled. UI management in Super Admin dashboard under "FB Catalogs" tab.
