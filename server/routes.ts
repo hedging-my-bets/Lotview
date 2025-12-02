@@ -1078,6 +1078,241 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== SUPER ADMIN FACEBOOK CATALOG CONFIG ROUTES =====
+  
+  // Get all Facebook catalog configs across all dealerships (super admin only)
+  app.get("/api/super-admin/facebook-catalogs", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const configs = await storage.getAllFacebookCatalogConfigs();
+      res.json(configs);
+    } catch (error) {
+      console.error("Error fetching Facebook catalog configs:", error);
+      res.status(500).json({ error: "Failed to fetch Facebook catalog configurations" });
+    }
+  });
+
+  // Get Facebook catalog config for a specific dealership (super admin only)
+  app.get("/api/super-admin/dealerships/:dealershipId/facebook-catalog", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const dealershipId = parseInt(req.params.dealershipId);
+      const config = await storage.getFacebookCatalogConfig(dealershipId);
+      
+      if (!config) {
+        return res.json(null);
+      }
+      
+      res.json(config);
+    } catch (error) {
+      console.error("Error fetching Facebook catalog config:", error);
+      res.status(500).json({ error: "Failed to fetch Facebook catalog configuration" });
+    }
+  });
+
+  // Save/update Facebook catalog config for a dealership (super admin only)
+  app.post("/api/super-admin/dealerships/:dealershipId/facebook-catalog", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const dealershipId = parseInt(req.params.dealershipId);
+      const { catalogId, accessToken, catalogName, isActive, autoSyncEnabled } = req.body;
+      const authReq = req as AuthRequest;
+      
+      if (!catalogId || !accessToken) {
+        return res.status(400).json({ error: "Catalog ID and Access Token are required" });
+      }
+      
+      // Check if dealership exists
+      const dealership = await storage.getDealership(dealershipId);
+      if (!dealership) {
+        return res.status(404).json({ error: "Dealership not found" });
+      }
+      
+      const config = await storage.saveFacebookCatalogConfig({
+        dealershipId,
+        catalogId,
+        accessToken,
+        catalogName: catalogName || null,
+        isActive: isActive !== false,
+        autoSyncEnabled: autoSyncEnabled !== false,
+      });
+      
+      // Log audit action
+      await storage.logAuditAction({
+        userId: authReq.user!.id,
+        action: "UPDATE_FACEBOOK_CATALOG_CONFIG",
+        resource: "facebook_catalog_config",
+        resourceId: String(dealershipId),
+        details: `Updated Facebook Catalog config for dealership: ${dealership.name}`,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent']
+      });
+      
+      res.json(config);
+    } catch (error) {
+      console.error("Error saving Facebook catalog config:", error);
+      res.status(500).json({ error: "Failed to save Facebook catalog configuration" });
+    }
+  });
+
+  // Delete Facebook catalog config for a dealership (super admin only)
+  app.delete("/api/super-admin/dealerships/:dealershipId/facebook-catalog", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const dealershipId = parseInt(req.params.dealershipId);
+      const authReq = req as AuthRequest;
+      
+      const dealership = await storage.getDealership(dealershipId);
+      const deleted = await storage.deleteFacebookCatalogConfig(dealershipId);
+      
+      if (!deleted) {
+        return res.status(404).json({ error: "Facebook catalog configuration not found" });
+      }
+      
+      // Log audit action
+      await storage.logAuditAction({
+        userId: authReq.user!.id,
+        action: "DELETE_FACEBOOK_CATALOG_CONFIG",
+        resource: "facebook_catalog_config",
+        resourceId: String(dealershipId),
+        details: `Deleted Facebook Catalog config for dealership: ${dealership?.name || dealershipId}`,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent']
+      });
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting Facebook catalog config:", error);
+      res.status(500).json({ error: "Failed to delete Facebook catalog configuration" });
+    }
+  });
+
+  // Test Facebook catalog connection (super admin only)
+  app.post("/api/super-admin/dealerships/:dealershipId/test-facebook-catalog", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const dealershipId = parseInt(req.params.dealershipId);
+      const { catalogId, accessToken } = req.body;
+      
+      // Use provided credentials or get from database
+      let testCatalogId = catalogId;
+      let testAccessToken = accessToken;
+      
+      if (!testCatalogId || !testAccessToken) {
+        const config = await storage.getFacebookCatalogConfig(dealershipId);
+        if (!config) {
+          return res.json({ success: false, error: "Facebook Catalog not configured" });
+        }
+        testCatalogId = config.catalogId;
+        testAccessToken = config.accessToken;
+      }
+      
+      // Import the catalog service and test connection
+      const { facebookCatalogService } = await import("./facebook-catalog-service");
+      const result = await facebookCatalogService.testConnection({
+        catalogId: testCatalogId,
+        accessToken: testAccessToken,
+      });
+      
+      if (result.success) {
+        // Update catalog name if test was successful
+        if (result.catalogName && !catalogId) {
+          await storage.updateFacebookCatalogConfig(dealershipId, { catalogName: result.catalogName });
+        }
+        
+        res.json({ 
+          success: true, 
+          message: `Connected to catalog: ${result.catalogName || 'Unknown'}`,
+          catalogName: result.catalogName,
+          productCount: result.productCount,
+        });
+      } else {
+        res.json({ success: false, error: result.error || "Connection failed" });
+      }
+    } catch (error) {
+      console.error("Error testing Facebook catalog connection:", error);
+      res.json({ success: false, error: "Connection test failed" });
+    }
+  });
+
+  // Sync inventory to Facebook catalog (super admin only)
+  app.post("/api/super-admin/dealerships/:dealershipId/sync-facebook-catalog", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const dealershipId = parseInt(req.params.dealershipId);
+      const authReq = req as AuthRequest;
+      
+      const config = await storage.getFacebookCatalogConfig(dealershipId);
+      if (!config) {
+        return res.status(404).json({ error: "Facebook Catalog not configured for this dealership" });
+      }
+      
+      if (!config.isActive) {
+        return res.status(400).json({ error: "Facebook Catalog sync is disabled for this dealership" });
+      }
+      
+      const dealership = await storage.getDealership(dealershipId);
+      if (!dealership) {
+        return res.status(404).json({ error: "Dealership not found" });
+      }
+      
+      // Get all vehicles for the dealership
+      const { vehicles } = await storage.getVehicles(dealershipId);
+      
+      if (vehicles.length === 0) {
+        await storage.updateCatalogSyncStatus(dealershipId, {
+          lastSyncAt: new Date(),
+          lastSyncStatus: 'success',
+          lastSyncMessage: 'No vehicles to sync',
+          vehiclesSynced: 0,
+        });
+        return res.json({ success: true, message: "No vehicles to sync", synced: 0 });
+      }
+      
+      // Import the catalog service and sync
+      const { facebookCatalogService } = await import("./facebook-catalog-service");
+      
+      // Build base URL from dealership subdomain
+      const baseUrl = `https://${dealership.subdomain}.olympicauto.ca`;
+      
+      const result = await facebookCatalogService.syncVehiclesToCatalog(
+        { catalogId: config.catalogId, accessToken: config.accessToken },
+        vehicles,
+        baseUrl,
+        true // Remove stale vehicles
+      );
+      
+      // Update sync status
+      await storage.updateCatalogSyncStatus(dealershipId, {
+        lastSyncAt: new Date(),
+        lastSyncStatus: result.success ? 'success' : (result.errors.length > 0 ? 'partial' : 'failed'),
+        lastSyncMessage: result.success 
+          ? `Synced ${result.created + result.updated} vehicles, removed ${result.deleted} stale listings`
+          : result.errors.join('; '),
+        vehiclesSynced: result.created + result.updated,
+      });
+      
+      // Log audit action
+      await storage.logAuditAction({
+        userId: authReq.user!.id,
+        action: "SYNC_FACEBOOK_CATALOG",
+        resource: "facebook_catalog_config",
+        resourceId: String(dealershipId),
+        details: `Synced ${result.created + result.updated} vehicles to Facebook Catalog for ${dealership.name}`,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent']
+      });
+      
+      res.json({
+        success: result.success,
+        created: result.created,
+        updated: result.updated,
+        deleted: result.deleted,
+        errors: result.errors,
+        message: result.success 
+          ? `Successfully synced ${result.created + result.updated} vehicles`
+          : `Sync completed with errors: ${result.errors.join('; ')}`,
+      });
+    } catch (error) {
+      console.error("Error syncing to Facebook catalog:", error);
+      res.status(500).json({ error: "Failed to sync to Facebook catalog" });
+    }
+  });
+
   // ===== SUPER ADMIN SCRAPE SOURCES ROUTES =====
 
   // Get all scrape sources across all dealerships (super admin only)
