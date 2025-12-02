@@ -563,6 +563,33 @@ export const insertPostingScheduleSchema = createInsertSchema(postingSchedule).o
 export type InsertPostingSchedule = z.infer<typeof insertPostingScheduleSchema>;
 export type PostingSchedule = typeof postingSchedule.$inferSelect;
 
+// Facebook Messenger conversations (from Facebook pages connected by salespeople)
+export const messengerConversations = pgTable("messenger_conversations", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  facebookAccountId: integer("facebook_account_id").notNull().references(() => facebookAccounts.id, { onDelete: 'cascade' }),
+  pageId: text("page_id").notNull(), // Facebook Page ID
+  pageName: text("page_name").notNull(), // Facebook Page name for display
+  conversationId: text("conversation_id").notNull().unique(), // Facebook conversation ID
+  participantName: text("participant_name").notNull(), // Customer's name from Facebook
+  participantId: text("participant_id").notNull(), // Customer's Facebook ID
+  lastMessage: text("last_message"), // Preview of last message
+  lastMessageAt: timestamp("last_message_at"), // When last message was sent
+  unreadCount: integer("unread_count").notNull().default(0),
+  status: text("status").notNull().default('active'), // 'active', 'archived', 'spam'
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertMessengerConversationSchema = createInsertSchema(messengerConversations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertMessengerConversation = z.infer<typeof insertMessengerConversationSchema>;
+export type MessengerConversation = typeof messengerConversations.$inferSelect;
+
 // Remarketing vehicles - Master user selects up to 20 vehicles for remarketing campaigns
 export const remarketingVehicles = pgTable("remarketing_vehicles", {
   id: serial("id").primaryKey(),

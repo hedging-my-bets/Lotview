@@ -23,6 +23,7 @@ import {
   adTemplates,
   postingQueue,
   postingSchedule,
+  messengerConversations,
   remarketingVehicles,
   type Dealership,
   type InsertDealership,
@@ -68,6 +69,8 @@ import {
   type InsertPostingQueue,
   type PostingSchedule,
   type InsertPostingSchedule,
+  type MessengerConversation,
+  type InsertMessengerConversation,
   type RemarketingVehicle,
   type InsertRemarketingVehicle,
   pbsConfig,
@@ -195,6 +198,11 @@ export interface IStorage {
   getAllConversations(dealershipId: number, category?: string, limit?: number, offset?: number): Promise<{ conversations: ChatConversation[]; total: number }>; // REQUIRED filtering
   getConversationById(id: number, dealershipId: number): Promise<ChatConversation | undefined>; // REQUIRED filtering
   updateConversationHandoff(id: number, dealershipId: number, data: { handoffRequested?: boolean; handoffPhone?: string; handoffSent?: boolean; handoffSentAt?: Date }): Promise<ChatConversation | undefined>;
+  
+  // Messenger conversations (Multi-Tenant)
+  getMessengerConversations(dealershipId: number, userId?: number, userRole?: string): Promise<(MessengerConversation & { ownerName?: string })[]>;
+  createMessengerConversation(conversation: InsertMessengerConversation): Promise<MessengerConversation>;
+  updateMessengerConversation(id: number, dealershipId: number, data: Partial<InsertMessengerConversation>): Promise<MessengerConversation | undefined>;
   
   // Chat prompts (Multi-Tenant)
   getChatPrompts(dealershipId: number): Promise<ChatPrompt[]>;
@@ -768,6 +776,101 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(chatConversations.id, id),
         eq(chatConversations.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+
+  // Messenger conversations (Multi-Tenant with role-based filtering)
+  async getMessengerConversations(dealershipId: number, userId?: number, userRole?: string): Promise<(MessengerConversation & { ownerName?: string })[]> {
+    // For managers (manager, general_manager, super_admin), show all conversations
+    // For salespeople, only show conversations from their connected Facebook accounts
+    if (userRole === 'salesperson' && userId) {
+      // Get Facebook accounts owned by this salesperson
+      const userAccounts = await db.select()
+        .from(facebookAccounts)
+        .where(and(
+          eq(facebookAccounts.userId, userId),
+          eq(facebookAccounts.dealershipId, dealershipId)
+        ));
+      
+      if (userAccounts.length === 0) {
+        return [];
+      }
+      
+      const accountIds = userAccounts.map(a => a.id);
+      
+      // Get conversations only from those accounts
+      const conversations = await db.select({
+        id: messengerConversations.id,
+        dealershipId: messengerConversations.dealershipId,
+        facebookAccountId: messengerConversations.facebookAccountId,
+        pageId: messengerConversations.pageId,
+        pageName: messengerConversations.pageName,
+        conversationId: messengerConversations.conversationId,
+        participantName: messengerConversations.participantName,
+        participantId: messengerConversations.participantId,
+        lastMessage: messengerConversations.lastMessage,
+        lastMessageAt: messengerConversations.lastMessageAt,
+        unreadCount: messengerConversations.unreadCount,
+        status: messengerConversations.status,
+        createdAt: messengerConversations.createdAt,
+        updatedAt: messengerConversations.updatedAt,
+        ownerName: users.name
+      })
+        .from(messengerConversations)
+        .innerJoin(facebookAccounts, eq(messengerConversations.facebookAccountId, facebookAccounts.id))
+        .innerJoin(users, eq(facebookAccounts.userId, users.id))
+        .where(and(
+          eq(messengerConversations.dealershipId, dealershipId),
+          inArray(messengerConversations.facebookAccountId, accountIds)
+        ))
+        .orderBy(desc(messengerConversations.lastMessageAt));
+      
+      return conversations;
+    }
+    
+    // Managers see all conversations in the dealership
+    const conversations = await db.select({
+      id: messengerConversations.id,
+      dealershipId: messengerConversations.dealershipId,
+      facebookAccountId: messengerConversations.facebookAccountId,
+      pageId: messengerConversations.pageId,
+      pageName: messengerConversations.pageName,
+      conversationId: messengerConversations.conversationId,
+      participantName: messengerConversations.participantName,
+      participantId: messengerConversations.participantId,
+      lastMessage: messengerConversations.lastMessage,
+      lastMessageAt: messengerConversations.lastMessageAt,
+      unreadCount: messengerConversations.unreadCount,
+      status: messengerConversations.status,
+      createdAt: messengerConversations.createdAt,
+      updatedAt: messengerConversations.updatedAt,
+      ownerName: users.name
+    })
+      .from(messengerConversations)
+      .innerJoin(facebookAccounts, eq(messengerConversations.facebookAccountId, facebookAccounts.id))
+      .innerJoin(users, eq(facebookAccounts.userId, users.id))
+      .where(eq(messengerConversations.dealershipId, dealershipId))
+      .orderBy(desc(messengerConversations.lastMessageAt));
+    
+    return conversations;
+  }
+
+  async createMessengerConversation(conversation: InsertMessengerConversation): Promise<MessengerConversation> {
+    if (!conversation.dealershipId) {
+      throw new Error('dealershipId is required when creating messenger conversations');
+    }
+    const result = await db.insert(messengerConversations).values(conversation).returning();
+    return result[0];
+  }
+
+  async updateMessengerConversation(id: number, dealershipId: number, data: Partial<InsertMessengerConversation>): Promise<MessengerConversation | undefined> {
+    const result = await db.update(messengerConversations)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(
+        eq(messengerConversations.id, id),
+        eq(messengerConversations.dealershipId, dealershipId)
       ))
       .returning();
     return result[0];
