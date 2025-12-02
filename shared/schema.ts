@@ -683,6 +683,121 @@ export const insertPbsWebhookEventSchema = createInsertSchema(pbsWebhookEvents).
 export type InsertPbsWebhookEvent = z.infer<typeof insertPbsWebhookEventSchema>;
 export type PbsWebhookEvent = typeof pbsWebhookEvents.$inferSelect;
 
+// PBS API Sessions - stores authenticated sessions for PBS Partner Hub API
+export const pbsSessions = pgTable("pbs_sessions", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  sessionToken: text("session_token").notNull(), // PBS session token/cookie
+  sessionData: text("session_data"), // Additional session metadata (JSON)
+  issuedAt: timestamp("issued_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  lastUsedAt: timestamp("last_used_at").defaultNow().notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+});
+
+export const insertPbsSessionSchema = createInsertSchema(pbsSessions).omit({
+  id: true,
+  issuedAt: true,
+  lastUsedAt: true,
+});
+
+export type InsertPbsSession = z.infer<typeof insertPbsSessionSchema>;
+export type PbsSession = typeof pbsSessions.$inferSelect;
+
+// PBS Contact Cache - cache contacts from PBS for quick AI lookups
+export const pbsContactCache = pgTable("pbs_contact_cache", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  pbsContactId: text("pbs_contact_id").notNull(), // PBS internal contact ID
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  email: text("email"),
+  phone: text("phone"),
+  cellPhone: text("cell_phone"),
+  address: text("address"),
+  city: text("city"),
+  province: text("province"),
+  postalCode: text("postal_code"),
+  payload: text("payload").notNull(), // Full PBS response JSON
+  fetchedAt: timestamp("fetched_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
+export const insertPbsContactCacheSchema = createInsertSchema(pbsContactCache).omit({
+  id: true,
+  fetchedAt: true,
+});
+
+export type InsertPbsContactCache = z.infer<typeof insertPbsContactCacheSchema>;
+export type PbsContactCache = typeof pbsContactCache.$inferSelect;
+
+// PBS Appointment Cache - cache appointments from PBS
+export const pbsAppointmentCache = pgTable("pbs_appointment_cache", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  pbsAppointmentId: text("pbs_appointment_id").notNull(), // PBS internal appointment ID
+  appointmentType: text("appointment_type").notNull(), // 'sales', 'service', 'parts'
+  pbsContactId: text("pbs_contact_id"), // Link to contact
+  scheduledDate: timestamp("scheduled_date"),
+  status: text("status"), // PBS appointment status
+  payload: text("payload").notNull(), // Full PBS response JSON
+  fetchedAt: timestamp("fetched_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
+export const insertPbsAppointmentCacheSchema = createInsertSchema(pbsAppointmentCache).omit({
+  id: true,
+  fetchedAt: true,
+});
+
+export type InsertPbsAppointmentCache = z.infer<typeof insertPbsAppointmentCacheSchema>;
+export type PbsAppointmentCache = typeof pbsAppointmentCache.$inferSelect;
+
+// PBS Parts Inventory Cache - cache parts data from PBS
+export const pbsPartsCache = pgTable("pbs_parts_cache", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  partNumber: text("part_number").notNull(),
+  description: text("description"),
+  quantityOnHand: integer("quantity_on_hand"),
+  quantityAvailable: integer("quantity_available"),
+  retailPrice: text("retail_price"), // MSRP
+  costPrice: text("cost_price"),
+  payload: text("payload").notNull(), // Full PBS response JSON
+  fetchedAt: timestamp("fetched_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
+export const insertPbsPartsCacheSchema = createInsertSchema(pbsPartsCache).omit({
+  id: true,
+  fetchedAt: true,
+});
+
+export type InsertPbsPartsCache = z.infer<typeof insertPbsPartsCacheSchema>;
+export type PbsPartsCache = typeof pbsPartsCache.$inferSelect;
+
+// PBS API Call Log - track all PBS API calls for debugging and rate limiting
+export const pbsApiLogs = pgTable("pbs_api_logs", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  endpoint: text("endpoint").notNull(), // e.g., 'ContactGet', 'AppointmentChange'
+  method: text("method").notNull(), // 'GET', 'POST'
+  requestPayload: text("request_payload"), // Request body (sanitized)
+  responseStatus: integer("response_status"), // HTTP status code
+  responsePayload: text("response_payload"), // Response body (truncated)
+  durationMs: integer("duration_ms"), // Request duration
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertPbsApiLogSchema = createInsertSchema(pbsApiLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertPbsApiLog = z.infer<typeof insertPbsApiLogSchema>;
+export type PbsApiLog = typeof pbsApiLogs.$inferSelect;
+
 // Manager Settings for postal code and search preferences
 export const managerSettings = pgTable("manager_settings", {
   id: serial("id").primaryKey(),
