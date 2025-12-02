@@ -35,80 +35,115 @@ export default function PrivacyPolicy() {
                 {companyName} ("we," "us," or "our") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you visit our website, use our vehicle inventory platform, or interact with our services.
               </p>
               <p className="mb-4">
-                By using our services, you consent to the data practices described in this policy. If you do not agree with the terms of this Privacy Policy, please do not access or use our services.
+                This policy applies to all users of our services, including vehicle shoppers, dealership partners, and their employees. By using our services, you consent to the data practices described in this policy. If you do not agree with the terms of this Privacy Policy, please do not access or use our services.
+              </p>
+              <p className="mb-4">
+                We comply with applicable privacy laws including the Personal Information Protection and Electronic Documents Act (PIPEDA) in Canada, the General Data Protection Regulation (GDPR) for European users, and the California Consumer Privacy Act (CCPA) for California residents.
               </p>
             </section>
 
             <section className="mb-8">
               <h2 className="text-xl font-semibold mb-4">2. Information We Collect</h2>
               
-              <h3 className="text-lg font-medium mb-3">2.1 Personal Information</h3>
+              <h3 className="text-lg font-medium mb-3">2.1 Personal Information You Provide</h3>
               <p className="mb-4">We may collect personal information that you voluntarily provide, including:</p>
               <ul className="list-disc pl-6 mb-4 space-y-2">
-                <li>Name, email address, and phone number</li>
-                <li>Mailing address and postal code</li>
-                <li>Account credentials (for dealership staff)</li>
-                <li>Vehicle preferences and search history</li>
-                <li>Communication records (chat, email inquiries)</li>
-                <li>Payment information (processed securely by third-party processors)</li>
+                <li><strong>Identity Data:</strong> Name, username, date of birth</li>
+                <li><strong>Contact Data:</strong> Email address, phone number, mailing address, postal code</li>
+                <li><strong>Account Data:</strong> Login credentials, account preferences (for dealership staff)</li>
+                <li><strong>Transaction Data:</strong> Vehicle purchase history, financing applications, payment information</li>
+                <li><strong>Communication Data:</strong> Chat transcripts, email inquiries, phone call records</li>
+                <li><strong>Preference Data:</strong> Vehicle preferences, saved searches, watchlists</li>
               </ul>
 
-              <h3 className="text-lg font-medium mb-3">2.2 Vehicle Inventory Data</h3>
+              <h3 className="text-lg font-medium mb-3">2.2 Vehicle Inventory Data (Dealership Partners)</h3>
               <p className="mb-4">For dealership partners, we collect and process:</p>
               <ul className="list-disc pl-6 mb-4 space-y-2">
                 <li>Vehicle identification numbers (VINs)</li>
-                <li>Vehicle specifications (make, model, year, mileage, condition)</li>
-                <li>Pricing and availability information</li>
-                <li>Vehicle images and descriptions</li>
-                <li>Dealer contact information</li>
+                <li>Vehicle specifications (make, model, year, mileage, condition, trim, body style)</li>
+                <li>Pricing, availability, and financing information</li>
+                <li>Vehicle images, videos, and descriptions</li>
+                <li>Dealer business contact information and licensing details</li>
               </ul>
 
               <h3 className="text-lg font-medium mb-3">2.3 Automatically Collected Information</h3>
               <p className="mb-4">When you access our services, we automatically collect:</p>
               <ul className="list-disc pl-6 mb-4 space-y-2">
-                <li>IP address and device information</li>
-                <li>Browser type and operating system</li>
-                <li>Pages viewed and time spent on pages</li>
-                <li>Referral URLs and exit pages</li>
-                <li>Click patterns and interaction data</li>
-                <li>Location data (with your permission)</li>
+                <li><strong>Device Data:</strong> IP address, device type, operating system, browser type</li>
+                <li><strong>Usage Data:</strong> Pages viewed, time spent, click patterns, navigation paths</li>
+                <li><strong>Location Data:</strong> Approximate location based on IP address; precise location with your permission</li>
+                <li><strong>Referral Data:</strong> How you arrived at our site, search terms used</li>
               </ul>
             </section>
 
             <section className="mb-8">
-              <h2 className="text-xl font-semibold mb-4">3. Meta/Facebook Integration</h2>
+              <h2 className="text-xl font-semibold mb-4">3. Lawful Bases for Processing (GDPR)</h2>
+              <p className="mb-4">We process your personal data based on the following legal grounds:</p>
+              <ul className="list-disc pl-6 mb-4 space-y-2">
+                <li><strong>Consent:</strong> Where you have given explicit consent for marketing communications, targeted advertising, and non-essential cookies.</li>
+                <li><strong>Contractual Necessity:</strong> To fulfill our obligations under service agreements with dealership partners and to process vehicle inquiries and purchases.</li>
+                <li><strong>Legitimate Interests:</strong> For analytics, fraud prevention, security, service improvement, and customer support. Our legitimate interests do not override your fundamental rights.</li>
+                <li><strong>Legal Obligation:</strong> To comply with tax, accounting, anti-money laundering, and other regulatory requirements.</li>
+              </ul>
               <p className="mb-4">
-                Our platform integrates with Meta (Facebook) services for advertising and marketing purposes. This includes:
+                You may withdraw consent at any time without affecting the lawfulness of processing based on consent before withdrawal.
+              </p>
+            </section>
+
+            <section className="mb-8">
+              <h2 className="text-xl font-semibold mb-4">4. Meta/Facebook Integration & Consent</h2>
+              <p className="mb-4">
+                Our platform integrates with Meta (Facebook) services for advertising and marketing purposes. This integration is subject to your explicit consent.
               </p>
               
-              <h3 className="text-lg font-medium mb-3">3.1 Facebook Catalog API</h3>
+              <h3 className="text-lg font-medium mb-3">4.1 Facebook Catalog API</h3>
               <p className="mb-4">
                 We use the Facebook Catalog API to synchronize vehicle inventory for Automotive Inventory Ads. This allows us to display relevant vehicle listings to potential customers on Facebook, Instagram, and the Meta Audience Network.
               </p>
-
-              <h3 className="text-lg font-medium mb-3">3.2 Facebook Pixel</h3>
               <p className="mb-4">
-                We may use the Facebook Pixel to track conversions, optimize ads, and build targeted audiences. This technology collects:
+                <strong>Data Shared via Catalog API:</strong>
+              </p>
+              <ul className="list-disc pl-6 mb-4 space-y-2">
+                <li>Vehicle information: VIN, make, model, year, mileage, price, images, body style, transmission, exterior color</li>
+                <li>Dealer information: Dealership name, location, contact details</li>
+                <li>Availability status and inventory updates</li>
+              </ul>
+
+              <h3 className="text-lg font-medium mb-3">4.2 Facebook Pixel & Conversions API</h3>
+              <p className="mb-4">
+                With your consent, we may use the Facebook Pixel and Conversions API to track website interactions. This technology collects:
               </p>
               <ul className="list-disc pl-6 mb-4 space-y-2">
                 <li>Page views and vehicle detail page visits</li>
                 <li>Search queries and filter selections</li>
-                <li>Actions taken on our website (form submissions, contact requests)</li>
+                <li>Form submissions and contact requests</li>
                 <li>Device and browser information</li>
+                <li>Conversion events (inquiries, applications)</li>
               </ul>
 
-              <h3 className="text-lg font-medium mb-3">3.3 Data Sharing with Meta</h3>
+              <h3 className="text-lg font-medium mb-3">4.3 Consent for Meta Integration</h3>
               <p className="mb-4">
-                When you interact with our website, data may be shared with Meta for advertising purposes. Meta may use this data to:
+                <strong>Before enabling Meta tracking:</strong>
+              </p>
+              <ul className="list-disc pl-6 mb-4 space-y-2">
+                <li>We will request your explicit consent through our cookie consent banner</li>
+                <li>Tracking cookies are blocked until consent is obtained</li>
+                <li>You can withdraw consent at any time through your browser settings or by contacting us</li>
+                <li>For EU/UK users, Meta Pixel is only activated after opt-in consent</li>
+              </ul>
+
+              <h3 className="text-lg font-medium mb-3">4.4 Data Sharing with Meta</h3>
+              <p className="mb-4">
+                When you consent to Meta integration, data is shared with Meta for advertising purposes. Meta may use this data to:
               </p>
               <ul className="list-disc pl-6 mb-4 space-y-2">
                 <li>Show you relevant vehicle advertisements</li>
-                <li>Measure ad effectiveness</li>
+                <li>Measure ad effectiveness and attribution</li>
                 <li>Build custom and lookalike audiences</li>
-                <li>Improve their advertising products</li>
+                <li>Improve Meta's advertising products</li>
               </ul>
               <p className="mb-4">
-                For more information about Meta's data practices, please review the{" "}
+                Meta processes this data as an independent controller. For more information, review the{" "}
                 <a href="https://www.facebook.com/privacy/policy/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
                   Meta Privacy Policy
                 </a>.
@@ -116,75 +151,201 @@ export default function PrivacyPolicy() {
             </section>
 
             <section className="mb-8">
-              <h2 className="text-xl font-semibold mb-4">4. How We Use Your Information</h2>
-              <p className="mb-4">We use the collected information to:</p>
+              <h2 className="text-xl font-semibold mb-4">5. How We Use Your Information</h2>
+              <p className="mb-4">We use collected information for the following purposes:</p>
+              
+              <h3 className="text-lg font-medium mb-3">5.1 Service Delivery</h3>
               <ul className="list-disc pl-6 mb-4 space-y-2">
                 <li>Display and manage vehicle inventory listings</li>
                 <li>Respond to inquiries and facilitate vehicle purchases</li>
                 <li>Process financing applications and payments</li>
-                <li>Send marketing communications (with your consent)</li>
-                <li>Improve our website and user experience</li>
+                <li>Provide customer support via chat, email, and phone</li>
+              </ul>
+
+              <h3 className="text-lg font-medium mb-3">5.2 Marketing & Advertising (With Consent)</h3>
+              <ul className="list-disc pl-6 mb-4 space-y-2">
+                <li>Send promotional emails about new inventory and offers</li>
                 <li>Run targeted advertising campaigns on social media platforms</li>
-                <li>Analyze usage patterns and optimize our services</li>
-                <li>Comply with legal obligations</li>
-                <li>Prevent fraud and ensure security</li>
+                <li>Retarget users who have visited specific vehicle pages</li>
+                <li>Create personalized recommendations based on browsing history</li>
+              </ul>
+
+              <h3 className="text-lg font-medium mb-3">5.3 Analytics & Improvement</h3>
+              <ul className="list-disc pl-6 mb-4 space-y-2">
+                <li>Analyze usage patterns to improve our services</li>
+                <li>Generate aggregated market insights for dealership partners</li>
+                <li>Test new features and optimize user experience</li>
+              </ul>
+
+              <h3 className="text-lg font-medium mb-3">5.4 Security & Compliance</h3>
+              <ul className="list-disc pl-6 mb-4 space-y-2">
+                <li>Prevent fraud and unauthorized access</li>
+                <li>Comply with legal obligations and regulatory requirements</li>
+                <li>Enforce our Terms of Service</li>
               </ul>
             </section>
 
             <section className="mb-8">
-              <h2 className="text-xl font-semibold mb-4">5. Third-Party Service Providers</h2>
-              <p className="mb-4">We may share your information with trusted third parties who assist us in operating our business:</p>
+              <h2 className="text-xl font-semibold mb-4">6. Third-Party Service Providers</h2>
+              <p className="mb-4">We share information with trusted third parties who assist us in operating our business:</p>
               <ul className="list-disc pl-6 mb-4 space-y-2">
-                <li><strong>Meta/Facebook:</strong> Advertising and catalog management</li>
-                <li><strong>Payment Processors:</strong> Secure payment handling</li>
+                <li><strong>Meta/Facebook:</strong> Advertising, catalog management, and audience targeting</li>
+                <li><strong>Payment Processors:</strong> Secure payment handling (we do not store credit card numbers)</li>
+                <li><strong>Cloud Hosting (Replit/Neon):</strong> Secure data storage and processing</li>
                 <li><strong>Analytics Providers:</strong> Website analytics and optimization</li>
-                <li><strong>Cloud Hosting:</strong> Secure data storage and processing</li>
-                <li><strong>CRM Systems:</strong> Customer relationship management</li>
-                <li><strong>Vehicle Data Providers:</strong> VIN decoding and vehicle history</li>
+                <li><strong>AI Providers (OpenAI):</strong> AI-powered chat and vehicle descriptions</li>
+                <li><strong>Vehicle Data Providers:</strong> VIN decoding, vehicle history (NHTSA, MarketCheck)</li>
+                <li><strong>Email Services:</strong> Transactional and marketing email delivery</li>
               </ul>
               <p className="mb-4">
-                These providers are contractually obligated to protect your information and use it only for the purposes we specify.
+                All service providers are contractually required to protect your information, process it only for specified purposes, and comply with applicable data protection laws.
               </p>
             </section>
 
             <section className="mb-8">
-              <h2 className="text-xl font-semibold mb-4">6. Cookies and Tracking Technologies</h2>
+              <h2 className="text-xl font-semibold mb-4">7. International Data Transfers</h2>
               <p className="mb-4">
-                We use cookies and similar tracking technologies to enhance your experience. These include:
+                Your personal data may be transferred to and processed in countries outside your country of residence, including the United States and Canada. These countries may have different data protection laws.
+              </p>
+              <p className="mb-4">
+                <strong>Safeguards for International Transfers:</strong>
               </p>
               <ul className="list-disc pl-6 mb-4 space-y-2">
-                <li><strong>Essential Cookies:</strong> Required for website functionality</li>
-                <li><strong>Analytics Cookies:</strong> Help us understand how visitors use our site</li>
-                <li><strong>Advertising Cookies:</strong> Used for targeted advertising (including Facebook Pixel)</li>
-                <li><strong>Preference Cookies:</strong> Remember your settings and preferences</li>
+                <li><strong>Standard Contractual Clauses (SCCs):</strong> We use EU-approved SCCs for transfers from the EEA</li>
+                <li><strong>Data Processing Agreements:</strong> All service providers sign binding agreements</li>
+                <li><strong>Privacy Shield Successors:</strong> Where applicable, we rely on EU-US Data Privacy Framework certifications</li>
+                <li><strong>Encryption:</strong> Data is encrypted in transit and at rest</li>
               </ul>
               <p className="mb-4">
-                You can manage cookie preferences through your browser settings. Note that disabling certain cookies may affect website functionality.
+                For more information about our data transfer practices, contact us at {companyEmail}.
               </p>
             </section>
 
             <section className="mb-8">
-              <h2 className="text-xl font-semibold mb-4">7. Your Rights and Choices</h2>
+              <h2 className="text-xl font-semibold mb-4">8. Cookies and Tracking Technologies</h2>
+              <p className="mb-4">
+                We use cookies and similar tracking technologies to enhance your experience:
+              </p>
               
-              <h3 className="text-lg font-medium mb-3">7.1 Access and Correction</h3>
+              <h3 className="text-lg font-medium mb-3">8.1 Types of Cookies</h3>
+              <ul className="list-disc pl-6 mb-4 space-y-2">
+                <li><strong>Strictly Necessary Cookies:</strong> Required for website functionality (authentication, security). Cannot be disabled.</li>
+                <li><strong>Analytics Cookies:</strong> Help us understand how visitors use our site. Require consent.</li>
+                <li><strong>Advertising Cookies:</strong> Used for targeted advertising (Facebook Pixel, etc.). Require explicit consent.</li>
+                <li><strong>Preference Cookies:</strong> Remember your settings (theme, language). Require consent.</li>
+              </ul>
+
+              <h3 className="text-lg font-medium mb-3">8.2 Managing Cookies</h3>
               <p className="mb-4">
-                You have the right to access, correct, or update your personal information at any time by contacting us.
+                You can manage cookie preferences through:
+              </p>
+              <ul className="list-disc pl-6 mb-4 space-y-2">
+                <li>Our cookie consent banner (shown on first visit)</li>
+                <li>Your browser settings (blocking or deleting cookies)</li>
+                <li>Third-party opt-out tools (listed in Section 10)</li>
+              </ul>
+              <p className="mb-4">
+                Note: Disabling certain cookies may affect website functionality.
+              </p>
+            </section>
+
+            <section className="mb-8">
+              <h2 className="text-xl font-semibold mb-4">9. Data Retention</h2>
+              <p className="mb-4">
+                We retain personal information only as long as necessary for the purposes outlined in this policy:
+              </p>
+              <table className="w-full border-collapse mb-4">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left p-2">Data Type</th>
+                    <th className="text-left p-2">Retention Period</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-b">
+                    <td className="p-2">Account Data</td>
+                    <td className="p-2">Duration of account + 7 years</td>
+                  </tr>
+                  <tr className="border-b">
+                    <td className="p-2">Transaction Records</td>
+                    <td className="p-2">7 years (legal requirement)</td>
+                  </tr>
+                  <tr className="border-b">
+                    <td className="p-2">Marketing Consent Records</td>
+                    <td className="p-2">Until opt-out + 3 years</td>
+                  </tr>
+                  <tr className="border-b">
+                    <td className="p-2">Website Analytics</td>
+                    <td className="p-2">26 months (then anonymized)</td>
+                  </tr>
+                  <tr className="border-b">
+                    <td className="p-2">Chat Conversations</td>
+                    <td className="p-2">3 years or until deletion request</td>
+                  </tr>
+                  <tr className="border-b">
+                    <td className="p-2">Cookie Data</td>
+                    <td className="p-2">13 months maximum</td>
+                  </tr>
+                </tbody>
+              </table>
+              <p className="mb-4">
+                After retention periods expire, data is securely deleted or anonymized for statistical purposes.
+              </p>
+            </section>
+
+            <section className="mb-8">
+              <h2 className="text-xl font-semibold mb-4">10. Your Privacy Rights</h2>
+              
+              <h3 className="text-lg font-medium mb-3">10.1 Rights for All Users</h3>
+              <ul className="list-disc pl-6 mb-4 space-y-2">
+                <li><strong>Access:</strong> Request a copy of your personal data</li>
+                <li><strong>Correction:</strong> Update inaccurate or incomplete data</li>
+                <li><strong>Deletion:</strong> Request deletion of your personal data (subject to legal exceptions)</li>
+                <li><strong>Opt-Out:</strong> Unsubscribe from marketing communications at any time</li>
+              </ul>
+
+              <h3 className="text-lg font-medium mb-3">10.2 GDPR Rights (European Users)</h3>
+              <p className="mb-4">If you are in the European Economic Area (EEA), UK, or Switzerland, you have additional rights:</p>
+              <ul className="list-disc pl-6 mb-4 space-y-2">
+                <li><strong>Right to Access:</strong> Obtain a copy of your personal data and information about processing</li>
+                <li><strong>Right to Rectification:</strong> Correct inaccurate or incomplete data</li>
+                <li><strong>Right to Erasure:</strong> Request deletion ("right to be forgotten")</li>
+                <li><strong>Right to Restrict Processing:</strong> Limit how we use your data</li>
+                <li><strong>Right to Data Portability:</strong> Receive your data in a machine-readable format</li>
+                <li><strong>Right to Object:</strong> Object to processing based on legitimate interests or for direct marketing</li>
+                <li><strong>Right to Withdraw Consent:</strong> Withdraw consent at any time without affecting prior processing</li>
+                <li><strong>Right to Lodge Complaint:</strong> File a complaint with your local supervisory authority</li>
+              </ul>
+              <p className="mb-4">
+                We will respond to GDPR requests within 30 days. Complex requests may take up to 90 days with notice.
               </p>
 
-              <h3 className="text-lg font-medium mb-3">7.2 Deletion</h3>
+              <h3 className="text-lg font-medium mb-3">10.3 CCPA Rights (California Residents)</h3>
+              <p className="mb-4">Under the California Consumer Privacy Act (CCPA), California residents have the right to:</p>
+              <ul className="list-disc pl-6 mb-4 space-y-2">
+                <li><strong>Right to Know:</strong> Request disclosure of personal information collected, used, and shared in the past 12 months</li>
+                <li><strong>Right to Delete:</strong> Request deletion of personal information we hold about you</li>
+                <li><strong>Right to Opt-Out of Sale:</strong> Direct us not to "sell" your personal information</li>
+                <li><strong>Right to Non-Discrimination:</strong> Receive equal service regardless of exercising privacy rights</li>
+              </ul>
               <p className="mb-4">
-                You may request deletion of your personal information, subject to certain legal exceptions (e.g., transaction records we must retain).
+                <strong>Do Not Sell My Personal Information:</strong> We do not sell personal information for monetary consideration. However, sharing data with advertising partners for targeted advertising may constitute a "sale" under CCPA. To opt out, contact us at {companyEmail} or use our cookie management tools.
+              </p>
+              <p className="mb-4">
+                <strong>Authorized Agents:</strong> You may designate an authorized agent to make requests on your behalf. We will require verification of the agent's authority.
               </p>
 
-              <h3 className="text-lg font-medium mb-3">7.3 Opt-Out of Marketing</h3>
-              <p className="mb-4">
-                You can opt out of marketing communications at any time by clicking "unsubscribe" in any email or contacting us directly.
-              </p>
+              <h3 className="text-lg font-medium mb-3">10.4 PIPEDA Rights (Canadian Users)</h3>
+              <p className="mb-4">Under the Personal Information Protection and Electronic Documents Act (PIPEDA), you have the right to:</p>
+              <ul className="list-disc pl-6 mb-4 space-y-2">
+                <li>Access your personal information held by us</li>
+                <li>Challenge the accuracy of your personal information</li>
+                <li>Withdraw consent for collection, use, or disclosure of personal information</li>
+                <li>File a complaint with the Office of the Privacy Commissioner of Canada</li>
+              </ul>
 
-              <h3 className="text-lg font-medium mb-3">7.4 Advertising Opt-Out</h3>
-              <p className="mb-4">
-                To opt out of interest-based advertising:
-              </p>
+              <h3 className="text-lg font-medium mb-3">10.5 Advertising Opt-Out Options</h3>
+              <p className="mb-4">To opt out of interest-based advertising:</p>
               <ul className="list-disc pl-6 mb-4 space-y-2">
                 <li>
                   <a href="https://www.facebook.com/settings/?tab=ads" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
@@ -193,102 +354,105 @@ export default function PrivacyPolicy() {
                 </li>
                 <li>
                   <a href="https://optout.networkadvertising.org/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                    Network Advertising Initiative
+                    Network Advertising Initiative (NAI)
                   </a>
                 </li>
                 <li>
                   <a href="https://optout.aboutads.info/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                    Digital Advertising Alliance
+                    Digital Advertising Alliance (DAA)
+                  </a>
+                </li>
+                <li>
+                  <a href="https://youradchoices.ca/choices/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                    Digital Advertising Alliance of Canada (DAAC)
                   </a>
                 </li>
               </ul>
             </section>
 
             <section className="mb-8">
-              <h2 className="text-xl font-semibold mb-4">8. GDPR Rights (European Users)</h2>
-              <p className="mb-4">If you are in the European Economic Area (EEA), you have additional rights:</p>
+              <h2 className="text-xl font-semibold mb-4">11. Data Security</h2>
+              <p className="mb-4">
+                We implement comprehensive security measures to protect your information:
+              </p>
+              
+              <h3 className="text-lg font-medium mb-3">11.1 Technical Safeguards</h3>
               <ul className="list-disc pl-6 mb-4 space-y-2">
-                <li><strong>Right to Access:</strong> Obtain a copy of your personal data</li>
-                <li><strong>Right to Rectification:</strong> Correct inaccurate data</li>
-                <li><strong>Right to Erasure:</strong> Request deletion ("right to be forgotten")</li>
-                <li><strong>Right to Restrict Processing:</strong> Limit how we use your data</li>
-                <li><strong>Right to Data Portability:</strong> Receive your data in a portable format</li>
-                <li><strong>Right to Object:</strong> Object to processing for direct marketing</li>
-                <li><strong>Right to Withdraw Consent:</strong> Withdraw consent at any time</li>
+                <li><strong>Encryption:</strong> TLS 1.3 for data in transit; AES-256 for data at rest</li>
+                <li><strong>Access Controls:</strong> Role-based access with multi-factor authentication for staff</li>
+                <li><strong>Password Security:</strong> Bcrypt hashing with salting</li>
+                <li><strong>Network Security:</strong> Firewalls, intrusion detection, DDoS protection</li>
+                <li><strong>Secure Development:</strong> Regular code reviews and security testing</li>
               </ul>
-              <p className="mb-4">
-                To exercise these rights, contact us at {companyEmail}. We will respond within 30 days.
-              </p>
-            </section>
 
-            <section className="mb-8">
-              <h2 className="text-xl font-semibold mb-4">9. CCPA Rights (California Residents)</h2>
-              <p className="mb-4">If you are a California resident, you have the right to:</p>
+              <h3 className="text-lg font-medium mb-3">11.2 Organizational Measures</h3>
               <ul className="list-disc pl-6 mb-4 space-y-2">
-                <li>Know what personal information we collect and how it's used</li>
-                <li>Request deletion of your personal information</li>
-                <li>Opt out of the "sale" of personal information</li>
-                <li>Non-discrimination for exercising your privacy rights</li>
+                <li>Employee training on data protection and security</li>
+                <li>Background checks for staff with data access</li>
+                <li>Vendor security assessments</li>
+                <li>Regular security audits and penetration testing</li>
+                <li>Incident response procedures</li>
               </ul>
-              <p className="mb-4">
-                We do not sell personal information in the traditional sense, but sharing data with advertising partners may constitute a "sale" under CCPA. To opt out, contact us or use our cookie management tools.
-              </p>
-            </section>
 
-            <section className="mb-8">
-              <h2 className="text-xl font-semibold mb-4">10. Data Security</h2>
+              <h3 className="text-lg font-medium mb-3">11.3 Data Breach Notification</h3>
               <p className="mb-4">
-                We implement industry-standard security measures to protect your information, including:
+                In the event of a data breach affecting your personal information:
               </p>
               <ul className="list-disc pl-6 mb-4 space-y-2">
-                <li>SSL/TLS encryption for data in transit</li>
-                <li>Encrypted data storage</li>
-                <li>Access controls and authentication</li>
-                <li>Regular security audits</li>
-                <li>Employee training on data protection</li>
-              </ul>
-              <p className="mb-4">
-                However, no method of transmission over the Internet is 100% secure. We cannot guarantee absolute security.
-              </p>
-            </section>
-
-            <section className="mb-8">
-              <h2 className="text-xl font-semibold mb-4">11. Data Retention</h2>
-              <p className="mb-4">
-                We retain personal information for as long as necessary to provide our services and comply with legal obligations. Typical retention periods:
-              </p>
-              <ul className="list-disc pl-6 mb-4 space-y-2">
-                <li><strong>Account data:</strong> Duration of account plus 7 years</li>
-                <li><strong>Transaction records:</strong> 7 years (legal requirement)</li>
-                <li><strong>Marketing data:</strong> Until opt-out or 3 years of inactivity</li>
-                <li><strong>Analytics data:</strong> 26 months (anonymized)</li>
+                <li>We will notify you within 72 hours of discovery (GDPR requirement)</li>
+                <li>We will inform relevant supervisory authorities as required by law</li>
+                <li>We will provide details about the breach and steps to protect yourself</li>
+                <li>We will document all breaches and remediation actions</li>
               </ul>
             </section>
 
             <section className="mb-8">
               <h2 className="text-xl font-semibold mb-4">12. Children's Privacy</h2>
               <p className="mb-4">
-                Our services are not intended for children under 18 years of age. We do not knowingly collect personal information from children. If you believe we have collected information from a child, please contact us immediately.
+                Our services are not intended for children under 18 years of age. We do not knowingly collect personal information from children under 18. If you are a parent or guardian and believe your child has provided us with personal information, please contact us immediately at {companyEmail}.
+              </p>
+              <p className="mb-4">
+                If we discover that we have collected personal information from a child under 18, we will delete that information as quickly as possible.
               </p>
             </section>
 
             <section className="mb-8">
               <h2 className="text-xl font-semibold mb-4">13. Changes to This Policy</h2>
               <p className="mb-4">
-                We may update this Privacy Policy from time to time. We will notify you of material changes by posting the new policy on this page and updating the "Last Updated" date. Continued use of our services after changes constitutes acceptance of the updated policy.
+                We may update this Privacy Policy from time to time to reflect changes in our practices or legal requirements.
+              </p>
+              <ul className="list-disc pl-6 mb-4 space-y-2">
+                <li><strong>Notification:</strong> We will post the updated policy on this page and update the "Last Updated" date</li>
+                <li><strong>Material Changes:</strong> For significant changes, we will provide prominent notice (e.g., email notification, website banner)</li>
+                <li><strong>Consent:</strong> Where required by law, we will obtain your consent before implementing material changes</li>
+              </ul>
+              <p className="mb-4">
+                Continued use of our services after changes become effective constitutes acceptance of the updated policy. We encourage you to review this policy periodically.
               </p>
             </section>
 
             <section className="mb-8">
               <h2 className="text-xl font-semibold mb-4">14. Contact Us</h2>
               <p className="mb-4">
-                If you have questions about this Privacy Policy or our data practices, please contact us:
+                If you have questions about this Privacy Policy, wish to exercise your privacy rights, or have concerns about our data practices, please contact us:
               </p>
-              <div className="bg-muted p-4 rounded-lg">
+              <div className="bg-muted p-4 rounded-lg mb-4">
                 <p className="font-medium">{companyName}</p>
+                <p><strong>Privacy Officer:</strong> Privacy Department</p>
                 <p>Email: <a href={`mailto:${companyEmail}`} className="text-primary hover:underline">{companyEmail}</a></p>
                 <p>Website: <a href={websiteUrl} className="text-primary hover:underline">{websiteUrl}</a></p>
               </div>
+              <p className="mb-4">
+                <strong>Response Time:</strong> We will acknowledge receipt of your request within 5 business days and provide a substantive response within 30 days (or 45 days for complex requests, with notice).
+              </p>
+              <p className="mb-4">
+                <strong>Complaints:</strong> If you are not satisfied with our response, you may file a complaint with your local data protection authority:
+              </p>
+              <ul className="list-disc pl-6 mb-4 space-y-2">
+                <li><strong>Canada:</strong> Office of the Privacy Commissioner of Canada - <a href="https://www.priv.gc.ca" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">priv.gc.ca</a></li>
+                <li><strong>EU:</strong> Your local Data Protection Authority</li>
+                <li><strong>California:</strong> California Attorney General - <a href="https://oag.ca.gov/privacy" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">oag.ca.gov/privacy</a></li>
+              </ul>
             </section>
 
             <Separator className="my-6" />

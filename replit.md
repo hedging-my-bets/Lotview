@@ -61,3 +61,29 @@ Preferred communication style: Simple, everyday language.
 - **Carfax Integration**: Automated scraping of Carfax URLs from dealership websites.
 - **Facebook Integration**: OAuth 2.0 flow for page connections, page posting APIs, vehicle posting automation. Routes in `server/routes.ts` for `/api/facebook/auth`, `/api/facebook/callback`, page management endpoints.
 - **Facebook Catalog API**: Super Admin-managed Catalog ID and System User Access Token per dealership for paid automotive inventory ads. Service in `server/facebook-catalog-service.ts` formats vehicles for Facebook's automotive feed format. Daily auto-sync at 4 AM for catalogs with auto-sync enabled. UI management in Super Admin dashboard under "FB Catalogs" tab.
+
+## Legal Compliance Pages
+
+### Privacy Policy (`/privacy-policy`)
+Comprehensive privacy policy required for Facebook app approval and general compliance:
+- **Data Collection**: Personal information, vehicle inventory data, automatically collected data
+- **Lawful Bases (GDPR)**: Consent, contractual necessity, legitimate interests, legal obligation
+- **Meta/Facebook Integration**: Catalog API disclosure, Pixel tracking, consent handling
+- **International Transfers**: Standard Contractual Clauses, encryption, Data Privacy Framework
+- **Data Retention**: Specific retention periods by data type
+- **User Rights**: GDPR (EU), CCPA (California), PIPEDA (Canada) rights articulated
+- **Data Security**: Technical and organizational measures, breach notification
+- **Cookie Policy**: Categories (essential, analytics, advertising, preference) with consent requirements
+
+### Terms of Service (`/terms-of-service`)
+SaaS terms for dealership partners and general users:
+- **Subscription Terms**: Plan types, billing, renewal, termination
+- **Service Level Agreement**: 99.5% uptime target, service credits, support response times
+- **Fees & Payment**: CAD pricing, late payment interest, suspension policy
+- **Data Ownership**: Dealerships retain ownership, license grant for display/syndication
+- **Liability Caps**: 12-month fee cap, consequential damages exclusion
+- **Dispute Resolution**: BC Canada governing law, informal resolution, mediation, jurisdiction
+- **Acceptable Use**: Prohibited activities for dealership partners
+
+### Footer Integration
+Both legal pages linked from the main Inventory page footer with copyright notice.

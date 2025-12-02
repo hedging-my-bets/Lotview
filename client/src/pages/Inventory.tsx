@@ -8,6 +8,7 @@ import { StickyPaymentBar } from "@/components/StickyPaymentBar";
 import { getVehicles } from "@/lib/api";
 import { FilterState } from "@/lib/types";
 import { Loader2, LogIn, SlidersHorizontal, Car, Truck } from "lucide-react";
+import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
@@ -184,6 +185,22 @@ export default function Inventory() {
             Sales Team Login
           </button>
         </div>
+
+        {/* Footer with Legal Links */}
+        <footer className="mt-16 pt-8 border-t border-border">
+          <div className="flex flex-col sm:flex-row justify-center items-center gap-4 text-sm text-muted-foreground">
+            <span>&copy; {new Date().getFullYear()} Olympic Auto Group. All rights reserved.</span>
+            <div className="flex items-center gap-4">
+              <Link href="/privacy-policy">
+                <span className="hover:text-primary hover:underline cursor-pointer" data-testid="link-privacy-footer">Privacy Policy</span>
+              </Link>
+              <span className="hidden sm:inline">|</span>
+              <Link href="/terms-of-service">
+                <span className="hover:text-primary hover:underline cursor-pointer" data-testid="link-terms-footer">Terms of Service</span>
+              </Link>
+            </div>
+          </div>
+        </footer>
       </div>
 
       {/* Mobile Filter Sheet - triggered from header button */}
