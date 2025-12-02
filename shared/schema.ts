@@ -1109,6 +1109,7 @@ export const ghlAccounts = pgTable("ghl_accounts", {
   tokenType: text("token_type").notNull().default('Bearer'),
   expiresAt: timestamp("expires_at").notNull(), // When access token expires
   scope: text("scope"), // OAuth scopes granted
+  userType: text("user_type"), // GHL user type from OAuth (Location, Company, etc.)
   userName: text("user_name"), // GHL user name who connected
   userEmail: text("user_email"), // GHL user email
   locationName: text("location_name"), // Sub-account/location name
@@ -1152,6 +1153,8 @@ export const ghlConfig = pgTable("ghl_config", {
   syncAppointments: boolean("sync_appointments").notNull().default(true),
   syncOpportunities: boolean("sync_opportunities").notNull().default(true),
   bidirectionalSync: boolean("bidirectional_sync").notNull().default(true), // Sync both ways
+  // Webhook settings
+  webhookVerifyToken: text("webhook_verify_token"), // Shared secret for webhook signature verification
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -1234,6 +1237,7 @@ export const ghlAppointmentSync = pgTable("ghl_appointment_sync", {
   scheduledEnd: timestamp("scheduled_end"),
   title: text("title"),
   status: text("status"), // 'confirmed', 'cancelled', 'completed', 'no_show'
+  syncDirection: text("sync_direction").notNull().default('bidirectional'), // 'ghl_to_pbs', 'pbs_to_ghl', 'bidirectional'
   syncStatus: text("sync_status").notNull().default('synced'), // 'synced', 'pending', 'conflict', 'error'
   lastSyncAt: timestamp("last_sync_at").defaultNow().notNull(),
   syncError: text("sync_error"),

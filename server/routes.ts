@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { db } from "./db";
 import { 
   insertVehicleSchema, 
   insertVehicleViewSchema, 
@@ -8,8 +9,11 @@ import {
   insertFacebookAccountSchema,
   insertAdTemplateSchema,
   insertPostingQueueSchema,
-  insertPostingScheduleSchema
+  insertPostingScheduleSchema,
+  ghlAccounts,
+  ghlContactSync
 } from "@shared/schema";
+import { eq, desc } from "drizzle-orm";
 import { fromZodError } from "zod-validation-error";
 import { triggerManualSync } from "./scheduler";
 import { testBadgeDetection } from "./scraper";
@@ -6407,17 +6411,25 @@ Format your response in clear sections with actionable recommendations.`;
 
   // ===== ADMIN ROUTES =====
   
-  // Save GHL configuration
+  // Save GHL configuration (Legacy - use OAuth flow for new integrations)
   app.post("/api/admin/ghl-config", authMiddleware, requireRole("master"), async (req, res) => {
     try {
       const dealershipId = req.dealershipId!;
-      const { apiKey, locationId } = req.body;
-
-      if (!apiKey || !locationId) {
-        return res.status(400).json({ error: "apiKey and locationId are required" });
+      const { syncContacts, syncAppointments, syncOpportunities } = req.body;
+      
+      // First check if there's a connected GHL account
+      const account = await storage.getGhlAccountByDealership(dealershipId);
+      if (!account) {
+        return res.status(400).json({ error: "No GHL account connected. Use OAuth flow to connect first." });
       }
 
-      const config = await storage.saveGHLConfig({ dealershipId, apiKey, locationId, isActive: true });
+      const config = await storage.saveGHLConfig({ 
+        dealershipId, 
+        ghlAccountId: account.id,
+        syncContacts: syncContacts ?? true,
+        syncAppointments: syncAppointments ?? true,
+        syncOpportunities: syncOpportunities ?? false
+      });
       res.json(config);
     } catch (error) {
       console.error("Error saving GHL config:", error);
@@ -6477,6 +6489,722 @@ Format your response in clear sections with actionable recommendations.`;
       res.status(500).json({ error: "Failed to save AI prompt template" });
     }
   });
+
+  // ===== GOHIGHLEVEL INTEGRATION ROUTES =====
+  
+  // GHL OAuth: Initiate connection - generates authorization URL
+  app.get("/api/ghl/auth/connect", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const clientId = process.env.GHL_CLIENT_ID;
+      const redirectUri = process.env.GHL_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/ghl/auth/callback`;
+      
+      if (!clientId) {
+        return res.status(500).json({ error: "GHL_CLIENT_ID not configured" });
+      }
+      
+      // Generate state token with dealership ID for security
+      const state = Buffer.from(JSON.stringify({ 
+        dealershipId, 
+        timestamp: Date.now(),
+        nonce: Math.random().toString(36).substring(7)
+      })).toString('base64');
+      
+      // GHL OAuth 2.0 scopes for CRM functionality
+      const scopes = [
+        "contacts.readonly",
+        "contacts.write",
+        "calendars.readonly", 
+        "calendars.write",
+        "calendars/events.readonly",
+        "calendars/events.write",
+        "opportunities.readonly",
+        "opportunities.write",
+        "locations.readonly",
+        "users.readonly"
+      ].join(' ');
+      
+      const authUrl = `https://marketplace.gohighlevel.com/oauth/chooselocation?` +
+        `response_type=code&` +
+        `client_id=${encodeURIComponent(clientId)}&` +
+        `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+        `scope=${encodeURIComponent(scopes)}&` +
+        `state=${encodeURIComponent(state)}`;
+      
+      res.json({ authUrl, state });
+    } catch (error) {
+      console.error("Error generating GHL auth URL:", error);
+      res.status(500).json({ error: "Failed to generate authorization URL" });
+    }
+  });
+  
+  // GHL OAuth: Callback handler - exchanges code for tokens
+  app.get("/api/ghl/auth/callback", async (req, res) => {
+    try {
+      const { code, state, error } = req.query;
+      
+      if (error) {
+        console.error("GHL OAuth error:", error);
+        return res.redirect(`/dashboard?ghl_error=${encodeURIComponent(error as string)}`);
+      }
+      
+      if (!code || !state) {
+        return res.redirect('/dashboard?ghl_error=missing_code_or_state');
+      }
+      
+      // Decode and validate state
+      let stateData;
+      try {
+        stateData = JSON.parse(Buffer.from(state as string, 'base64').toString());
+      } catch (e) {
+        return res.redirect('/dashboard?ghl_error=invalid_state');
+      }
+      
+      const { dealershipId, timestamp } = stateData;
+      
+      // Validate state timestamp (15 minute expiry)
+      if (Date.now() - timestamp > 15 * 60 * 1000) {
+        return res.redirect('/dashboard?ghl_error=state_expired');
+      }
+      
+      const clientId = process.env.GHL_CLIENT_ID;
+      const clientSecret = process.env.GHL_CLIENT_SECRET;
+      const redirectUri = process.env.GHL_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/ghl/auth/callback`;
+      
+      if (!clientId || !clientSecret) {
+        return res.redirect('/dashboard?ghl_error=missing_credentials');
+      }
+      
+      // Exchange code for tokens
+      const tokenResponse = await fetch('https://services.leadconnectorhq.com/oauth/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json'
+        },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          code: code as string,
+          client_id: clientId,
+          client_secret: clientSecret,
+          redirect_uri: redirectUri
+        })
+      });
+      
+      if (!tokenResponse.ok) {
+        const errorText = await tokenResponse.text();
+        console.error("GHL token exchange failed:", errorText);
+        return res.redirect('/dashboard?ghl_error=token_exchange_failed');
+      }
+      
+      const tokens = await tokenResponse.json();
+      
+      // Get location info
+      const locationResponse = await fetch(`https://services.leadconnectorhq.com/locations/${tokens.locationId}`, {
+        headers: {
+          'Authorization': `Bearer ${tokens.access_token}`,
+          'Version': '2021-07-28'
+        }
+      });
+      
+      let locationName = 'Unknown Location';
+      let companyId = null;
+      if (locationResponse.ok) {
+        const locationData = await locationResponse.json();
+        locationName = locationData.location?.name || locationName;
+        companyId = locationData.location?.companyId || null;
+      }
+      
+      // Save account to database
+      await storage.createGhlAccount({
+        dealershipId,
+        locationId: tokens.locationId,
+        companyId,
+        locationName,
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        expiresAt: new Date(Date.now() + tokens.expires_in * 1000),
+        tokenType: tokens.token_type,
+        scope: tokens.scope,
+        userType: tokens.userType,
+        isActive: true
+      });
+      
+      console.log(`GHL account connected for dealership ${dealershipId}, location ${tokens.locationId}`);
+      res.redirect('/dashboard?ghl_connected=true');
+    } catch (error) {
+      console.error("Error in GHL OAuth callback:", error);
+      res.redirect('/dashboard?ghl_error=callback_error');
+    }
+  });
+  
+  // GHL Account: Get connected account status
+  app.get("/api/ghl/account", authMiddleware, requireRole("master", "sales_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const account = await storage.getGhlAccountByDealership(dealershipId);
+      
+      if (!account) {
+        return res.json({ connected: false });
+      }
+      
+      // Return account info without sensitive tokens
+      res.json({
+        connected: true,
+        id: account.id,
+        locationId: account.locationId,
+        locationName: account.locationName,
+        companyId: account.companyId,
+        isActive: account.isActive,
+        lastSyncAt: account.lastSyncAt,
+        syncStatus: account.syncStatus,
+        syncError: account.syncError,
+        expiresAt: account.expiresAt
+      });
+    } catch (error) {
+      console.error("Error fetching GHL account:", error);
+      res.status(500).json({ error: "Failed to fetch GHL account" });
+    }
+  });
+  
+  // GHL Account: Disconnect
+  app.delete("/api/ghl/account", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const account = await storage.getGhlAccountByDealership(dealershipId);
+      
+      if (!account) {
+        return res.status(404).json({ error: "No GHL account connected" });
+      }
+      
+      await storage.deleteGhlAccount(account.id, dealershipId);
+      console.log(`GHL account disconnected for dealership ${dealershipId}`);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error disconnecting GHL account:", error);
+      res.status(500).json({ error: "Failed to disconnect GHL account" });
+    }
+  });
+  
+  // GHL Config: Get sync configuration
+  app.get("/api/ghl/config", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const config = await storage.getGhlConfig(dealershipId);
+      res.json(config || { configured: false });
+    } catch (error) {
+      console.error("Error fetching GHL config:", error);
+      res.status(500).json({ error: "Failed to fetch GHL configuration" });
+    }
+  });
+  
+  // GHL Config: Update sync configuration
+  app.post("/api/ghl/config", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { 
+        syncContacts, 
+        syncAppointments, 
+        syncOpportunities,
+        bidirectionalSync,
+        webhookVerifyToken
+      } = req.body;
+      
+      // Get the GHL account to link config
+      const account = await storage.getGhlAccountByDealership(dealershipId);
+      if (!account) {
+        return res.status(400).json({ error: "No GHL account connected. Connect an account first." });
+      }
+      
+      let config = await storage.getGhlConfig(dealershipId);
+      
+      if (config) {
+        // Update existing config
+        config = await storage.updateGhlConfig(config.id, dealershipId, {
+          syncContacts: syncContacts ?? config.syncContacts,
+          syncAppointments: syncAppointments ?? config.syncAppointments,
+          syncOpportunities: syncOpportunities ?? config.syncOpportunities,
+          bidirectionalSync: bidirectionalSync ?? config.bidirectionalSync,
+          webhookVerifyToken: webhookVerifyToken ?? config.webhookVerifyToken
+        });
+      } else {
+        // Create new config
+        config = await storage.createGhlConfig({
+          dealershipId,
+          ghlAccountId: account.id,
+          syncContacts: syncContacts ?? true,
+          syncAppointments: syncAppointments ?? true,
+          syncOpportunities: syncOpportunities ?? false,
+          bidirectionalSync: bidirectionalSync ?? true,
+          webhookVerifyToken: webhookVerifyToken || null
+        });
+      }
+      
+      res.json(config);
+    } catch (error) {
+      console.error("Error saving GHL config:", error);
+      res.status(500).json({ error: "Failed to save GHL configuration" });
+    }
+  });
+  
+  // GHL Webhook: Receive events from GoHighLevel
+  app.post("/api/ghl/webhook", async (req, res) => {
+    try {
+      const signature = req.headers['x-ghl-signature'] as string;
+      const eventType = req.headers['x-ghl-event'] as string;
+      const locationId = req.body?.locationId || req.body?.location?.id;
+      
+      // Find dealership by location ID
+      // NOTE: In multi-tenant, we need to look up which dealership owns this location
+      // For now, we'll process events and log them with a pending status
+      if (!locationId) {
+        console.warn("GHL webhook received without locationId");
+        return res.status(400).json({ error: "Missing locationId" });
+      }
+      
+      // Find the account with this location
+      const accounts = await db.select().from(ghlAccounts)
+        .where(eq(ghlAccounts.locationId, locationId))
+        .limit(1);
+      
+      if (accounts.length === 0) {
+        console.warn(`GHL webhook for unknown location: ${locationId}`);
+        return res.status(404).json({ error: "Location not registered" });
+      }
+      
+      const account = accounts[0];
+      const dealershipId = account.dealershipId;
+      
+      // Verify webhook signature if configured
+      const config = await storage.getGhlConfig(dealershipId);
+      if (config?.webhookVerifyToken && signature) {
+        const crypto = await import('crypto');
+        const expectedSignature = crypto.createHmac('sha256', config.webhookVerifyToken)
+          .update(JSON.stringify(req.body))
+          .digest('hex');
+        
+        if (signature !== expectedSignature) {
+          console.warn("GHL webhook signature mismatch");
+          return res.status(401).json({ error: "Invalid signature" });
+        }
+      }
+      
+      // Check for duplicate events
+      const eventId = req.body?.id || `${eventType}-${Date.now()}`;
+      const existingEvent = await storage.getGhlWebhookEventByEventId(dealershipId, eventId);
+      if (existingEvent) {
+        console.log(`Duplicate GHL webhook event: ${eventId}`);
+        return res.json({ success: true, duplicate: true });
+      }
+      
+      // Store webhook event for processing
+      await storage.createGhlWebhookEvent({
+        dealershipId,
+        locationId,
+        eventId,
+        eventType: eventType || req.body?.type || 'unknown',
+        payload: JSON.stringify(req.body),
+        status: 'pending'
+      });
+      
+      // Acknowledge receipt immediately
+      res.json({ success: true, eventId });
+      
+      // Process event asynchronously based on type
+      setImmediate(async () => {
+        try {
+          const { createGhlApiService } = await import('./ghl-api-service');
+          const ghlService = createGhlApiService(dealershipId);
+          
+          // Route to appropriate handler based on event type
+          const type = eventType || req.body?.type;
+          
+          if (type?.includes('contact')) {
+            // Contact created/updated - sync to local DB and optionally to PBS
+            await handleGhlContactEvent(dealershipId, req.body, ghlService);
+          } else if (type?.includes('appointment') || type?.includes('calendar')) {
+            // Appointment created/updated/cancelled
+            await handleGhlAppointmentEvent(dealershipId, req.body, ghlService);
+          } else if (type?.includes('opportunity')) {
+            // Opportunity stage change
+            await handleGhlOpportunityEvent(dealershipId, req.body, ghlService);
+          }
+          
+          // Mark event as processed
+          const event = await storage.getGhlWebhookEventByEventId(dealershipId, eventId);
+          if (event) {
+            await storage.updateGhlWebhookEvent(event.id, dealershipId, { status: 'processed' });
+          }
+        } catch (processError) {
+          console.error("Error processing GHL webhook:", processError);
+          const event = await storage.getGhlWebhookEventByEventId(dealershipId, eventId);
+          if (event) {
+            await storage.updateGhlWebhookEvent(event.id, dealershipId, { 
+              status: 'failed',
+              errorMessage: String(processError)
+            });
+          }
+        }
+      });
+    } catch (error) {
+      console.error("Error receiving GHL webhook:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+  
+  // GHL Webhook Events: List for debugging
+  app.get("/api/ghl/webhook-events", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { status, limit } = req.query;
+      const events = await storage.getGhlWebhookEvents(
+        dealershipId, 
+        status as string | undefined, 
+        Math.min(parseInt(limit as string) || 100, 500)
+      );
+      res.json(events);
+    } catch (error) {
+      console.error("Error fetching GHL webhook events:", error);
+      res.status(500).json({ error: "Failed to fetch webhook events" });
+    }
+  });
+  
+  // GHL API Logs: View for debugging
+  app.get("/api/ghl/api-logs", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { limit } = req.query;
+      const logs = await storage.getGhlApiLogs(
+        dealershipId,
+        Math.min(parseInt(limit as string) || 100, 500)
+      );
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching GHL API logs:", error);
+      res.status(500).json({ error: "Failed to fetch API logs" });
+    }
+  });
+  
+  // GHL Contacts: Search contacts via GHL API
+  app.get("/api/ghl/contacts/search", authMiddleware, requireRole("master", "sales_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { query, limit } = req.query;
+      
+      const { createGhlApiService } = await import('./ghl-api-service');
+      const ghlService = createGhlApiService(dealershipId);
+      const result = await ghlService.searchContacts({ query: query as string, limit: parseInt(limit as string) || 20 });
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error searching GHL contacts:", error);
+      res.status(500).json({ error: "Failed to search contacts" });
+    }
+  });
+  
+  // GHL Contacts: Get single contact
+  app.get("/api/ghl/contacts/:contactId", authMiddleware, requireRole("master", "sales_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { contactId } = req.params;
+      
+      const { createGhlApiService } = await import('./ghl-api-service');
+      const ghlService = createGhlApiService(dealershipId);
+      const result = await ghlService.getContact(contactId);
+      
+      if (!result.success) {
+        return res.status(result.errorCode === 'NOT_FOUND' ? 404 : 500).json({ 
+          error: result.error, 
+          errorCode: result.errorCode 
+        });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error fetching GHL contact:", error);
+      res.status(500).json({ error: "Failed to fetch contact" });
+    }
+  });
+  
+  // GHL Contacts: Create contact
+  app.post("/api/ghl/contacts", authMiddleware, requireRole("master", "sales_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      
+      const { createGhlApiService } = await import('./ghl-api-service');
+      const ghlService = createGhlApiService(dealershipId);
+      const result = await ghlService.createContact(req.body);
+      
+      if (!result.success) {
+        return res.status(400).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.status(201).json(result.data);
+    } catch (error) {
+      console.error("Error creating GHL contact:", error);
+      res.status(500).json({ error: "Failed to create contact" });
+    }
+  });
+  
+  // GHL Contacts: Update contact
+  app.patch("/api/ghl/contacts/:contactId", authMiddleware, requireRole("master", "sales_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { contactId } = req.params;
+      
+      const { createGhlApiService } = await import('./ghl-api-service');
+      const ghlService = createGhlApiService(dealershipId);
+      const result = await ghlService.updateContact(contactId, req.body);
+      
+      if (!result.success) {
+        return res.status(result.errorCode === 'NOT_FOUND' ? 404 : 400).json({ 
+          error: result.error, 
+          errorCode: result.errorCode 
+        });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error updating GHL contact:", error);
+      res.status(500).json({ error: "Failed to update contact" });
+    }
+  });
+  
+  // GHL Appointments: Get calendar appointments
+  app.get("/api/ghl/appointments", authMiddleware, requireRole("master", "sales_manager", "service_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { calendarId, startDate, endDate } = req.query;
+      
+      if (!calendarId || !startDate || !endDate) {
+        return res.status(400).json({ error: "calendarId, startDate, and endDate are required" });
+      }
+      
+      const { createGhlApiService } = await import('./ghl-api-service');
+      const ghlService = createGhlApiService(dealershipId);
+      const result = await ghlService.getCalendarEvents(
+        calendarId as string,
+        startDate as string,
+        endDate as string
+      );
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error fetching GHL appointments:", error);
+      res.status(500).json({ error: "Failed to fetch appointments" });
+    }
+  });
+  
+  // GHL Appointments: Create appointment
+  app.post("/api/ghl/appointments", authMiddleware, requireRole("master", "sales_manager", "service_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      
+      const { createGhlApiService } = await import('./ghl-api-service');
+      const ghlService = createGhlApiService(dealershipId);
+      const result = await ghlService.createCalendarEvent(req.body);
+      
+      if (!result.success) {
+        return res.status(400).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.status(201).json(result.data);
+    } catch (error) {
+      console.error("Error creating GHL appointment:", error);
+      res.status(500).json({ error: "Failed to create appointment" });
+    }
+  });
+  
+  // GHL Calendars: List available calendars
+  app.get("/api/ghl/calendars", authMiddleware, requireRole("master", "sales_manager", "service_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      
+      const { createGhlApiService } = await import('./ghl-api-service');
+      const ghlService = createGhlApiService(dealershipId);
+      const result = await ghlService.getCalendars();
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error fetching GHL calendars:", error);
+      res.status(500).json({ error: "Failed to fetch calendars" });
+    }
+  });
+  
+  // GHL Opportunities: List opportunities
+  app.get("/api/ghl/opportunities", authMiddleware, requireRole("master", "sales_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { pipelineId } = req.query;
+      
+      const { createGhlApiService } = await import('./ghl-api-service');
+      const ghlService = createGhlApiService(dealershipId);
+      const result = await ghlService.getOpportunities(pipelineId as string | undefined);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error fetching GHL opportunities:", error);
+      res.status(500).json({ error: "Failed to fetch opportunities" });
+    }
+  });
+  
+  // GHL Opportunities: Create opportunity
+  app.post("/api/ghl/opportunities", authMiddleware, requireRole("master", "sales_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      
+      const { createGhlApiService } = await import('./ghl-api-service');
+      const ghlService = createGhlApiService(dealershipId);
+      const result = await ghlService.createOpportunity(req.body);
+      
+      if (!result.success) {
+        return res.status(400).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.status(201).json(result.data);
+    } catch (error) {
+      console.error("Error creating GHL opportunity:", error);
+      res.status(500).json({ error: "Failed to create opportunity" });
+    }
+  });
+  
+  // GHL Contact Sync Records: List sync status
+  app.get("/api/ghl/sync/contacts", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { status, limit } = req.query;
+      
+      if (status === 'pending') {
+        const syncs = await storage.getPendingGhlContactSyncs(
+          dealershipId,
+          Math.min(parseInt(limit as string) || 100, 500)
+        );
+        return res.json(syncs);
+      }
+      
+      // Return all recent syncs
+      const syncs = await db.select().from(ghlContactSync)
+        .where(eq(ghlContactSync.dealershipId, dealershipId))
+        .orderBy(desc(ghlContactSync.lastSyncAt))
+        .limit(Math.min(parseInt(limit as string) || 100, 500));
+      
+      res.json(syncs);
+    } catch (error) {
+      console.error("Error fetching GHL contact syncs:", error);
+      res.status(500).json({ error: "Failed to fetch contact syncs" });
+    }
+  });
+  
+  // GHL Test Connection: Verify API access
+  app.post("/api/ghl/test-connection", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      
+      const { createGhlApiService } = await import('./ghl-api-service');
+      const ghlService = createGhlApiService(dealershipId);
+      const result = await ghlService.testConnection();
+      
+      res.json({
+        success: result.success,
+        message: result.message,
+        locationName: result.locationName
+      });
+    } catch (error) {
+      console.error("Error testing GHL connection:", error);
+      res.status(500).json({ error: "Failed to test connection" });
+    }
+  });
+  
+  // Webhook event handlers (internal helpers)
+  async function handleGhlContactEvent(dealershipId: number, payload: any, _ghlService: any) {
+    const contactId = payload?.contact?.id || payload?.contactId;
+    if (!contactId) return;
+    
+    // Check if we already have this contact synced
+    let syncRecord = await storage.getGhlContactSync(dealershipId, contactId);
+    
+    if (!syncRecord) {
+      // Create new sync record (lastSyncAt is auto-set by storage layer)
+      syncRecord = await storage.createGhlContactSync({
+        dealershipId,
+        ghlContactId: contactId,
+        syncStatus: 'synced',
+        syncDirection: 'ghl_to_local'
+      });
+    } else {
+      // Update existing sync record (storage layer auto-updates lastSyncAt)
+      await storage.updateGhlContactSync(syncRecord.id, dealershipId, {
+        syncStatus: 'synced'
+      });
+    }
+    
+    // If bidirectional sync is enabled, also sync to PBS
+    const config = await storage.getGhlConfig(dealershipId);
+    if (config?.bidirectionalSync && config?.syncContacts) {
+      // Queue PBS sync (will be handled by scheduled job)
+      await storage.updateGhlContactSync(syncRecord.id, dealershipId, {
+        syncStatus: 'pending_pbs',
+        syncDirection: 'ghl_to_pbs'
+      });
+    }
+  }
+  
+  async function handleGhlAppointmentEvent(dealershipId: number, payload: any, _ghlService: any) {
+    const appointmentId = payload?.appointment?.id || payload?.appointmentId;
+    const calendarId = payload?.appointment?.calendarId || payload?.calendarId || 'unknown';
+    const scheduledStart = payload?.appointment?.startTime || payload?.startTime || new Date();
+    if (!appointmentId) return;
+    
+    // Check if we already have this appointment synced
+    let syncRecord = await storage.getGhlAppointmentSync(dealershipId, appointmentId);
+    
+    if (!syncRecord) {
+      // Create new sync record (lastSyncAt is auto-set by storage layer)
+      syncRecord = await storage.createGhlAppointmentSync({
+        dealershipId,
+        ghlAppointmentId: appointmentId,
+        ghlCalendarId: calendarId,
+        scheduledStart: new Date(scheduledStart),
+        syncStatus: 'synced',
+        syncDirection: 'ghl_to_local'
+      });
+    } else {
+      // Update existing sync record (storage layer auto-updates lastSyncAt)
+      await storage.updateGhlAppointmentSync(syncRecord.id, dealershipId, {
+        syncStatus: 'synced'
+      });
+    }
+    
+    // If bidirectional sync is enabled, also sync to PBS
+    const config = await storage.getGhlConfig(dealershipId);
+    if (config?.bidirectionalSync && config?.syncAppointments) {
+      await storage.updateGhlAppointmentSync(syncRecord.id, dealershipId, {
+        syncStatus: 'pending_pbs',
+        syncDirection: 'ghl_to_pbs'
+      });
+    }
+  }
+  
+  async function handleGhlOpportunityEvent(dealershipId: number, payload: any, _ghlService: any) {
+    // Log opportunity events for now - full sync implementation to come
+    console.log(`GHL opportunity event for dealership ${dealershipId}:`, payload?.opportunity?.id);
+  }
 
   const httpServer = createServer(app);
   
