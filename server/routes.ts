@@ -3672,8 +3672,8 @@ Format your response in clear sections with actionable recommendations.`;
       const userId = authReq.user!.id;
       const dealershipId = req.dealershipId!;
       
-      // Validate request body
-      const validated = insertAdTemplateSchema.omit({ userId: true }).safeParse(req.body);
+      // Validate request body (omit userId and dealershipId as they come from auth context)
+      const validated = insertAdTemplateSchema.omit({ userId: true, dealershipId: true }).safeParse(req.body);
       if (!validated.success) {
         return res.status(400).json({ error: fromZodError(validated.error).message });
       }
