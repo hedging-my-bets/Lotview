@@ -30,7 +30,7 @@ Preferred communication style: Simple, everyday language.
 - **Facebook Posting**: `facebook_accounts`, `ad_templates`, `posting_queue`, `posting_schedule`.
 - **Facebook Catalog**: `facebook_catalog_config` (stores Catalog ID, System User Access Token, sync status per dealership).
 - **Remarketing**: `remarketing_vehicles`.
-- **PBS DMS Integration**: `pbs_config`, `pbs_webhook_events`.
+- **PBS DMS Integration**: `pbs_config`, `pbs_webhook_events`, `pbs_sessions`, `pbs_contact_cache`, `pbs_appointment_cache`, `pbs_parts_cache`, `pbs_api_logs`.
 - **AI Chat**: `chat_prompts`, `chat_conversations`.
 - **Dealership API Keys**: `dealership_api_keys`.
 - **Super Admin**: `global_settings`, `audit_logs`.
@@ -61,6 +61,15 @@ Preferred communication style: Simple, everyday language.
 - **Carfax Integration**: Automated scraping of Carfax URLs from dealership websites.
 - **Facebook Integration**: OAuth 2.0 flow for page connections, page posting APIs, vehicle posting automation. Routes in `server/routes.ts` for `/api/facebook/auth`, `/api/facebook/callback`, page management endpoints.
 - **Facebook Catalog API**: Super Admin-managed Catalog ID and System User Access Token per dealership for paid automotive inventory ads. Service in `server/facebook-catalog-service.ts` formats vehicles for Facebook's automotive feed format. Daily auto-sync at 4 AM for catalogs with auto-sync enabled. UI management in Super Admin dashboard under "FB Catalogs" tab.
+- **PBS Partner Hub API**: Full integration with PBS DMS for AI-powered automotive operations. Service in `server/pbs-api-service.ts` provides:
+    - **Session Management**: Automatic login, session reuse, and 401 auto-refresh with encrypted credentials.
+    - **Sales Module**: ContactGet/Save/Change, ContactVehicleGet, WorkplanEventGet/Change, WorkplanAppointmentGet/Change/Create, WorkplanReminderGet.
+    - **Service Module**: AppointmentBookingGet, AppointmentGet/Change/Create, RepairOrderGet/Change, AppointmentContactVehicleGet/Change.
+    - **Parts Module (Read-Only)**: PartsInventoryGet/Search, PartsOrderGet, PurchaseOrderGet, TireStorageGet, ShopGet.
+    - **Caching Layer**: Contact, appointment, and parts caching with configurable TTL to reduce DMS load.
+    - **API Logging**: All PBS API calls logged to `pbs_api_logs` for debugging and monitoring.
+    - **Retry Logic**: Exponential backoff for rate limits (429), network errors, and session expiration (401).
+    - **Multi-Tenant Isolation**: All operations scoped to dealershipId from JWT or tenant middleware.
 
 ## Legal Compliance Pages
 
