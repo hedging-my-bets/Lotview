@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Key, FileText, Plus, Eye, EyeOff, Trash2, LogOut, Settings2, CheckCircle2, XCircle, Loader2, Plug, Pencil, Webhook, Copy, AlertCircle, Clock, Link2, RefreshCw, Car, Rocket, Users, UserX, KeyRound, Search } from "lucide-react";
+import { Building2, Key, FileText, Plus, Eye, EyeOff, Trash2, LogOut, Settings2, CheckCircle2, XCircle, Loader2, Plug, Pencil, Webhook, Copy, AlertCircle, Clock, Link2, RefreshCw, Car, Rocket, Users, UserX, KeyRound, Search, Facebook } from "lucide-react";
 import OnboardingWizard from "@/components/OnboardingWizard";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
@@ -119,6 +119,23 @@ interface ScrapeSource {
   updatedAt: string;
 }
 
+interface FacebookCatalogConfig {
+  id: number;
+  dealershipId: number;
+  catalogId: string;
+  accessToken: string;
+  catalogName: string | null;
+  isActive: boolean;
+  lastSyncAt: string | null;
+  lastSyncStatus: string | null;
+  lastSyncMessage: string | null;
+  vehiclesSynced: number | null;
+  autoSyncEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+  dealershipName?: string;
+}
+
 export default function SuperAdminDashboard() {
   const [, setLocation] = useLocation();
   const [user, setUser] = useState<User | null>(null);
@@ -205,6 +222,20 @@ export default function SuperAdminDashboard() {
       return response.json();
     }
   });
+
+  // Facebook Catalog Configs
+  const { data: catalogConfigs = [], isLoading: catalogsLoading, refetch: refetchCatalogs } = useQuery<FacebookCatalogConfig[]>({
+    queryKey: ["/api/super-admin/facebook-catalogs"],
+  });
+
+  // Facebook Catalog State
+  const [selectedCatalogDealershipId, setSelectedCatalogDealershipId] = useState<number | null>(null);
+  const [catalogFormData, setCatalogFormData] = useState({ catalogId: '', accessToken: '', autoSyncEnabled: true, isActive: true });
+  const [isCatalogDialogOpen, setIsCatalogDialogOpen] = useState(false);
+  const [catalogTestResult, setCatalogTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [isSyncingCatalog, setIsSyncingCatalog] = useState<number | null>(null);
+  const [isTestingCatalog, setIsTestingCatalog] = useState(false);
+  const [isSavingCatalog, setIsSavingCatalog] = useState(false);
 
   // Create Dealership Mutation
   const createDealershipMutation = useMutation({
@@ -470,6 +501,11 @@ export default function SuperAdminDashboard() {
             <Users className="h-4 w-4 mr-1 sm:mr-2" />
             <span className="hidden sm:inline">User Management</span>
             <span className="sm:hidden">Users</span>
+          </TabsTrigger>
+          <TabsTrigger value="facebook-catalogs" data-testid="tab-facebook-catalogs" className="text-xs sm:text-sm px-2 sm:px-3 py-2 bg-blue-600/10 hover:bg-blue-600/20">
+            <Facebook className="h-4 w-4 mr-1 sm:mr-2 text-blue-600" />
+            <span className="hidden sm:inline text-blue-600 font-medium">FB Catalogs</span>
+            <span className="sm:hidden text-blue-600">FB</span>
           </TabsTrigger>
           <TabsTrigger value="onboarding" data-testid="tab-onboarding" className="text-xs sm:text-sm px-2 sm:px-3 py-2 bg-green-600/10 hover:bg-green-600/20">
             <Rocket className="h-4 w-4 mr-1 sm:mr-2 text-green-600" />
@@ -961,6 +997,336 @@ export default function SuperAdminDashboard() {
               <div className="mt-4 text-sm text-muted-foreground">
                 Total: {allUsers.length} user{allUsers.length !== 1 ? 's' : ''}
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Facebook Catalogs Tab */}
+        <TabsContent value="facebook-catalogs">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Facebook className="h-5 w-5 text-blue-600" />
+                    Facebook Catalog Management
+                  </CardTitle>
+                  <CardDescription>
+                    Configure Facebook Catalog API for Automotive Inventory Ads across dealerships
+                  </CardDescription>
+                </div>
+                <Dialog open={isCatalogDialogOpen} onOpenChange={(open) => {
+                  setIsCatalogDialogOpen(open);
+                  if (!open) {
+                    setSelectedCatalogDealershipId(null);
+                    setCatalogFormData({ catalogId: '', accessToken: '', autoSyncEnabled: true, isActive: true });
+                    setCatalogTestResult(null);
+                  }
+                }}>
+                  <DialogTrigger asChild>
+                    <Button data-testid="add-catalog-btn">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Catalog
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                      <DialogTitle>Configure Facebook Catalog</DialogTitle>
+                      <DialogDescription>
+                        Enter the Catalog ID and System User Access Token from Facebook Business Manager
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label>Dealership</Label>
+                        <select
+                          className="w-full p-2 border rounded-md bg-background"
+                          value={selectedCatalogDealershipId || ''}
+                          onChange={(e) => {
+                            const dealershipId = parseInt(e.target.value) || null;
+                            setSelectedCatalogDealershipId(dealershipId);
+                            if (dealershipId) {
+                              const existingConfig = catalogConfigs.find(c => c.dealershipId === dealershipId);
+                              if (existingConfig) {
+                                setCatalogFormData({
+                                  catalogId: existingConfig.catalogId,
+                                  accessToken: existingConfig.accessToken,
+                                  autoSyncEnabled: existingConfig.autoSyncEnabled,
+                                  isActive: existingConfig.isActive,
+                                });
+                              }
+                            }
+                          }}
+                          data-testid="select-catalog-dealership"
+                        >
+                          <option value="">Select a dealership...</option>
+                          {dealerships.map(d => (
+                            <option key={d.id} value={d.id}>{d.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Catalog ID</Label>
+                        <Input
+                          placeholder="e.g., 123456789012345"
+                          value={catalogFormData.catalogId}
+                          onChange={(e) => setCatalogFormData(prev => ({ ...prev, catalogId: e.target.value }))}
+                          data-testid="input-catalog-id"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>System User Access Token</Label>
+                        <Textarea
+                          placeholder="Paste your access token from Facebook Business Manager..."
+                          value={catalogFormData.accessToken}
+                          onChange={(e) => setCatalogFormData(prev => ({ ...prev, accessToken: e.target.value }))}
+                          className="min-h-[80px] font-mono text-xs"
+                          data-testid="input-catalog-token"
+                        />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <Switch
+                            checked={catalogFormData.autoSyncEnabled}
+                            onCheckedChange={(checked) => setCatalogFormData(prev => ({ ...prev, autoSyncEnabled: checked }))}
+                            data-testid="toggle-auto-sync"
+                          />
+                          <Label>Enable Daily Auto-Sync</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Switch
+                            checked={catalogFormData.isActive}
+                            onCheckedChange={(checked) => setCatalogFormData(prev => ({ ...prev, isActive: checked }))}
+                            data-testid="toggle-catalog-active"
+                          />
+                          <Label>Active</Label>
+                        </div>
+                      </div>
+                      {catalogTestResult && (
+                        <div className={`p-3 rounded-md ${catalogTestResult.success ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400' : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'}`}>
+                          {catalogTestResult.success ? (
+                            <div className="flex items-center gap-2">
+                              <CheckCircle2 className="h-4 w-4" />
+                              {catalogTestResult.message}
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <XCircle className="h-4 w-4" />
+                              {catalogTestResult.message}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <DialogFooter className="gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={async () => {
+                          if (!selectedCatalogDealershipId || !catalogFormData.catalogId || !catalogFormData.accessToken) {
+                            toast({ title: "Error", description: "Please fill all fields", variant: "destructive" });
+                            return;
+                          }
+                          setIsTestingCatalog(true);
+                          setCatalogTestResult(null);
+                          try {
+                            const token = localStorage.getItem('auth_token');
+                            const response = await fetch(`/api/super-admin/dealerships/${selectedCatalogDealershipId}/test-facebook-catalog`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                              body: JSON.stringify({ catalogId: catalogFormData.catalogId, accessToken: catalogFormData.accessToken }),
+                            });
+                            const result = await response.json();
+                            setCatalogTestResult({ success: result.success, message: result.message || result.error || 'Unknown result' });
+                          } catch (error) {
+                            setCatalogTestResult({ success: false, message: 'Connection test failed' });
+                          }
+                          setIsTestingCatalog(false);
+                        }}
+                        disabled={isTestingCatalog || !selectedCatalogDealershipId}
+                        data-testid="test-catalog-btn"
+                      >
+                        {isTestingCatalog ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                        Test Connection
+                      </Button>
+                      <Button
+                        onClick={async () => {
+                          if (!selectedCatalogDealershipId || !catalogFormData.catalogId || !catalogFormData.accessToken) {
+                            toast({ title: "Error", description: "Please fill all fields", variant: "destructive" });
+                            return;
+                          }
+                          setIsSavingCatalog(true);
+                          try {
+                            const token = localStorage.getItem('auth_token');
+                            const response = await fetch(`/api/super-admin/dealerships/${selectedCatalogDealershipId}/facebook-catalog`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                              body: JSON.stringify(catalogFormData),
+                            });
+                            if (response.ok) {
+                              toast({ title: "Success", description: "Facebook Catalog configuration saved" });
+                              setIsCatalogDialogOpen(false);
+                              refetchCatalogs();
+                            } else {
+                              const error = await response.json();
+                              toast({ title: "Error", description: error.error || "Failed to save configuration", variant: "destructive" });
+                            }
+                          } catch (error) {
+                            toast({ title: "Error", description: "Failed to save configuration", variant: "destructive" });
+                          }
+                          setIsSavingCatalog(false);
+                        }}
+                        disabled={isSavingCatalog || !selectedCatalogDealershipId}
+                        data-testid="save-catalog-btn"
+                      >
+                        {isSavingCatalog ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                        Save Configuration
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {catalogsLoading ? (
+                <div className="text-center py-8 text-muted-foreground">Loading catalog configurations...</div>
+              ) : catalogConfigs.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Facebook className="h-12 w-12 mx-auto mb-4 opacity-20" />
+                  <p>No Facebook Catalogs configured yet.</p>
+                  <p className="text-sm mt-2">Click "Add Catalog" to connect a dealership's inventory to Facebook Automotive Ads.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Dealership</TableHead>
+                        <TableHead>Catalog Name</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Last Sync</TableHead>
+                        <TableHead>Vehicles</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {catalogConfigs.map((config) => (
+                        <TableRow key={config.id} data-testid={`catalog-row-${config.id}`}>
+                          <TableCell className="font-medium">{config.dealershipName || `Dealership ${config.dealershipId}`}</TableCell>
+                          <TableCell>{config.catalogName || config.catalogId}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Badge variant={config.isActive ? "default" : "secondary"}>
+                                {config.isActive ? "Active" : "Inactive"}
+                              </Badge>
+                              {config.autoSyncEnabled && (
+                                <Badge variant="outline" className="text-xs">Auto-Sync</Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {config.lastSyncAt ? (
+                              <div className="text-sm">
+                                <div className="flex items-center gap-1">
+                                  {config.lastSyncStatus === 'success' && <CheckCircle2 className="h-3 w-3 text-green-500" />}
+                                  {config.lastSyncStatus === 'failed' && <XCircle className="h-3 w-3 text-red-500" />}
+                                  {config.lastSyncStatus === 'partial' && <AlertCircle className="h-3 w-3 text-yellow-500" />}
+                                  <span>{format(new Date(config.lastSyncAt), "PPp")}</span>
+                                </div>
+                                {config.lastSyncMessage && (
+                                  <div className="text-xs text-muted-foreground mt-1 max-w-[200px] truncate" title={config.lastSyncMessage}>
+                                    {config.lastSyncMessage}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground text-sm">Never synced</span>
+                            )}
+                          </TableCell>
+                          <TableCell>{config.vehiclesSynced ?? 0}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={async () => {
+                                  setIsSyncingCatalog(config.dealershipId);
+                                  try {
+                                    const token = localStorage.getItem('auth_token');
+                                    const response = await fetch(`/api/super-admin/dealerships/${config.dealershipId}/sync-facebook-catalog`, {
+                                      method: 'POST',
+                                      headers: { 'Authorization': `Bearer ${token}` },
+                                    });
+                                    const result = await response.json();
+                                    if (result.success) {
+                                      toast({ title: "Sync Complete", description: result.message });
+                                    } else {
+                                      toast({ title: "Sync Failed", description: result.error || result.message, variant: "destructive" });
+                                    }
+                                    refetchCatalogs();
+                                  } catch (error) {
+                                    toast({ title: "Error", description: "Sync failed", variant: "destructive" });
+                                  }
+                                  setIsSyncingCatalog(null);
+                                }}
+                                disabled={isSyncingCatalog === config.dealershipId || !config.isActive}
+                                data-testid={`sync-catalog-${config.id}`}
+                              >
+                                {isSyncingCatalog === config.dealershipId ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <RefreshCw className="h-4 w-4" />
+                                )}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedCatalogDealershipId(config.dealershipId);
+                                  setCatalogFormData({
+                                    catalogId: config.catalogId,
+                                    accessToken: config.accessToken,
+                                    autoSyncEnabled: config.autoSyncEnabled,
+                                    isActive: config.isActive,
+                                  });
+                                  setIsCatalogDialogOpen(true);
+                                }}
+                                data-testid={`edit-catalog-${config.id}`}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={async () => {
+                                  if (!confirm('Are you sure you want to delete this catalog configuration?')) return;
+                                  try {
+                                    const token = localStorage.getItem('auth_token');
+                                    const response = await fetch(`/api/super-admin/dealerships/${config.dealershipId}/facebook-catalog`, {
+                                      method: 'DELETE',
+                                      headers: { 'Authorization': `Bearer ${token}` },
+                                    });
+                                    if (response.ok) {
+                                      toast({ title: "Deleted", description: "Catalog configuration removed" });
+                                      refetchCatalogs();
+                                    } else {
+                                      toast({ title: "Error", description: "Failed to delete", variant: "destructive" });
+                                    }
+                                  } catch (error) {
+                                    toast({ title: "Error", description: "Failed to delete", variant: "destructive" });
+                                  }
+                                }}
+                                data-testid={`delete-catalog-${config.id}`}
+                              >
+                                <Trash2 className="h-4 w-4 text-red-500" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

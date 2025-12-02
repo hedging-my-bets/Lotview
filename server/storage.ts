@@ -690,7 +690,10 @@ export class DatabaseStorage implements IStorage {
       dealershipName: dealerships.name,
     }).from(facebookCatalogConfig)
       .leftJoin(dealerships, eq(facebookCatalogConfig.dealershipId, dealerships.id));
-    return result;
+    return result.map(r => ({
+      ...r,
+      dealershipName: r.dealershipName ?? undefined,
+    }));
   }
 
   async saveFacebookCatalogConfig(config: InsertFacebookCatalogConfig): Promise<FacebookCatalogConfig> {
