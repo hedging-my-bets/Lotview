@@ -3610,6 +3610,52 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
   
+  // Get public dealership info for legal pages (Privacy Policy, Terms of Service)
+  // Supports resolution by: slug, subdomain, or dealershipId query params
+  // Falls back to dealershipId=1 for backward compatibility
+  app.get("/api/public/dealership-info", async (req, res) => {
+    try {
+      let dealership = null;
+      
+      // Try to resolve dealership by slug first
+      if (req.query.slug) {
+        dealership = await storage.getDealershipBySlug(req.query.slug as string);
+      }
+      // Then try subdomain
+      else if (req.query.subdomain) {
+        dealership = await storage.getDealershipBySubdomain(req.query.subdomain as string);
+      }
+      // Then try explicit dealershipId
+      else if (req.query.dealershipId) {
+        const id = parseInt(req.query.dealershipId as string, 10);
+        if (!isNaN(id) && id > 0) {
+          dealership = await storage.getDealership(id);
+        }
+      }
+      // Fallback to default dealership (ID 1) for single-tenant deployments
+      else {
+        dealership = await storage.getDealership(1);
+      }
+      
+      if (!dealership) {
+        return res.status(404).json({ error: "Dealership not found" });
+      }
+      
+      // Return only public-safe dealership info for legal pages
+      res.json({
+        name: dealership.name,
+        address: dealership.address || null,
+        city: dealership.city || null,
+        province: dealership.province || null,
+        postalCode: dealership.postalCode || null,
+        phone: dealership.phone || null,
+      });
+    } catch (error) {
+      console.error("Error fetching dealership info:", error);
+      res.status(500).json({ error: "Failed to fetch dealership info" });
+    }
+  });
+  
   // Create dealership fee
   app.post("/api/dealership-fees", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
     try {

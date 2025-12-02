@@ -3,12 +3,54 @@ import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useQuery } from "@tanstack/react-query";
+
+interface DealershipInfo {
+  name: string;
+  address: string | null;
+  city: string | null;
+  province: string | null;
+  postalCode: string | null;
+  phone: string | null;
+}
 
 export default function PrivacyPolicy() {
   const lastUpdated = "December 2, 2024";
-  const companyName = "Olympic Auto Group";
-  const companyEmail = "privacy@olympicautogroup.ca";
-  const websiteUrl = "https://olympicautogroup.ca";
+  const platformName = "Lotview.ai";
+  const platformEmail = "privacy@lotview.ai";
+  const platformWebsite = "https://lotview.ai";
+
+  const { data: dealership, isLoading } = useQuery<DealershipInfo>({
+    queryKey: ["/api/public/dealership-info"],
+  });
+
+  const dealershipName = dealership?.name || "the dealership";
+  const dealershipAddress = dealership?.address && dealership?.city && dealership?.province 
+    ? `${dealership.address}, ${dealership.city}, ${dealership.province} ${dealership.postalCode || ""}`
+    : null;
+  const dealershipPhone = dealership?.phone;
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="container max-w-4xl mx-auto py-8 px-4">
+          <Skeleton className="h-8 w-48 mb-6" />
+          <Card>
+            <CardContent className="p-8">
+              <Skeleton className="h-10 w-64 mb-4" />
+              <Skeleton className="h-4 w-48 mb-8" />
+              <div className="space-y-4">
+                {[...Array(10)].map((_, i) => (
+                  <Skeleton key={i} className="h-4 w-full" />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -32,10 +74,13 @@ export default function PrivacyPolicy() {
             <section className="mb-8">
               <h2 className="text-xl font-semibold mb-4">1. Introduction</h2>
               <p className="mb-4">
-                {companyName} ("we," "us," or "our") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you visit our website, use our vehicle inventory platform, or interact with our services.
+                This Privacy Policy explains how your personal information is collected, used, and protected when you use this vehicle inventory platform. This website is operated by <strong>{dealershipName}</strong> (the "Dealership") using the <strong>{platformName}</strong> platform (the "Platform Provider").
               </p>
               <p className="mb-4">
-                This policy applies to all users of our services, including vehicle shoppers, dealership partners, and their employees. By using our services, you consent to the data practices described in this policy. If you do not agree with the terms of this Privacy Policy, please do not access or use our services.
+                <strong>Joint Data Controllers:</strong> For the purposes of data protection law, the Dealership and {platformName} act as joint controllers. The Dealership is responsible for customer relationship management and vehicle sales, while {platformName} provides the technical platform and data processing infrastructure.
+              </p>
+              <p className="mb-4">
+                By using our services, you consent to the data practices described in this policy. If you do not agree with the terms of this Privacy Policy, please do not access or use our services.
               </p>
               <p className="mb-4">
                 We comply with applicable privacy laws including the Personal Information Protection and Electronic Documents Act (PIPEDA) in Canada, the General Data Protection Regulation (GDPR) for European users, and the California Consumer Privacy Act (CCPA) for California residents.
@@ -189,10 +234,10 @@ export default function PrivacyPolicy() {
               <h2 className="text-xl font-semibold mb-4">6. Third-Party Service Providers</h2>
               <p className="mb-4">We share information with trusted third parties who assist us in operating our business:</p>
               <ul className="list-disc pl-6 mb-4 space-y-2">
+                <li><strong>{platformName}:</strong> Platform provider for hosting, data processing, and infrastructure</li>
                 <li><strong>Meta/Facebook:</strong> Advertising, catalog management, and audience targeting</li>
                 <li><strong>Payment Processors:</strong> Secure payment handling (we do not store credit card numbers)</li>
-                <li><strong>Cloud Hosting (Replit/Neon):</strong> Secure data storage and processing</li>
-                <li><strong>Analytics Providers:</strong> Website analytics and optimization</li>
+                <li><strong>Cloud Hosting:</strong> Secure data storage and processing</li>
                 <li><strong>AI Providers (OpenAI):</strong> AI-powered chat and vehicle descriptions</li>
                 <li><strong>Vehicle Data Providers:</strong> VIN decoding, vehicle history (NHTSA, MarketCheck)</li>
                 <li><strong>Email Services:</strong> Transactional and marketing email delivery</li>
@@ -217,7 +262,7 @@ export default function PrivacyPolicy() {
                 <li><strong>Encryption:</strong> Data is encrypted in transit and at rest</li>
               </ul>
               <p className="mb-4">
-                For more information about our data transfer practices, contact us at {companyEmail}.
+                For more information about our data transfer practices, contact us at {platformEmail}.
               </p>
             </section>
 
@@ -329,7 +374,7 @@ export default function PrivacyPolicy() {
                 <li><strong>Right to Non-Discrimination:</strong> Receive equal service regardless of exercising privacy rights</li>
               </ul>
               <p className="mb-4">
-                <strong>Do Not Sell My Personal Information:</strong> We do not sell personal information for monetary consideration. However, sharing data with advertising partners for targeted advertising may constitute a "sale" under CCPA. To opt out, contact us at {companyEmail} or use our cookie management tools.
+                <strong>Do Not Sell My Personal Information:</strong> We do not sell personal information for monetary consideration. However, sharing data with advertising partners for targeted advertising may constitute a "sale" under CCPA. To opt out, contact us at {platformEmail} or use our cookie management tools.
               </p>
               <p className="mb-4">
                 <strong>Authorized Agents:</strong> You may designate an authorized agent to make requests on your behalf. We will require verification of the agent's authority.
@@ -338,11 +383,14 @@ export default function PrivacyPolicy() {
               <h3 className="text-lg font-medium mb-3">10.4 PIPEDA Rights (Canadian Users)</h3>
               <p className="mb-4">Under the Personal Information Protection and Electronic Documents Act (PIPEDA), you have the right to:</p>
               <ul className="list-disc pl-6 mb-4 space-y-2">
-                <li>Access your personal information held by us</li>
-                <li>Challenge the accuracy of your personal information</li>
-                <li>Withdraw consent for collection, use, or disclosure of personal information</li>
-                <li>File a complaint with the Office of the Privacy Commissioner of Canada</li>
+                <li><strong>Right to Access:</strong> Request access to your personal information and learn how it has been used and disclosed</li>
+                <li><strong>Right to Accuracy:</strong> Challenge the accuracy and completeness of your personal information and have it amended as appropriate</li>
+                <li><strong>Right to Consent:</strong> Provide or withdraw consent for the collection, use, or disclosure of your personal information, subject to legal or contractual restrictions</li>
+                <li><strong>Right to Challenge Compliance:</strong> Challenge our compliance with PIPEDA by contacting our Privacy Officer or the Office of the Privacy Commissioner of Canada</li>
               </ul>
+              <p className="mb-4">
+                We will respond to PIPEDA access requests within 30 days. We may extend this timeline by up to 30 additional days with written notice and explanation.
+              </p>
 
               <h3 className="text-lg font-medium mb-3">10.5 Advertising Opt-Out Options</h3>
               <p className="mb-4">To opt out of interest-based advertising:</p>
@@ -409,7 +457,7 @@ export default function PrivacyPolicy() {
             <section className="mb-8">
               <h2 className="text-xl font-semibold mb-4">12. Children's Privacy</h2>
               <p className="mb-4">
-                Our services are not intended for children under 18 years of age. We do not knowingly collect personal information from children under 18. If you are a parent or guardian and believe your child has provided us with personal information, please contact us immediately at {companyEmail}.
+                Our services are not intended for children under 18 years of age. We do not knowingly collect personal information from children under 18. If you are a parent or guardian and believe your child has provided us with personal information, please contact us immediately at {platformEmail}.
               </p>
               <p className="mb-4">
                 If we discover that we have collected personal information from a child under 18, we will delete that information as quickly as possible.
@@ -434,14 +482,24 @@ export default function PrivacyPolicy() {
             <section className="mb-8">
               <h2 className="text-xl font-semibold mb-4">14. Contact Us</h2>
               <p className="mb-4">
-                If you have questions about this Privacy Policy, wish to exercise your privacy rights, or have concerns about our data practices, please contact us:
+                If you have questions about this Privacy Policy, wish to exercise your privacy rights, or have concerns about our data practices, please contact:
               </p>
-              <div className="bg-muted p-4 rounded-lg mb-4">
-                <p className="font-medium">{companyName}</p>
-                <p><strong>Privacy Officer:</strong> Privacy Department</p>
-                <p>Email: <a href={`mailto:${companyEmail}`} className="text-primary hover:underline">{companyEmail}</a></p>
-                <p>Website: <a href={websiteUrl} className="text-primary hover:underline">{websiteUrl}</a></p>
+              
+              <div className="grid md:grid-cols-2 gap-4 mb-4">
+                <div className="bg-muted p-4 rounded-lg">
+                  <p className="font-semibold mb-2">Dealership (Customer Inquiries)</p>
+                  <p className="font-medium">{dealershipName}</p>
+                  {dealershipAddress && <p className="text-sm">{dealershipAddress}</p>}
+                  {dealershipPhone && <p className="text-sm">Phone: {dealershipPhone}</p>}
+                </div>
+                <div className="bg-muted p-4 rounded-lg">
+                  <p className="font-semibold mb-2">Platform Provider (Data & Privacy)</p>
+                  <p className="font-medium">{platformName}</p>
+                  <p className="text-sm">Email: <a href={`mailto:${platformEmail}`} className="text-primary hover:underline">{platformEmail}</a></p>
+                  <p className="text-sm">Website: <a href={platformWebsite} className="text-primary hover:underline">{platformWebsite}</a></p>
+                </div>
               </div>
+
               <p className="mb-4">
                 <strong>Response Time:</strong> We will acknowledge receipt of your request within 5 business days and provide a substantive response within 30 days (or 45 days for complex requests, with notice).
               </p>
