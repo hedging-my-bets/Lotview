@@ -18,6 +18,8 @@ import Sales from "@/pages/Sales";
 import SuperAdminDashboard from "@/pages/SuperAdminDashboard";
 import N8nIntegration from "@/pages/N8nIntegration";
 import InviteAccept from "@/pages/InviteAccept";
+import PrivacyPolicy from "@/pages/PrivacyPolicy";
+import TermsOfService from "@/pages/TermsOfService";
 
 function Router() {
   return (
@@ -33,6 +35,8 @@ function Router() {
       <Route path="/super-admin" component={SuperAdminDashboard} />
       <Route path="/invite/:token" component={InviteAccept} />
       <Route path="/embed" component={EmbedWidget} />
+      <Route path="/privacy-policy" component={PrivacyPolicy} />
+      <Route path="/terms-of-service" component={TermsOfService} />
       <Route component={NotFound} />
     </Switch>
   );
