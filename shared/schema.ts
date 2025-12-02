@@ -563,6 +563,36 @@ export const insertPostingScheduleSchema = createInsertSchema(postingSchedule).o
 export type InsertPostingSchedule = z.infer<typeof insertPostingScheduleSchema>;
 export type PostingSchedule = typeof postingSchedule.$inferSelect;
 
+// Facebook Catalog configuration (for Automotive Inventory Ads)
+export const facebookCatalogConfig = pgTable("facebook_catalog_config", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }).unique(),
+  catalogId: text("catalog_id").notNull(), // Facebook Catalog ID
+  accessToken: text("access_token").notNull(), // System user access token for catalog
+  catalogName: text("catalog_name"), // Display name of catalog
+  isActive: boolean("is_active").notNull().default(true),
+  lastSyncAt: timestamp("last_sync_at"), // When we last synced inventory
+  lastSyncStatus: text("last_sync_status"), // 'success', 'partial', 'failed'
+  lastSyncMessage: text("last_sync_message"), // Details about last sync
+  vehiclesSynced: integer("vehicles_synced").default(0), // Count of vehicles in catalog
+  autoSyncEnabled: boolean("auto_sync_enabled").notNull().default(true), // Enable daily auto-sync
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertFacebookCatalogConfigSchema = createInsertSchema(facebookCatalogConfig).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastSyncAt: true,
+  lastSyncStatus: true,
+  lastSyncMessage: true,
+  vehiclesSynced: true,
+});
+
+export type InsertFacebookCatalogConfig = z.infer<typeof insertFacebookCatalogConfigSchema>;
+export type FacebookCatalogConfig = typeof facebookCatalogConfig.$inferSelect;
+
 // Facebook Messenger conversations (from Facebook pages connected by salespeople)
 export const messengerConversations = pgTable("messenger_conversations", {
   id: serial("id").primaryKey(),
