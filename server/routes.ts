@@ -4920,6 +4920,184 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
 
+  // Inventory Analysis - Get all vehicles with market comparison data
+  app.get("/api/manager/inventory-analysis", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { radiusKm = '50' } = req.query;
+      const radius = radiusKm === 'national' ? 2000 : parseInt(radiusKm as string) || 50;
+      
+      // Get all dealership vehicles
+      const { vehicles } = await storage.getVehicles(dealershipId, 500, 0);
+      
+      // Get manager settings for postal code
+      const authReq = req as AuthRequest;
+      const settings = authReq.user ? await storage.getManagerSettings(authReq.user.id, dealershipId) : null;
+      const postalCode = settings?.postalCode || 'V6H 1G9';
+      
+      // Get the latest market snapshot for timestamp
+      const latestSnapshot = await storage.getLatestMarketSnapshotDate(dealershipId);
+      
+      // Build market comparison for each vehicle
+      const vehiclesWithMarket = await Promise.all(vehicles.map(async (vehicle) => {
+        // Get cached market data for this vehicle's make/model/year
+        const { listings: marketListings } = await storage.getMarketListings(dealershipId, {
+          make: vehicle.make || undefined,
+          model: vehicle.model || undefined,
+          yearMin: vehicle.year ? vehicle.year - 1 : undefined,
+          yearMax: vehicle.year ? vehicle.year + 1 : undefined
+        }, 200, 0);
+        
+        // Filter by approximate radius (if we have location data)
+        const relevantListings = marketListings.filter(l => l.isActive);
+        
+        if (relevantListings.length === 0) {
+          return {
+            ...vehicle,
+            marketData: null,
+            percentilePosition: null,
+            priceComparison: null
+          };
+        }
+        
+        // Calculate price statistics
+        const prices = relevantListings.map(l => l.price).filter(p => p && p > 0).sort((a, b) => a! - b!);
+        if (prices.length === 0) {
+          return {
+            ...vehicle,
+            marketData: null,
+            percentilePosition: null,
+            priceComparison: null
+          };
+        }
+        
+        const avgPrice = Math.round(prices.reduce((a, b) => a + b!, 0) / prices.length);
+        const medianPrice = prices[Math.floor(prices.length / 2)]!;
+        const minPrice = prices[0]!;
+        const maxPrice = prices[prices.length - 1]!;
+        const p25 = prices[Math.floor(prices.length * 0.25)]!;
+        const p75 = prices[Math.floor(prices.length * 0.75)]!;
+        
+        // Calculate this vehicle's percentile position
+        const vehiclePrice = vehicle.price || 0;
+        let percentilePosition = null;
+        let priceComparison = 'unknown';
+        
+        if (vehiclePrice > 0) {
+          const belowCount = prices.filter(p => p! < vehiclePrice).length;
+          percentilePosition = Math.round((belowCount / prices.length) * 100);
+          
+          if (vehiclePrice < p25) {
+            priceComparison = 'below_market';
+          } else if (vehiclePrice <= p75) {
+            priceComparison = 'at_market';
+          } else {
+            priceComparison = 'above_market';
+          }
+        }
+        
+        return {
+          ...vehicle,
+          marketData: {
+            totalListings: relevantListings.length,
+            avgPrice,
+            medianPrice,
+            minPrice,
+            maxPrice,
+            p25,
+            p75
+          },
+          percentilePosition,
+          priceComparison
+        };
+      }));
+      
+      res.json({
+        vehicles: vehiclesWithMarket,
+        totalVehicles: vehicles.length,
+        lastUpdated: latestSnapshot || null,
+        radiusKm: radius,
+        postalCode
+      });
+    } catch (error) {
+      console.error("Error fetching inventory analysis:", error);
+      res.status(500).json({ error: "Failed to fetch inventory analysis" });
+    }
+  });
+
+  // Trigger full inventory market analysis refresh
+  app.post("/api/manager/inventory-analysis/refresh", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { radiusKm = 50 } = req.body;
+      const radius = radiusKm === 'national' ? 2000 : parseInt(radiusKm) || 50;
+      
+      // Get manager settings
+      const authReq = req as AuthRequest;
+      const settings = authReq.user ? await storage.getManagerSettings(authReq.user.id, dealershipId) : null;
+      const postalCode = settings?.postalCode || 'V6H 1G9';
+      
+      // Get all unique make/model combinations from inventory
+      const { vehicles } = await storage.getVehicles(dealershipId, 500, 0);
+      const uniqueVehicles = new Map<string, { make: string; model: string; yearMin: number; yearMax: number }>();
+      
+      vehicles.forEach(v => {
+        if (v.make && v.model) {
+          const key = `${v.make}-${v.model}`;
+          const existing = uniqueVehicles.get(key);
+          if (existing) {
+            existing.yearMin = Math.min(existing.yearMin, v.year || existing.yearMin);
+            existing.yearMax = Math.max(existing.yearMax, v.year || existing.yearMax);
+          } else {
+            uniqueVehicles.set(key, {
+              make: v.make,
+              model: v.model,
+              yearMin: v.year || new Date().getFullYear() - 3,
+              yearMax: v.year || new Date().getFullYear()
+            });
+          }
+        }
+      });
+      
+      // Aggregate market data for each unique vehicle
+      const { marketAggregationService } = await import('./market-aggregation-service');
+      let totalNewListings = 0;
+      const errors: string[] = [];
+      
+      for (const [key, vehicleInfo] of uniqueVehicles) {
+        try {
+          const result = await marketAggregationService.aggregateMarketData({
+            make: vehicleInfo.make,
+            model: vehicleInfo.model,
+            yearMin: vehicleInfo.yearMin,
+            yearMax: vehicleInfo.yearMax,
+            postalCode,
+            radiusKm: radius,
+            maxResults: 100,
+            dealershipId
+          });
+          totalNewListings += result.totalListings;
+          if (result.errors.length > 0) {
+            errors.push(...result.errors.map(e => `${key}: ${e}`));
+          }
+        } catch (e) {
+          errors.push(`${key}: ${e instanceof Error ? e.message : 'Unknown error'}`);
+        }
+      }
+      
+      res.json({
+        success: true,
+        vehiclesAnalyzed: uniqueVehicles.size,
+        newListingsFound: totalNewListings,
+        errors: errors.slice(0, 10), // Limit errors returned
+        updatedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("Error refreshing inventory analysis:", error);
+      res.status(500).json({ error: "Failed to refresh inventory analysis" });
+    }
+  });
+
   // ===== REMARKETING ROUTES (Master only) =====
   
   // Get all remarketing vehicles

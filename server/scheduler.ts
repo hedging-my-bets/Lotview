@@ -4,6 +4,7 @@ import { storage } from './storage';
 import { facebookService } from './facebook-service';
 
 let schedulerInitialized = false;
+let marketAnalysisSchedulerInitialized = false;
 
 export function startInventoryScheduler() {
   if (schedulerInitialized) {
@@ -149,5 +150,113 @@ export async function triggerManualSync() {
   } catch (error) {
     console.error('✗ Manual sync failed:', error);
     return { success: false, error: String(error) };
+  }
+}
+
+/**
+ * Start the market analysis scheduler
+ * Runs daily at 3 AM to refresh market data for all dealerships
+ */
+export function startMarketAnalysisScheduler() {
+  if (marketAnalysisSchedulerInitialized) {
+    console.log('Market analysis scheduler already running');
+    return;
+  }
+
+  // Run market analysis at 3 AM daily (Pacific Time - adjusted for server timezone)
+  cron.schedule('0 3 * * *', async () => {
+    console.log('📊 Running scheduled market analysis...');
+    try {
+      await refreshAllDealershipMarketData();
+      console.log('✓ Scheduled market analysis complete');
+    } catch (error) {
+      console.error('✗ Scheduled market analysis failed:', error);
+    }
+  });
+
+  marketAnalysisSchedulerInitialized = true;
+  console.log('✓ Market analysis scheduler started (runs daily at 3 AM)');
+}
+
+/**
+ * Refresh market data for all active dealerships
+ */
+async function refreshAllDealershipMarketData(): Promise<void> {
+  try {
+    const dealerships = await storage.getAllDealerships();
+    
+    for (const dealership of dealerships) {
+      if (!dealership.isActive) continue;
+      
+      console.log(`[MarketAnalysis] Processing dealership ${dealership.id}: ${dealership.name}`);
+      
+      try {
+        // Get dealership's vehicles
+        const { vehicles } = await storage.getVehicles(dealership.id, 500, 0);
+        
+        if (vehicles.length === 0) {
+          console.log(`[MarketAnalysis] No vehicles for dealership ${dealership.id}, skipping`);
+          continue;
+        }
+        
+        // Get manager settings for postal code
+        const settings = await storage.getManagerSettingsByDealership(dealership.id);
+        const postalCode = settings?.postalCode || 'V6H 1G9';
+        
+        // Get unique make/model combinations
+        const uniqueVehicles = new Map<string, { make: string; model: string; yearMin: number; yearMax: number }>();
+        
+        vehicles.forEach(v => {
+          if (v.make && v.model) {
+            const key = `${v.make}-${v.model}`;
+            const existing = uniqueVehicles.get(key);
+            if (existing) {
+              existing.yearMin = Math.min(existing.yearMin, v.year || existing.yearMin);
+              existing.yearMax = Math.max(existing.yearMax, v.year || existing.yearMax);
+            } else {
+              uniqueVehicles.set(key, {
+                make: v.make,
+                model: v.model,
+                yearMin: v.year || new Date().getFullYear() - 3,
+                yearMax: v.year || new Date().getFullYear()
+              });
+            }
+          }
+        });
+        
+        // Import market aggregation service
+        const { marketAggregationService } = await import('./market-aggregation-service');
+        
+        // Aggregate market data for each unique vehicle
+        let totalNewListings = 0;
+        const vehicleEntries = Array.from(uniqueVehicles.entries());
+        
+        for (const [key, vehicleInfo] of vehicleEntries) {
+          try {
+            const result = await marketAggregationService.aggregateMarketData({
+              make: vehicleInfo.make,
+              model: vehicleInfo.model,
+              yearMin: vehicleInfo.yearMin,
+              yearMax: vehicleInfo.yearMax,
+              postalCode,
+              radiusKm: 250, // Default to 250km for scheduled refresh
+              maxResults: 100,
+              dealershipId: dealership.id
+            });
+            totalNewListings += result.totalListings;
+          } catch (e) {
+            console.error(`[MarketAnalysis] Error for ${key}:`, e);
+          }
+        }
+        
+        console.log(`[MarketAnalysis] Dealership ${dealership.id}: ${uniqueVehicles.size} vehicles analyzed, ${totalNewListings} new listings`);
+        
+      } catch (error) {
+        console.error(`[MarketAnalysis] Error processing dealership ${dealership.id}:`, error);
+      }
+    }
+  } catch (error) {
+    console.error('[MarketAnalysis] Error in refreshAllDealershipMarketData:', error);
+    throw error;
   }
 }

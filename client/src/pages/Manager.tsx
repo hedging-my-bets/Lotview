@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck, ClipboardCheck, BarChart3, Bot, Clock, Sparkles, Pencil, Save } from "lucide-react";
+import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck, ClipboardCheck, BarChart3, Bot, Clock, Sparkles, Pencil, Save, TrendingDown, Minus, ArrowUp, ArrowDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -14,6 +14,297 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Progress } from "@/components/ui/progress";
+
+// Inventory Analysis Tab Component
+function InventoryAnalysisTab() {
+  const { toast } = useToast();
+  const [selectedRadius, setSelectedRadius] = useState<string>('50');
+  const [inventoryData, setInventoryData] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const radiusOptions = [
+    { value: '50', label: '50 km' },
+    { value: '250', label: '250 km' },
+    { value: '1000', label: '1,000 km' },
+    { value: 'national', label: 'National' }
+  ];
+
+  const fetchInventoryAnalysis = async (radius: string) => {
+    setIsLoading(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/manager/inventory-analysis?radiusKm=${radius}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setInventoryData(data);
+      } else {
+        throw new Error('Failed to fetch inventory analysis');
+      }
+    } catch (error) {
+      console.error('Error fetching inventory analysis:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load inventory analysis",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('/api/manager/inventory-analysis/refresh', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify({ radiusKm: selectedRadius === 'national' ? 2000 : parseInt(selectedRadius) })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        toast({
+          title: "Analysis Complete",
+          description: `Analyzed ${result.vehiclesAnalyzed} vehicle types, found ${result.newListingsFound} new market listings`
+        });
+        // Reload the data
+        await fetchInventoryAnalysis(selectedRadius);
+      } else {
+        throw new Error('Failed to refresh analysis');
+      }
+    } catch (error) {
+      console.error('Error refreshing analysis:', error);
+      toast({
+        title: "Error",
+        description: "Failed to refresh market data",
+        variant: "destructive"
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchInventoryAnalysis(selectedRadius);
+  }, [selectedRadius]);
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', maximumFractionDigits: 0 }).format(value);
+  };
+
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return 'Never';
+    const date = new Date(dateStr);
+    return date.toLocaleString('en-CA', { 
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const getPriceComparisonColor = (comparison: string | null) => {
+    switch (comparison) {
+      case 'below_market': return 'text-green-600 bg-green-100';
+      case 'at_market': return 'text-blue-600 bg-blue-100';
+      case 'above_market': return 'text-red-600 bg-red-100';
+      default: return 'text-gray-600 bg-gray-100';
+    }
+  };
+
+  const getPriceComparisonLabel = (comparison: string | null) => {
+    switch (comparison) {
+      case 'below_market': return 'Below Market';
+      case 'at_market': return 'At Market';
+      case 'above_market': return 'Above Market';
+      default: return 'No Data';
+    }
+  };
+
+  return (
+    <div data-testid="tab-content-inventory" className="space-y-6">
+      {/* Header with controls */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h3 className="text-lg font-semibold">Inventory Market Analysis</h3>
+          <p className="text-sm text-muted-foreground">
+            Compare your vehicles against market pricing
+            {inventoryData?.lastUpdated && (
+              <span className="ml-2 text-xs">
+                • Updated {formatDate(inventoryData.lastUpdated)}
+              </span>
+            )}
+          </p>
+        </div>
+        
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <Select value={selectedRadius} onValueChange={setSelectedRadius}>
+            <SelectTrigger className="w-[140px]" data-testid="radius-selector">
+              <SelectValue placeholder="Distance" />
+            </SelectTrigger>
+            <SelectContent>
+              {radiusOptions.map(opt => (
+                <SelectItem key={opt.value} value={opt.value} data-testid={`radius-${opt.value}`}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          
+          <Button 
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            data-testid="analyze-button"
+            className="flex-1 sm:flex-none"
+          >
+            {isRefreshing ? (
+              <>
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                Analyzing...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4 mr-2" />
+                Analyze
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+
+      {/* Loading state */}
+      {isLoading ? (
+        <div className="space-y-4">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="h-24 bg-muted rounded animate-pulse" />
+          ))}
+        </div>
+      ) : inventoryData?.vehicles?.length > 0 ? (
+        <div className="space-y-4">
+          {/* Summary stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <Card>
+              <CardContent className="p-4">
+                <div className="text-2xl font-bold">{inventoryData.totalVehicles}</div>
+                <div className="text-xs text-muted-foreground">Total Vehicles</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="text-2xl font-bold text-green-600">
+                  {inventoryData.vehicles.filter((v: any) => v.priceComparison === 'below_market').length}
+                </div>
+                <div className="text-xs text-muted-foreground">Below Market</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="text-2xl font-bold text-blue-600">
+                  {inventoryData.vehicles.filter((v: any) => v.priceComparison === 'at_market').length}
+                </div>
+                <div className="text-xs text-muted-foreground">At Market</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="text-2xl font-bold text-red-600">
+                  {inventoryData.vehicles.filter((v: any) => v.priceComparison === 'above_market').length}
+                </div>
+                <div className="text-xs text-muted-foreground">Above Market</div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Vehicle list */}
+          <div className="space-y-3">
+            {inventoryData.vehicles.map((vehicle: any) => (
+              <Card key={vehicle.id} data-testid={`vehicle-card-${vehicle.id}`}>
+                <CardContent className="p-4">
+                  <div className="flex flex-col sm:flex-row justify-between gap-4">
+                    {/* Vehicle info */}
+                    <div className="flex gap-4">
+                      {vehicle.imageUrl && (
+                        <img 
+                          src={vehicle.imageUrl} 
+                          alt={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}
+                          className="w-24 h-18 object-cover rounded"
+                        />
+                      )}
+                      <div>
+                        <h4 className="font-semibold">
+                          {vehicle.year} {vehicle.make} {vehicle.model}
+                        </h4>
+                        {vehicle.trim && (
+                          <p className="text-sm text-muted-foreground">{vehicle.trim}</p>
+                        )}
+                        <p className="text-lg font-bold mt-1">
+                          {vehicle.price ? formatCurrency(vehicle.price) : 'No Price'}
+                        </p>
+                        {vehicle.mileage && (
+                          <p className="text-xs text-muted-foreground">
+                            {vehicle.mileage.toLocaleString()} km
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Market comparison */}
+                    <div className="flex flex-col items-end gap-2 min-w-[200px]">
+                      <Badge className={cn("text-xs", getPriceComparisonColor(vehicle.priceComparison))}>
+                        {getPriceComparisonLabel(vehicle.priceComparison)}
+                      </Badge>
+                      
+                      {vehicle.marketData ? (
+                        <div className="text-right">
+                          <div className="text-sm">
+                            <span className="text-muted-foreground">Market Avg: </span>
+                            <span className="font-medium">{formatCurrency(vehicle.marketData.avgPrice)}</span>
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {vehicle.marketData.totalListings} listings • {formatCurrency(vehicle.marketData.minPrice)} - {formatCurrency(vehicle.marketData.maxPrice)}
+                          </div>
+                          {vehicle.percentilePosition !== null && (
+                            <div className="mt-2">
+                              <div className="text-xs text-muted-foreground mb-1">
+                                Price Percentile: {vehicle.percentilePosition}%
+                              </div>
+                              <Progress value={vehicle.percentilePosition} className="h-2 w-32" />
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-muted-foreground">
+                          No market data available
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="text-center py-12 text-muted-foreground">
+          <Car className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+          <h3 className="text-lg font-medium mb-2">No Vehicles Found</h3>
+          <p className="text-sm">
+            Your inventory is empty. Add vehicles to see market analysis.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Manager() {
   const [, setLocation] = useLocation();
@@ -1632,15 +1923,7 @@ export default function Manager() {
 
               {/* Inventory Analysis Tab */}
               {activeManagerTab === 'inventory' && (
-                <div data-testid="tab-content-inventory">
-                  <div className="text-center py-12 text-muted-foreground">
-                    <BarChart3 className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
-                    <h3 className="text-lg font-medium mb-2">Inventory Analysis</h3>
-                    <p className="text-sm">
-                      Inventory analytics and insights coming soon. Track aging inventory, price trends, and market demand.
-                    </p>
-                  </div>
-                </div>
+                <InventoryAnalysisTab />
               )}
 
               {/* AI Chat Prompts Tab */}

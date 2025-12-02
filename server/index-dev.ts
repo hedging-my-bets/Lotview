@@ -7,7 +7,7 @@ import { nanoid } from "nanoid";
 import { createServer as createViteServer, createLogger } from "vite";
 
 import runApp from "./app";
-import { startInventoryScheduler } from "./scheduler";
+import { startInventoryScheduler, startMarketAnalysisScheduler } from "./scheduler";
 import { startPostingScheduler } from "./posting-scheduler";
 
 import viteConfig from "../vite.config";
@@ -68,6 +68,9 @@ export async function setupVite(app: Express, server: Server) {
   
   // Start the Facebook posting scheduler
   startPostingScheduler();
+  
+  // Start the market analysis scheduler
+  startMarketAnalysisScheduler();
   
   await runApp(setupVite);
 })();

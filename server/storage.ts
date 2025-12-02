@@ -307,6 +307,7 @@ export interface IStorage {
   
   // Manager Settings (Multi-Tenant)
   getManagerSettings(userId: number, dealershipId: number): Promise<ManagerSettings | undefined>;
+  getManagerSettingsByDealership(dealershipId: number): Promise<ManagerSettings | undefined>;
   createManagerSettings(settings: InsertManagerSettings): Promise<ManagerSettings>;
   updateManagerSettings(userId: number, dealershipId: number, settings: Partial<InsertManagerSettings>): Promise<ManagerSettings | undefined>;
   
@@ -361,6 +362,7 @@ export interface IStorage {
   getMarketSnapshots(dealershipId: number, filters: { make?: string; model?: string; limit?: number }): Promise<MarketSnapshot[]>;
   createMarketSnapshot(snapshot: InsertMarketSnapshot): Promise<MarketSnapshot>;
   getLatestMarketSnapshot(dealershipId: number, make: string, model: string): Promise<MarketSnapshot | undefined>;
+  getLatestMarketSnapshotDate(dealershipId: number): Promise<Date | null>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1619,6 +1621,18 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
+  async getManagerSettingsByDealership(dealershipId: number): Promise<ManagerSettings | undefined> {
+    // Get any manager settings for this dealership (used for scheduled jobs)
+    // Join with users to filter by dealership
+    const result = await db
+      .select({ settings: managerSettings })
+      .from(managerSettings)
+      .innerJoin(users, eq(users.id, managerSettings.userId))
+      .where(eq(users.dealershipId, dealershipId))
+      .limit(1);
+    return result[0]?.settings;
+  }
+
   async createManagerSettings(settings: InsertManagerSettings): Promise<ManagerSettings> {
     const result = await db.insert(managerSettings).values(settings).returning();
     return result[0];
@@ -2324,6 +2338,16 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(marketSnapshots.snapshotDate))
       .limit(1);
     return result[0];
+  }
+  
+  async getLatestMarketSnapshotDate(dealershipId: number): Promise<Date | null> {
+    // Get the most recent market listing scraped date for this dealership
+    const result = await db.select({ scrapedAt: marketListings.scrapedAt })
+      .from(marketListings)
+      .where(eq(marketListings.dealershipId, dealershipId))
+      .orderBy(desc(marketListings.scrapedAt))
+      .limit(1);
+    return result[0]?.scrapedAt || null;
   }
 }
 
