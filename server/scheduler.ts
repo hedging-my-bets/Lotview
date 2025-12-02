@@ -2,9 +2,11 @@ import cron from 'node-cron';
 import { scrapeAllDealerships, scrapeAllDealershipsIncremental } from './scraper';
 import { storage } from './storage';
 import { facebookService } from './facebook-service';
+import { facebookCatalogService } from './facebook-catalog-service';
 
 let schedulerInitialized = false;
 let marketAnalysisSchedulerInitialized = false;
+let facebookCatalogSchedulerInitialized = false;
 
 export function startInventoryScheduler() {
   if (schedulerInitialized) {
@@ -176,6 +178,105 @@ export function startMarketAnalysisScheduler() {
 
   marketAnalysisSchedulerInitialized = true;
   console.log('✓ Market analysis scheduler started (runs daily at 3 AM)');
+}
+
+/**
+ * Start the Facebook Catalog auto-sync scheduler.
+ * This syncs dealership inventory to Facebook Catalogs for automotive ads.
+ */
+export function startFacebookCatalogScheduler() {
+  if (facebookCatalogSchedulerInitialized) {
+    console.log('Facebook Catalog scheduler already running');
+    return;
+  }
+
+  // Sync Facebook Catalogs daily at 4 AM (after inventory sync at midnight)
+  cron.schedule('0 4 * * *', async () => {
+    console.log('📘 Running scheduled Facebook Catalog sync...');
+    try {
+      await syncAllFacebookCatalogs();
+      console.log('✓ Facebook Catalog sync complete');
+    } catch (error) {
+      console.error('✗ Facebook Catalog sync failed:', error);
+    }
+  });
+
+  facebookCatalogSchedulerInitialized = true;
+  console.log('✓ Facebook Catalog scheduler started (runs daily at 4 AM)');
+}
+
+/**
+ * Sync inventory to all Facebook Catalogs with auto-sync enabled.
+ */
+async function syncAllFacebookCatalogs(): Promise<void> {
+  try {
+    // Get all active catalog configs with auto-sync enabled
+    const configs = await storage.getAllFacebookCatalogConfigs();
+    const autoSyncConfigs = configs.filter(c => c.isActive && c.autoSyncEnabled);
+
+    console.log(`[FB Catalog] Found ${autoSyncConfigs.length} catalogs to sync`);
+
+    for (const config of autoSyncConfigs) {
+      try {
+        console.log(`[FB Catalog] Syncing dealership ${config.dealershipId}...`);
+        
+        // Get dealership's vehicles
+        const { vehicles } = await storage.getVehicles(config.dealershipId, 500, 0);
+        
+        if (vehicles.length === 0) {
+          console.log(`[FB Catalog] No vehicles for dealership ${config.dealershipId}, skipping`);
+          await storage.updateCatalogSyncStatus(config.dealershipId, {
+            lastSyncAt: new Date(),
+            lastSyncStatus: 'success',
+            lastSyncMessage: 'No vehicles to sync',
+            vehiclesSynced: 0
+          });
+          continue;
+        }
+
+        // Get dealership for URL
+        const dealership = await storage.getDealershipById(config.dealershipId);
+        const baseUrl = dealership?.subdomain 
+          ? `https://${dealership.subdomain}.example.com` 
+          : 'https://olympicautogroup.ca';
+
+        // Sync to Facebook Catalog
+        const catalogConfig = { catalogId: config.catalogId, accessToken: config.accessToken };
+        const result = await facebookCatalogService.syncVehiclesToCatalog(
+          catalogConfig,
+          vehicles, 
+          baseUrl
+        );
+
+        // Build status message
+        const statusMessage = result.success 
+          ? `Created: ${result.created}, Updated: ${result.updated}, Deleted: ${result.deleted}`
+          : result.errors.join('; ');
+
+        // Update sync status
+        await storage.updateCatalogSyncStatus(config.dealershipId, {
+          lastSyncAt: new Date(),
+          lastSyncStatus: result.success ? 'success' : 'failed',
+          lastSyncMessage: statusMessage,
+          vehiclesSynced: result.created + result.updated
+        });
+
+        console.log(`[FB Catalog] Dealership ${config.dealershipId}: ${result.success ? 'Success' : 'Failed'} - ${statusMessage}`);
+        
+      } catch (error) {
+        console.error(`[FB Catalog] Error syncing dealership ${config.dealershipId}:`, error);
+        
+        await storage.updateCatalogSyncStatus(config.dealershipId, {
+          lastSyncAt: new Date(),
+          lastSyncStatus: 'failed',
+          lastSyncMessage: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+  } catch (error) {
+    console.error('[FB Catalog] Error in syncAllFacebookCatalogs:', error);
+    throw error;
+  }
 }
 
 /**
