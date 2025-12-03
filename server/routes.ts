@@ -1358,6 +1358,101 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== SUPER ADMIN FILTER GROUPS ROUTES =====
+
+  // Get all filter groups across all dealerships (super admin only)
+  app.get("/api/super-admin/filter-groups", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const groups = await storage.getAllFilterGroups();
+      res.json(groups);
+    } catch (error) {
+      console.error("Error fetching filter groups:", error);
+      res.status(500).json({ error: "Failed to fetch filter groups" });
+    }
+  });
+
+  // Get filter groups for a specific dealership
+  app.get("/api/super-admin/filter-groups/dealership/:dealershipId", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const dealershipId = parseInt(req.params.dealershipId);
+      const groups = await storage.getFilterGroups(dealershipId);
+      res.json(groups);
+    } catch (error) {
+      console.error("Error fetching filter groups:", error);
+      res.status(500).json({ error: "Failed to fetch filter groups" });
+    }
+  });
+
+  // Create a new filter group (super admin only)
+  app.post("/api/super-admin/filter-groups", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const { dealershipId, groupName, groupSlug, description, displayOrder, isDefault } = req.body;
+      
+      if (!dealershipId || !groupName || !groupSlug) {
+        return res.status(400).json({ error: "Dealership ID, group name, and group slug are required" });
+      }
+      
+      const group = await storage.createFilterGroup({
+        dealershipId: parseInt(dealershipId),
+        groupName,
+        groupSlug,
+        description: description || null,
+        displayOrder: displayOrder || 0,
+        isDefault: isDefault || false,
+        isActive: true,
+      });
+      
+      res.status(201).json(group);
+    } catch (error) {
+      console.error("Error creating filter group:", error);
+      res.status(500).json({ error: "Failed to create filter group" });
+    }
+  });
+
+  // Update a filter group (super admin only)
+  app.patch("/api/super-admin/filter-groups/:id", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { dealershipId, ...updates } = req.body;
+      
+      if (!dealershipId) {
+        return res.status(400).json({ error: "Dealership ID is required" });
+      }
+      
+      const group = await storage.updateFilterGroup(id, parseInt(dealershipId), updates);
+      if (!group) {
+        return res.status(404).json({ error: "Filter group not found" });
+      }
+      
+      res.json(group);
+    } catch (error) {
+      console.error("Error updating filter group:", error);
+      res.status(500).json({ error: "Failed to update filter group" });
+    }
+  });
+
+  // Delete a filter group (super admin only)
+  app.delete("/api/super-admin/filter-groups/:id", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const dealershipId = parseInt(req.query.dealershipId as string);
+      
+      if (!dealershipId) {
+        return res.status(400).json({ error: "Dealership ID is required" });
+      }
+      
+      const deleted = await storage.deleteFilterGroup(id, dealershipId);
+      if (!deleted) {
+        return res.status(404).json({ error: "Filter group not found" });
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting filter group:", error);
+      res.status(500).json({ error: "Failed to delete filter group" });
+    }
+  });
+
   // ===== SUPER ADMIN SCRAPE SOURCES ROUTES =====
 
   // Get all scrape sources across all dealerships (super admin only)
@@ -1374,7 +1469,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create a new scrape source (super admin only)
   app.post("/api/super-admin/scrape-sources", authMiddleware, superAdminOnly, async (req, res) => {
     try {
-      const { dealershipId, sourceName, sourceUrl, sourceType, scrapeFrequency } = req.body;
+      const { dealershipId, sourceName, sourceUrl, sourceType, scrapeFrequency, filterGroupId } = req.body;
       
       if (!dealershipId || !sourceName || !sourceUrl) {
         return res.status(400).json({ error: "Dealership ID, source name, and source URL are required" });
@@ -1386,6 +1481,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         sourceUrl,
         sourceType: sourceType || "dealer_website",
         scrapeFrequency: scrapeFrequency || "daily",
+        filterGroupId: filterGroupId ? parseInt(filterGroupId) : null,
         isActive: true,
       });
       
@@ -1905,6 +2001,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching financing rules:", error);
       res.status(500).json({ error: "Failed to fetch financing rules" });
+    }
+  });
+
+  // Get filter groups for the current dealership (public endpoint for inventory filtering)
+  app.get("/api/public/filter-groups", async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      
+      // Get active filter groups for this dealership
+      const groups = await storage.getActiveFilterGroups(dealershipId);
+      
+      res.json(groups);
+    } catch (error) {
+      console.error("Error fetching filter groups:", error);
+      res.status(500).json({ error: "Failed to fetch filter groups" });
     }
   });
 
