@@ -32,6 +32,8 @@ export async function getFinancingRules(): Promise<FinancingRules> {
 
 // Vehicle API
 export async function getVehicles(): Promise<Vehicle[]> {
+  // Note: Dealership filtering is handled automatically by server-side tenant middleware
+  // based on subdomain resolution - no need to pass dealershipId param
   const response = await fetch("/api/vehicles");
   if (!response.ok) throw new Error("Failed to fetch vehicles");
   return response.json();

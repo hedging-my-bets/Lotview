@@ -11,9 +11,10 @@ interface InventorySidebarProps {
   filters: FilterState;
   setFilters: (filters: FilterState) => void;
   availableMakes?: string[];
+  hideDealershipFilter?: boolean;
 }
 
-export function InventorySidebar({ filters, setFilters, availableMakes = [] }: InventorySidebarProps) {
+export function InventorySidebar({ filters, setFilters, availableMakes = [], hideDealershipFilter = false }: InventorySidebarProps) {
   
   const handleTypeChange = (type: string) => {
     const newType = filters.type === type ? 'all' : type;
@@ -92,42 +93,44 @@ export function InventorySidebar({ filters, setFilters, availableMakes = [] }: I
           </div>
         )}
 
-        {/* Dealership Filter */}
-        <div className="mb-8">
-          <p className="text-xs font-bold text-muted-foreground uppercase mb-3 flex items-center gap-2">
-            <Building2 className="w-3 h-3" /> Dealership
-          </p>
-          <div className="space-y-2">
-            <label className="flex items-center gap-3 cursor-pointer group">
-              <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${filters.dealership === 'all' ? 'bg-primary border-primary text-white' : 'border-border bg-card'}`}>
-                {filters.dealership === 'all' && <Check className="w-3 h-3" />}
-              </div>
-              <input 
-                type="radio" 
-                name="dealership" 
-                className="hidden" 
-                checked={filters.dealership === 'all'} 
-                onChange={() => setFilters({ ...filters, dealership: 'all' })}
-              />
-              <span className={`text-sm font-medium transition ${filters.dealership === 'all' ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'}`}>All Dealerships</span>
-            </label>
-            {DEALERSHIPS.map(dealer => (
-               <label key={dealer} className="flex items-center gap-3 cursor-pointer group">
-                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${filters.dealership === dealer ? 'bg-primary border-primary text-white' : 'border-border bg-card'}`}>
-                  {filters.dealership === dealer && <Check className="w-3 h-3" />}
+        {/* Dealership Filter - Hidden when on dealership subdomain */}
+        {!hideDealershipFilter && (
+          <div className="mb-8">
+            <p className="text-xs font-bold text-muted-foreground uppercase mb-3 flex items-center gap-2">
+              <Building2 className="w-3 h-3" /> Dealership
+            </p>
+            <div className="space-y-2">
+              <label className="flex items-center gap-3 cursor-pointer group">
+                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${filters.dealership === 'all' ? 'bg-primary border-primary text-white' : 'border-border bg-card'}`}>
+                  {filters.dealership === 'all' && <Check className="w-3 h-3" />}
                 </div>
                 <input 
                   type="radio" 
                   name="dealership" 
                   className="hidden" 
-                  checked={filters.dealership === dealer} 
-                  onChange={() => handleDealershipChange(dealer)}
+                  checked={filters.dealership === 'all'} 
+                  onChange={() => setFilters({ ...filters, dealership: 'all' })}
                 />
-                <span className={`text-sm font-medium transition ${filters.dealership === dealer ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'}`}>{dealer}</span>
+                <span className={`text-sm font-medium transition ${filters.dealership === 'all' ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'}`}>All Dealerships</span>
               </label>
-            ))}
+              {DEALERSHIPS.map(dealer => (
+                 <label key={dealer} className="flex items-center gap-3 cursor-pointer group">
+                  <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${filters.dealership === dealer ? 'bg-primary border-primary text-white' : 'border-border bg-card'}`}>
+                    {filters.dealership === dealer && <Check className="w-3 h-3" />}
+                  </div>
+                  <input 
+                    type="radio" 
+                    name="dealership" 
+                    className="hidden" 
+                    checked={filters.dealership === dealer} 
+                    onChange={() => handleDealershipChange(dealer)}
+                  />
+                  <span className={`text-sm font-medium transition ${filters.dealership === dealer ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'}`}>{dealer}</span>
+                </label>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
         
         {/* Body Style Filter */}
         <div className="mb-8">

@@ -6,7 +6,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { PaymentProvider } from "@/contexts/PaymentContext";
 import { ChatProvider } from "@/contexts/ChatContext";
+import { TenantProvider, useTenant } from "@/contexts/TenantContext";
 import NotFound from "@/pages/not-found";
+import LandingPage from "@/pages/LandingPage";
 import Inventory from "@/pages/Inventory";
 import VehicleDetail from "@/pages/VehicleDetail";
 import EmbedWidget from "@/pages/EmbedWidget";
@@ -21,7 +23,26 @@ import InviteAccept from "@/pages/InviteAccept";
 import PrivacyPolicy from "@/pages/PrivacyPolicy";
 import TermsOfService from "@/pages/TermsOfService";
 
-function Router() {
+function MarketingRouter() {
+  return (
+    <Switch>
+      <Route path="/" component={LandingPage} />
+      <Route path="/login" component={Login} />
+      <Route path="/dashboard" component={Dashboard} />
+      <Route path="/n8n-integration" component={N8nIntegration} />
+      <Route path="/manager" component={Manager} />
+      <Route path="/sales" component={Sales} />
+      <Route path="/admin" component={Admin} />
+      <Route path="/super-admin" component={SuperAdminDashboard} />
+      <Route path="/invite/:token" component={InviteAccept} />
+      <Route path="/privacy-policy" component={PrivacyPolicy} />
+      <Route path="/terms-of-service" component={TermsOfService} />
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
+
+function DealershipRouter() {
   return (
     <Switch>
       <Route path="/" component={Inventory} />
@@ -42,18 +63,37 @@ function Router() {
   );
 }
 
+function AppRouter() {
+  const { isMarketingSite, isLoading } = useTenant();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="animate-pulse flex flex-col items-center gap-4">
+          <div className="w-12 h-12 bg-primary/20 rounded-lg" />
+          <div className="h-4 w-24 bg-muted rounded" />
+        </div>
+      </div>
+    );
+  }
+
+  return isMarketingSite ? <MarketingRouter /> : <DealershipRouter />;
+}
+
 function App() {
   return (
     <ThemeProvider defaultTheme="light" storageKey="olympic-theme">
       <QueryClientProvider client={queryClient}>
-        <PaymentProvider>
-          <ChatProvider>
-            <TooltipProvider>
-              <Router />
-              <Toaster />
-            </TooltipProvider>
-          </ChatProvider>
-        </PaymentProvider>
+        <TenantProvider>
+          <PaymentProvider>
+            <ChatProvider>
+              <TooltipProvider>
+                <AppRouter />
+                <Toaster />
+              </TooltipProvider>
+            </ChatProvider>
+          </PaymentProvider>
+        </TenantProvider>
       </QueryClientProvider>
     </ThemeProvider>
   );

@@ -89,6 +89,46 @@ const adminAuthMiddleware = (req: any, res: any, next: any) => {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
+  // ===== TENANCY RESOLUTION (Public) =====
+  
+  // Resolve subdomain to dealership for frontend routing
+  app.get("/api/tenancy/resolve", async (req, res) => {
+    try {
+      const { subdomain } = req.query;
+      
+      if (!subdomain || typeof subdomain !== 'string') {
+        return res.json({ dealership: null });
+      }
+      
+      // Sanitize subdomain input
+      const sanitizedSubdomain = subdomain.toLowerCase().replace(/[^a-z0-9-]/g, '');
+      
+      if (!sanitizedSubdomain) {
+        return res.json({ dealership: null });
+      }
+      
+      const dealership = await storage.getDealershipBySubdomain(sanitizedSubdomain);
+      
+      if (!dealership || !dealership.isActive) {
+        return res.json({ dealership: null });
+      }
+      
+      // Return public dealership info (no sensitive data)
+      res.json({
+        dealership: {
+          id: dealership.id,
+          name: dealership.name,
+          subdomain: dealership.subdomain,
+          city: dealership.city,
+          province: dealership.province,
+        }
+      });
+    } catch (error) {
+      console.error("Error resolving tenancy:", error);
+      res.json({ dealership: null });
+    }
+  });
+  
   // ===== AUTHENTICATION ROUTES (JWT) =====
   
   // Login endpoint (all user roles)
@@ -1753,8 +1793,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all vehicles with 24h view counts (randomized for engagement)
   app.get("/api/vehicles", async (req, res) => {
     try {
-      // Dealership ID extracted from tenant middleware
-      const dealershipId = req.dealershipId!;
+      // SECURITY: Always use tenant middleware dealershipId (no query param override allowed)
+      // Tenant middleware already handles: JWT token > subdomain lookup > default to 1
+      const dealershipId = req.dealershipId || 1;
       
       // Parse pagination parameters (optional - maintains backward compatibility)
       const page = req.query.page ? parseInt(req.query.page as string) : undefined;

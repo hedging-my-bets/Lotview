@@ -10,10 +10,12 @@ import { FilterState } from "@/lib/types";
 import { Loader2, LogIn, SlidersHorizontal, Car, Truck } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
-import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { useTenant } from "@/contexts/TenantContext";
 
 export default function Inventory() {
   const { toast } = useToast();
+  const { dealership } = useTenant();
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [filters, setFilters] = useState<FilterState>({
     type: 'all',
@@ -30,10 +32,8 @@ export default function Inventory() {
     queryFn: getVehicles,
   });
 
-  // Get unique makes from vehicles for the filter dropdown
   const uniqueMakes = Array.from(new Set(vehicles.map(car => car.make))).sort();
 
-  // Body type priority for grouping (default sort)
   const typeOrder: Record<string, number> = { 'SUV': 1, 'Truck': 2, 'Sedan': 3 };
   const getTypeOrder = (type: string) => typeOrder[type] || 99;
 
@@ -64,7 +64,6 @@ export default function Inventory() {
         case 'km_high':
           return b.odometer - a.odometer;
         default:
-          // Group by body type (SUV, Truck, Sedan)
           return getTypeOrder(a.type) - getTypeOrder(b.type);
       }
     });
@@ -76,20 +75,34 @@ export default function Inventory() {
     });
   };
 
-  const handleLogin = () => {
-    toast({ title: "Login", description: "Sales team login coming soon..." });
-  };
-
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
       <StickyPaymentBar />
       
       <div className="pt-28 pb-24 md:pb-20 px-4 max-w-7xl mx-auto">
+        {/* Dealership Header for Subdomain */}
+        {dealership && (
+          <div className="mb-8 text-center">
+            <h1 className="text-3xl lg:text-4xl font-bold text-foreground mb-2">
+              {dealership.name}
+            </h1>
+            {dealership.city && dealership.province && (
+              <p className="text-muted-foreground">
+                {dealership.city}, {dealership.province}
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="flex flex-col lg:flex-row gap-8">
-          {/* Desktop Sidebar - Hidden on Mobile */}
           <div className="hidden lg:block">
-            <InventorySidebar filters={filters} setFilters={setFilters} availableMakes={uniqueMakes} />
+            <InventorySidebar 
+              filters={filters} 
+              setFilters={setFilters} 
+              availableMakes={uniqueMakes}
+              hideDealershipFilter={!!dealership}
+            />
           </div>
           
           <main className="flex-1">
@@ -97,7 +110,6 @@ export default function Inventory() {
               <h2 className="text-2xl font-bold text-foreground">
                 Inventory <span className="text-muted-foreground font-normal text-lg ml-2">{filteredInventory.length} Vehicles</span>
               </h2>
-              {/* Mobile: Filter button, Desktop: Live Updates button */}
               <button 
                 onClick={() => setIsFilterOpen(true)}
                 className="lg:hidden flex text-xs font-bold text-primary bg-primary/10 px-3 py-1.5 rounded-full hover:bg-primary/20 transition items-center gap-2"
@@ -116,7 +128,6 @@ export default function Inventory() {
               </button>
             </div>
 
-            {/* Mobile Quick Type Filters - Hidden on Desktop */}
             <div className="lg:hidden flex gap-2 mb-6 overflow-x-auto pb-1">
               <button
                 onClick={() => setFilters({ ...filters, type: filters.type === 'SUV' ? 'all' : 'SUV' })}
@@ -175,21 +186,21 @@ export default function Inventory() {
           </main>
         </div>
 
-        {/* Login Button at Bottom */}
         <div className="mt-12 flex justify-center">
-          <button 
-            onClick={handleLogin}
-            className="glass-panel px-6 py-3 rounded-xl font-bold text-muted-foreground hover:text-primary hover:border-primary transition flex items-center gap-2 border-2 border-border"
-          >
-            <LogIn className="w-4 h-4" />
-            Sales Team Login
-          </button>
+          <Link href="/login">
+            <button 
+              className="glass-panel px-6 py-3 rounded-xl font-bold text-muted-foreground hover:text-primary hover:border-primary transition flex items-center gap-2 border-2 border-border"
+              data-testid="button-sales-login"
+            >
+              <LogIn className="w-4 h-4" />
+              Sales Team Login
+            </button>
+          </Link>
         </div>
 
-        {/* Footer with Legal Links */}
         <footer className="mt-16 pt-8 border-t border-border">
           <div className="flex flex-col sm:flex-row justify-center items-center gap-4 text-sm text-muted-foreground">
-            <span>&copy; {new Date().getFullYear()} Olympic Auto Group. All rights reserved.</span>
+            <span>&copy; {new Date().getFullYear()} {dealership ? dealership.name : "Lotview.ai"}. All rights reserved.</span>
             <div className="flex items-center gap-4">
               <Link href="/privacy-policy">
                 <span className="hover:text-primary hover:underline cursor-pointer" data-testid="link-privacy-footer">Privacy Policy</span>
@@ -203,14 +214,18 @@ export default function Inventory() {
         </footer>
       </div>
 
-      {/* Mobile Filter Sheet - triggered from header button */}
       <Sheet open={isFilterOpen} onOpenChange={setIsFilterOpen}>
         <SheetContent side="left" className="w-[300px] overflow-y-auto p-0">
           <SheetHeader className="p-6 pb-4 border-b">
             <SheetTitle>Filter Vehicles</SheetTitle>
           </SheetHeader>
           <div className="p-6">
-            <InventorySidebar filters={filters} setFilters={setFilters} availableMakes={uniqueMakes} />
+            <InventorySidebar 
+              filters={filters} 
+              setFilters={setFilters} 
+              availableMakes={uniqueMakes}
+              hideDealershipFilter={!!dealership}
+            />
           </div>
         </SheetContent>
       </Sheet>
