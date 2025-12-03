@@ -42,10 +42,49 @@ declare global {
 }
 
 /**
+ * Check if hostname is a development/preview URL that should be treated as apex domain
+ * Examples: 
+ *   - da9535b8-529c-4a3a-8ed9-dac5a0bad0d9-00-10p9gymfpdovg.picard.replit.dev
+ *   - anything.replit.dev
+ *   - anything.repl.co
+ *   - localhost
+ */
+function isDevOrPreviewHost(hostname: string): boolean {
+  const host = hostname.split(':')[0].toLowerCase();
+  
+  // Replit dev/preview URLs
+  if (host.endsWith('.replit.dev') || host.endsWith('.repl.co') || host.endsWith('.replit.app')) {
+    // Check if it looks like a Replit auto-generated subdomain (UUID-like pattern)
+    const parts = host.split('.');
+    if (parts.length >= 3) {
+      const subdomain = parts[0];
+      // Replit auto-generated subdomains contain hyphens and are long UUIDs
+      if (subdomain.length > 20 && subdomain.includes('-')) {
+        return true;
+      }
+    }
+    return false;
+  }
+  
+  // Local development
+  if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0') {
+    return true;
+  }
+  
+  return false;
+}
+
+/**
  * Extract dealership ID from subdomain
- * Example: olympic.inv.replit.app -> looks up dealership by subdomain "olympic"
+ * Example: olympic.lotview.ai -> looks up dealership by subdomain "olympic"
+ * Ignores dev/preview URLs from Replit
  */
 function extractDealershipFromSubdomain(hostname: string): string | null {
+  // Skip dev/preview URLs - these should be treated as apex domain
+  if (isDevOrPreviewHost(hostname)) {
+    return null;
+  }
+  
   // Remove port if present
   const host = hostname.split(':')[0];
   
@@ -168,8 +207,7 @@ export function tenantMiddleware(storage: any) {
         }
       }
       
-      // Strategy 4: Handle missing dealership context - FAIL CLOSED
-      // SaaS mode: dealership context is required; no default fallback
+      // Strategy 4: Handle missing dealership context
       if (!dealershipId) {
         if (tokenInvalid) {
           // Invalid/expired token - fail closed with 401
@@ -187,11 +225,18 @@ export function tenantMiddleware(storage: any) {
             // Regular authenticated user without dealership context - fail closed
             return res.status(400).json({ error: 'Could not determine dealership context from authentication' });
           }
+        } else if (isDevOrPreviewHost(req.hostname)) {
+          // Development/preview environment - default to dealershipId=1 for testing
+          // This allows the marketing site and inventory to work in Replit dev mode
+          dealershipId = 1;
+          source = 'default';
         }
-        // Public request without subdomain - leave dealershipId undefined
+        // Public request without subdomain on production - leave dealershipId undefined
         // Routes that need dealership context will return 400
         // This allows marketing site pages (landing, login) to work without dealership context
-        source = 'none';
+        if (!dealershipId) {
+          source = 'none';
+        }
       }
       
       // Set dealership ID and source in request context
