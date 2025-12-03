@@ -20,11 +20,25 @@ import {
   ChevronRight,
   Star,
   Play,
-  Sparkles
+  Sparkles,
+  Mail,
+  Phone,
+  Heart
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { getVehicles } from "@/lib/api";
 
 export default function LandingPage() {
   const [isVisible, setIsVisible] = useState(false);
+  
+  // Fetch real vehicles for the preview
+  const { data: vehicles = [] } = useQuery({
+    queryKey: ["vehicles-preview"],
+    queryFn: getVehicles,
+  });
+  
+  // Get first 3 vehicles for the hero preview
+  const previewVehicles = vehicles.slice(0, 3);
 
   useEffect(() => {
     setIsVisible(true);
@@ -37,10 +51,11 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-[#022d60] to-[#00aad2] rounded-lg flex items-center justify-center">
-                <Car className="w-5 h-5 text-white" />
-              </div>
-              <span className="text-xl font-bold text-[#022d60]">Lotview.ai</span>
+              <img 
+                src="/attached_assets/Gemini_Generated_Image_x5uznsx5uznsx5uz_(1)_1764799238587.png" 
+                alt="Lotview.ai" 
+                className="h-10 w-auto"
+              />
             </div>
             <div className="hidden md:flex items-center gap-8">
               <a href="#features" className="text-sm text-gray-600 hover:text-[#022d60] transition-colors" data-testid="link-features">Features</a>
@@ -130,15 +145,41 @@ export default function LandingPage() {
                     </div>
                     <div className="aspect-[16/9] bg-gradient-to-br from-[#022d60] to-[#00aad2]/80 flex items-center justify-center">
                       <div className="grid grid-cols-3 gap-4 p-8 w-full max-w-3xl">
-                        {[1, 2, 3].map((i) => (
-                          <div key={i} className="bg-white/10 backdrop-blur rounded-lg p-4 space-y-3">
-                            <div className="aspect-[4/3] bg-white/20 rounded-md flex items-center justify-center">
-                              <Car className="w-8 h-8 text-white/60" />
+                        {previewVehicles.length > 0 ? (
+                          previewVehicles.map((vehicle, i) => (
+                            <div key={vehicle.id || i} className="bg-white/10 backdrop-blur rounded-lg p-4 space-y-3">
+                              <div className="aspect-[4/3] bg-white/5 rounded-md overflow-hidden">
+                                {vehicle.images && vehicle.images[0] ? (
+                                  <img 
+                                    src={vehicle.images[0]} 
+                                    alt={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center">
+                                    <Car className="w-8 h-8 text-white/60" />
+                                  </div>
+                                )}
+                              </div>
+                              <div className="text-white/90 text-sm font-medium truncate">
+                                {vehicle.year} {vehicle.make} {vehicle.model}
+                              </div>
+                              <div className="text-[#00aad2] text-sm font-bold">
+                                ${vehicle.price?.toLocaleString()}
+                              </div>
                             </div>
-                            <div className="h-2 bg-white/30 rounded w-3/4" />
-                            <div className="h-2 bg-white/20 rounded w-1/2" />
-                          </div>
-                        ))}
+                          ))
+                        ) : (
+                          [1, 2, 3].map((i) => (
+                            <div key={i} className="bg-white/10 backdrop-blur rounded-lg p-4 space-y-3 animate-pulse">
+                              <div className="aspect-[4/3] bg-white/20 rounded-md flex items-center justify-center">
+                                <Car className="w-8 h-8 text-white/60" />
+                              </div>
+                              <div className="h-2 bg-white/30 rounded w-3/4" />
+                              <div className="h-2 bg-white/20 rounded w-1/2" />
+                            </div>
+                          ))
+                        )}
                       </div>
                     </div>
                   </div>
@@ -208,9 +249,9 @@ export default function LandingPage() {
                 color: "from-green-500 to-green-600"
               },
               {
-                icon: Users,
-                title: "CRM & DMS Integrations",
-                description: "GoHighLevel CRM sync and PBS DMS connection. Automated lead capture and follow-up workflows.",
+                icon: Heart,
+                title: "Automated Lead Nurturing",
+                description: "Engage customers through webchat, text, and email. Automated follow-ups that convert browsers into buyers.",
                 color: "from-orange-500 to-orange-600"
               },
               {
