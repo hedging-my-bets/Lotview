@@ -117,6 +117,15 @@ export default function Login() {
               >
                 {isLoading ? "Signing in..." : "Sign In"}
               </Button>
+              <div className="text-center mt-4">
+                <a 
+                  href="mailto:support@lotview.ai?subject=Password%20Reset%20Request&body=Hi%2C%0A%0AI%20need%20to%20reset%20my%20password%20for%20my%20account.%0A%0AMy%20email%3A%20%0A%0AThank%20you!"
+                  className="text-sm text-primary hover:underline"
+                  data-testid="link-forgot-password"
+                >
+                  Forgot Password?
+                </a>
+              </div>
             </form>
           </CardContent>
         </Card>
