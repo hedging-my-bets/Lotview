@@ -1793,9 +1793,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all vehicles with 24h view counts (randomized for engagement)
   app.get("/api/vehicles", async (req, res) => {
     try {
-      // SECURITY: Always use tenant middleware dealershipId (no query param override allowed)
-      // Tenant middleware already handles: JWT token > subdomain lookup > default to 1
-      const dealershipId = req.dealershipId || 1;
+      // SECURITY: Require dealership context from tenant middleware
+      // Tenant middleware handles: JWT token > subdomain lookup > single-tenant default
+      // Returns 400 if no dealership context could be resolved
+      if (!req.dealershipId) {
+        return res.status(400).json({ 
+          error: "Dealership context required. Access via subdomain or with valid authentication." 
+        });
+      }
+      const dealershipId = req.dealershipId;
       
       // Parse pagination parameters (optional - maintains backward compatibility)
       const page = req.query.page ? parseInt(req.query.page as string) : undefined;

@@ -77,7 +77,8 @@ export function tenantMiddleware(storage: any) {
         try {
           const decoded = jwt.verify(token, JWT_SECRET) as any;
           
-          // Super admin handling: skip dealership resolution but continue to authMiddleware
+          // Super admin handling: set user context but DON'T return early
+          // Allow the middleware to continue to Strategy 3 (header-based selection)
           if (decoded && decoded.role === 'super_admin') {
             req.user = {
               id: decoded.id,
@@ -86,10 +87,8 @@ export function tenantMiddleware(storage: any) {
               name: decoded.name,
               dealershipId: null
             };
-            req.dealershipId = undefined;
-            req.tenantSource = 'none';
-            // Continue to next middleware (authMiddleware will validate the token and user status)
-            return next();
+            // Don't set dealershipId yet - let Strategy 3 handle X-Dealership-Id header
+            // Don't return early - continue through middleware
           }
           
           if (decoded && decoded.dealershipId) {
@@ -106,15 +105,21 @@ export function tenantMiddleware(storage: any) {
             };
           } else if (decoded && !decoded.dealershipId) {
             // Valid token but missing dealershipId (legacy token)
-            // For single-dealership mode, default to dealershipId=1
-            dealershipId = 1;
-            source = 'default';
+            // SECURITY: Reject legacy tokens without dealershipId - they must re-authenticate
+            // Exception: Allow super_admin and master roles to proceed (they select dealership via header)
+            if (decoded.role !== 'super_admin' && decoded.role !== 'master') {
+              return res.status(401).json({ 
+                error: 'Session expired. Please log in again.',
+                code: 'LEGACY_TOKEN_REJECTED'
+              });
+            }
+            // For super_admin/master, set user but leave dealershipId undefined (will use header later)
             req.user = {
               id: decoded.id,
               email: decoded.email,
               role: decoded.role,
               name: decoded.name,
-              dealershipId: 1
+              dealershipId: null
             };
           }
         } catch (error) {
@@ -136,46 +141,57 @@ export function tenantMiddleware(storage: any) {
               dealershipId = dealership.id;
               source = 'subdomain';
               req.dealership = dealership;
-            } else if (authHeader) {
-              // Authenticated request with invalid subdomain - fail closed
+            } else {
+              // SECURITY: Fail closed for unknown subdomains (prevents cross-tenant exposure)
+              // This applies to both authenticated and public requests
               return res.status(404).json({ error: `Dealership not found for subdomain: ${subdomain}` });
             }
           } catch (error) {
-            // Subdomain lookup failed
-            if (authHeader) {
-              // Authenticated request with subdomain lookup error - fail closed
-              console.error('Subdomain lookup error:', error);
-              return res.status(500).json({ error: 'Failed to resolve dealership from subdomain' });
-            }
-            // Public request - will fall through to default
+            // Subdomain lookup failed - fail closed
+            console.error('Subdomain lookup error:', error);
+            return res.status(500).json({ error: 'Failed to resolve dealership from subdomain' });
           }
         }
       }
       
-      // Strategy 3: Check for custom header (for API integrations)
-      if (!dealershipId && req.headers['x-dealership-id']) {
+      // Strategy 3: Check for custom header (for authenticated API integrations only)
+      // SECURITY: Only honor X-Dealership-Id header when authenticated to prevent header spoofing
+      if (!dealershipId && req.headers['x-dealership-id'] && authHeader) {
         const headerDealershipId = parseInt(req.headers['x-dealership-id'] as string);
         if (!isNaN(headerDealershipId)) {
-          dealershipId = headerDealershipId;
-          source = 'header';
+          // Only allow super_admin or master users to switch dealership context via header
+          const user = req.user;
+          if (user && (user.role === 'super_admin' || user.role === 'master')) {
+            dealershipId = headerDealershipId;
+            source = 'header';
+          }
         }
       }
       
-      // Strategy 4: Handle missing dealership context - DUAL PATH STRATEGY
-      // - If NO auth header: default to dealershipId=1 (public access for single-dealership mode)
-      // - If auth header present but cannot resolve dealership: fail closed with 401/400
+      // Strategy 4: Handle missing dealership context - FAIL CLOSED
+      // SaaS mode: dealership context is required; no default fallback
       if (!dealershipId) {
-        if (!authHeader) {
-          // Public request with no tenant hints - default to single-dealership mode
-          dealershipId = 1;
-          source = 'default';
-        } else if (tokenInvalid) {
+        if (tokenInvalid) {
           // Invalid/expired token - fail closed with 401
           return res.status(401).json({ error: 'Invalid or expired token' });
-        } else {
-          // Auth header present but dealershipId couldn't be resolved - fail closed
-          return res.status(400).json({ error: 'Could not determine dealership context from authentication' });
+        } else if (authHeader) {
+          // Auth header present but dealershipId couldn't be resolved
+          // Exception: super_admin and master users can proceed without dealership context
+          // (they select dealership in their dashboard UI or via explicit header)
+          const user = req.user;
+          if (user && (user.role === 'super_admin' || user.role === 'master')) {
+            // Allow super_admin/master to proceed - dealershipId stays undefined
+            // Routes that need dealership context should handle this appropriately
+            source = 'none';
+          } else {
+            // Regular authenticated user without dealership context - fail closed
+            return res.status(400).json({ error: 'Could not determine dealership context from authentication' });
+          }
         }
+        // Public request without subdomain - leave dealershipId undefined
+        // Routes that need dealership context will return 400
+        // This allows marketing site pages (landing, login) to work without dealership context
+        source = 'none';
       }
       
       // Set dealership ID and source in request context
@@ -200,13 +216,7 @@ export function tenantMiddleware(storage: any) {
       next();
     } catch (error) {
       console.error('Tenant middleware error:', error);
-      // For single-dealership mode, fall back to dealershipId=1 ONLY for public requests
-      if (!req.dealershipId && !req.headers.authorization) {
-        req.dealershipId = 1;
-        req.tenantSource = 'default';
-        return next();
-      }
-      // Authenticated requests with errors fail closed
+      // SECURITY: Always fail closed on errors (no silent fallback to dealership 1)
       return res.status(500).json({ error: 'Tenant resolution failed' });
     }
   };
