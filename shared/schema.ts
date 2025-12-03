@@ -114,6 +114,7 @@ export type ExternalApiToken = typeof externalApiTokens.$inferSelect;
 export const vehicles = pgTable("vehicles", {
   id: serial("id").primaryKey(),
   dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  filterGroupId: integer("filter_group_id"), // Which filter group this vehicle belongs to (references filter_groups.id)
   year: integer("year").notNull(),
   make: text("make").notNull(),
   model: text("model").notNull(),
@@ -441,10 +442,34 @@ export const insertDealershipFeeSchema = createInsertSchema(dealershipFees).omit
 export type InsertDealershipFee = z.infer<typeof insertDealershipFeeSchema>;
 export type DealershipFee = typeof dealershipFees.$inferSelect;
 
+// Filter groups - Organize vehicles into categories per dealership
+export const filterGroups = pgTable("filter_groups", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  groupName: text("group_name").notNull(), // e.g., "Used Inventory", "Certified Pre-Owned", "Luxury Collection"
+  groupSlug: text("group_slug").notNull(), // URL-safe identifier (e.g., "used-inventory")
+  description: text("description"), // Optional description
+  displayOrder: integer("display_order").notNull().default(0), // Order in filter sidebar
+  isDefault: boolean("is_default").notNull().default(false), // If true, this is the default filter for the dealership
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertFilterGroupSchema = createInsertSchema(filterGroups).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertFilterGroup = z.infer<typeof insertFilterGroupSchema>;
+export type FilterGroup = typeof filterGroups.$inferSelect;
+
 // Scrape sources - URLs to scrape for inventory
 export const scrapeSources = pgTable("scrape_sources", {
   id: serial("id").primaryKey(),
   dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  filterGroupId: integer("filter_group_id").references(() => filterGroups.id, { onDelete: 'set null' }), // Which filter group vehicles belong to
   sourceName: text("source_name").notNull(), // e.g., "Olympic Hyundai Vancouver", "Boundary Hyundai"
   sourceUrl: text("source_url").notNull(), // The URL to scrape
   sourceType: text("source_type").notNull().default("dealer_website"), // "dealer_website", "cargurus", "autotrader", etc.
