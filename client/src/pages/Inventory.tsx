@@ -6,7 +6,7 @@ import { VehicleCard } from "@/components/VehicleCard";
 import { ChatBot } from "@/components/ChatBot";
 import { StickyPaymentBar } from "@/components/StickyPaymentBar";
 import { getVehicles } from "@/lib/api";
-import { FilterState } from "@/lib/types";
+import { FilterState, FilterGroup } from "@/lib/types";
 import { Loader2, LogIn, SlidersHorizontal, Car, Truck } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -24,12 +24,22 @@ export default function Inventory() {
     dealership: 'all',
     search: '',
     make: 'all',
-    sortBy: 'default'
+    sortBy: 'default',
+    filterGroup: 'all'
   });
 
   const { data: vehicles = [], isLoading, refetch, isFetching } = useQuery({
     queryKey: ["vehicles"],
     queryFn: getVehicles,
+  });
+
+  const { data: filterGroups = [] } = useQuery<FilterGroup[]>({
+    queryKey: ["filter-groups"],
+    queryFn: async () => {
+      const response = await fetch("/api/public/filter-groups");
+      if (!response.ok) return [];
+      return response.json();
+    },
   });
 
   const uniqueMakes = Array.from(new Set(vehicles.map(car => car.make))).sort();
@@ -44,6 +54,8 @@ export default function Inventory() {
       const matchesLocation = filters.location === 'all' || car.location === filters.location;
       const matchesDealership = filters.dealership === 'all' || car.dealership === filters.dealership;
       const matchesMake = filters.make === 'all' || car.make === filters.make;
+      const matchesFilterGroup = filters.filterGroup === 'all' || 
+        (car.filterGroupId && String(car.filterGroupId) === filters.filterGroup);
       const searchLower = filters.search.toLowerCase().trim();
       const matchesSearch = !searchLower || 
         car.make.toLowerCase().includes(searchLower) ||
@@ -51,7 +63,7 @@ export default function Inventory() {
         `${car.year}`.includes(searchLower) ||
         (car.vin && car.vin.toLowerCase().includes(searchLower)) ||
         (car.stockNumber && car.stockNumber.toLowerCase().includes(searchLower));
-      return matchesType && matchesPrice && matchesLocation && matchesDealership && matchesMake && matchesSearch;
+      return matchesType && matchesPrice && matchesLocation && matchesDealership && matchesMake && matchesFilterGroup && matchesSearch;
     })
     .sort((a, b) => {
       switch (filters.sortBy) {
@@ -102,6 +114,7 @@ export default function Inventory() {
               setFilters={setFilters} 
               availableMakes={uniqueMakes}
               hideDealershipFilter={!!dealership}
+              filterGroups={filterGroups}
             />
           </div>
           
@@ -174,7 +187,7 @@ export default function Inventory() {
             ) : filteredInventory.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
                 <p>No vehicles match your criteria.</p>
-                <button onClick={() => setFilters({ type: 'all', priceMax: 100000, location: 'all', dealership: 'all', search: '', make: 'all', sortBy: 'default' })} className="text-primary font-bold mt-2 hover:underline">Clear Filters</button>
+                <button onClick={() => setFilters({ type: 'all', priceMax: 100000, location: 'all', dealership: 'all', search: '', make: 'all', sortBy: 'default', filterGroup: 'all' })} className="text-primary font-bold mt-2 hover:underline">Clear Filters</button>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -225,6 +238,7 @@ export default function Inventory() {
               setFilters={setFilters} 
               availableMakes={uniqueMakes}
               hideDealershipFilter={!!dealership}
+              filterGroups={filterGroups}
             />
           </div>
         </SheetContent>

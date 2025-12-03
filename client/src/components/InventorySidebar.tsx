@@ -1,5 +1,5 @@
-import { FilterState } from "@/lib/types";
-import { SlidersHorizontal, CarFront, DollarSign, Check, Building2, ArrowUpDown, Car, Search } from "lucide-react";
+import { FilterState, FilterGroup } from "@/lib/types";
+import { SlidersHorizontal, CarFront, DollarSign, Check, Building2, ArrowUpDown, Car, Search, Layers } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
@@ -12,9 +12,10 @@ interface InventorySidebarProps {
   setFilters: (filters: FilterState) => void;
   availableMakes?: string[];
   hideDealershipFilter?: boolean;
+  filterGroups?: FilterGroup[];
 }
 
-export function InventorySidebar({ filters, setFilters, availableMakes = [], hideDealershipFilter = false }: InventorySidebarProps) {
+export function InventorySidebar({ filters, setFilters, availableMakes = [], hideDealershipFilter = false, filterGroups = [] }: InventorySidebarProps) {
   
   const handleTypeChange = (type: string) => {
     const newType = filters.type === type ? 'all' : type;
@@ -26,12 +27,56 @@ export function InventorySidebar({ filters, setFilters, availableMakes = [], hid
     setFilters({ ...filters, dealership: newDealer });
   };
 
+  const handleFilterGroupChange = (groupId: string) => {
+    const newGroup = filters.filterGroup === groupId ? 'all' : groupId;
+    setFilters({ ...filters, filterGroup: newGroup });
+  };
+
   return (
     <aside className="w-full lg:w-64 flex-shrink-0 space-y-6">
       <div className="glass-panel p-6 rounded-2xl sticky top-24">
         <h3 className="font-bold text-foreground mb-6 flex items-center gap-2">
           <SlidersHorizontal className="w-4 h-4" /> Filters
         </h3>
+
+        {/* Filter Groups (Dealership-specific categories) */}
+        {filterGroups.length > 0 && (
+          <div className="mb-8">
+            <p className="text-xs font-bold text-muted-foreground uppercase mb-3 flex items-center gap-2">
+              <Layers className="w-3 h-3" /> Categories
+            </p>
+            <div className="space-y-2">
+              <label className="flex items-center gap-3 cursor-pointer group">
+                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${filters.filterGroup === 'all' ? 'bg-primary border-primary text-white' : 'border-border bg-card'}`}>
+                  {filters.filterGroup === 'all' && <Check className="w-3 h-3" />}
+                </div>
+                <input 
+                  type="radio" 
+                  name="filterGroup" 
+                  className="hidden" 
+                  checked={filters.filterGroup === 'all'} 
+                  onChange={() => setFilters({ ...filters, filterGroup: 'all' })}
+                />
+                <span className={`text-sm font-medium transition ${filters.filterGroup === 'all' ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'}`}>All Vehicles</span>
+              </label>
+              {filterGroups.map(group => (
+                <label key={group.id} className="flex items-center gap-3 cursor-pointer group">
+                  <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${filters.filterGroup === String(group.id) ? 'bg-primary border-primary text-white' : 'border-border bg-card'}`}>
+                    {filters.filterGroup === String(group.id) && <Check className="w-3 h-3" />}
+                  </div>
+                  <input 
+                    type="radio" 
+                    name="filterGroup" 
+                    className="hidden" 
+                    checked={filters.filterGroup === String(group.id)} 
+                    onChange={() => handleFilterGroupChange(String(group.id))}
+                  />
+                  <span className={`text-sm font-medium transition ${filters.filterGroup === String(group.id) ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'}`}>{group.groupName}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Search */}
         <div className="mb-8">

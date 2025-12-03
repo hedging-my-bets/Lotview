@@ -21,6 +21,7 @@ export interface Car {
   carfaxUrl?: string | null;
   dealerVdpUrl?: string | null;
   videoUrl?: string | null;
+  filterGroupId?: number | null;
 }
 
 export interface FilterState {
@@ -31,6 +32,18 @@ export interface FilterState {
   search: string;
   make: string;
   sortBy: 'default' | 'price_low' | 'price_high' | 'km_low' | 'km_high';
+  filterGroup: string;
+}
+
+export interface FilterGroup {
+  id: number;
+  dealershipId: number;
+  groupName: string;
+  groupSlug: string;
+  description: string | null;
+  displayOrder: number;
+  isDefault: boolean;
+  isActive: boolean;
 }
 
 export const FINANCE_TERMS = [24, 36, 48, 60, 72, 84] as const;
