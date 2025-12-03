@@ -18,6 +18,7 @@ import {
   creditScoreTiers,
   modelYearTerms,
   dealershipFees,
+  filterGroups,
   scrapeSources,
   facebookAccounts,
   adTemplates,
@@ -59,6 +60,8 @@ import {
   type InsertModelYearTerm,
   type DealershipFee,
   type InsertDealershipFee,
+  type FilterGroup,
+  type InsertFilterGroup,
   type ScrapeSource,
   type InsertScrapeSource,
   type FacebookAccount,
@@ -330,6 +333,16 @@ export interface IStorage {
   updateDealershipFee(id: number, dealershipId: number, fee: Partial<InsertDealershipFee>): Promise<DealershipFee | undefined>;
   deleteDealershipFee(id: number, dealershipId: number): Promise<boolean>;
   getActiveDealershipFees(dealershipId: number): Promise<DealershipFee[]>;
+  
+  // Filter Groups (Multi-Tenant) - Organize vehicles into categories per dealership
+  getFilterGroups(dealershipId: number): Promise<FilterGroup[]>;
+  getFilterGroupById(id: number, dealershipId: number): Promise<FilterGroup | undefined>;
+  createFilterGroup(group: InsertFilterGroup): Promise<FilterGroup>;
+  updateFilterGroup(id: number, dealershipId: number, group: Partial<InsertFilterGroup>): Promise<FilterGroup | undefined>;
+  deleteFilterGroup(id: number, dealershipId: number): Promise<boolean>;
+  getActiveFilterGroups(dealershipId: number): Promise<FilterGroup[]>;
+  getAllFilterGroups(): Promise<FilterGroup[]>;
+  getFilterGroupBySlug(dealershipId: number, slug: string): Promise<FilterGroup | undefined>;
   
   // Scrape Sources (Multi-Tenant)
   getScrapeSources(dealershipId: number): Promise<ScrapeSource[]>;
@@ -1459,6 +1472,75 @@ export class DatabaseStorage implements IStorage {
         eq(dealershipFees.includeInPayment, true)
       ))
       .orderBy(dealershipFees.displayOrder);
+  }
+
+  // ====== FILTER GROUPS (Multi-Tenant) ======
+  async getFilterGroups(dealershipId: number): Promise<FilterGroup[]> {
+    return await db.select().from(filterGroups)
+      .where(eq(filterGroups.dealershipId, dealershipId))
+      .orderBy(filterGroups.displayOrder);
+  }
+
+  async getFilterGroupById(id: number, dealershipId: number): Promise<FilterGroup | undefined> {
+    const result = await db.select().from(filterGroups)
+      .where(and(
+        eq(filterGroups.id, id),
+        eq(filterGroups.dealershipId, dealershipId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+
+  async createFilterGroup(group: InsertFilterGroup): Promise<FilterGroup> {
+    if (!group.dealershipId) {
+      throw new Error('dealershipId is required when creating a filter group');
+    }
+    const result = await db.insert(filterGroups).values(group).returning();
+    return result[0];
+  }
+
+  async updateFilterGroup(id: number, dealershipId: number, group: Partial<InsertFilterGroup>): Promise<FilterGroup | undefined> {
+    const result = await db.update(filterGroups)
+      .set({ ...group, updatedAt: new Date() })
+      .where(and(
+        eq(filterGroups.id, id),
+        eq(filterGroups.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+
+  async deleteFilterGroup(id: number, dealershipId: number): Promise<boolean> {
+    await db.delete(filterGroups)
+      .where(and(
+        eq(filterGroups.id, id),
+        eq(filterGroups.dealershipId, dealershipId)
+      ));
+    return true;
+  }
+
+  async getActiveFilterGroups(dealershipId: number): Promise<FilterGroup[]> {
+    return await db.select().from(filterGroups)
+      .where(and(
+        eq(filterGroups.dealershipId, dealershipId),
+        eq(filterGroups.isActive, true)
+      ))
+      .orderBy(filterGroups.displayOrder);
+  }
+
+  async getAllFilterGroups(): Promise<FilterGroup[]> {
+    return await db.select().from(filterGroups)
+      .orderBy(filterGroups.displayOrder);
+  }
+
+  async getFilterGroupBySlug(dealershipId: number, slug: string): Promise<FilterGroup | undefined> {
+    const result = await db.select().from(filterGroups)
+      .where(and(
+        eq(filterGroups.dealershipId, dealershipId),
+        eq(filterGroups.groupSlug, slug)
+      ))
+      .limit(1);
+    return result[0];
   }
 
   // ====== SCRAPE SOURCES (Multi-Tenant) ======
