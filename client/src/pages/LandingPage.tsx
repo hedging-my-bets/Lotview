@@ -55,6 +55,12 @@ export default function LandingPage() {
                 src="/attached_assets/Gemini_Generated_Image_x5uznsx5uznsx5uz_(1)_1764799238587.png" 
                 alt="Lotview.ai" 
                 className="h-10 w-auto"
+                onError={(e) => {
+                  // Fallback to text logo if image fails
+                  const target = e.target as HTMLImageElement;
+                  target.style.display = 'none';
+                  target.parentElement!.innerHTML = '<div class="flex items-center gap-2"><div class="w-8 h-8 bg-gradient-to-br from-[#022d60] to-[#00aad2] rounded-lg flex items-center justify-center"><svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0M17 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0M5 17H3v-6l2-5h9l4 5h1a2 2 0 0 1 2 2v4h-2m-4 0H9m-6-6h15m-6 0V6"></path></svg></div><span class="text-xl font-bold text-[#022d60]">Lotview.ai</span></div>';
+                }}
               />
             </div>
             <div className="hidden md:flex items-center gap-8">
@@ -148,17 +154,22 @@ export default function LandingPage() {
                         {previewVehicles.length > 0 ? (
                           previewVehicles.map((vehicle, i) => (
                             <div key={vehicle.id || i} className="bg-white/10 backdrop-blur rounded-lg p-4 space-y-3">
-                              <div className="aspect-[4/3] bg-white/5 rounded-md overflow-hidden">
-                                {vehicle.images && vehicle.images[0] ? (
+                              <div className="aspect-[4/3] bg-gradient-to-br from-white/10 to-white/5 rounded-md overflow-hidden relative">
+                                <div className="absolute inset-0 flex items-center justify-center z-0">
+                                  <Car className="w-10 h-10 text-white/30" />
+                                </div>
+                                {vehicle.images && vehicle.images[0] && (
                                   <img 
                                     src={vehicle.images[0]} 
                                     alt={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}
-                                    className="w-full h-full object-cover"
+                                    className="w-full h-full object-cover relative z-10"
+                                    loading="lazy"
+                                    referrerPolicy="no-referrer"
+                                    onError={(e) => {
+                                      const target = e.target as HTMLImageElement;
+                                      target.style.display = 'none';
+                                    }}
                                   />
-                                ) : (
-                                  <div className="w-full h-full flex items-center justify-center">
-                                    <Car className="w-8 h-8 text-white/60" />
-                                  </div>
                                 )}
                               </div>
                               <div className="text-white/90 text-sm font-medium truncate">
