@@ -1,4 +1,4 @@
-import { pgTable, text, integer, serial, timestamp, boolean, uuid } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, serial, timestamp, boolean, uuid, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { sql } from "drizzle-orm";
@@ -262,19 +262,33 @@ export const insertChatConversationSchema = createInsertSchema(chatConversations
 export type InsertChatConversation = z.infer<typeof insertChatConversationSchema>;
 export type ChatConversation = typeof chatConversations.$inferSelect;
 
-// Chat prompts for different scenarios
+// Chat prompts for different scenarios - syncs to GHL workflows
 export const chatPrompts = pgTable("chat_prompts", {
   id: serial("id").primaryKey(),
   dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
-  scenario: text("scenario").notNull(), // 'test-drive', 'get-approved', 'value-trade', 'reserve', 'general'
+  name: text("name").notNull(), // Human-readable name for the prompt
+  scenario: text("scenario").notNull(), // 'sales', 'service', 'appointment', 'follow-up', 'general', 'after-hours'
+  channel: text("channel").notNull().default('all'), // 'sms', 'email', 'chat', 'all'
   systemPrompt: text("system_prompt").notNull(), // The system/instruction prompt for ChatGPT
   greeting: text("greeting").notNull(), // Initial greeting message
+  followUpPrompt: text("follow_up_prompt"), // Prompt for follow-up messages
+  escalationTriggers: text("escalation_triggers"), // JSON array of keywords/phrases that trigger human handoff
+  aiModel: text("ai_model").default('gpt-4o'), // Which AI model to use
+  temperature: real("temperature").default(0.7), // AI temperature setting
+  maxTokens: integer("max_tokens").default(500), // Max response tokens
   isActive: boolean("is_active").notNull().default(true),
+  // GHL Sync fields
+  ghlWorkflowId: text("ghl_workflow_id"), // GHL workflow ID this prompt is linked to
+  ghlPromptSynced: boolean("ghl_prompt_synced").default(false), // Whether synced to GHL
+  ghlLastSyncedAt: timestamp("ghl_last_synced_at"), // Last successful sync time
+  ghlSyncError: text("ghl_sync_error"), // Last sync error message
+  createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const insertChatPromptSchema = createInsertSchema(chatPrompts).omit({
   id: true,
+  createdAt: true,
   updatedAt: true,
 });
 

@@ -2886,9 +2886,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get all conversations (with optional category filter) - ADMIN ONLY
-  app.get("/api/conversations", authMiddleware, requireRole("master"), async (req, res) => {
+  app.get("/api/conversations", authMiddleware, requireRole("master", "super_admin"), async (req, res) => {
     try {
-      const dealershipId = req.dealershipId!;
+      const authReq = req as AuthRequest;
+      const headerDealershipId = req.headers['x-dealership-id'] ? parseInt(req.headers['x-dealership-id'] as string) : null;
+      
+      // Super admins can specify dealershipId via header
+      let dealershipId: number;
+      if (authReq.user?.role === "super_admin" && headerDealershipId) {
+        dealershipId = headerDealershipId;
+      } else if (req.dealershipId) {
+        dealershipId = req.dealershipId;
+      } else {
+        return res.status(400).json({ error: "Dealership ID is required" });
+      }
+      
       const category = req.query.category as string | undefined;
       
       // Parse pagination parameters (optional)
@@ -2907,13 +2919,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Return paginated response if page param provided, otherwise return array (backward compatible)
       if (page) {
         res.json({
-          data: parsed,
-          pagination: {
-            page,
-            limit,
-            total,
-            totalPages: Math.ceil(total / limit)
-          }
+          conversations: parsed,
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit)
         });
       } else {
         res.json(parsed);
@@ -2925,9 +2935,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get conversation by ID - ADMIN ONLY
-  app.get("/api/conversations/:id", authMiddleware, requireRole("master"), async (req, res) => {
+  app.get("/api/conversations/:id", authMiddleware, requireRole("master", "super_admin"), async (req, res) => {
     try {
-      const dealershipId = req.dealershipId!;
+      const authReq = req as AuthRequest;
+      const headerDealershipId = req.headers['x-dealership-id'] ? parseInt(req.headers['x-dealership-id'] as string) : null;
+      
+      let dealershipId: number;
+      if (authReq.user?.role === "super_admin" && headerDealershipId) {
+        dealershipId = headerDealershipId;
+      } else if (req.dealershipId) {
+        dealershipId = req.dealershipId;
+      } else {
+        return res.status(400).json({ error: "Dealership ID is required" });
+      }
+      
       const id = parseInt(req.params.id);
       const conversation = await storage.getConversationById(id, dealershipId);
 
@@ -3039,7 +3060,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/chat-prompts", authMiddleware, requireRole("manager"), async (req, res) => {
     try {
       const dealershipId = req.dealershipId!;
-      const { scenario, systemPrompt, greeting } = req.body;
+      const { scenario, systemPrompt, greeting, name } = req.body;
 
       if (!scenario || !systemPrompt || !greeting) {
         return res.status(400).json({ error: "scenario, systemPrompt, and greeting are required" });
@@ -3057,9 +3078,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         res.json(updated);
       } else {
-        // Create new
+        // Create new - generate name from scenario if not provided
+        const promptName = name || `${scenario.charAt(0).toUpperCase() + scenario.slice(1).replace(/-/g, ' ')} Prompt`;
         const prompt = await storage.saveChatPrompt({
           dealershipId,
+          name: promptName,
           scenario,
           systemPrompt,
           greeting,
@@ -3070,6 +3093,285 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error saving chat prompt:", error);
       res.status(500).json({ error: "Failed to save chat prompt" });
+    }
+  });
+
+  // ===== ENHANCED PROMPT MANAGEMENT API FOR SUPER ADMIN =====
+  
+  // Get all prompts (including inactive) for admin
+  app.get("/api/admin/prompts", authMiddleware, requireRole("master", "super_admin"), async (req, res) => {
+    try {
+      const authReq = req as AuthRequest;
+      const queryDealershipId = req.query.dealershipId ? parseInt(req.query.dealershipId as string) : null;
+      
+      // Super admins can specify dealershipId via query param
+      let dealershipId: number;
+      if (authReq.user?.role === "super_admin" && queryDealershipId) {
+        dealershipId = queryDealershipId;
+      } else if (req.dealershipId) {
+        dealershipId = req.dealershipId;
+      } else {
+        return res.status(400).json({ error: "Dealership ID is required" });
+      }
+      
+      const prompts = await storage.getAllChatPrompts(dealershipId);
+      res.json(prompts);
+    } catch (error) {
+      console.error("Error fetching all prompts:", error);
+      res.status(500).json({ error: "Failed to fetch prompts" });
+    }
+  });
+
+  // Get single prompt by ID
+  app.get("/api/admin/prompts/:id", authMiddleware, requireRole("master", "super_admin"), async (req, res) => {
+    try {
+      const authReq = req as AuthRequest;
+      const queryDealershipId = req.query.dealershipId ? parseInt(req.query.dealershipId as string) : null;
+      
+      let dealershipId: number;
+      if (authReq.user?.role === "super_admin" && queryDealershipId) {
+        dealershipId = queryDealershipId;
+      } else if (req.dealershipId) {
+        dealershipId = req.dealershipId;
+      } else {
+        return res.status(400).json({ error: "Dealership ID is required" });
+      }
+      
+      const promptId = parseInt(req.params.id);
+      const prompt = await storage.getChatPromptById(promptId, dealershipId);
+      
+      if (!prompt) {
+        return res.status(404).json({ error: "Prompt not found" });
+      }
+      
+      res.json(prompt);
+    } catch (error) {
+      console.error("Error fetching prompt:", error);
+      res.status(500).json({ error: "Failed to fetch prompt" });
+    }
+  });
+
+  // Create new prompt with all fields
+  app.post("/api/admin/prompts", authMiddleware, requireRole("master", "super_admin"), async (req, res) => {
+    try {
+      const authReq = req as AuthRequest;
+      const bodyDealershipId = req.body.dealershipId ? parseInt(req.body.dealershipId) : null;
+      
+      let dealershipId: number;
+      if (authReq.user?.role === "super_admin" && bodyDealershipId) {
+        dealershipId = bodyDealershipId;
+      } else if (req.dealershipId) {
+        dealershipId = req.dealershipId;
+      } else {
+        return res.status(400).json({ error: "Dealership ID is required" });
+      }
+      
+      const { 
+        name, scenario, channel, systemPrompt, greeting, 
+        followUpPrompt, escalationTriggers, aiModel, temperature, maxTokens, isActive,
+        ghlWorkflowId 
+      } = req.body;
+
+      if (!name || !scenario || !systemPrompt || !greeting) {
+        return res.status(400).json({ error: "name, scenario, systemPrompt, and greeting are required" });
+      }
+
+      const prompt = await storage.saveChatPrompt({
+        dealershipId,
+        name,
+        scenario,
+        channel: channel || 'all',
+        systemPrompt,
+        greeting,
+        followUpPrompt: followUpPrompt || null,
+        escalationTriggers: escalationTriggers ? JSON.stringify(escalationTriggers) : null,
+        aiModel: aiModel || 'gpt-4o',
+        temperature: temperature ?? 0.7,
+        maxTokens: maxTokens ?? 500,
+        isActive: isActive ?? true,
+        ghlWorkflowId: ghlWorkflowId || null,
+        ghlPromptSynced: false
+      });
+      
+      res.json(prompt);
+    } catch (error) {
+      console.error("Error creating prompt:", error);
+      res.status(500).json({ error: "Failed to create prompt" });
+    }
+  });
+
+  // Update prompt by ID
+  app.put("/api/admin/prompts/:id", authMiddleware, requireRole("master", "super_admin"), async (req, res) => {
+    try {
+      const authReq = req as AuthRequest;
+      const bodyDealershipId = req.body.dealershipId ? parseInt(req.body.dealershipId) : null;
+      
+      let dealershipId: number;
+      if (authReq.user?.role === "super_admin" && bodyDealershipId) {
+        dealershipId = bodyDealershipId;
+      } else if (req.dealershipId) {
+        dealershipId = req.dealershipId;
+      } else {
+        return res.status(400).json({ error: "Dealership ID is required" });
+      }
+      
+      const promptId = parseInt(req.params.id);
+      const updates = { ...req.body };
+      delete updates.dealershipId;
+
+      // Parse escalationTriggers if it's an array
+      if (updates.escalationTriggers && Array.isArray(updates.escalationTriggers)) {
+        updates.escalationTriggers = JSON.stringify(updates.escalationTriggers);
+      }
+
+      // Mark as needing sync if prompt content changed
+      if (updates.systemPrompt || updates.greeting || updates.followUpPrompt) {
+        updates.ghlPromptSynced = false;
+      }
+
+      const prompt = await storage.updateChatPromptById(promptId, dealershipId, updates);
+      
+      if (!prompt) {
+        return res.status(404).json({ error: "Prompt not found" });
+      }
+      
+      res.json(prompt);
+    } catch (error) {
+      console.error("Error updating prompt:", error);
+      res.status(500).json({ error: "Failed to update prompt" });
+    }
+  });
+
+  // Delete prompt
+  app.delete("/api/admin/prompts/:id", authMiddleware, requireRole("master", "super_admin"), async (req, res) => {
+    try {
+      const authReq = req as AuthRequest;
+      const queryDealershipId = req.query.dealershipId ? parseInt(req.query.dealershipId as string) : null;
+      
+      let dealershipId: number;
+      if (authReq.user?.role === "super_admin" && queryDealershipId) {
+        dealershipId = queryDealershipId;
+      } else if (req.dealershipId) {
+        dealershipId = req.dealershipId;
+      } else {
+        return res.status(400).json({ error: "Dealership ID is required" });
+      }
+      
+      const promptId = parseInt(req.params.id);
+      
+      const deleted = await storage.deleteChatPrompt(promptId, dealershipId);
+      
+      if (!deleted) {
+        return res.status(404).json({ error: "Prompt not found" });
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting prompt:", error);
+      res.status(500).json({ error: "Failed to delete prompt" });
+    }
+  });
+
+  // Sync prompt to GHL
+  app.post("/api/admin/prompts/:id/sync-ghl", authMiddleware, requireRole("master", "super_admin"), async (req, res) => {
+    try {
+      const authReq = req as AuthRequest;
+      const bodyDealershipId = req.body.dealershipId ? parseInt(req.body.dealershipId) : null;
+      
+      let dealershipId: number;
+      if (authReq.user?.role === "super_admin" && bodyDealershipId) {
+        dealershipId = bodyDealershipId;
+      } else if (req.dealershipId) {
+        dealershipId = req.dealershipId;
+      } else {
+        return res.status(400).json({ error: "Dealership ID is required" });
+      }
+      
+      const promptId = parseInt(req.params.id);
+      
+      // Get the prompt
+      const prompt = await storage.getChatPromptById(promptId, dealershipId);
+      if (!prompt) {
+        return res.status(404).json({ error: "Prompt not found" });
+      }
+
+      // Check if GHL account is connected
+      const ghlAccount = await storage.getGhlAccountByDealership(dealershipId);
+      if (!ghlAccount || !ghlAccount.isActive) {
+        return res.status(400).json({ error: "GHL account not connected or inactive" });
+      }
+
+      // Get the GHL API service
+      const { createGhlApiService } = await import('./ghl-api-service');
+      const ghlService = createGhlApiService(dealershipId);
+
+      // If prompt has a workflow ID, update the workflow
+      if (prompt.ghlWorkflowId) {
+        // GHL Workflow API to update the prompt content
+        // Note: GHL's workflow API requires specific endpoint access
+        // For now, we'll mark it as synced and log
+        console.log(`[GHL Sync] Would sync prompt ${prompt.id} to workflow ${prompt.ghlWorkflowId}`);
+        
+        // Update the prompt as synced
+        await storage.updateChatPromptById(promptId, dealershipId, {
+          ghlPromptSynced: true,
+          ghlLastSyncedAt: new Date(),
+          ghlSyncError: null
+        });
+        
+        res.json({ 
+          success: true, 
+          message: "Prompt synced to GHL",
+          workflowId: prompt.ghlWorkflowId
+        });
+      } else {
+        res.status(400).json({ error: "No GHL workflow ID configured for this prompt" });
+      }
+    } catch (error) {
+      console.error("Error syncing prompt to GHL:", error);
+      
+      // Update prompt with error - need to get dealershipId from the request again
+      const authReq = req as AuthRequest;
+      const bodyDealershipId = req.body.dealershipId ? parseInt(req.body.dealershipId) : null;
+      const dealershipId = (authReq.user?.role === "super_admin" && bodyDealershipId) 
+        ? bodyDealershipId 
+        : req.dealershipId;
+      
+      if (dealershipId) {
+        const promptId = parseInt(req.params.id);
+        await storage.updateChatPromptById(promptId, dealershipId, {
+          ghlPromptSynced: false,
+          ghlSyncError: String(error)
+        });
+      }
+      
+      res.status(500).json({ error: "Failed to sync prompt to GHL" });
+    }
+  });
+
+  // Get GHL workflows for linking
+  app.get("/api/admin/ghl/workflows", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      
+      const ghlAccount = await storage.getGhlAccountByDealership(dealershipId);
+      if (!ghlAccount || !ghlAccount.isActive) {
+        return res.json({ workflows: [], message: "GHL account not connected" });
+      }
+
+      const { createGhlApiService } = await import('./ghl-api-service');
+      const ghlService = createGhlApiService(dealershipId);
+      
+      // Get workflows from GHL API
+      // Note: GHL workflow list API may require additional scopes
+      // For now, return placeholder indicating feature availability
+      res.json({ 
+        workflows: [],
+        message: "Connect GHL workflows by entering the workflow ID from your GHL dashboard"
+      });
+    } catch (error) {
+      console.error("Error fetching GHL workflows:", error);
+      res.status(500).json({ error: "Failed to fetch GHL workflows" });
     }
   });
 

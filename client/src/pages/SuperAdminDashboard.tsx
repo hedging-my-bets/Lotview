@@ -13,9 +13,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Key, FileText, Plus, Eye, EyeOff, Trash2, LogOut, Settings2, CheckCircle2, XCircle, Loader2, Plug, Pencil, Webhook, Copy, AlertCircle, Clock, Link2, RefreshCw, Car, Rocket, Users, UserX, KeyRound, Search, Facebook } from "lucide-react";
+import { Building2, Key, FileText, Plus, Eye, EyeOff, Trash2, LogOut, Settings2, CheckCircle2, XCircle, Loader2, Plug, Pencil, Webhook, Copy, AlertCircle, Clock, Link2, RefreshCw, Car, Rocket, Users, UserX, KeyRound, Search, Facebook, Bot, MessageSquare } from "lucide-react";
 import OnboardingWizard from "@/components/OnboardingWizard";
 import { GhlIntegrationDialog } from "@/components/GhlIntegrationDialog";
+import { PromptEditor } from "@/components/PromptEditor";
+import { ConversationViewer } from "@/components/ConversationViewer";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 
@@ -502,6 +504,16 @@ export default function SuperAdminDashboard() {
             <Users className="h-4 w-4 mr-1 sm:mr-2" />
             <span className="hidden sm:inline">User Management</span>
             <span className="sm:hidden">Users</span>
+          </TabsTrigger>
+          <TabsTrigger value="ai-prompts" data-testid="tab-ai-prompts" className="text-xs sm:text-sm px-2 sm:px-3 py-2 bg-purple-600/10 hover:bg-purple-600/20">
+            <Bot className="h-4 w-4 mr-1 sm:mr-2 text-purple-600" />
+            <span className="hidden sm:inline text-purple-600 font-medium">AI Prompts</span>
+            <span className="sm:hidden text-purple-600">AI</span>
+          </TabsTrigger>
+          <TabsTrigger value="conversations" data-testid="tab-conversations" className="text-xs sm:text-sm px-2 sm:px-3 py-2 bg-indigo-600/10 hover:bg-indigo-600/20">
+            <MessageSquare className="h-4 w-4 mr-1 sm:mr-2 text-indigo-600" />
+            <span className="hidden sm:inline text-indigo-600 font-medium">Live Chats</span>
+            <span className="sm:hidden text-indigo-600">Chats</span>
           </TabsTrigger>
           <TabsTrigger value="facebook-catalogs" data-testid="tab-facebook-catalogs" className="text-xs sm:text-sm px-2 sm:px-3 py-2 bg-blue-600/10 hover:bg-blue-600/20">
             <Facebook className="h-4 w-4 mr-1 sm:mr-2 text-blue-600" />
@@ -1005,6 +1017,90 @@ export default function SuperAdminDashboard() {
               <div className="mt-4 text-sm text-muted-foreground">
                 Total: {allUsers.length} user{allUsers.length !== 1 ? 's' : ''}
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* AI Prompts Tab */}
+        <TabsContent value="ai-prompts">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Bot className="h-5 w-5 text-purple-600" />
+                AI Prompt Management
+              </CardTitle>
+              <CardDescription>
+                Create and manage AI prompts for different conversation scenarios across all dealerships
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {dealershipsLoading ? (
+                <div className="text-center py-8 text-muted-foreground">Loading dealerships...</div>
+              ) : dealerships.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">No dealerships found</div>
+              ) : (
+                <Tabs defaultValue={dealerships[0]?.id.toString()} className="w-full">
+                  <TabsList className="flex flex-wrap h-auto gap-1 mb-4">
+                    {dealerships.map((d) => (
+                      <TabsTrigger 
+                        key={d.id} 
+                        value={d.id.toString()}
+                        className="text-xs sm:text-sm"
+                        data-testid={`prompt-dealership-tab-${d.id}`}
+                      >
+                        {d.name}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                  {dealerships.map((d) => (
+                    <TabsContent key={d.id} value={d.id.toString()}>
+                      <PromptEditor dealershipId={d.id} />
+                    </TabsContent>
+                  ))}
+                </Tabs>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Live Conversations Tab */}
+        <TabsContent value="conversations">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MessageSquare className="h-5 w-5 text-indigo-600" />
+                Live Chat Conversations
+              </CardTitle>
+              <CardDescription>
+                View and monitor real-time customer chat conversations across all dealerships
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {dealershipsLoading ? (
+                <div className="text-center py-8 text-muted-foreground">Loading dealerships...</div>
+              ) : dealerships.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">No dealerships found</div>
+              ) : (
+                <Tabs defaultValue={dealerships[0]?.id.toString()} className="w-full">
+                  <TabsList className="flex flex-wrap h-auto gap-1 mb-4">
+                    {dealerships.map((d) => (
+                      <TabsTrigger 
+                        key={d.id} 
+                        value={d.id.toString()}
+                        className="text-xs sm:text-sm"
+                        data-testid={`conv-dealership-tab-${d.id}`}
+                      >
+                        {d.name}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                  {dealerships.map((d) => (
+                    <TabsContent key={d.id} value={d.id.toString()}>
+                      <ConversationViewer dealershipId={d.id} dealershipName={d.name} />
+                    </TabsContent>
+                  ))}
+                </Tabs>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

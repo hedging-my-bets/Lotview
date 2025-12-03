@@ -282,11 +282,14 @@ export interface IStorage {
   
   // Chat prompts (Multi-Tenant)
   getChatPrompts(dealershipId: number): Promise<ChatPrompt[]>;
+  getAllChatPrompts(dealershipId: number): Promise<ChatPrompt[]>; // Include inactive prompts for admin
   getChatPromptByScenario(scenario: string, dealershipId: number): Promise<ChatPrompt | undefined>;
+  getChatPromptById(id: number, dealershipId: number): Promise<ChatPrompt | undefined>;
   getActivePromptForScenario(dealershipId: number, scenario: string): Promise<ChatPrompt | undefined>;
   saveChatPrompt(prompt: InsertChatPrompt): Promise<ChatPrompt>;
   updateChatPrompt(scenario: string, dealershipId: number, prompt: Partial<InsertChatPrompt>): Promise<ChatPrompt | undefined>;
   updateChatPromptById(id: number, dealershipId: number, prompt: Partial<InsertChatPrompt>): Promise<ChatPrompt | undefined>;
+  deleteChatPrompt(id: number, dealershipId: number): Promise<boolean>;
   
   // Admin
   getAdminConfig(): Promise<AdminConfig | undefined>;
@@ -1116,13 +1119,42 @@ export class DatabaseStorage implements IStorage {
 
   async updateChatPromptById(id: number, dealershipId: number, prompt: Partial<InsertChatPrompt>): Promise<ChatPrompt | undefined> {
     // REQUIRED: Filter by dealership to prevent cross-tenant access
-    const result = await db.update(chatPrompts).set(prompt)
+    const result = await db.update(chatPrompts).set({ ...prompt, updatedAt: new Date() })
       .where(and(
         eq(chatPrompts.id, id),
         eq(chatPrompts.dealershipId, dealershipId)
       ))
       .returning();
     return result[0];
+  }
+
+  async getAllChatPrompts(dealershipId: number): Promise<ChatPrompt[]> {
+    // REQUIRED: Filter by dealership - includes inactive prompts for admin
+    return await db.select().from(chatPrompts)
+      .where(eq(chatPrompts.dealershipId, dealershipId))
+      .orderBy(chatPrompts.scenario);
+  }
+
+  async getChatPromptById(id: number, dealershipId: number): Promise<ChatPrompt | undefined> {
+    // REQUIRED: Filter by dealership to prevent cross-tenant access
+    const result = await db.select().from(chatPrompts)
+      .where(and(
+        eq(chatPrompts.id, id),
+        eq(chatPrompts.dealershipId, dealershipId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+
+  async deleteChatPrompt(id: number, dealershipId: number): Promise<boolean> {
+    // REQUIRED: Filter by dealership to prevent cross-tenant deletion
+    const result = await db.delete(chatPrompts)
+      .where(and(
+        eq(chatPrompts.id, id),
+        eq(chatPrompts.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result.length > 0;
   }
 
   // Admin
@@ -2821,6 +2853,7 @@ export class DatabaseStorage implements IStorage {
       const chatPromptData = [
         {
           dealershipId: dealership.id,
+          name: "Test Drive Scheduling",
           scenario: "test-drive",
           systemPrompt: `You are a helpful assistant for ${params.name}. Help customers schedule test drives. Be friendly, professional, and gather: preferred date/time, contact information, and which vehicle they're interested in. If they have questions about the vehicle, answer them enthusiastically.`,
           greeting: `Hi! I'd love to help you schedule a test drive at ${params.name}. Which vehicle are you interested in?`,
@@ -2828,6 +2861,7 @@ export class DatabaseStorage implements IStorage {
         },
         {
           dealershipId: dealership.id,
+          name: "Financing Pre-Approval",
           scenario: "get-approved",
           systemPrompt: `You are a financing specialist for ${params.name}. Help customers understand their financing options and pre-approval process. Gather: employment status, credit score range, down payment amount, and monthly budget. Explain the benefits of getting pre-approved and how it speeds up the buying process.`,
           greeting: `Welcome to ${params.name}! Let's explore your financing options. Getting pre-approved is quick and won't affect your credit score. What vehicle are you interested in financing?`,
@@ -2835,6 +2869,7 @@ export class DatabaseStorage implements IStorage {
         },
         {
           dealershipId: dealership.id,
+          name: "Trade-In Valuation",
           scenario: "value-trade",
           systemPrompt: `You are a trade-in specialist for ${params.name}. Help customers get a trade-in valuation for their current vehicle. Gather: year, make, model, trim, odometer reading, condition, and any issues. Explain that we offer competitive trade-in values and can provide an instant estimate.`,
           greeting: `Hi! I can help you get a trade-in value for your current vehicle. What are you driving right now?`,
@@ -2842,6 +2877,7 @@ export class DatabaseStorage implements IStorage {
         },
         {
           dealershipId: dealership.id,
+          name: "Vehicle Reservation",
           scenario: "reserve",
           systemPrompt: `You are a reservation specialist for ${params.name}. Help customers reserve vehicles with a refundable deposit. Gather: which vehicle they want to reserve, contact information, and preferred payment method. Explain that reservations are fully refundable and hold the vehicle for 48 hours.`,
           greeting: `Great choice! I can help you reserve this vehicle. Reservations are fully refundable and hold the vehicle for 48 hours. Let me get a few details from you.`,
@@ -2849,6 +2885,7 @@ export class DatabaseStorage implements IStorage {
         },
         {
           dealershipId: dealership.id,
+          name: "General Assistance",
           scenario: "general",
           systemPrompt: `You are a knowledgeable sales assistant for ${params.name}. Answer questions about vehicles, inventory, features, pricing, and dealership services. Be helpful, enthusiastic, and guide customers toward booking a test drive or speaking with a sales specialist for specific pricing questions.`,
           greeting: `Welcome to ${params.name}! How can I help you today? Are you looking for something specific or would you like to browse our inventory?`,
