@@ -1574,17 +1574,91 @@ function ScrapeSourceRow({ source, onUpdate }: { source: ScrapeSource; onUpdate:
   );
 }
 
+interface FilterGroup {
+  id: number;
+  dealershipId: number;
+  groupName: string;
+  groupSlug: string;
+  description: string | null;
+  displayOrder: number;
+  isDefault: boolean;
+  isActive: boolean;
+}
+
 function CreateScrapeSourceDialog({ dealerships, onSuccess }: { dealerships: Dealership[]; onSuccess: () => void }) {
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [filterGroups, setFilterGroups] = useState<FilterGroup[]>([]);
+  const [showNewGroupForm, setShowNewGroupForm] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
   const [formData, setFormData] = useState({
     dealershipId: "",
     sourceName: "",
     sourceUrl: "",
     sourceType: "dealer_website",
     scrapeFrequency: "daily",
+    filterGroupId: "",
   });
+
+  const fetchFilterGroups = async (dealershipId: string) => {
+    if (!dealershipId) {
+      setFilterGroups([]);
+      return;
+    }
+    const token = localStorage.getItem('auth_token');
+    try {
+      const response = await fetch(`/api/super-admin/filter-groups/dealership/${dealershipId}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const groups = await response.json();
+        setFilterGroups(groups);
+      }
+    } catch (error) {
+      console.error("Error fetching filter groups:", error);
+    }
+  };
+
+  const handleDealershipChange = (dealershipId: string) => {
+    setFormData({ ...formData, dealershipId, filterGroupId: "" });
+    setShowNewGroupForm(false);
+    setNewGroupName("");
+    fetchFilterGroups(dealershipId);
+  };
+
+  const createNewFilterGroup = async () => {
+    if (!newGroupName.trim() || !formData.dealershipId) return null;
+    
+    const token = localStorage.getItem('auth_token');
+    const groupSlug = newGroupName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    
+    try {
+      const response = await fetch('/api/super-admin/filter-groups', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          dealershipId: parseInt(formData.dealershipId),
+          groupName: newGroupName.trim(),
+          groupSlug,
+          displayOrder: filterGroups.length,
+          isDefault: filterGroups.length === 0,
+        }),
+      });
+      
+      if (response.ok) {
+        const newGroup = await response.json();
+        return newGroup.id;
+      }
+      return null;
+    } catch (error) {
+      console.error("Error creating filter group:", error);
+      return null;
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1601,6 +1675,21 @@ function CreateScrapeSourceDialog({ dealerships, onSuccess }: { dealerships: Dea
     const token = localStorage.getItem('auth_token');
 
     try {
+      let filterGroupId = formData.filterGroupId ? parseInt(formData.filterGroupId) : null;
+      
+      if (showNewGroupForm && newGroupName.trim()) {
+        filterGroupId = await createNewFilterGroup();
+        if (!filterGroupId) {
+          toast({
+            title: "Error",
+            description: "Failed to create filter group",
+            variant: "destructive",
+          });
+          setLoading(false);
+          return;
+        }
+      }
+
       const response = await fetch('/api/super-admin/scrape-sources', {
         method: 'POST',
         headers: {
@@ -1608,8 +1697,12 @@ function CreateScrapeSourceDialog({ dealerships, onSuccess }: { dealerships: Dea
           'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
-          ...formData,
           dealershipId: parseInt(formData.dealershipId),
+          sourceName: formData.sourceName,
+          sourceUrl: formData.sourceUrl,
+          sourceType: formData.sourceType,
+          scrapeFrequency: formData.scrapeFrequency,
+          filterGroupId,
         }),
       });
 
@@ -1625,7 +1718,11 @@ function CreateScrapeSourceDialog({ dealerships, onSuccess }: { dealerships: Dea
           sourceUrl: "",
           sourceType: "dealer_website",
           scrapeFrequency: "daily",
+          filterGroupId: "",
         });
+        setFilterGroups([]);
+        setShowNewGroupForm(false);
+        setNewGroupName("");
         onSuccess();
       } else {
         const error = await response.json();
@@ -1668,7 +1765,7 @@ function CreateScrapeSourceDialog({ dealerships, onSuccess }: { dealerships: Dea
               id="dealershipId"
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               value={formData.dealershipId}
-              onChange={(e) => setFormData({ ...formData, dealershipId: e.target.value })}
+              onChange={(e) => handleDealershipChange(e.target.value)}
               required
               data-testid="select-dealership"
             >
@@ -1731,6 +1828,68 @@ function CreateScrapeSourceDialog({ dealerships, onSuccess }: { dealerships: Dea
               <option value="manual">Manual Only</option>
             </select>
           </div>
+          
+          {formData.dealershipId && (
+            <div className="border rounded-lg p-3 bg-muted/50">
+              <Label className="text-sm font-medium">Filter Group (Optional)</Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                Organize vehicles into categories like "Used Inventory" or "Luxury Collection"
+              </p>
+              
+              {!showNewGroupForm ? (
+                <div className="space-y-2">
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    value={formData.filterGroupId}
+                    onChange={(e) => setFormData({ ...formData, filterGroupId: e.target.value })}
+                    data-testid="select-filter-group"
+                  >
+                    <option value="">No filter group (show in all vehicles)</option>
+                    {filterGroups.map(g => (
+                      <option key={g.id} value={g.id}>{g.groupName}</option>
+                    ))}
+                  </select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => setShowNewGroupForm(true)}
+                    data-testid="button-new-filter-group"
+                  >
+                    <Plus className="w-3 h-3 mr-1" />
+                    Create New Filter Group
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Input
+                    placeholder="e.g., Certified Pre-Owned, Budget Vehicles"
+                    value={newGroupName}
+                    onChange={(e) => setNewGroupName(e.target.value)}
+                    data-testid="input-new-filter-group"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setShowNewGroupForm(false);
+                        setNewGroupName("");
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <p className="text-xs text-muted-foreground self-center">
+                      New group will be created when you add the source
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          
           <DialogFooter>
             <Button type="submit" disabled={loading} data-testid="button-submit-source">
               {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
