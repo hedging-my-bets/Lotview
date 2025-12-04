@@ -147,9 +147,8 @@ const DEFAULT_FEES = [
 const DEFAULT_FILTER_GROUPS = [
   { groupName: 'Used Inventory', groupSlug: 'used-inventory', description: 'All pre-owned vehicles in stock', displayOrder: 1, isDefault: true },
   { groupName: 'New Arrivals', groupSlug: 'new-arrivals', description: 'Recently added vehicles', displayOrder: 2, isDefault: false },
-  { groupName: 'Certified Pre-Owned', groupSlug: 'certified-pre-owned', description: 'Manufacturer certified vehicles', displayOrder: 3, isDefault: false },
-  { groupName: 'Under $20,000', groupSlug: 'under-20k', description: 'Budget-friendly options', displayOrder: 4, isDefault: false },
-  { groupName: 'Luxury Collection', groupSlug: 'luxury', description: 'Premium and luxury vehicles', displayOrder: 5, isDefault: false },
+  { groupName: 'Under $20,000', groupSlug: 'under-20k', description: 'Budget-friendly options', displayOrder: 3, isDefault: false },
+  { groupName: 'Luxury Collection', groupSlug: 'luxury', description: 'Premium and luxury vehicles', displayOrder: 4, isDefault: false },
 ];
 
 // Default chat prompts for different scenarios
