@@ -18,6 +18,7 @@ import OnboardingWizard from "@/components/OnboardingWizard";
 import { GhlIntegrationDialog } from "@/components/GhlIntegrationDialog";
 import { PromptEditor } from "@/components/PromptEditor";
 import { ConversationViewer } from "@/components/ConversationViewer";
+import { InventoryManagement } from "@/components/InventoryManagement";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 
@@ -500,6 +501,11 @@ export default function SuperAdminDashboard() {
             <span className="hidden sm:inline">Scrape Sources</span>
             <span className="sm:hidden">Scrape</span>
           </TabsTrigger>
+          <TabsTrigger value="inventory" data-testid="tab-inventory" className="text-xs sm:text-sm px-2 sm:px-3 py-2 bg-emerald-600/10 hover:bg-emerald-600/20">
+            <Car className="h-4 w-4 mr-1 sm:mr-2 text-emerald-600" />
+            <span className="hidden sm:inline text-emerald-600 font-medium">Inventory</span>
+            <span className="sm:hidden text-emerald-600">Inv</span>
+          </TabsTrigger>
           <TabsTrigger value="users" data-testid="tab-users" className="text-xs sm:text-sm px-2 sm:px-3 py-2">
             <Users className="h-4 w-4 mr-1 sm:mr-2" />
             <span className="hidden sm:inline">User Management</span>
@@ -860,6 +866,15 @@ export default function SuperAdminDashboard() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Inventory Management Tab */}
+        <TabsContent value="inventory">
+          <InventoryManagement 
+            showDealershipSelector={true}
+            dealerships={dealerships}
+            dealershipId={dealerships[0]?.id}
+          />
         </TabsContent>
 
         {/* Users Management Tab */}

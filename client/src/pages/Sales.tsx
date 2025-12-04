@@ -11,10 +11,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { LogOut, Facebook, Plus, Trash2, Edit, FileText, ListOrdered, Calendar, Clock, GripVertical, Car, CalendarDays, Link, CheckCircle, AlertCircle, ExternalLink } from "lucide-react";
+import { LogOut, Facebook, Plus, Trash2, Edit, FileText, ListOrdered, Calendar, Clock, GripVertical, Car, CalendarDays, Link, CheckCircle, AlertCircle, ExternalLink, PackageOpen } from "lucide-react";
 import { PostingCalendar } from "@/components/PostingCalendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { InventoryManagement } from "@/components/InventoryManagement";
 
 type FacebookAccount = {
   id: number;
@@ -670,7 +671,7 @@ export default function Sales() {
           </div>
 
           <Tabs defaultValue="accounts" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto">
+            <TabsList className="grid w-full grid-cols-3 sm:grid-cols-5 h-auto">
               <TabsTrigger value="accounts" className="text-xs sm:text-sm py-2">
                 <Facebook className="w-4 h-4 mr-1 sm:mr-2" />
                 <span className="hidden sm:inline">Accounts</span>
@@ -689,6 +690,11 @@ export default function Sales() {
                 <Calendar className="w-4 h-4 mr-1 sm:mr-2" />
                 <span className="hidden sm:inline">Schedule</span>
                 <span className="sm:hidden">Sched</span>
+              </TabsTrigger>
+              <TabsTrigger value="inventory" className="text-xs sm:text-sm py-2 bg-emerald-600/10 hover:bg-emerald-600/20" data-testid="tab-inventory">
+                <PackageOpen className="w-4 h-4 mr-1 sm:mr-2 text-emerald-600" />
+                <span className="hidden sm:inline text-emerald-600 font-medium">Inventory</span>
+                <span className="sm:hidden text-emerald-600">Inv</span>
               </TabsTrigger>
             </TabsList>
 
@@ -1202,6 +1208,10 @@ export default function Sales() {
                   schedule={scheduleForm}
                 />
               </div>
+            </TabsContent>
+
+            <TabsContent value="inventory" className="mt-6">
+              <InventoryManagement />
             </TabsContent>
           </Tabs>
         </div>

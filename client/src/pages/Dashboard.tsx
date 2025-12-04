@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MessageSquare, Settings, Sparkles, Users, LogOut, DollarSign, Plus, Edit2, Trash2, Target, Webhook, Star, X, Code, ExternalLink, Car } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { InventoryManagement } from "@/components/InventoryManagement";
 import {
   Dialog,
   DialogContent,
@@ -1123,6 +1124,10 @@ export default function Dashboard() {
               <TabsTrigger value="fees" className="flex items-center gap-1 text-xs sm:text-sm px-2 sm:px-3 py-2 flex-1 sm:flex-none" data-testid="tab-fees">
                 <DollarSign className="w-4 h-4" />
                 <span className="hidden sm:inline">Fees</span>
+              </TabsTrigger>
+              <TabsTrigger value="inventory" className="flex items-center gap-1 text-xs sm:text-sm px-2 sm:px-3 py-2 flex-1 sm:flex-none bg-emerald-600/10 hover:bg-emerald-600/20" data-testid="tab-inventory">
+                <Car className="w-4 h-4 text-emerald-600" />
+                <span className="hidden sm:inline text-emerald-600 font-medium">Inventory</span>
               </TabsTrigger>
             </TabsList>
 
@@ -2308,6 +2313,10 @@ export default function Dashboard() {
                   </div>
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            <TabsContent value="inventory">
+              <InventoryManagement />
             </TabsContent>
           </Tabs>
         </div>

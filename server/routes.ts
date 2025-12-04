@@ -4284,8 +4284,22 @@ Format your response in clear sections with actionable recommendations.`;
       // Return immediately, scrape runs in background
       res.json({ message: `Scrape started for ${source.sourceName}`, sourceId: id });
       
-      // TODO: Trigger actual scrape in background
-      // This would integrate with the scraper system
+      // Trigger actual scrape in background for this dealership
+      import("./scraper").then(async ({ scrapeAllDealershipsIncremental }) => {
+        try {
+          console.log(`[Scraper] Starting manual scrape triggered by source: ${source.sourceName} (ID: ${id})`);
+          const vehicleCount = await scrapeAllDealershipsIncremental();
+          
+          // Update the scrape source with results using the dedicated stats function
+          await storage.updateScrapeSourceStats(id, vehicleCount);
+          
+          console.log(`[Scraper] Completed scrape: ${vehicleCount} vehicles processed`);
+        } catch (err) {
+          console.error(`[Scraper] Error during scrape for ${source.sourceName}:`, err);
+        }
+      }).catch((err) => {
+        console.error(`[Scraper] Failed to import scraper module:`, err);
+      });
     } catch (error) {
       console.error("Error triggering scrape:", error);
       res.status(500).json({ error: "Failed to trigger scrape" });

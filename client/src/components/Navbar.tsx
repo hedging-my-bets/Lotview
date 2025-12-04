@@ -61,9 +61,9 @@ export function Navbar() {
                 <Link href="/login">
                   <button
                     className="w-full bg-primary text-primary-foreground py-3 rounded-lg text-sm font-bold hover:bg-primary/90 transition"
-                    data-testid="link-admin-menu"
+                    data-testid="link-login-menu"
                   >
-                    Admin Dashboard
+                    Team Login
                   </button>
                 </Link>
               </div>
@@ -114,9 +114,9 @@ export function Navbar() {
                   <button
                     className="w-full bg-primary text-primary-foreground py-3 rounded-lg text-sm font-bold hover:bg-primary/90 transition"
                     onClick={() => setIsMenuOpen(false)}
-                    data-testid="link-admin-menu-mobile"
+                    data-testid="link-login-menu-mobile"
                   >
-                    Admin Dashboard
+                    Team Login
                   </button>
                 </Link>
               </div>

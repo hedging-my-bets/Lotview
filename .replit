@@ -25,6 +25,10 @@ localPort = 33863
 externalPort = 5000
 
 [[ports]]
+localPort = 33887
+externalPort = 6800
+
+[[ports]]
 localPort = 36059
 externalPort = 3000
 
@@ -47,14 +51,6 @@ externalPort = 3003
 [[ports]]
 localPort = 45459
 externalPort = 3002
-
-[[ports]]
-localPort = 45859
-externalPort = 6800
-
-[[ports]]
-localPort = 46307
-externalPort = 8000
 
 [env]
 PORT = "5000"
@@ -90,3 +86,4 @@ integrations = ["javascript_database:1.0.0", "javascript_openai_ai_integrations:
 FACEBOOK_APP_ID = "YOUR_FACEBOOK_APP_ID"
 FACEBOOK_APP_SECRET = "YOUR_FACEBOOK_APP_SECRET"
 FACEBOOK_REDIRECT_URI = "YOUR_REDIRECT_URI"
+SCHEDULER_ENABLED = "true"

@@ -5,8 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck, ClipboardCheck, BarChart3, Bot, Clock, Sparkles, Pencil, Save, TrendingDown, Minus, ArrowUp, ArrowDown } from "lucide-react";
+import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck, ClipboardCheck, BarChart3, Bot, Clock, Sparkles, Pencil, Save, TrendingDown, Minus, ArrowUp, ArrowDown, PackageOpen } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { InventoryManagement } from "@/components/InventoryManagement";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -323,7 +324,7 @@ export default function Manager() {
     defaultRadiusKm: 50
   });
   const [isSavingSettings, setIsSavingSettings] = useState(false);
-  const [activeManagerTab, setActiveManagerTab] = useState<'appraisal' | 'inventory' | 'conversations' | 'prompts' | 'settings'>('appraisal');
+  const [activeManagerTab, setActiveManagerTab] = useState<'appraisal' | 'inventory' | 'my-inventory' | 'conversations' | 'prompts' | 'settings'>('appraisal');
 
   // Conversations state
   const [allConversations, setAllConversations] = useState<{
@@ -1224,6 +1225,16 @@ export default function Manager() {
                   Inventory Analysis
                 </Button>
                 <Button
+                  variant={activeManagerTab === 'my-inventory' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setActiveManagerTab('my-inventory')}
+                  data-testid="tab-my-inventory"
+                  className="flex items-center gap-2 bg-emerald-600/10 hover:bg-emerald-600/20"
+                >
+                  <PackageOpen className="w-4 h-4 text-emerald-600" />
+                  <span className="text-emerald-600 font-medium">My Inventory</span>
+                </Button>
+                <Button
                   variant={activeManagerTab === 'conversations' ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setActiveManagerTab('conversations')}
@@ -1973,6 +1984,11 @@ export default function Manager() {
               {/* Inventory Analysis Tab */}
               {activeManagerTab === 'inventory' && (
                 <InventoryAnalysisTab />
+              )}
+
+              {/* My Inventory Tab */}
+              {activeManagerTab === 'my-inventory' && (
+                <InventoryManagement />
               )}
 
               {/* Conversations Tab */}

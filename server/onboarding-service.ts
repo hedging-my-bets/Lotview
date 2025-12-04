@@ -546,7 +546,6 @@ export class OnboardingService {
         displayOrder: group.displayOrder,
         isDefault: group.isDefault,
         isActive: true,
-        filters: {},
       });
     }
   }
@@ -619,6 +618,7 @@ export class OnboardingService {
     for (const prompt of DEFAULT_CHAT_PROMPTS) {
       await db.insert(chatPrompts).values({
         dealershipId: this.dealershipId,
+        name: `${prompt.scenario.charAt(0).toUpperCase() + prompt.scenario.slice(1)} Prompt`,
         scenario: prompt.scenario,
         systemPrompt: prompt.systemPrompt.replace('{dealership_name}', dealershipName),
         greeting: prompt.greeting.replace('{dealership_name}', dealershipName),

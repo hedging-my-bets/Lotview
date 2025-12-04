@@ -199,18 +199,6 @@ export default function Inventory() {
           </main>
         </div>
 
-        <div className="mt-12 flex justify-center">
-          <Link href="/login">
-            <button 
-              className="glass-panel px-6 py-3 rounded-xl font-bold text-muted-foreground hover:text-primary hover:border-primary transition flex items-center gap-2 border-2 border-border"
-              data-testid="button-sales-login"
-            >
-              <LogIn className="w-4 h-4" />
-              Sales Team Login
-            </button>
-          </Link>
-        </div>
-
         <footer className="mt-16 pt-8 border-t border-border">
           <div className="flex flex-col sm:flex-row justify-center items-center gap-4 text-sm text-muted-foreground">
             <span>&copy; {new Date().getFullYear()} {dealership ? dealership.name : "Lotview.ai"}. All rights reserved.</span>
