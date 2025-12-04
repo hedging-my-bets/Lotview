@@ -77,7 +77,7 @@ export default function LandingPage() {
               </Link>
               <a href="mailto:sales@lotview.ai?subject=Demo%20Request">
                 <Button className="bg-[#022d60] hover:bg-[#022d60]/90 text-white" data-testid="button-demo">
-                  Request Demo
+                  Get Free Demo
                 </Button>
               </a>
             </div>
@@ -96,34 +96,34 @@ export default function LandingPage() {
             <div 
               className={`transition-all duration-1000 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}
             >
-              <Badge className="mb-6 bg-[#00aad2]/10 text-[#00aad2] border-[#00aad2]/20 hover:bg-[#00aad2]/10">
-                <Sparkles className="w-3 h-3 mr-1" />
-                AI-Powered Inventory Platform
+              <Badge className="mb-6 bg-gradient-to-r from-amber-400 to-amber-500 text-white border-amber-400 hover:from-amber-500 hover:to-amber-600 font-semibold shadow-lg shadow-amber-500/25">
+                <Clock className="w-3 h-3 mr-1" />
+                Live in 24 Hours
               </Badge>
               
               <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-[#022d60] tracking-tight leading-[1.1] mb-6">
-                Your Dealership's
+                Turn Your Inventory Into a
                 <span className="block bg-gradient-to-r from-[#022d60] via-[#00aad2] to-[#022d60] bg-clip-text text-transparent">
-                  Digital Showroom
+                  24/7 Sales Agent
                 </span>
               </h1>
               
               <p className="text-xl text-gray-600 max-w-2xl mx-auto mb-10 leading-relaxed">
-                The AI-powered inventory platform that turns browsers into buyers. 
-                Manage listings, engage customers, and close more deals—all from one place.
+                LotView syncs your inventory, chats with leads, and books test drives automatically. 
+                We handle the busy work so your sales team can focus on closing.
               </p>
               
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <a href="mailto:sales@lotview.ai?subject=Demo%20Request">
                   <Button size="lg" className="bg-[#022d60] hover:bg-[#022d60]/90 text-white px-8 py-6 text-lg rounded-xl shadow-lg shadow-[#022d60]/25 hover:shadow-xl hover:shadow-[#022d60]/30 transition-all" data-testid="button-hero-demo">
-                    Request a Demo
+                    Get Your Free Demo
                     <ArrowRight className="ml-2 w-5 h-5" />
                   </Button>
                 </a>
                 <a href="#how-it-works">
                   <Button size="lg" variant="outline" className="px-8 py-6 text-lg rounded-xl border-gray-200 hover:border-[#022d60]/30 hover:bg-gray-50" data-testid="button-hero-tour">
                     <Play className="mr-2 w-5 h-5" />
-                    Watch Demo
+                    See How It Works
                   </Button>
                 </a>
               </div>
@@ -243,38 +243,38 @@ export default function LandingPage() {
             {[
               {
                 icon: Car,
-                title: "Smart Inventory Management",
-                description: "Automated syncing from CarGurus, AutoTrader, and your DMS. Real-time updates across all platforms in one dashboard.",
+                title: "Zero-Touch Inventory Sync",
+                description: "Your inventory updates automatically from CarGurus, AutoTrader, and your DMS. No manual uploads. No stale listings. Ever.",
                 color: "from-blue-500 to-blue-600"
               },
               {
                 icon: MessageSquare,
-                title: "AI-Powered Customer Chat",
-                description: "24/7 intelligent chatbot answers questions, handles financing inquiries, and books test drives automatically.",
+                title: "The AI BDC That Never Sleeps",
+                description: "Our AI answers customer questions, handles financing inquiries, and books test drives at 3 AM—so your team doesn't have to.",
                 color: "from-purple-500 to-purple-600"
               },
               {
                 icon: Calculator,
-                title: "Integrated Financing Calculator",
-                description: "Configurable credit tiers and rates with real-time payment estimates on every vehicle listing.",
+                title: "Real Payment Estimates",
+                description: "Show customers exactly what they'll pay with your credit tiers and rates. No guessing. More qualified buyers.",
                 color: "from-green-500 to-green-600"
               },
               {
                 icon: Heart,
-                title: "Automated Lead Nurturing",
-                description: "Engage customers through webchat, text, and email. Automated follow-ups that convert browsers into buyers.",
+                title: "Revive Dead Leads Automatically",
+                description: "Turn cold leads into warm buyers with smart follow-ups via chat, text, and email. We re-engage the customers you forgot about.",
                 color: "from-orange-500 to-orange-600"
               },
               {
                 icon: Facebook,
-                title: "Facebook & Social Posting",
-                description: "One-click vehicle posting to Facebook Marketplace. Automated catalog sync for paid automotive ads.",
+                title: "Dominate Facebook Marketplace",
+                description: "Post vehicles to Facebook with one click. Sync your entire catalog for paid automotive ads. Win the marketplace.",
                 color: "from-sky-500 to-sky-600"
               },
               {
                 icon: Building2,
-                title: "Multi-Location Support",
-                description: "Each dealership gets their own branded subdomain. Centralized management with role-based access.",
+                title: "Built for Dealer Groups",
+                description: "Each location gets its own branded site. Manage everything from one dashboard with role-based access.",
                 color: "from-rose-500 to-rose-600"
               }
             ].map((feature, index) => (
@@ -317,26 +317,26 @@ export default function LandingPage() {
               {
                 step: "01",
                 icon: Globe,
-                title: "Connect",
-                description: "Link your inventory sources—CarGurus, AutoTrader, or your existing DMS system."
+                title: "We Plug In",
+                description: "We connect to your DMS and AutoTrader in minutes, not weeks. Zero IT headaches."
               },
               {
                 step: "02",
                 icon: Sparkles,
-                title: "Customize",
-                description: "Add your branding, set up financing rules, and configure your sales team access."
+                title: "We Brand It",
+                description: "Your logo, your colors, your financing rules. It looks and feels like you—because it is you."
               },
               {
                 step: "03",
                 icon: Zap,
-                title: "Launch",
-                description: "Your digital showroom goes live on your own branded subdomain instantly."
+                title: "Go Live",
+                description: "Your new AI showroom is active on your branded subdomain. Instantly."
               },
               {
                 step: "04",
                 icon: BarChart3,
-                title: "Grow",
-                description: "AI chat engages customers 24/7 while you focus on closing deals."
+                title: "Auto-Pilot",
+                description: "Our AI starts handling inquiries immediately. You start closing more deals."
               }
             ].map((item, index) => (
               <div key={index} className="relative" data-testid={`step-${index}`}>
@@ -457,54 +457,54 @@ export default function LandingPage() {
               Pricing
             </Badge>
             <h2 className="text-4xl lg:text-5xl font-bold text-[#022d60] mb-6">
-              Plans That Scale With You
+              Costs Less Than One Sold Car
             </h2>
             <p className="text-lg text-gray-600">
-              Choose the plan that fits your dealership. All plans include our core inventory management features.
+              Pay for yourself with a single extra sale each month. All plans include our AI inventory platform.
             </p>
           </div>
 
           <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
             {[
               {
-                name: "Starter",
+                name: "The Independent",
                 price: "$199",
                 period: "/month",
-                description: "Perfect for single-location dealerships getting started with digital.",
+                description: "For small lots ready to punch above their weight.",
                 features: [
                   "1 dealership location",
-                  "Inventory management",
-                  "Basic AI chat",
-                  "Financing calculator",
+                  "Zero-touch inventory sync",
+                  "AI BDC chatbot",
+                  "Payment calculator on every vehicle",
                   "Email support"
                 ],
-                cta: "Get Started",
+                cta: "Start Selling",
                 highlighted: false
               },
               {
-                name: "Professional",
+                name: "The Volume Dealer",
                 price: "$499",
                 period: "/month",
-                description: "For growing dealer groups with multiple locations and advanced needs.",
+                description: "For dealerships that move serious metal.",
                 features: [
                   "Up to 5 locations",
-                  "Everything in Starter",
-                  "Advanced AI chat + CRM sync",
-                  "Facebook Marketplace posting",
+                  "Everything in Independent",
+                  "Advanced AI + CRM sync",
+                  "Dominate Facebook Marketplace",
                   "Priority support"
                 ],
-                cta: "Get Started",
+                cta: "Start Selling",
                 highlighted: true
               },
               {
-                name: "Enterprise",
+                name: "Dealer Group",
                 price: "Custom",
                 period: "",
-                description: "For large dealer groups with custom integration requirements.",
+                description: "For empires with custom requirements.",
                 features: [
                   "Unlimited locations",
-                  "Everything in Professional",
-                  "Custom integrations",
+                  "Everything in Volume Dealer",
+                  "Custom DMS integrations",
                   "Dedicated account manager",
                   "SLA & 24/7 support"
                 ],
@@ -565,13 +565,13 @@ export default function LandingPage() {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <a href="mailto:sales@lotview.ai?subject=Demo%20Request">
               <Button size="lg" className="bg-white text-[#022d60] hover:bg-gray-100 px-8 py-6 text-lg rounded-xl shadow-lg" data-testid="button-cta-demo">
-                Request a Demo
+                Get Your Free Demo
                 <ArrowRight className="ml-2 w-5 h-5" />
               </Button>
             </a>
             <a href="mailto:sales@lotview.ai?subject=Free%20Trial%20Request">
               <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10 px-8 py-6 text-lg rounded-xl" data-testid="button-cta-trial">
-                Start Free Trial
+                See How It Works
               </Button>
             </a>
           </div>
