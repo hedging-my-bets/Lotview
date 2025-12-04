@@ -175,20 +175,27 @@ export function tenantMiddleware(storage: any) {
         if (subdomain) {
           try {
             // Look up dealership by subdomain
+            console.log(`[Tenant] Looking up dealership by subdomain: ${subdomain}`);
             const dealership = await storage.getDealershipBySubdomain(subdomain);
             if (dealership) {
               dealershipId = dealership.id;
               source = 'subdomain';
               req.dealership = dealership;
+              console.log(`[Tenant] Resolved dealership ${dealership.id} (${dealership.name}) from subdomain ${subdomain}`);
             } else {
               // SECURITY: Fail closed for unknown subdomains (prevents cross-tenant exposure)
               // This applies to both authenticated and public requests
+              console.warn(`[Tenant] No dealership found for subdomain: ${subdomain}`);
               return res.status(404).json({ error: `Dealership not found for subdomain: ${subdomain}` });
             }
-          } catch (error) {
+          } catch (error: any) {
             // Subdomain lookup failed - fail closed
-            console.error('Subdomain lookup error:', error);
-            return res.status(500).json({ error: 'Failed to resolve dealership from subdomain' });
+            console.error('[Tenant] Subdomain lookup error:', error?.message || error, 'Stack:', error?.stack);
+            return res.status(500).json({ 
+              error: 'Failed to resolve dealership from subdomain',
+              subdomain,
+              details: error?.message || 'Unknown error'
+            });
           }
         }
       }

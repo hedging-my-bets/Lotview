@@ -519,8 +519,9 @@ export class DatabaseStorage implements IStorage {
 
   async getDealershipBySubdomain(subdomain: string): Promise<Dealership | undefined> {
     const result = await db.execute(
-      sql`SELECT id, name, slug, subdomain, is_active, created_at, updated_at 
-          FROM dealerships WHERE subdomain = ${subdomain} LIMIT 1`
+      sql`SELECT id, name, slug, subdomain, is_active, created_at, updated_at,
+          address, city, province, postal_code, phone, timezone, default_currency
+          FROM dealerships WHERE LOWER(subdomain) = LOWER(${subdomain}) AND is_active = true LIMIT 1`
     );
     return result.rows[0] as any;
   }
