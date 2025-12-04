@@ -1,13 +1,17 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Car, Search, RefreshCw, ExternalLink, Loader2 } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
+import { Label } from "@/components/ui/label";
+import { Car, Search, RefreshCw, ExternalLink, Loader2, LayoutGrid, List, SlidersHorizontal, X, ArrowUpDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
+import { VehicleCard } from "@/components/VehicleCard";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
 interface Vehicle {
   id: number;
@@ -19,17 +23,40 @@ interface Vehicle {
   price: number;
   odometer?: number;
   imageUrl?: string;
+  images?: string[];
   type?: string;
   status?: string;
   vin?: string;
   stockNumber?: string;
+  location?: string;
+  dealership?: string;
+  filterGroupId?: number;
   createdAt?: string;
+  carfaxUrl?: string;
+  exteriorColor?: string;
+  interiorColor?: string;
+  transmission?: string;
+  drivetrain?: string;
+  fuelType?: string;
+  engine?: string;
+  bodyStyle?: string;
+  doors?: number;
+  seats?: number;
+  features?: string[];
+  description?: string;
+  listingUrl?: string;
 }
 
 interface Dealership {
   id: number;
   name: string;
   slug: string;
+}
+
+interface FilterGroup {
+  id: number;
+  name: string;
+  description?: string;
 }
 
 interface InventoryManagementProps {
@@ -39,6 +66,9 @@ interface InventoryManagementProps {
   onDealershipChange?: (dealershipId: number) => void;
 }
 
+type ViewMode = "table" | "grid";
+type SortOption = "default" | "price_low" | "price_high" | "km_low" | "km_high" | "year_new" | "year_old";
+
 export function InventoryManagement({ 
   dealershipId, 
   showDealershipSelector = false,
@@ -47,9 +77,20 @@ export function InventoryManagement({
 }: InventoryManagementProps) {
   const { toast } = useToast();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [filterGroups, setFilterGroups] = useState<FilterGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedDealership, setSelectedDealership] = useState<number | undefined>(dealershipId);
+  const [viewMode, setViewMode] = useState<ViewMode>("table");
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  
+  const [filters, setFilters] = useState({
+    type: "all",
+    make: "all",
+    priceMax: 150000,
+    filterGroup: "all",
+    sortBy: "default" as SortOption,
+  });
 
   const fetchVehicles = async (dealerId?: number) => {
     setIsLoading(true);
@@ -83,8 +124,31 @@ export function InventoryManagement({
     }
   };
 
+  const fetchFilterGroups = async (dealerId?: number) => {
+    try {
+      const token = localStorage.getItem("auth_token");
+      const headers: Record<string, string> = {
+        "Authorization": `Bearer ${token}`,
+      };
+      
+      if (dealerId) {
+        headers["X-Dealership-Id"] = dealerId.toString();
+      }
+      
+      const response = await fetch("/api/public/filter-groups", { headers });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setFilterGroups(data);
+      }
+    } catch (error) {
+      console.error("Error fetching filter groups:", error);
+    }
+  };
+
   useEffect(() => {
     fetchVehicles(selectedDealership);
+    fetchFilterGroups(selectedDealership);
   }, [selectedDealership]);
 
   const handleDealershipChange = (value: string) => {
@@ -93,16 +157,60 @@ export function InventoryManagement({
     onDealershipChange?.(dealerId);
   };
 
-  const filteredVehicles = vehicles.filter(vehicle => {
+  const uniqueMakes = useMemo(() => 
+    Array.from(new Set(vehicles.map(v => v.make))).filter(Boolean).sort(),
+    [vehicles]
+  );
+
+  const uniqueTypes = useMemo(() => 
+    Array.from(new Set(vehicles.map(v => v.type))).filter(Boolean).sort(),
+    [vehicles]
+  );
+
+  const maxPrice = useMemo(() => 
+    Math.max(...vehicles.map(v => v.price), 150000),
+    [vehicles]
+  );
+
+  const filteredVehicles = useMemo(() => {
     const searchLower = searchTerm.toLowerCase();
-    return (
-      vehicle.make?.toLowerCase().includes(searchLower) ||
-      vehicle.model?.toLowerCase().includes(searchLower) ||
-      vehicle.year?.toString().includes(searchTerm) ||
-      vehicle.vin?.toLowerCase().includes(searchLower) ||
-      vehicle.stockNumber?.toLowerCase().includes(searchLower)
-    );
-  });
+    
+    return vehicles
+      .filter(vehicle => {
+        const matchesSearch = !searchLower || 
+          vehicle.make?.toLowerCase().includes(searchLower) ||
+          vehicle.model?.toLowerCase().includes(searchLower) ||
+          vehicle.year?.toString().includes(searchTerm) ||
+          vehicle.vin?.toLowerCase().includes(searchLower) ||
+          vehicle.stockNumber?.toLowerCase().includes(searchLower);
+        
+        const matchesType = filters.type === "all" || vehicle.type === filters.type;
+        const matchesMake = filters.make === "all" || vehicle.make === filters.make;
+        const matchesPrice = vehicle.price <= filters.priceMax;
+        const matchesFilterGroup = filters.filterGroup === "all" || 
+          (vehicle.filterGroupId && String(vehicle.filterGroupId) === filters.filterGroup);
+        
+        return matchesSearch && matchesType && matchesMake && matchesPrice && matchesFilterGroup;
+      })
+      .sort((a, b) => {
+        switch (filters.sortBy) {
+          case "price_low":
+            return a.price - b.price;
+          case "price_high":
+            return b.price - a.price;
+          case "km_low":
+            return (a.odometer || 0) - (b.odometer || 0);
+          case "km_high":
+            return (b.odometer || 0) - (a.odometer || 0);
+          case "year_new":
+            return b.year - a.year;
+          case "year_old":
+            return a.year - b.year;
+          default:
+            return 0;
+        }
+      });
+  }, [vehicles, searchTerm, filters]);
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat("en-CA", {
@@ -117,6 +225,111 @@ export function InventoryManagement({
     return `${odometer.toLocaleString()} km`;
   };
 
+  const resetFilters = () => {
+    setFilters({
+      type: "all",
+      make: "all",
+      priceMax: maxPrice,
+      filterGroup: "all",
+      sortBy: "default",
+    });
+    setSearchTerm("");
+  };
+
+  const hasActiveFilters = filters.type !== "all" || filters.make !== "all" || 
+    filters.priceMax < maxPrice || filters.filterGroup !== "all" || searchTerm;
+
+  const FilterControls = () => (
+    <div className="space-y-6">
+      <div>
+        <Label className="text-sm font-medium mb-2 block">Vehicle Type</Label>
+        <Select value={filters.type} onValueChange={(v) => setFilters(f => ({ ...f, type: v }))}>
+          <SelectTrigger data-testid="filter-type">
+            <SelectValue placeholder="All Types" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Types</SelectItem>
+            {uniqueTypes.map(type => (
+              <SelectItem key={type} value={type!}>{type}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div>
+        <Label className="text-sm font-medium mb-2 block">Make</Label>
+        <Select value={filters.make} onValueChange={(v) => setFilters(f => ({ ...f, make: v }))}>
+          <SelectTrigger data-testid="filter-make">
+            <SelectValue placeholder="All Makes" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Makes</SelectItem>
+            {uniqueMakes.map(make => (
+              <SelectItem key={make} value={make!}>{make}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {filterGroups.length > 0 && (
+        <div>
+          <Label className="text-sm font-medium mb-2 block">Category</Label>
+          <Select value={filters.filterGroup} onValueChange={(v) => setFilters(f => ({ ...f, filterGroup: v }))}>
+            <SelectTrigger data-testid="filter-group">
+              <SelectValue placeholder="All Categories" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Categories</SelectItem>
+              {filterGroups.map(group => (
+                <SelectItem key={group.id} value={String(group.id)}>{group.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      <div>
+        <Label className="text-sm font-medium mb-2 block">
+          Max Price: {formatPrice(filters.priceMax)}
+        </Label>
+        <Slider
+          value={[filters.priceMax]}
+          onValueChange={([v]) => setFilters(f => ({ ...f, priceMax: v }))}
+          max={maxPrice}
+          min={0}
+          step={1000}
+          className="mt-2"
+          data-testid="filter-price-slider"
+        />
+      </div>
+
+      <div>
+        <Label className="text-sm font-medium mb-2 block">Sort By</Label>
+        <Select value={filters.sortBy} onValueChange={(v) => setFilters(f => ({ ...f, sortBy: v as SortOption }))}>
+          <SelectTrigger data-testid="filter-sort">
+            <SelectValue placeholder="Default" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="default">Default</SelectItem>
+            <SelectItem value="price_low">Price: Low to High</SelectItem>
+            <SelectItem value="price_high">Price: High to Low</SelectItem>
+            <SelectItem value="km_low">Mileage: Low to High</SelectItem>
+            <SelectItem value="km_high">Mileage: High to Low</SelectItem>
+            <SelectItem value="year_new">Year: Newest First</SelectItem>
+            <SelectItem value="year_old">Year: Oldest First</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {hasActiveFilters && (
+        <Button variant="outline" onClick={resetFilters} className="w-full" data-testid="button-reset-filters">
+          <X className="h-4 w-4 mr-2" />
+          Reset Filters
+        </Button>
+      )}
+    </div>
+  );
+
   return (
     <Card>
       <CardHeader>
@@ -130,7 +343,53 @@ export function InventoryManagement({
               View and manage vehicle inventory ({filteredVehicles.length} vehicles)
             </CardDescription>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center border rounded-lg p-1">
+              <Button
+                variant={viewMode === "table" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("table")}
+                data-testid="button-view-table"
+                className="px-3"
+              >
+                <List className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={viewMode === "grid" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("grid")}
+                data-testid="button-view-grid"
+                className="px-3"
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </Button>
+            </div>
+            {viewMode === "grid" && (
+              <Sheet open={isFilterOpen} onOpenChange={setIsFilterOpen}>
+                <SheetTrigger asChild>
+                  <Button variant="outline" size="sm" data-testid="button-open-filters">
+                    <SlidersHorizontal className="h-4 w-4 mr-2" />
+                    Filters
+                    {hasActiveFilters && (
+                      <Badge variant="secondary" className="ml-2 px-1.5 py-0.5 text-xs">
+                        Active
+                      </Badge>
+                    )}
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="right" className="w-80">
+                  <SheetHeader>
+                    <SheetTitle className="flex items-center gap-2">
+                      <SlidersHorizontal className="h-5 w-5" />
+                      Filter Inventory
+                    </SheetTitle>
+                  </SheetHeader>
+                  <div className="mt-6">
+                    <FilterControls />
+                  </div>
+                </SheetContent>
+              </Sheet>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -173,7 +432,70 @@ export function InventoryManagement({
               data-testid="input-search-inventory"
             />
           </div>
+          {viewMode === "table" && (
+            <Select value={filters.sortBy} onValueChange={(v) => setFilters(f => ({ ...f, sortBy: v as SortOption }))}>
+              <SelectTrigger className="w-full sm:w-[180px]" data-testid="table-sort">
+                <ArrowUpDown className="h-4 w-4 mr-2" />
+                <SelectValue placeholder="Sort by" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">Default</SelectItem>
+                <SelectItem value="price_low">Price: Low to High</SelectItem>
+                <SelectItem value="price_high">Price: High to Low</SelectItem>
+                <SelectItem value="km_low">Mileage: Low to High</SelectItem>
+                <SelectItem value="km_high">Mileage: High to Low</SelectItem>
+                <SelectItem value="year_new">Year: Newest</SelectItem>
+                <SelectItem value="year_old">Year: Oldest</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
         </div>
+
+        {/* Quick filters for grid view */}
+        {viewMode === "grid" && (
+          <div className="flex flex-wrap gap-2 mb-6">
+            <Select value={filters.type} onValueChange={(v) => setFilters(f => ({ ...f, type: v }))}>
+              <SelectTrigger className="w-[140px]" data-testid="quick-filter-type">
+                <SelectValue placeholder="All Types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                {uniqueTypes.map(type => (
+                  <SelectItem key={type} value={type!}>{type}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={filters.make} onValueChange={(v) => setFilters(f => ({ ...f, make: v }))}>
+              <SelectTrigger className="w-[140px]" data-testid="quick-filter-make">
+                <SelectValue placeholder="All Makes" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Makes</SelectItem>
+                {uniqueMakes.map(make => (
+                  <SelectItem key={make} value={make!}>{make}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={filters.sortBy} onValueChange={(v) => setFilters(f => ({ ...f, sortBy: v as SortOption }))}>
+              <SelectTrigger className="w-[160px]" data-testid="quick-filter-sort">
+                <ArrowUpDown className="h-4 w-4 mr-2" />
+                <SelectValue placeholder="Sort" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">Default</SelectItem>
+                <SelectItem value="price_low">Price: Low to High</SelectItem>
+                <SelectItem value="price_high">Price: High to Low</SelectItem>
+                <SelectItem value="year_new">Year: Newest</SelectItem>
+              </SelectContent>
+            </Select>
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={resetFilters} data-testid="quick-reset-filters">
+                <X className="h-4 w-4 mr-1" />
+                Clear
+              </Button>
+            )}
+          </div>
+        )}
 
         {isLoading ? (
           <div className="flex justify-center items-center py-12">
@@ -184,10 +506,10 @@ export function InventoryManagement({
             <Car className="h-12 w-12 mx-auto mb-4 opacity-50" />
             <p>No vehicles found</p>
             <p className="text-sm mt-2">
-              {searchTerm ? "Try adjusting your search" : "Run a scrape to populate inventory"}
+              {searchTerm || hasActiveFilters ? "Try adjusting your filters" : "Run a scrape to populate inventory"}
             </p>
           </div>
-        ) : (
+        ) : viewMode === "table" ? (
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -253,6 +575,40 @@ export function InventoryManagement({
             {filteredVehicles.length > 50 && (
               <div className="text-center py-4 text-sm text-muted-foreground">
                 Showing first 50 of {filteredVehicles.length} vehicles
+              </div>
+            )}
+          </div>
+        ) : (
+          <div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              {filteredVehicles.slice(0, 30).map((vehicle) => (
+                <VehicleCard 
+                  key={vehicle.id} 
+                  car={{
+                    id: vehicle.id,
+                    year: vehicle.year,
+                    make: vehicle.make,
+                    model: vehicle.model,
+                    trim: vehicle.trim || "",
+                    price: vehicle.price,
+                    odometer: vehicle.odometer || 0,
+                    type: vehicle.type || "Used",
+                    location: vehicle.location || "",
+                    dealership: vehicle.dealership || "",
+                    images: vehicle.images || (vehicle.imageUrl ? [vehicle.imageUrl] : []),
+                    badges: [],
+                    vin: vehicle.vin || "",
+                    stockNumber: vehicle.stockNumber || "",
+                    carfaxUrl: vehicle.carfaxUrl || "",
+                    description: vehicle.description || "",
+                    filterGroupId: vehicle.filterGroupId,
+                  }} 
+                />
+              ))}
+            </div>
+            {filteredVehicles.length > 30 && (
+              <div className="text-center py-6 text-sm text-muted-foreground">
+                Showing first 30 of {filteredVehicles.length} vehicles
               </div>
             )}
           </div>
