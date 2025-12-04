@@ -11,34 +11,59 @@ import {
   calculateDataQualityScore,
   type ExtractedImage
 } from './precision-image-extractor';
+import { storage } from './storage';
 
 // Apply stealth plugin to evade bot detection
 puppeteer.use(StealthPlugin());
 
-const DEALER_CONFIGS = [
+interface DealerConfig {
+  name: string;
+  url: string;
+  domain: string;
+  dealershipId: number;
+  location: string;
+  filterGroupId?: number | null;
+}
+
+// Fallback configs if database is empty (for backwards compatibility)
+const FALLBACK_DEALER_CONFIGS: DealerConfig[] = [
   {
     name: 'Olympic Hyundai Vancouver',
     url: 'https://www.olympichyundaivancouver.com/vehicles/used/?st=price,desc&view=grid&sc=used',
     domain: 'olympichyundaivancouver.com',
-    dealershipId: 1,
+    dealershipId: 2,
     location: 'Vancouver'
-  },
-  // TEMPORARILY DISABLED FOR TESTING - Enable after Olympic Hyundai works perfectly
-  // {
-  //   name: 'Boundary Hyundai',
-  //   url: 'https://www.boundaryhyundai.com/vehicles/used/?st=price,desc&view=grid&sc=used',
-  //   domain: 'boundaryhyundai.com',
-  //   dealershipId: 2,
-  //   location: 'Burnaby'
-  // },
-  // {
-  //   name: 'Kia Vancouver',
-  //   url: 'https://www.kiavancouver.com/vehicles/used/?st=year,desc&view=grid&sc=used',
-  //   domain: 'kiavancouver.com',
-  //   dealershipId: 3,
-  //   location: 'Vancouver'
-  // }
+  }
 ];
+
+// Get dealer configs from database scrape_sources table
+async function getDealerConfigsFromDb(): Promise<DealerConfig[]> {
+  try {
+    const sources = await storage.getAllActiveScrapeSources();
+    
+    if (sources.length === 0) {
+      console.log("  ℹ No active scrape sources in database, using fallback config");
+      return FALLBACK_DEALER_CONFIGS;
+    }
+    
+    return sources.map(source => {
+      const urlObj = new URL(source.sourceUrl);
+      return {
+        name: source.sourceName,
+        url: source.sourceUrl,
+        domain: urlObj.hostname.replace('www.', ''),
+        dealershipId: source.dealershipId,
+        location: source.sourceName.includes("Vancouver") ? "Vancouver" : 
+                  source.sourceName.includes("Burnaby") ? "Burnaby" : "BC",
+        filterGroupId: source.filterGroupId || null,
+      };
+    });
+  } catch (error) {
+    console.error("  ⚠ Error loading scrape sources from database:", error);
+    console.log("  ℹ Falling back to default dealer configs");
+    return FALLBACK_DEALER_CONFIGS;
+  }
+}
 
 export interface DealerVehicleListing {
   vin: string | null;
@@ -842,7 +867,7 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
 }
 
 async function scrapeDealerListings(
-  dealerConfig: typeof DEALER_CONFIGS[0],
+  dealerConfig: DealerConfig,
   onVehicleScraped?: (vehicle: DealerVehicleListing) => Promise<void>
 ): Promise<DealerVehicleListing[]> {
   console.log(`\n[${dealerConfig.name}] Scraping dealer listing page...`);
@@ -1241,7 +1266,11 @@ export async function scrapeAllDealerListings(): Promise<DealerVehicleListing[]>
   
   const allListings: DealerVehicleListing[] = [];
   
-  for (const config of DEALER_CONFIGS) {
+  // Get configs from database instead of hardcoded values
+  const dealerConfigs = await getDealerConfigsFromDb();
+  console.log(`  Found ${dealerConfigs.length} active scrape sources in database`);
+  
+  for (const config of dealerConfigs) {
     try {
       const listings = await scrapeDealerListings(config);
       allListings.push(...listings);
@@ -1268,8 +1297,12 @@ export async function scrapeDealerListingsWithCallback(
   let insertedCount = 0;
   let updatedCount = 0;
   
-  for (const config of DEALER_CONFIGS) {
-    console.log(`\n[${config.name}] Starting incremental scrape...`);
+  // Get configs from database instead of hardcoded values
+  const dealerConfigs = await getDealerConfigsFromDb();
+  console.log(`  Found ${dealerConfigs.length} active scrape sources in database`);
+  
+  for (const config of dealerConfigs) {
+    console.log(`\n[${config.name}] Starting incremental scrape (dealershipId: ${config.dealershipId})...`);
     
     try {
       // Use the callback to save each vehicle IMMEDIATELY as it's scraped
