@@ -4,7 +4,8 @@ import {
   creditScoreTiers, modelYearTerms, dealershipFees, scrapeSources,
   chatPrompts, aiPromptTemplates, adTemplates, postingSchedule,
   dealershipBranding, dealershipContacts, staffInvites,
-  onboardingRuns, onboardingRunSteps, integrationStatus, launchChecklist
+  onboardingRuns, onboardingRunSteps, integrationStatus, launchChecklist,
+  filterGroups
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import bcrypt from "bcryptjs";
@@ -142,6 +143,15 @@ const DEFAULT_FEES = [
   { feeName: 'Tire & Battery Levy', feeAmount: 2000, isPercentage: false, includeInPayment: true, displayOrder: 3 },
 ];
 
+// Default filter groups for organizing inventory
+const DEFAULT_FILTER_GROUPS = [
+  { groupName: 'Used Inventory', groupSlug: 'used-inventory', description: 'All pre-owned vehicles in stock', displayOrder: 1, isDefault: true },
+  { groupName: 'New Arrivals', groupSlug: 'new-arrivals', description: 'Recently added vehicles', displayOrder: 2, isDefault: false },
+  { groupName: 'Certified Pre-Owned', groupSlug: 'certified-pre-owned', description: 'Manufacturer certified vehicles', displayOrder: 3, isDefault: false },
+  { groupName: 'Under $20,000', groupSlug: 'under-20k', description: 'Budget-friendly options', displayOrder: 4, isDefault: false },
+  { groupName: 'Luxury Collection', groupSlug: 'luxury', description: 'Premium and luxury vehicles', displayOrder: 5, isDefault: false },
+];
+
 // Default chat prompts for different scenarios
 const DEFAULT_CHAT_PROMPTS = [
   {
@@ -227,14 +237,15 @@ const ONBOARDING_STEPS = [
   { name: 'create_branding', order: 3, description: 'Configure branding' },
   { name: 'create_contacts', order: 4, description: 'Set up contact channels' },
   { name: 'create_api_keys', order: 5, description: 'Configure API integrations' },
-  { name: 'seed_financing', order: 6, description: 'Set up financing rules' },
-  { name: 'seed_chat_prompts', order: 7, description: 'Configure AI chat prompts' },
-  { name: 'seed_ai_templates', order: 8, description: 'Set up AI templates' },
-  { name: 'create_scrape_sources', order: 9, description: 'Configure inventory sources' },
-  { name: 'create_master_admin', order: 10, description: 'Create master admin account' },
-  { name: 'create_staff_invites', order: 11, description: 'Send staff invitations' },
-  { name: 'initialize_integrations', order: 12, description: 'Initialize integration status' },
-  { name: 'seed_launch_checklist', order: 13, description: 'Create launch checklist tasks' },
+  { name: 'seed_filter_groups', order: 6, description: 'Create inventory filter groups' },
+  { name: 'seed_financing', order: 7, description: 'Set up financing rules' },
+  { name: 'seed_chat_prompts', order: 8, description: 'Configure AI chat prompts' },
+  { name: 'seed_ai_templates', order: 9, description: 'Set up AI templates' },
+  { name: 'create_scrape_sources', order: 10, description: 'Configure inventory sources' },
+  { name: 'create_master_admin', order: 11, description: 'Create master admin account' },
+  { name: 'create_staff_invites', order: 12, description: 'Send staff invitations' },
+  { name: 'initialize_integrations', order: 13, description: 'Initialize integration status' },
+  { name: 'seed_launch_checklist', order: 14, description: 'Create launch checklist tasks' },
 ];
 
 // Default launch checklist items that are created for each new dealership
@@ -325,6 +336,7 @@ export class OnboardingService {
       await this.executeStep('create_branding', () => this.createBranding(input.branding));
       await this.executeStep('create_contacts', () => this.createContacts(input.contacts || {}));
       await this.executeStep('create_api_keys', () => this.createApiKeys(input.apiKeys));
+      await this.executeStep('seed_filter_groups', () => this.seedFilterGroups());
       await this.executeStep('seed_financing', () => this.seedFinancing(seedDefaults, input.financing));
       await this.executeStep('seed_chat_prompts', () => this.seedChatPrompts(input.dealership.name, seedDefaults));
       await this.executeStep('seed_ai_templates', () => this.seedAiTemplates(seedDefaults));
@@ -521,6 +533,23 @@ export class OnboardingService {
       googleAdsId: data.googleAdsId,
       facebookPixelId: data.facebookPixelId,
     });
+  }
+  
+  private async seedFilterGroups(): Promise<void> {
+    if (!this.dealershipId) throw new Error('Dealership not created');
+    
+    for (const group of DEFAULT_FILTER_GROUPS) {
+      await db.insert(filterGroups).values({
+        dealershipId: this.dealershipId,
+        groupName: group.groupName,
+        groupSlug: group.groupSlug,
+        description: group.description,
+        displayOrder: group.displayOrder,
+        isDefault: group.isDefault,
+        isActive: true,
+        filters: {},
+      });
+    }
   }
   
   private async seedFinancing(

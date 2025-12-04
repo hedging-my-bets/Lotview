@@ -24,7 +24,7 @@ Preferred communication style: Simple, everyday language.
 - **Scheduled Jobs**: Cron-based inventory synchronization (daily at 2:00 AM) and manual sync capabilities, leveraging web scraping with Cheerio and Puppeteer.
 
 ### Database Schema
-- **Core Tables**: `vehicles`, `vehicle_views`.
+- **Core Tables**: `vehicles`, `vehicle_views`, `filter_groups` (dealership-scoped inventory categories).
 - **User Management**: `users`.
 - **Financing Rules**: `credit_score_tiers`, `model_year_terms`.
 - **Facebook Posting**: `facebook_accounts`, `ad_templates`, `posting_queue`, `posting_schedule`.
