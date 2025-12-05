@@ -22,6 +22,8 @@ import N8nIntegration from "@/pages/N8nIntegration";
 import InviteAccept from "@/pages/InviteAccept";
 import PrivacyPolicy from "@/pages/PrivacyPolicy";
 import TermsOfService from "@/pages/TermsOfService";
+import CallAnalysis from "@/pages/CallAnalysis";
+import { ImpersonationBanner } from "@/components/ImpersonationBanner";
 
 function MarketingRouter() {
   return (
@@ -34,6 +36,7 @@ function MarketingRouter() {
       <Route path="/sales" component={Sales} />
       <Route path="/admin" component={Admin} />
       <Route path="/super-admin" component={SuperAdminDashboard} />
+      <Route path="/call-analysis" component={CallAnalysis} />
       <Route path="/invite/:token" component={InviteAccept} />
       <Route path="/privacy-policy" component={PrivacyPolicy} />
       <Route path="/terms-of-service" component={TermsOfService} />
@@ -54,6 +57,7 @@ function DealershipRouter() {
       <Route path="/sales" component={Sales} />
       <Route path="/admin" component={Admin} />
       <Route path="/super-admin" component={SuperAdminDashboard} />
+      <Route path="/call-analysis" component={CallAnalysis} />
       <Route path="/invite/:token" component={InviteAccept} />
       <Route path="/embed" component={EmbedWidget} />
       <Route path="/privacy-policy" component={PrivacyPolicy} />
@@ -88,6 +92,7 @@ function App() {
           <PaymentProvider>
             <ChatProvider>
               <TooltipProvider>
+                <ImpersonationBanner />
                 <AppRouter />
                 <Toaster />
               </TooltipProvider>

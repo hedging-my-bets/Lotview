@@ -149,7 +149,16 @@ import {
   type InsertScraperActivityLog,
   dealershipBranding,
   type DealershipBranding,
-  type InsertDealershipBranding
+  type InsertDealershipBranding,
+  callAnalysisCriteria,
+  type CallAnalysisCriteria,
+  type InsertCallAnalysisCriteria,
+  callRecordings,
+  type CallRecording,
+  type InsertCallRecording,
+  impersonationSessions,
+  type ImpersonationSession,
+  type InsertImpersonationSession
 } from "@shared/schema";
 import { eq, desc, sql, and, gte, lte, lt, gt, inArray, or, ilike } from "drizzle-orm";
 
@@ -520,6 +529,45 @@ export interface IStorage {
   getAllFilterGroupsCount(): Promise<number>;
   getApiKeysConfiguredCount(): Promise<number>;
   getTotalRemarketingVehicleCount(): Promise<number>;
+  
+  // ====== CALL ANALYSIS SYSTEM ======
+  // Call Analysis Criteria (Multi-Tenant)
+  getCallAnalysisCriteria(dealershipId: number): Promise<CallAnalysisCriteria[]>;
+  getActiveCallAnalysisCriteria(dealershipId: number): Promise<CallAnalysisCriteria[]>;
+  createCallAnalysisCriteria(criteria: InsertCallAnalysisCriteria): Promise<CallAnalysisCriteria>;
+  updateCallAnalysisCriteria(id: number, dealershipId: number, criteria: Partial<InsertCallAnalysisCriteria>): Promise<CallAnalysisCriteria | undefined>;
+  deleteCallAnalysisCriteria(id: number, dealershipId: number): Promise<boolean>;
+  
+  // Call Recordings (Multi-Tenant)
+  getCallRecordings(dealershipId: number, filters?: { 
+    salespersonId?: number; 
+    startDate?: Date; 
+    endDate?: Date; 
+    analysisStatus?: string;
+    needsReview?: boolean;
+    minScore?: number;
+    maxScore?: number;
+  }, limit?: number, offset?: number): Promise<{ recordings: CallRecording[]; total: number }>;
+  getCallRecordingById(id: number, dealershipId: number): Promise<CallRecording | undefined>;
+  getCallRecordingByGhlCallId(ghlCallId: string, dealershipId: number): Promise<CallRecording | undefined>;
+  createCallRecording(recording: InsertCallRecording): Promise<CallRecording>;
+  updateCallRecording(id: number, dealershipId: number, recording: Partial<InsertCallRecording>): Promise<CallRecording | undefined>;
+  getPendingCallRecordings(dealershipId: number, limit?: number): Promise<CallRecording[]>;
+  getCallRecordingsNeedingReview(dealershipId: number, limit?: number): Promise<CallRecording[]>;
+  getCallRecordingStats(dealershipId: number, startDate?: Date, endDate?: Date): Promise<{
+    totalCalls: number;
+    analyzedCalls: number;
+    averageScore: number;
+    callsNeedingReview: number;
+    sentimentBreakdown: { positive: number; neutral: number; negative: number };
+  }>;
+  
+  // ====== SUPER ADMIN IMPERSONATION ======
+  createImpersonationSession(session: InsertImpersonationSession): Promise<ImpersonationSession>;
+  getActiveImpersonationSession(superAdminId: number): Promise<ImpersonationSession | undefined>;
+  endImpersonationSession(id: number, superAdminId: number): Promise<ImpersonationSession | undefined>;
+  getImpersonationSessions(limit?: number, offset?: number): Promise<{ sessions: (ImpersonationSession & { superAdminName?: string; targetUserName?: string; targetDealershipName?: string })[]; total: number }>;
+  incrementImpersonationActions(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3423,6 +3471,243 @@ export class DatabaseStorage implements IStorage {
   async getTotalRemarketingVehicleCount(): Promise<number> {
     const result = await db.select({ count: sql<number>`count(*)` }).from(remarketingVehicles);
     return Number(result[0]?.count || 0);
+  }
+  
+  // ====== CALL ANALYSIS SYSTEM ======
+  async getCallAnalysisCriteria(dealershipId: number): Promise<CallAnalysisCriteria[]> {
+    return await db.select().from(callAnalysisCriteria)
+      .where(eq(callAnalysisCriteria.dealershipId, dealershipId))
+      .orderBy(callAnalysisCriteria.category, callAnalysisCriteria.name);
+  }
+  
+  async getActiveCallAnalysisCriteria(dealershipId: number): Promise<CallAnalysisCriteria[]> {
+    return await db.select().from(callAnalysisCriteria)
+      .where(and(
+        eq(callAnalysisCriteria.dealershipId, dealershipId),
+        eq(callAnalysisCriteria.isActive, true)
+      ))
+      .orderBy(callAnalysisCriteria.category, callAnalysisCriteria.name);
+  }
+  
+  async createCallAnalysisCriteria(criteria: InsertCallAnalysisCriteria): Promise<CallAnalysisCriteria> {
+    const result = await db.insert(callAnalysisCriteria).values(criteria).returning();
+    return result[0];
+  }
+  
+  async updateCallAnalysisCriteria(id: number, dealershipId: number, criteria: Partial<InsertCallAnalysisCriteria>): Promise<CallAnalysisCriteria | undefined> {
+    const result = await db.update(callAnalysisCriteria)
+      .set({ ...criteria, updatedAt: new Date() })
+      .where(and(eq(callAnalysisCriteria.id, id), eq(callAnalysisCriteria.dealershipId, dealershipId)))
+      .returning();
+    return result[0];
+  }
+  
+  async deleteCallAnalysisCriteria(id: number, dealershipId: number): Promise<boolean> {
+    const result = await db.delete(callAnalysisCriteria)
+      .where(and(eq(callAnalysisCriteria.id, id), eq(callAnalysisCriteria.dealershipId, dealershipId)));
+    return true;
+  }
+  
+  async getCallRecordings(dealershipId: number, filters?: { 
+    salespersonId?: number; 
+    startDate?: Date; 
+    endDate?: Date; 
+    analysisStatus?: string;
+    needsReview?: boolean;
+    minScore?: number;
+    maxScore?: number;
+  }, limit: number = 50, offset: number = 0): Promise<{ recordings: CallRecording[]; total: number }> {
+    const conditions = [eq(callRecordings.dealershipId, dealershipId)];
+    
+    if (filters?.salespersonId) {
+      conditions.push(eq(callRecordings.salespersonId, filters.salespersonId));
+    }
+    if (filters?.startDate) {
+      conditions.push(gte(callRecordings.callStartedAt, filters.startDate));
+    }
+    if (filters?.endDate) {
+      conditions.push(lte(callRecordings.callStartedAt, filters.endDate));
+    }
+    if (filters?.analysisStatus) {
+      conditions.push(eq(callRecordings.analysisStatus, filters.analysisStatus));
+    }
+    if (filters?.needsReview !== undefined) {
+      conditions.push(eq(callRecordings.needsReview, filters.needsReview));
+    }
+    if (filters?.minScore !== undefined) {
+      conditions.push(gte(callRecordings.overallScore, filters.minScore));
+    }
+    if (filters?.maxScore !== undefined) {
+      conditions.push(lte(callRecordings.overallScore, filters.maxScore));
+    }
+    
+    const whereClause = and(...conditions);
+    
+    const [recordings, countResult] = await Promise.all([
+      db.select().from(callRecordings)
+        .where(whereClause)
+        .orderBy(desc(callRecordings.callStartedAt))
+        .limit(limit)
+        .offset(offset),
+      db.select({ count: sql<number>`count(*)` }).from(callRecordings).where(whereClause)
+    ]);
+    
+    return { recordings, total: Number(countResult[0]?.count || 0) };
+  }
+  
+  async getCallRecordingById(id: number, dealershipId: number): Promise<CallRecording | undefined> {
+    const result = await db.select().from(callRecordings)
+      .where(and(eq(callRecordings.id, id), eq(callRecordings.dealershipId, dealershipId)))
+      .limit(1);
+    return result[0];
+  }
+  
+  async getCallRecordingByGhlCallId(ghlCallId: string, dealershipId: number): Promise<CallRecording | undefined> {
+    const result = await db.select().from(callRecordings)
+      .where(and(eq(callRecordings.ghlCallId, ghlCallId), eq(callRecordings.dealershipId, dealershipId)))
+      .limit(1);
+    return result[0];
+  }
+  
+  async createCallRecording(recording: InsertCallRecording): Promise<CallRecording> {
+    const result = await db.insert(callRecordings).values(recording).returning();
+    return result[0];
+  }
+  
+  async updateCallRecording(id: number, dealershipId: number, recording: Partial<InsertCallRecording>): Promise<CallRecording | undefined> {
+    const result = await db.update(callRecordings)
+      .set({ ...recording, updatedAt: new Date() })
+      .where(and(eq(callRecordings.id, id), eq(callRecordings.dealershipId, dealershipId)))
+      .returning();
+    return result[0];
+  }
+  
+  async getPendingCallRecordings(dealershipId: number, limit: number = 10): Promise<CallRecording[]> {
+    return await db.select().from(callRecordings)
+      .where(and(
+        eq(callRecordings.dealershipId, dealershipId),
+        eq(callRecordings.analysisStatus, 'pending')
+      ))
+      .orderBy(callRecordings.callStartedAt)
+      .limit(limit);
+  }
+  
+  async getCallRecordingsNeedingReview(dealershipId: number, limit: number = 20): Promise<CallRecording[]> {
+    return await db.select().from(callRecordings)
+      .where(and(
+        eq(callRecordings.dealershipId, dealershipId),
+        eq(callRecordings.needsReview, true),
+        sql`${callRecordings.reviewedAt} IS NULL`
+      ))
+      .orderBy(desc(callRecordings.callStartedAt))
+      .limit(limit);
+  }
+  
+  async getCallRecordingStats(dealershipId: number, startDate?: Date, endDate?: Date): Promise<{
+    totalCalls: number;
+    analyzedCalls: number;
+    averageScore: number;
+    callsNeedingReview: number;
+    sentimentBreakdown: { positive: number; neutral: number; negative: number };
+  }> {
+    const conditions = [eq(callRecordings.dealershipId, dealershipId)];
+    if (startDate) conditions.push(gte(callRecordings.callStartedAt, startDate));
+    if (endDate) conditions.push(lte(callRecordings.callStartedAt, endDate));
+    const whereClause = and(...conditions);
+    
+    const [totalResult, analyzedResult, avgScoreResult, reviewResult, sentimentResult] = await Promise.all([
+      db.select({ count: sql<number>`count(*)` }).from(callRecordings).where(whereClause),
+      db.select({ count: sql<number>`count(*)` }).from(callRecordings)
+        .where(and(whereClause, eq(callRecordings.analysisStatus, 'completed'))),
+      db.select({ avg: sql<number>`AVG(${callRecordings.overallScore})` }).from(callRecordings)
+        .where(and(whereClause, eq(callRecordings.analysisStatus, 'completed'))),
+      db.select({ count: sql<number>`count(*)` }).from(callRecordings)
+        .where(and(whereClause, eq(callRecordings.needsReview, true), sql`${callRecordings.reviewedAt} IS NULL`)),
+      db.select({ 
+        sentiment: callRecordings.sentiment, 
+        count: sql<number>`count(*)` 
+      }).from(callRecordings)
+        .where(and(whereClause, sql`${callRecordings.sentiment} IS NOT NULL`))
+        .groupBy(callRecordings.sentiment)
+    ]);
+    
+    const sentimentBreakdown = { positive: 0, neutral: 0, negative: 0 };
+    sentimentResult.forEach(r => {
+      if (r.sentiment === 'positive') sentimentBreakdown.positive = Number(r.count);
+      else if (r.sentiment === 'neutral') sentimentBreakdown.neutral = Number(r.count);
+      else if (r.sentiment === 'negative') sentimentBreakdown.negative = Number(r.count);
+    });
+    
+    return {
+      totalCalls: Number(totalResult[0]?.count || 0),
+      analyzedCalls: Number(analyzedResult[0]?.count || 0),
+      averageScore: Math.round(Number(avgScoreResult[0]?.avg || 0)),
+      callsNeedingReview: Number(reviewResult[0]?.count || 0),
+      sentimentBreakdown
+    };
+  }
+  
+  // ====== SUPER ADMIN IMPERSONATION ======
+  async createImpersonationSession(session: InsertImpersonationSession): Promise<ImpersonationSession> {
+    const result = await db.insert(impersonationSessions).values(session).returning();
+    return result[0];
+  }
+  
+  async getActiveImpersonationSession(superAdminId: number): Promise<ImpersonationSession | undefined> {
+    const result = await db.select().from(impersonationSessions)
+      .where(and(
+        eq(impersonationSessions.superAdminId, superAdminId),
+        sql`${impersonationSessions.endedAt} IS NULL`
+      ))
+      .orderBy(desc(impersonationSessions.startedAt))
+      .limit(1);
+    return result[0];
+  }
+  
+  async endImpersonationSession(id: number, superAdminId: number): Promise<ImpersonationSession | undefined> {
+    const result = await db.update(impersonationSessions)
+      .set({ endedAt: new Date() })
+      .where(and(eq(impersonationSessions.id, id), eq(impersonationSessions.superAdminId, superAdminId)))
+      .returning();
+    return result[0];
+  }
+  
+  async getImpersonationSessions(limit: number = 50, offset: number = 0): Promise<{ 
+    sessions: (ImpersonationSession & { superAdminName?: string; targetUserName?: string; targetDealershipName?: string })[]; 
+    total: number 
+  }> {
+    const superAdminAlias = sql`sa`;
+    const targetUserAlias = sql`tu`;
+    
+    const [sessions, countResult] = await Promise.all([
+      db.select({
+        id: impersonationSessions.id,
+        superAdminId: impersonationSessions.superAdminId,
+        targetUserId: impersonationSessions.targetUserId,
+        targetDealershipId: impersonationSessions.targetDealershipId,
+        reason: impersonationSessions.reason,
+        ipAddress: impersonationSessions.ipAddress,
+        userAgent: impersonationSessions.userAgent,
+        startedAt: impersonationSessions.startedAt,
+        endedAt: impersonationSessions.endedAt,
+        actionsPerformed: impersonationSessions.actionsPerformed,
+        superAdminName: sql<string>`(SELECT name FROM users WHERE id = ${impersonationSessions.superAdminId})`,
+        targetUserName: sql<string>`(SELECT name FROM users WHERE id = ${impersonationSessions.targetUserId})`,
+        targetDealershipName: sql<string>`(SELECT name FROM dealerships WHERE id = ${impersonationSessions.targetDealershipId})`
+      }).from(impersonationSessions)
+        .orderBy(desc(impersonationSessions.startedAt))
+        .limit(limit)
+        .offset(offset),
+      db.select({ count: sql<number>`count(*)` }).from(impersonationSessions)
+    ]);
+    
+    return { sessions: sessions as any, total: Number(countResult[0]?.count || 0) };
+  }
+  
+  async incrementImpersonationActions(id: number): Promise<void> {
+    await db.update(impersonationSessions)
+      .set({ actionsPerformed: sql`${impersonationSessions.actionsPerformed} + 1` })
+      .where(eq(impersonationSessions.id, id));
   }
 }
 

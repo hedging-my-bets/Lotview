@@ -3273,7 +3273,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Get all messenger conversations (role-based filtering)
   // Managers see all, salespeople see only their connected pages
-  app.get("/api/messenger-conversations", authMiddleware, requireRole("salesperson", "manager", "general_manager", "master", "super_admin"), async (req, res) => {
+  app.get("/api/messenger-conversations", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), async (req, res) => {
     try {
       const dealershipId = req.dealershipId!;
       const userId = req.user?.id;
@@ -3291,7 +3291,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Get all conversations (both website chat and messenger) with role-based filtering
   // General Manager/Sales Manager see all, salespeople see only their connected pages' messenger
-  app.get("/api/all-conversations", authMiddleware, requireRole("salesperson", "manager", "general_manager", "master", "super_admin"), async (req, res) => {
+  app.get("/api/all-conversations", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), async (req, res) => {
     try {
       const dealershipId = req.dealershipId!;
       const userId = req.user?.id;
@@ -3299,7 +3299,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Managers get website chat conversations
       let websiteChats: any[] = [];
-      if (userRole === 'manager' || userRole === 'general_manager' || userRole === 'master' || userRole === 'super_admin') {
+      if (userRole === 'manager' || userRole === 'admin' || userRole === 'master' || userRole === 'super_admin') {
         const { conversations } = await storage.getAllConversations(dealershipId, undefined, 1000, 0);
         websiteChats = conversations.map(conv => ({
           ...conv,
@@ -7961,6 +7961,421 @@ Format your response in clear sections with actionable recommendations.`;
     // Log opportunity events for now - full sync implementation to come
     console.log(`GHL opportunity event for dealership ${dealershipId}:`, payload?.opportunity?.id);
   }
+  
+  // ====== CALL ANALYSIS SYSTEM ======
+  
+  // GHL Call Webhook - receives call completed events
+  app.post("/api/ghl/call-webhook", async (req, res) => {
+    try {
+      const { locationId, call, contact } = req.body;
+      
+      if (!locationId) {
+        return res.status(400).json({ error: "Missing locationId" });
+      }
+      
+      // Find dealership by GHL location ID
+      const ghlAccountResults = await db.select().from(ghlAccounts)
+        .where(eq(ghlAccounts.locationId, locationId));
+      
+      if (ghlAccountResults.length === 0) {
+        console.warn(`No dealership found for GHL location ${locationId}`);
+        return res.status(200).json({ received: true, warning: "Unknown location" });
+      }
+      
+      const dealershipId = ghlAccountResults[0].dealershipId;
+      
+      // Check if we already have this call
+      const existingCall = await storage.getCallRecordingByGhlCallId(call?.id || req.body.messageId, dealershipId);
+      if (existingCall) {
+        return res.json({ received: true, status: "duplicate" });
+      }
+      
+      // Create call recording record
+      const callRecording = await storage.createCallRecording({
+        dealershipId,
+        ghlCallId: call?.id || req.body.messageId || `ghl-${Date.now()}`,
+        ghlContactId: contact?.id || null,
+        callerPhone: call?.from || req.body.from || 'unknown',
+        dealershipPhone: call?.to || req.body.to || 'unknown',
+        direction: call?.direction || req.body.direction || 'inbound',
+        duration: call?.duration || req.body.duration || 0,
+        callStatus: call?.status || req.body.status || 'completed',
+        recordingUrl: call?.recordingUrl || req.body.recordingUrl || null,
+        transcription: call?.transcript || req.body.transcript || null,
+        callerName: contact?.name || contact?.firstName || null,
+        salespersonName: call?.assignedTo || null,
+        callStartedAt: new Date(call?.startTime || req.body.startTime || Date.now()),
+        callEndedAt: call?.endTime ? new Date(call.endTime) : null,
+        analysisStatus: (call?.transcript || req.body.transcript) ? 'pending' : 'skipped'
+      });
+      
+      // If transcription is available, queue for AI analysis
+      if (callRecording.transcription) {
+        // Process asynchronously - don't block webhook response
+        const { getCallAnalysisService } = await import('./call-analysis-service');
+        const service = getCallAnalysisService(dealershipId);
+        service.processCallRecording(callRecording.id).catch(err => {
+          console.error(`Error processing call ${callRecording.id}:`, err);
+        });
+      }
+      
+      res.json({ received: true, callId: callRecording.id });
+    } catch (error) {
+      console.error("Error processing call webhook:", error);
+      res.status(500).json({ error: "Failed to process call webhook" });
+    }
+  });
+  
+  // Get call recordings (manager/admin only)
+  app.get("/api/call-recordings", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.user?.dealershipId || 1;
+      const { salespersonId, startDate, endDate, analysisStatus, needsReview, minScore, maxScore, limit, offset } = req.query;
+      
+      const filters: any = {};
+      if (salespersonId) filters.salespersonId = parseInt(salespersonId as string);
+      if (startDate) filters.startDate = new Date(startDate as string);
+      if (endDate) filters.endDate = new Date(endDate as string);
+      if (analysisStatus) filters.analysisStatus = analysisStatus as string;
+      if (needsReview !== undefined) filters.needsReview = needsReview === 'true';
+      if (minScore) filters.minScore = parseInt(minScore as string);
+      if (maxScore) filters.maxScore = parseInt(maxScore as string);
+      
+      const result = await storage.getCallRecordings(
+        dealershipId,
+        filters,
+        limit ? parseInt(limit as string) : 50,
+        offset ? parseInt(offset as string) : 0
+      );
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching call recordings:", error);
+      res.status(500).json({ error: "Failed to fetch call recordings" });
+    }
+  });
+  
+  // Get call recording by ID
+  app.get("/api/call-recordings/:id", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.user?.dealershipId || 1;
+      const id = parseInt(req.params.id);
+      
+      const recording = await storage.getCallRecordingById(id, dealershipId);
+      if (!recording) {
+        return res.status(404).json({ error: "Call recording not found" });
+      }
+      
+      res.json(recording);
+    } catch (error) {
+      console.error("Error fetching call recording:", error);
+      res.status(500).json({ error: "Failed to fetch call recording" });
+    }
+  });
+  
+  // Get call recording stats
+  app.get("/api/call-recordings/stats", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.user?.dealershipId || 1;
+      const { startDate, endDate } = req.query;
+      
+      const stats = await storage.getCallRecordingStats(
+        dealershipId,
+        startDate ? new Date(startDate as string) : undefined,
+        endDate ? new Date(endDate as string) : undefined
+      );
+      
+      res.json(stats);
+    } catch (error) {
+      console.error("Error fetching call stats:", error);
+      res.status(500).json({ error: "Failed to fetch call stats" });
+    }
+  });
+  
+  // Re-analyze a call
+  app.post("/api/call-recordings/:id/analyze", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.user?.dealershipId || 1;
+      const id = parseInt(req.params.id);
+      
+      const recording = await storage.getCallRecordingById(id, dealershipId);
+      if (!recording) {
+        return res.status(404).json({ error: "Call recording not found" });
+      }
+      
+      // Reset status to pending
+      await storage.updateCallRecording(id, dealershipId, {
+        analysisStatus: 'pending',
+        analysisError: null
+      });
+      
+      // Process asynchronously
+      const { getCallAnalysisService } = await import('./call-analysis-service');
+      const service = getCallAnalysisService(dealershipId);
+      service.processCallRecording(id).then(success => {
+        console.log(`Re-analysis of call ${id}: ${success ? 'success' : 'failed'}`);
+      });
+      
+      res.json({ message: "Analysis queued", callId: id });
+    } catch (error) {
+      console.error("Error queuing call analysis:", error);
+      res.status(500).json({ error: "Failed to queue analysis" });
+    }
+  });
+  
+  // Mark call as reviewed
+  app.post("/api/call-recordings/:id/review", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.user?.dealershipId || 1;
+      const id = parseInt(req.params.id);
+      const { notes } = req.body;
+      
+      const recording = await storage.updateCallRecording(id, dealershipId, {
+        reviewedBy: req.user?.id,
+        reviewedAt: new Date(),
+        reviewNotes: notes || null,
+        needsReview: false
+      });
+      
+      if (!recording) {
+        return res.status(404).json({ error: "Call recording not found" });
+      }
+      
+      res.json(recording);
+    } catch (error) {
+      console.error("Error marking call as reviewed:", error);
+      res.status(500).json({ error: "Failed to mark call as reviewed" });
+    }
+  });
+  
+  // Get call analysis criteria
+  app.get("/api/call-analysis-criteria", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.user?.dealershipId || 1;
+      const criteria = await storage.getCallAnalysisCriteria(dealershipId);
+      res.json(criteria);
+    } catch (error) {
+      console.error("Error fetching call analysis criteria:", error);
+      res.status(500).json({ error: "Failed to fetch criteria" });
+    }
+  });
+  
+  // Create call analysis criteria
+  app.post("/api/call-analysis-criteria", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.user?.dealershipId || 1;
+      const { name, description, category, weight, promptGuidance } = req.body;
+      
+      const criteria = await storage.createCallAnalysisCriteria({
+        dealershipId,
+        name,
+        description,
+        category: category || 'general',
+        weight: weight || 1,
+        isActive: true,
+        promptGuidance
+      });
+      
+      res.json(criteria);
+    } catch (error) {
+      console.error("Error creating call analysis criteria:", error);
+      res.status(500).json({ error: "Failed to create criteria" });
+    }
+  });
+  
+  // Update call analysis criteria
+  app.patch("/api/call-analysis-criteria/:id", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.user?.dealershipId || 1;
+      const id = parseInt(req.params.id);
+      
+      const criteria = await storage.updateCallAnalysisCriteria(id, dealershipId, req.body);
+      if (!criteria) {
+        return res.status(404).json({ error: "Criteria not found" });
+      }
+      
+      res.json(criteria);
+    } catch (error) {
+      console.error("Error updating call analysis criteria:", error);
+      res.status(500).json({ error: "Failed to update criteria" });
+    }
+  });
+  
+  // Delete call analysis criteria
+  app.delete("/api/call-analysis-criteria/:id", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.user?.dealershipId || 1;
+      const id = parseInt(req.params.id);
+      
+      await storage.deleteCallAnalysisCriteria(id, dealershipId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting call analysis criteria:", error);
+      res.status(500).json({ error: "Failed to delete criteria" });
+    }
+  });
+  
+  // Seed default criteria
+  app.post("/api/call-analysis-criteria/seed-defaults", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.user?.dealershipId || 1;
+      const { seedDefaultCriteria } = await import('./call-analysis-service');
+      await seedDefaultCriteria(dealershipId);
+      
+      const criteria = await storage.getCallAnalysisCriteria(dealershipId);
+      res.json(criteria);
+    } catch (error) {
+      console.error("Error seeding default criteria:", error);
+      res.status(500).json({ error: "Failed to seed defaults" });
+    }
+  });
+  
+  // ====== SUPER ADMIN IMPERSONATION ======
+  
+  // Start impersonation session
+  app.post("/api/super-admin/impersonate", authMiddleware, superAdminOnly, async (req: AuthRequest, res) => {
+    try {
+      const { targetUserId, reason } = req.body;
+      
+      if (!targetUserId) {
+        return res.status(400).json({ error: "Target user ID is required" });
+      }
+      
+      // Get target user
+      const targetUser = await storage.getUserById(targetUserId);
+      if (!targetUser) {
+        return res.status(404).json({ error: "Target user not found" });
+      }
+      
+      // Cannot impersonate another super admin
+      if (targetUser.role === 'super_admin') {
+        return res.status(403).json({ error: "Cannot impersonate another super admin" });
+      }
+      
+      // End any active impersonation session first
+      const activeSession = await storage.getActiveImpersonationSession(req.user!.id);
+      if (activeSession) {
+        await storage.endImpersonationSession(activeSession.id, req.user!.id);
+      }
+      
+      // Create new impersonation session
+      const session = await storage.createImpersonationSession({
+        superAdminId: req.user!.id,
+        targetUserId,
+        targetDealershipId: targetUser.dealershipId,
+        reason,
+        ipAddress: req.ip || req.headers['x-forwarded-for'] as string || 'unknown',
+        userAgent: req.headers['user-agent'] || 'unknown',
+        actionsPerformed: 0
+      });
+      
+      // Generate impersonation token
+      const impersonationToken = generateToken({
+        id: targetUser.id,
+        email: targetUser.email,
+        role: targetUser.role,
+        name: targetUser.name,
+        dealershipId: targetUser.dealershipId,
+        isActive: targetUser.isActive,
+        createdBy: targetUser.createdBy,
+        createdAt: targetUser.createdAt,
+        updatedAt: targetUser.updatedAt,
+        passwordHash: ''
+      });
+      
+      // Log audit action
+      await storage.logAuditAction({
+        userId: req.user!.id,
+        action: 'impersonate_start',
+        resource: 'user',
+        resourceId: targetUserId.toString(),
+        details: JSON.stringify({ 
+          targetUserEmail: targetUser.email,
+          targetUserRole: targetUser.role,
+          reason,
+          sessionId: session.id
+        }),
+        ipAddress: req.ip || null
+      });
+      
+      res.json({
+        success: true,
+        sessionId: session.id,
+        impersonationToken,
+        targetUser: {
+          id: targetUser.id,
+          email: targetUser.email,
+          name: targetUser.name,
+          role: targetUser.role,
+          dealershipId: targetUser.dealershipId
+        }
+      });
+    } catch (error) {
+      console.error("Error starting impersonation:", error);
+      res.status(500).json({ error: "Failed to start impersonation" });
+    }
+  });
+  
+  // End impersonation session
+  app.post("/api/super-admin/impersonate/end", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { sessionId, superAdminId } = req.body;
+      
+      if (!sessionId || !superAdminId) {
+        return res.status(400).json({ error: "Session ID and super admin ID are required" });
+      }
+      
+      const session = await storage.endImpersonationSession(sessionId, superAdminId);
+      
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+      
+      // Log audit action
+      await storage.logAuditAction({
+        userId: superAdminId,
+        action: 'impersonate_end',
+        resource: 'user',
+        resourceId: session.targetUserId.toString(),
+        details: JSON.stringify({ 
+          sessionId: session.id,
+          actionsPerformed: session.actionsPerformed
+        }),
+        ipAddress: req.ip || null
+      });
+      
+      res.json({ success: true, session });
+    } catch (error) {
+      console.error("Error ending impersonation:", error);
+      res.status(500).json({ error: "Failed to end impersonation" });
+    }
+  });
+  
+  // Get impersonation history
+  app.get("/api/super-admin/impersonation-history", authMiddleware, superAdminOnly, async (req: AuthRequest, res) => {
+    try {
+      const { limit, offset } = req.query;
+      const result = await storage.getImpersonationSessions(
+        limit ? parseInt(limit as string) : 50,
+        offset ? parseInt(offset as string) : 0
+      );
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching impersonation history:", error);
+      res.status(500).json({ error: "Failed to fetch history" });
+    }
+  });
+  
+  // Get active impersonation session for super admin
+  app.get("/api/super-admin/impersonate/active", authMiddleware, superAdminOnly, async (req: AuthRequest, res) => {
+    try {
+      const session = await storage.getActiveImpersonationSession(req.user!.id);
+      res.json({ session: session || null });
+    } catch (error) {
+      console.error("Error fetching active session:", error);
+      res.status(500).json({ error: "Failed to fetch session" });
+    }
+  });
 
   const httpServer = createServer(app);
   

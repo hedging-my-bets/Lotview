@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Key, FileText, Plus, Eye, EyeOff, Trash2, LogOut, Settings2, CheckCircle2, XCircle, Loader2, Plug, Pencil, Webhook, Copy, AlertCircle, Clock, Link2, RefreshCw, Car, Rocket, Users, UserX, KeyRound, Search, Facebook, Bot, MessageSquare, Activity, Database, HardDrive, Shield, Server } from "lucide-react";
+import { Building2, Key, FileText, Plus, Eye, EyeOff, Trash2, LogOut, Settings2, CheckCircle2, XCircle, Loader2, Plug, Pencil, Webhook, Copy, AlertCircle, Clock, Link2, RefreshCw, Car, Rocket, Users, UserX, KeyRound, Search, Facebook, Bot, MessageSquare, Activity, Database, HardDrive, Shield, Server, UserCog, ArrowLeftRight, X } from "lucide-react";
 import OnboardingWizard from "@/components/OnboardingWizard";
 import { GhlIntegrationDialog } from "@/components/GhlIntegrationDialog";
 import { PromptEditor } from "@/components/PromptEditor";
@@ -107,6 +107,24 @@ interface DealershipApiKeys {
   googleAnalyticsId: string | null;
   googleAdsId: string | null;
   facebookPixelId: string | null;
+}
+
+interface ImpersonationSession {
+  id: number;
+  superAdminId: number;
+  targetUserId: number;
+  token: string;
+  reason: string | null;
+  startedAt: string;
+  expiresAt: string;
+  targetUser?: {
+    id: number;
+    name: string;
+    email: string;
+    role: string;
+    dealershipId: number | null;
+    dealershipName?: string;
+  };
 }
 
 interface ScrapeSource {
@@ -226,6 +244,94 @@ export default function SuperAdminDashboard() {
       return response.json();
     }
   });
+
+  // Impersonation State
+  const [impersonationDialogOpen, setImpersonationDialogOpen] = useState(false);
+  const [impersonationTarget, setImpersonationTarget] = useState<UserWithDealership | null>(null);
+  const [impersonationReason, setImpersonationReason] = useState('');
+  const [isImpersonating, setIsImpersonating] = useState(false);
+  
+  // Check for active impersonation session
+  const { data: activeSession, refetch: refetchActiveSession } = useQuery<{ session: ImpersonationSession | null }>({
+    queryKey: ["/api/super-admin/impersonate/active"],
+    queryFn: async () => {
+      const token = localStorage.getItem('auth_token');
+      const headers: HeadersInit = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const response = await fetch('/api/super-admin/impersonate/active', { 
+        credentials: 'include',
+        headers 
+      });
+      if (!response.ok) return { session: null };
+      return response.json();
+    }
+  });
+  
+  // Start impersonation
+  const startImpersonation = async () => {
+    if (!impersonationTarget) return;
+    
+    setIsImpersonating(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('/api/super-admin/impersonate', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          targetUserId: impersonationTarget.id,
+          reason: impersonationReason || 'Admin support session'
+        })
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to start impersonation');
+      }
+      
+      const data = await response.json();
+      
+      // Store original token for exit
+      localStorage.setItem('original_auth_token', token || '');
+      localStorage.setItem('original_user', localStorage.getItem('user') || '');
+      
+      // Set impersonation token and user
+      localStorage.setItem('auth_token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.targetUser));
+      localStorage.setItem('impersonation_session_id', data.sessionId.toString());
+      localStorage.setItem('impersonation_super_admin_id', user?.id.toString() || '');
+      
+      toast({
+        title: "Impersonation Started",
+        description: `Now viewing as ${impersonationTarget.name}. Click the banner to exit.`
+      });
+      
+      // Redirect to appropriate dashboard based on role
+      if (data.targetUser.role === 'admin' || data.targetUser.role === 'master') {
+        setLocation('/admin');
+      } else if (data.targetUser.role === 'manager' || data.targetUser.role === 'general_manager') {
+        setLocation('/manager');
+      } else if (data.targetUser.role === 'salesperson') {
+        setLocation('/sales');
+      } else {
+        setLocation('/dashboard');
+      }
+      
+    } catch (error) {
+      toast({
+        title: "Impersonation Failed",
+        description: error instanceof Error ? error.message : 'An error occurred',
+        variant: "destructive"
+      });
+    } finally {
+      setIsImpersonating(false);
+      setImpersonationDialogOpen(false);
+      setImpersonationReason('');
+      setImpersonationTarget(null);
+    }
+  };
 
   // Facebook Catalog Configs
   const { data: catalogConfigs = [], isLoading: catalogsLoading, refetch: refetchCatalogs } = useQuery<FacebookCatalogConfig[]>({
@@ -1053,6 +1159,19 @@ export default function SuperAdminDashboard() {
                                   <Button
                                     variant="ghost"
                                     size="sm"
+                                    onClick={() => {
+                                      setImpersonationTarget(u);
+                                      setImpersonationDialogOpen(true);
+                                    }}
+                                    title="Login as this user"
+                                    data-testid={`impersonate-${u.id}`}
+                                    disabled={!u.isActive}
+                                  >
+                                    <ArrowLeftRight className="h-4 w-4 text-blue-500" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
                                     onClick={() => updateUserStatusMutation.mutate({ 
                                       userId: u.id, 
                                       isActive: !u.isActive 
@@ -1690,6 +1809,71 @@ export default function SuperAdminDashboard() {
           </Card>
         </TabsContent>
       </Tabs>
+      
+      {/* Impersonation Dialog */}
+      <Dialog open={impersonationDialogOpen} onOpenChange={setImpersonationDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserCog className="h-5 w-5 text-blue-500" />
+              Login As User
+            </DialogTitle>
+            <DialogDescription>
+              Start a session as this user for support and troubleshooting. All actions will be logged.
+            </DialogDescription>
+          </DialogHeader>
+          {impersonationTarget && (
+            <div className="space-y-4">
+              <div className="p-4 border rounded-lg bg-muted">
+                <p className="font-medium">{impersonationTarget.name}</p>
+                <p className="text-sm text-muted-foreground">{impersonationTarget.email}</p>
+                <p className="text-sm text-muted-foreground">
+                  {impersonationTarget.dealershipName || 'No dealership'} • {impersonationTarget.role.replace('_', ' ')}
+                </p>
+              </div>
+              <div>
+                <Label htmlFor="reason">Reason (optional)</Label>
+                <Textarea
+                  id="reason"
+                  value={impersonationReason}
+                  onChange={(e) => setImpersonationReason(e.target.value)}
+                  placeholder="e.g., Customer support, troubleshooting login issue"
+                  className="min-h-[80px]"
+                  data-testid="input-impersonation-reason"
+                />
+              </div>
+              <div className="rounded-lg border border-yellow-200 bg-yellow-50 dark:bg-yellow-900/20 p-3">
+                <div className="flex items-center gap-2 text-yellow-800 dark:text-yellow-200 text-sm">
+                  <AlertCircle className="h-4 w-4" />
+                  <span>This session will be recorded in the audit log</span>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImpersonationDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={startImpersonation}
+              disabled={isImpersonating}
+              data-testid="button-start-impersonation"
+            >
+              {isImpersonating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Starting...
+                </>
+              ) : (
+                <>
+                  <ArrowLeftRight className="h-4 w-4 mr-2" />
+                  Start Session
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
