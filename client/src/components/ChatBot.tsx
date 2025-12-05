@@ -30,6 +30,8 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [handoffRequested, setHandoffRequested] = useState(false);
+  const [smsOfferShown, setSmsOfferShown] = useState(false);
+  const [smsDeclined, setSmsDeclined] = useState(false);
   const [awaitingPhone, setAwaitingPhone] = useState(false);
   const ctaAutoSentRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -305,6 +307,26 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
 
     // Check if we're awaiting phone number for handoff
     if (awaitingPhone) {
+      const lowerInput = inputValue.trim().toLowerCase();
+      
+      // Check if user is declining SMS while awaiting phone
+      const isDeclining = lowerInput === 'no' || lowerInput.includes('no thanks') || 
+        lowerInput.includes('nevermind') || lowerInput.includes('never mind') ||
+        lowerInput.includes('cancel') || lowerInput.includes("don't") ||
+        lowerInput.includes('skip') || lowerInput.includes('not interested');
+      
+      if (isDeclining) {
+        // User changed their mind about SMS
+        setAwaitingPhone(false);
+        setSmsDeclined(true);
+        setMessages(prev => [...prev, userMessage, {
+          role: "assistant" as const,
+          content: "No problem! Let's continue our conversation here. How can I help you?"
+        }]);
+        setInputValue("");
+        return;
+      }
+      
       const phoneRegex = /\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/;
       if (phoneRegex.test(inputValue.trim())) {
         setMessages(prev => [...prev, userMessage]);
@@ -330,6 +352,17 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
       const lowerMessage = userMessage.content.toLowerCase();
       const wantsText = lowerMessage.includes('text') || lowerMessage.includes('sms') || 
                         lowerMessage.includes('message me') || lowerMessage.includes('text me');
+      
+      // Check if user is declining SMS (responds "no" to SMS offer)
+      const isDecliningSms = smsOfferShown && !smsDeclined && 
+        (lowerMessage === 'no' || lowerMessage.includes('no thanks') || 
+         lowerMessage.includes('no, ') || lowerMessage.includes('keep it') ||
+         lowerMessage.includes('stay here') || lowerMessage.includes("don't text") ||
+         lowerMessage.includes('this way') || lowerMessage.includes('prefer not'));
+      
+      if (isDecliningSms) {
+        setSmsDeclined(true);
+      }
       
       // Map action to scenario for database prompt lookup
       let scenario = 'general';
@@ -366,8 +399,9 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
         return updated;
       });
 
-      // After a few messages, offer SMS handoff if not already requested
-      if (messages.length >= 4 && !handoffRequested && !wantsText) {
+      // After a few messages, offer SMS handoff ONCE if not already shown, declined, or completed
+      if (messages.length >= 4 && !handoffRequested && !smsOfferShown && !smsDeclined && !wantsText) {
+        setSmsOfferShown(true);
         setTimeout(() => {
           setMessages(prev => [...prev, {
             role: "assistant" as const,
