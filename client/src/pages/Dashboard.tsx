@@ -1306,6 +1306,15 @@ export default function Dashboard() {
                   Super Admin
                 </Button>
               )}
+              <Button 
+                onClick={() => window.open('/', '_blank')} 
+                variant="outline" 
+                data-testid="button-website-view" 
+                className="w-full sm:w-auto"
+              >
+                <ExternalLink className="w-4 h-4 mr-2" />
+                Website View
+              </Button>
               <Button onClick={handleLogout} variant="outline" data-testid="button-logout" className="w-full sm:w-auto">
                 <LogOut className="w-4 h-4 mr-2" />
                 Logout
