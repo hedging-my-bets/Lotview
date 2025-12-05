@@ -42,9 +42,23 @@ Preferred communication style: Simple, everyday language.
 - **Production**: Static file serving from `/dist/public`, server bundled with esbuild, environment-specific configuration.
 - **Code Organization**: Monorepo with shared types in `/shared`, path aliases, strict TypeScript.
 
+### Role Hierarchy & Access Control
+The system uses Role-Based Access Control (RBAC) with the following roles (highest to lowest):
+- **`super_admin`**: System-wide administrator with no dealership affiliation (`dealershipId=null`). Manages all dealerships, global API keys, system settings, and audit logs. Has "Login As" impersonation capability.
+- **`master`**: **General Manager** - Top authority at the dealership level. Full access to all dealership features including Call Analysis, user management, and all sales/service tools.
+- **`admin`**: Administrator - High-level dealership access for configuration and management tasks.
+- **`manager`**: Sales Manager - Access to team performance, Call Analysis dashboard, inventory management, and sales tools.
+- **`salesperson`**: Sales staff - Access to customer-facing features, lead management, and personal performance metrics.
+
+**Authorization Patterns:**
+- Use `requireRole('manager', 'admin', 'master', 'super_admin')` for management features
+- Use `superAdminOnly` middleware for system-wide administration
+- Use `requireDealership` guards on high-risk routes for tenant isolation
+
 ### Multi-Tenant Management
 - **Current State**: Production-ready for single dealerships with hardcoded default `dealershipId=1`. Security measures include dual-path resolution and `requireDealership` guards.
 - **Super Admin System**: Implemented `super_admin` role for system-wide administration with no dealership affiliation (`dealershipId=null`). This role manages dealerships, global API keys, and system-wide audit logs. Authentication involves JWT with enhanced security for active status validation.
+- **Impersonation Feature**: Super Admins can "Login As" any user for support/debugging with full audit trail in `impersonation_sessions` table.
 - **Expansion Path**: Designed for future multi-tenant SaaS, using a Pool Model with shared tables and Row-Level Security readiness. The Super Admin system is fully prepared for multi-dealership management.
 
 ## External Dependencies
