@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Key, FileText, Plus, Eye, EyeOff, Trash2, LogOut, Settings2, CheckCircle2, XCircle, Loader2, Plug, Pencil, Webhook, Copy, AlertCircle, Clock, Link2, RefreshCw, Car, Rocket, Users, UserX, KeyRound, Search, Facebook, Bot, MessageSquare } from "lucide-react";
+import { Building2, Key, FileText, Plus, Eye, EyeOff, Trash2, LogOut, Settings2, CheckCircle2, XCircle, Loader2, Plug, Pencil, Webhook, Copy, AlertCircle, Clock, Link2, RefreshCw, Car, Rocket, Users, UserX, KeyRound, Search, Facebook, Bot, MessageSquare, Activity, Database, HardDrive, Shield, Server } from "lucide-react";
 import OnboardingWizard from "@/components/OnboardingWizard";
 import { GhlIntegrationDialog } from "@/components/GhlIntegrationDialog";
 import { PromptEditor } from "@/components/PromptEditor";
@@ -230,6 +230,29 @@ export default function SuperAdminDashboard() {
   // Facebook Catalog Configs
   const { data: catalogConfigs = [], isLoading: catalogsLoading, refetch: refetchCatalogs } = useQuery<FacebookCatalogConfig[]>({
     queryKey: ["/api/super-admin/facebook-catalogs"],
+  });
+
+  // System Health
+  interface SystemHealth {
+    database: { connected: boolean; latencyMs: number; error: string | null };
+    objectStorage: { configured: boolean; bucketId: string | null; error: string | null };
+    persistedData: {
+      dealerships: number;
+      vehicles: number;
+      users: number;
+      conversations: number;
+      chatPrompts: number;
+      creditTiers: number;
+      modelYearTerms: number;
+      filterGroups: number;
+      apiKeysConfigured: number;
+      remarketingVehicles: number;
+    };
+    dataWarnings: string[];
+    timestamp: string;
+  }
+  const { data: systemHealth, isLoading: systemHealthLoading, refetch: refetchSystemHealth } = useQuery<SystemHealth>({
+    queryKey: ["/api/super-admin/system-health"],
   });
 
   // Facebook Catalog State
@@ -535,6 +558,11 @@ export default function SuperAdminDashboard() {
             <Rocket className="h-4 w-4 mr-1 sm:mr-2 text-green-600" />
             <span className="hidden sm:inline text-green-600 font-medium">Onboard New</span>
             <span className="sm:hidden text-green-600">+New</span>
+          </TabsTrigger>
+          <TabsTrigger value="system-health" data-testid="tab-system-health" className="text-xs sm:text-sm px-2 sm:px-3 py-2 bg-teal-600/10 hover:bg-teal-600/20">
+            <Activity className="h-4 w-4 mr-1 sm:mr-2 text-teal-600" />
+            <span className="hidden sm:inline text-teal-600 font-medium">System Health</span>
+            <span className="sm:hidden text-teal-600">Health</span>
           </TabsTrigger>
         </TabsList>
 
@@ -1497,6 +1525,169 @@ export default function SuperAdminDashboard() {
               queryClient.invalidateQueries({ queryKey: ["/api/super-admin/audit-logs"] });
             }} 
           />
+        </TabsContent>
+
+        {/* System Health Tab */}
+        <TabsContent value="system-health">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Activity className="h-5 w-5 text-teal-600" />
+                    System Health & Data Persistence
+                  </CardTitle>
+                  <CardDescription>Monitor database connection, storage status, and data that persists across deployments</CardDescription>
+                </div>
+                <Button onClick={() => refetchSystemHealth()} variant="outline" size="sm">
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Refresh
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {systemHealthLoading ? (
+                <div className="text-center py-8 text-muted-foreground">Loading system health...</div>
+              ) : !systemHealth ? (
+                <div className="text-center py-8 text-muted-foreground">Failed to load system health</div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Warnings */}
+                  {systemHealth.dataWarnings.length > 0 && (
+                    <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+                      <div className="flex items-center gap-2 text-yellow-800 dark:text-yellow-200 font-medium mb-2">
+                        <AlertCircle className="h-5 w-5" />
+                        Data Persistence Warnings
+                      </div>
+                      <ul className="list-disc list-inside space-y-1 text-yellow-700 dark:text-yellow-300 text-sm">
+                        {systemHealth.dataWarnings.map((warning, idx) => (
+                          <li key={idx}>{warning}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Status Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Database Status */}
+                    <div className={`rounded-lg border p-4 ${systemHealth.database.connected ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'}`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <Database className="h-5 w-5" />
+                          <span className="font-medium">PostgreSQL Database</span>
+                        </div>
+                        <Badge variant={systemHealth.database.connected ? "default" : "destructive"}>
+                          {systemHealth.database.connected ? "Connected" : "Disconnected"}
+                        </Badge>
+                      </div>
+                      {systemHealth.database.connected ? (
+                        <p className="text-sm text-green-700 dark:text-green-300">
+                          <CheckCircle2 className="h-4 w-4 inline mr-1" />
+                          Response time: {systemHealth.database.latencyMs}ms - All data safely persisted
+                        </p>
+                      ) : (
+                        <p className="text-sm text-red-700 dark:text-red-300">
+                          <XCircle className="h-4 w-4 inline mr-1" />
+                          Error: {systemHealth.database.error}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Object Storage Status */}
+                    <div className={`rounded-lg border p-4 ${systemHealth.objectStorage.configured ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' : 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'}`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <HardDrive className="h-5 w-5" />
+                          <span className="font-medium">Object Storage</span>
+                        </div>
+                        <Badge variant={systemHealth.objectStorage.configured ? "default" : "secondary"}>
+                          {systemHealth.objectStorage.configured ? "Configured" : "Not Configured"}
+                        </Badge>
+                      </div>
+                      {systemHealth.objectStorage.configured ? (
+                        <p className="text-sm text-green-700 dark:text-green-300">
+                          <CheckCircle2 className="h-4 w-4 inline mr-1" />
+                          Uploaded files (logos, etc.) persist across deployments
+                        </p>
+                      ) : (
+                        <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                          <AlertCircle className="h-4 w-4 inline mr-1" />
+                          Uploaded files may not persist across deployments
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Persisted Data Summary */}
+                  <div className="rounded-lg border p-4">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Shield className="h-5 w-5 text-teal-600" />
+                      <span className="font-medium">Persisted Data (Safe Across Deployments)</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                      <div className="text-center p-3 bg-muted/50 rounded-lg">
+                        <div className="text-2xl font-bold text-primary">{systemHealth.persistedData.dealerships}</div>
+                        <div className="text-xs text-muted-foreground">Dealerships</div>
+                      </div>
+                      <div className="text-center p-3 bg-muted/50 rounded-lg">
+                        <div className="text-2xl font-bold text-primary">{systemHealth.persistedData.vehicles}</div>
+                        <div className="text-xs text-muted-foreground">Vehicles</div>
+                      </div>
+                      <div className="text-center p-3 bg-muted/50 rounded-lg">
+                        <div className="text-2xl font-bold text-primary">{systemHealth.persistedData.users}</div>
+                        <div className="text-xs text-muted-foreground">Users</div>
+                      </div>
+                      <div className="text-center p-3 bg-muted/50 rounded-lg">
+                        <div className="text-2xl font-bold text-primary">{systemHealth.persistedData.conversations}</div>
+                        <div className="text-xs text-muted-foreground">Conversations</div>
+                      </div>
+                      <div className="text-center p-3 bg-muted/50 rounded-lg">
+                        <div className="text-2xl font-bold text-primary">{systemHealth.persistedData.chatPrompts}</div>
+                        <div className="text-xs text-muted-foreground">Chat Prompts</div>
+                      </div>
+                      <div className="text-center p-3 bg-muted/50 rounded-lg">
+                        <div className="text-2xl font-bold text-primary">{systemHealth.persistedData.creditTiers}</div>
+                        <div className="text-xs text-muted-foreground">Credit Tiers</div>
+                      </div>
+                      <div className="text-center p-3 bg-muted/50 rounded-lg">
+                        <div className="text-2xl font-bold text-primary">{systemHealth.persistedData.modelYearTerms}</div>
+                        <div className="text-xs text-muted-foreground">Model Year Terms</div>
+                      </div>
+                      <div className="text-center p-3 bg-muted/50 rounded-lg">
+                        <div className="text-2xl font-bold text-primary">{systemHealth.persistedData.filterGroups}</div>
+                        <div className="text-xs text-muted-foreground">Filter Groups</div>
+                      </div>
+                      <div className="text-center p-3 bg-muted/50 rounded-lg">
+                        <div className="text-2xl font-bold text-primary">{systemHealth.persistedData.apiKeysConfigured}</div>
+                        <div className="text-xs text-muted-foreground">API Keys</div>
+                      </div>
+                      <div className="text-center p-3 bg-muted/50 rounded-lg">
+                        <div className="text-2xl font-bold text-primary">{systemHealth.persistedData.remarketingVehicles}</div>
+                        <div className="text-xs text-muted-foreground">Remarketing</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Data Persistence Info */}
+                  <div className="rounded-lg border p-4 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Server className="h-5 w-5 text-blue-600" />
+                      <span className="font-medium text-blue-800 dark:text-blue-200">How Data Persistence Works</span>
+                    </div>
+                    <div className="text-sm text-blue-700 dark:text-blue-300 space-y-2">
+                      <p><strong>Database (PostgreSQL):</strong> All account settings, chat prompts, conversations, financing rules, API keys, and user data are stored in a managed PostgreSQL database that persists independently of app deployments.</p>
+                      <p><strong>Object Storage:</strong> Uploaded files like logos are stored in persistent object storage that survives code updates and redeployments.</p>
+                      <p><strong>Safe to Republish:</strong> When you update and republish the app, all your settings, data, and configurations remain intact.</p>
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-muted-foreground text-right">
+                    Last checked: {new Date(systemHealth.timestamp).toLocaleString()}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

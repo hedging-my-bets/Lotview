@@ -512,6 +512,14 @@ export interface IStorage {
   // ====== DEALERSHIP BRANDING ======
   getDealershipBranding(dealershipId: number): Promise<DealershipBranding | undefined>;
   upsertDealershipBranding(branding: InsertDealershipBranding): Promise<DealershipBranding>;
+  
+  // ====== SYSTEM HEALTH COUNTS (Cross-Dealership) ======
+  getTotalVehicleCount(): Promise<number>;
+  getAllConversationsCount(): Promise<number>;
+  getAllChatPromptsCount(): Promise<number>;
+  getAllFilterGroupsCount(): Promise<number>;
+  getApiKeysConfiguredCount(): Promise<number>;
+  getTotalRemarketingVehicleCount(): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3384,6 +3392,37 @@ export class DatabaseStorage implements IStorage {
       const result = await db.insert(dealershipBranding).values(branding).returning();
       return result[0];
     }
+  }
+  
+  // ====== SYSTEM HEALTH COUNTS ======
+  async getTotalVehicleCount(): Promise<number> {
+    const result = await db.select({ count: sql<number>`count(*)` }).from(vehicles);
+    return Number(result[0]?.count || 0);
+  }
+  
+  async getAllConversationsCount(): Promise<number> {
+    const result = await db.select({ count: sql<number>`count(*)` }).from(chatConversations);
+    return Number(result[0]?.count || 0);
+  }
+  
+  async getAllChatPromptsCount(): Promise<number> {
+    const result = await db.select({ count: sql<number>`count(*)` }).from(chatPrompts);
+    return Number(result[0]?.count || 0);
+  }
+  
+  async getAllFilterGroupsCount(): Promise<number> {
+    const result = await db.select({ count: sql<number>`count(*)` }).from(filterGroups);
+    return Number(result[0]?.count || 0);
+  }
+  
+  async getApiKeysConfiguredCount(): Promise<number> {
+    const result = await db.select({ count: sql<number>`count(*)` }).from(dealershipApiKeys);
+    return Number(result[0]?.count || 0);
+  }
+  
+  async getTotalRemarketingVehicleCount(): Promise<number> {
+    const result = await db.select({ count: sql<number>`count(*)` }).from(remarketingVehicles);
+    return Number(result[0]?.count || 0);
   }
 }
 

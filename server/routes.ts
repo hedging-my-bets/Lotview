@@ -13,7 +13,7 @@ import {
   ghlAccounts,
   ghlContactSync
 } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, sql } from "drizzle-orm";
 import { fromZodError } from "zod-validation-error";
 import { triggerManualSync } from "./scheduler";
 import { testBadgeDetection } from "./scraper";
@@ -681,6 +681,96 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching scraper logs:", error);
       res.status(500).json({ error: "Failed to fetch scraper logs" });
+    }
+  });
+  
+  // Get system health status (super admin only)
+  app.get("/api/super-admin/system-health", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      // Check database connection with simple heartbeat query
+      let databaseStatus = { connected: false, latencyMs: 0, error: null as string | null };
+      const dbStart = Date.now();
+      try {
+        await db.execute(sql`SELECT 1`);
+        databaseStatus = { connected: true, latencyMs: Date.now() - dbStart, error: null };
+      } catch (error) {
+        databaseStatus = { connected: false, latencyMs: 0, error: (error as Error).message };
+      }
+      
+      // Check object storage configuration
+      let objectStorageStatus = { configured: false, bucketId: null as string | null, error: null as string | null };
+      try {
+        const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
+        if (bucketId) {
+          objectStorageStatus = { configured: true, bucketId, error: null };
+        } else {
+          objectStorageStatus = { configured: false, bucketId: null, error: "Bucket not configured" };
+        }
+      } catch (error) {
+        objectStorageStatus = { configured: false, bucketId: null, error: (error as Error).message };
+      }
+      
+      // Get entity counts using aggregate methods (no hard-coded dealership IDs)
+      const [
+        vehicleCount,
+        userCount,
+        conversationCount,
+        promptCount,
+        filterGroupCount,
+        apiKeysConfigured,
+        remarketingVehicleCount,
+        dealershipCount
+      ] = await Promise.all([
+        storage.getTotalVehicleCount(),
+        storage.getAllUsersForSuperAdmin({}).then((u: any[]) => u.length),
+        storage.getAllConversationsCount(),
+        storage.getAllChatPromptsCount(),
+        storage.getAllFilterGroupsCount(),
+        storage.getApiKeysConfiguredCount(),
+        storage.getTotalRemarketingVehicleCount(),
+        storage.getAllFilterGroups().then((g: any[]) => new Set(g.map((fg: any) => fg.dealershipId)).size)
+      ]);
+      
+      // Get aggregate tier counts across all dealerships
+      let creditTierCount = 0;
+      let modelYearTermCount = 0;
+      try {
+        const filterGroups = await storage.getAllFilterGroups();
+        const uniqueDealerships = Array.from(new Set(filterGroups.map(fg => fg.dealershipId)));
+        for (const dealershipId of uniqueDealerships) {
+          const tiers = await storage.getCreditScoreTiers(dealershipId);
+          const terms = await storage.getModelYearTerms(dealershipId);
+          creditTierCount += tiers.length;
+          modelYearTermCount += terms.length;
+        }
+      } catch (e) {
+        // Fallback if no dealerships exist yet
+      }
+      
+      res.json({
+        database: databaseStatus,
+        objectStorage: objectStorageStatus,
+        persistedData: {
+          dealerships: dealershipCount,
+          vehicles: vehicleCount,
+          users: userCount,
+          conversations: conversationCount,
+          chatPrompts: promptCount,
+          creditTiers: creditTierCount,
+          modelYearTerms: modelYearTermCount,
+          filterGroups: filterGroupCount,
+          apiKeysConfigured,
+          remarketingVehicles: remarketingVehicleCount
+        },
+        dataWarnings: [
+          ...(objectStorageStatus.configured ? [] : ["Object storage not configured - uploaded files may not persist across deployments"]),
+          ...(databaseStatus.connected ? [] : ["Database connection issue - data persistence at risk"])
+        ],
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("Error fetching system health:", error);
+      res.status(500).json({ error: "Failed to fetch system health" });
     }
   });
   
