@@ -24,8 +24,38 @@ import { requireDealership, superAdminOnly } from "./tenant-middleware";
 import { facebookService } from "./facebook-service";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
 import { decodeVIN } from "./vin-decoder";
 import { createPbsApiService } from "./pbs-api-service";
+
+// Configure multer for logo uploads
+const logoUploadsDir = path.join(process.cwd(), 'public', 'uploads', 'logos');
+if (!fs.existsSync(logoUploadsDir)) {
+  fs.mkdirSync(logoUploadsDir, { recursive: true });
+}
+
+const logoStorage = multer.diskStorage({
+  destination: logoUploadsDir,
+  filename: (req: any, file, cb) => {
+    const dealershipId = req.dealershipId || 'unknown';
+    const ext = path.extname(file.originalname);
+    cb(null, `dealership-${dealershipId}-${Date.now()}${ext}`);
+  }
+});
+
+const logoUpload = multer({
+  storage: logoStorage,
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  }
+});
 
 // OAuth state store for CSRF protection (in production, use Redis or signed JWTs)
 // Includes dealershipId for proper multi-tenant isolation during OAuth callback
@@ -113,6 +143,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json({ dealership: null });
       }
       
+      // Get branding for logo
+      const branding = await storage.getDealershipBranding(dealership.id);
+      
       // Return public dealership info (no sensitive data)
       res.json({
         dealership: {
@@ -121,6 +154,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           subdomain: dealership.subdomain,
           city: dealership.city,
           province: dealership.province,
+          logo: branding?.logoUrl || null,
+          primaryColor: branding?.primaryColor || '#022d60',
+          secondaryColor: branding?.secondaryColor || '#00aad2',
         }
       });
     } catch (error) {
@@ -4191,6 +4227,89 @@ Format your response in clear sections with actionable recommendations.`;
     } catch (error) {
       console.error("Error deleting dealership fee:", error);
       res.status(500).json({ error: "Failed to delete dealership fee" });
+    }
+  });
+  
+  // ===== DEALERSHIP BRANDING ROUTES (General Manager) =====
+  
+  // Get dealership branding
+  app.get("/api/dealership/branding", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const branding = await storage.getDealershipBranding(dealershipId);
+      const dealership = await storage.getDealershipById(dealershipId);
+      
+      res.json({
+        logoUrl: branding?.logoUrl || null,
+        dealershipName: dealership?.name || "Unknown Dealership",
+        primaryColor: branding?.primaryColor || "#022d60",
+        secondaryColor: branding?.secondaryColor || "#00aad2",
+      });
+    } catch (error) {
+      console.error("Error fetching branding:", error);
+      res.status(500).json({ error: "Failed to fetch branding" });
+    }
+  });
+  
+  // Upload dealership logo
+  app.post("/api/dealership/branding/logo", authMiddleware, requireRole("master"), requireDealership, logoUpload.single('logo'), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+      
+      const logoUrl = `/uploads/logos/${req.file.filename}`;
+      
+      // Delete old logo file if exists
+      const existingBranding = await storage.getDealershipBranding(dealershipId);
+      if (existingBranding?.logoUrl) {
+        const oldPath = path.join(process.cwd(), 'public', existingBranding.logoUrl);
+        if (fs.existsSync(oldPath)) {
+          fs.unlinkSync(oldPath);
+        }
+      }
+      
+      // Update or create branding record
+      await storage.upsertDealershipBranding({
+        dealershipId,
+        logoUrl,
+      });
+      
+      res.json({ logoUrl });
+    } catch (error) {
+      console.error("Error uploading logo:", error);
+      res.status(500).json({ error: "Failed to upload logo" });
+    }
+  });
+  
+  // Delete dealership logo
+  app.delete("/api/dealership/branding/logo", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      
+      // Get current branding to find old logo
+      const branding = await storage.getDealershipBranding(dealershipId);
+      
+      if (branding?.logoUrl) {
+        // Delete old file if exists
+        const oldPath = path.join(process.cwd(), 'public', branding.logoUrl);
+        if (fs.existsSync(oldPath)) {
+          fs.unlinkSync(oldPath);
+        }
+      }
+      
+      // Update branding to remove logo
+      await storage.upsertDealershipBranding({
+        dealershipId,
+        logoUrl: null,
+      });
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting logo:", error);
+      res.status(500).json({ error: "Failed to delete logo" });
     }
   });
   

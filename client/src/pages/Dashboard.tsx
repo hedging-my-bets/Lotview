@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { MessageSquare, Settings, Sparkles, Users, LogOut, DollarSign, Plus, Edit2, Trash2, Target, Webhook, Star, X, Code, ExternalLink, Car } from "lucide-react";
+import { MessageSquare, Settings, Sparkles, Users, LogOut, DollarSign, Plus, Edit2, Trash2, Target, Webhook, Star, X, Code, ExternalLink, Car, Upload, ImageIcon, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { InventoryManagement } from "@/components/InventoryManagement";
 import {
@@ -102,6 +102,229 @@ interface DealershipFee {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+interface DealershipBranding {
+  logoUrl: string | null;
+  dealershipName: string;
+}
+
+function BrandingSection() {
+  const [branding, setBranding] = useState<DealershipBranding | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    fetchBranding();
+  }, []);
+
+  const fetchBranding = async () => {
+    try {
+      const token = localStorage.getItem("auth_token");
+      const response = await fetch("/api/dealership/branding", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setBranding(data);
+      }
+    } catch (error) {
+      console.error("Error fetching branding:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: "Invalid file type",
+        description: "Please upload an image file (PNG, JPG, etc.)",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast({
+        title: "File too large",
+        description: "Logo must be smaller than 2MB",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append("logo", file);
+
+    try {
+      const token = localStorage.getItem("auth_token");
+      const response = await fetch("/api/dealership/branding/logo", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setBranding((prev) => (prev ? { ...prev, logoUrl: data.logoUrl } : null));
+        toast({
+          title: "Logo updated",
+          description: "Your dealership logo has been uploaded successfully",
+        });
+      } else {
+        throw new Error("Upload failed");
+      }
+    } catch (error) {
+      toast({
+        title: "Upload failed",
+        description: "Failed to upload logo. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    try {
+      const token = localStorage.getItem("auth_token");
+      const response = await fetch("/api/dealership/branding/logo", {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        setBranding((prev) => (prev ? { ...prev, logoUrl: null } : null));
+        toast({
+          title: "Logo removed",
+          description: "Your dealership logo has been removed",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to remove logo. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  const defaultLogo = "/lotview-logo.svg";
+  const displayLogo = branding?.logoUrl || defaultLogo;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-medium mb-2">Dealership Logo</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Upload your dealership logo. It will appear in the header on your inventory pages.
+          Recommended size: 200x60 pixels. Max file size: 2MB.
+        </p>
+
+        <div className="flex flex-col sm:flex-row items-start gap-6">
+          <div className="border rounded-lg p-4 bg-muted/30">
+            <div className="flex items-center justify-center w-48 h-16">
+              <img
+                src={displayLogo}
+                alt={branding?.dealershipName || "Dealership logo"}
+                className="max-w-full max-h-full object-contain"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = defaultLogo;
+                }}
+              />
+            </div>
+            {!branding?.logoUrl && (
+              <p className="text-xs text-muted-foreground text-center mt-2">
+                Default LotView logo
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <input
+                type="file"
+                id="logo-upload"
+                accept="image/*"
+                onChange={handleLogoUpload}
+                className="hidden"
+                data-testid="input-logo-upload"
+              />
+              <label htmlFor="logo-upload">
+                <Button
+                  asChild
+                  variant="outline"
+                  disabled={isUploading}
+                  className="cursor-pointer"
+                >
+                  <span>
+                    {isUploading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Uploading...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4 mr-2" />
+                        Upload New Logo
+                      </>
+                    )}
+                  </span>
+                </Button>
+              </label>
+            </div>
+
+            {branding?.logoUrl && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRemoveLogo}
+                className="text-destructive hover:text-destructive"
+                data-testid="button-remove-logo"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Remove Logo
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t pt-4">
+        <h3 className="text-lg font-medium mb-2">Preview</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          This is how your logo will appear in the navigation header
+        </p>
+        <div className="border rounded-lg p-4 bg-card">
+          <div className="flex items-center gap-3">
+            <img
+              src={displayLogo}
+              alt="Logo preview"
+              className="h-8 object-contain"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = defaultLogo;
+              }}
+            />
+            <span className="text-lg font-semibold">{branding?.dealershipName || "Your Dealership"}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function Dashboard() {
@@ -1124,6 +1347,10 @@ export default function Dashboard() {
               <TabsTrigger value="fees" className="flex items-center gap-1 text-xs sm:text-sm px-2 sm:px-3 py-2 flex-1 sm:flex-none" data-testid="tab-fees">
                 <DollarSign className="w-4 h-4" />
                 <span className="hidden sm:inline">Fees</span>
+              </TabsTrigger>
+              <TabsTrigger value="branding" className="flex items-center gap-1 text-xs sm:text-sm px-2 sm:px-3 py-2 flex-1 sm:flex-none" data-testid="tab-branding">
+                <Settings className="w-4 h-4" />
+                <span className="hidden sm:inline">Branding</span>
               </TabsTrigger>
               <TabsTrigger value="inventory" className="flex items-center gap-1 text-xs sm:text-sm px-2 sm:px-3 py-2 flex-1 sm:flex-none bg-emerald-600/10 hover:bg-emerald-600/20" data-testid="tab-inventory">
                 <Car className="w-4 h-4 text-emerald-600" />
@@ -2311,6 +2538,20 @@ export default function Dashboard() {
                       but will not be shown on the vehicle listing price.
                     </p>
                   </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="branding">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Dealership Branding</CardTitle>
+                  <CardDescription>
+                    Customize your dealership's logo and branding
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <BrandingSection />
                 </CardContent>
               </Card>
             </TabsContent>

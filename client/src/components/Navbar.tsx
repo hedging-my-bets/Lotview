@@ -1,13 +1,20 @@
 import { Link } from "wouter";
 import { Phone, MessageSquare, Menu } from "lucide-react";
 import { useChat } from "@/contexts/ChatContext";
+import { useTenant } from "@/contexts/TenantContext";
 import { useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
+const DEFAULT_LOGO = "/lotview-logo.svg";
+
 export function Navbar() {
   const { openChat } = useChat();
+  const { dealership } = useTenant();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  const logoUrl = dealership?.logo || DEFAULT_LOGO;
+  const dealershipName = dealership?.name || "LotView";
 
   return (
     <nav className="fixed top-0 w-full z-50 bg-background border-b border-border shadow-sm">
@@ -15,16 +22,29 @@ export function Navbar() {
         {/* Logo */}
         <Link href="/">
           <div className="flex items-center gap-2 md:gap-3 cursor-pointer">
-            <div className="w-8 h-8 md:w-10 md:h-10 bg-primary rounded-lg flex items-center justify-center text-white font-bold text-lg md:text-xl">
-              O
-            </div>
-            <div className="hidden sm:block">
-              <h1 className="font-bold text-primary leading-none text-sm md:text-base">
-                OLYMPIC
-                <br />
-                <span className="text-[10px] tracking-widest opacity-70">AUTO GROUP</span>
-              </h1>
-            </div>
+            <img 
+              src={logoUrl} 
+              alt={dealershipName}
+              className="h-8 md:h-10 object-contain"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = DEFAULT_LOGO;
+              }}
+            />
+            {!dealership?.logo && (
+              <div className="hidden sm:block">
+                <h1 className="font-bold text-primary leading-none text-sm md:text-base">
+                  {dealershipName.split(' ')[0]?.toUpperCase() || "LOTVIEW"}
+                  {dealershipName.split(' ').length > 1 && (
+                    <>
+                      <br />
+                      <span className="text-[10px] tracking-widest opacity-70">
+                        {dealershipName.split(' ').slice(1).join(' ').toUpperCase()}
+                      </span>
+                    </>
+                  )}
+                </h1>
+              </div>
+            )}
           </div>
         </Link>
 

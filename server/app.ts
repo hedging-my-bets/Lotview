@@ -1,4 +1,5 @@
 import { type Server } from "node:http";
+import path from "node:path";
 
 import express, { type Express, type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
@@ -29,6 +30,9 @@ app.use(express.json({
   }
 }));
 app.use(express.urlencoded({ extended: false }));
+
+// Serve static files from public directory (logos, uploads, etc.)
+app.use(express.static(path.join(process.cwd(), 'public')));
 
 // Tenant context middleware - extract dealership from user/subdomain/header
 // MUST run before routes to ensure req.dealershipId is available
