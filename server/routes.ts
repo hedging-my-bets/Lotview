@@ -29,24 +29,11 @@ import path from "path";
 import fs from "fs";
 import { decodeVIN } from "./vin-decoder";
 import { createPbsApiService } from "./pbs-api-service";
+import { ObjectStorageService } from "./objectStorage";
 
-// Configure multer for logo uploads
-const logoUploadsDir = path.join(process.cwd(), 'public', 'uploads', 'logos');
-if (!fs.existsSync(logoUploadsDir)) {
-  fs.mkdirSync(logoUploadsDir, { recursive: true });
-}
-
-const logoStorage = multer.diskStorage({
-  destination: logoUploadsDir,
-  filename: (req: any, file, cb) => {
-    const dealershipId = req.dealershipId || 'unknown';
-    const ext = path.extname(file.originalname);
-    cb(null, `dealership-${dealershipId}-${Date.now()}${ext}`);
-  }
-});
-
+// Configure multer for in-memory logo uploads (for object storage)
 const logoUpload = multer({
-  storage: logoStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 2 * 1024 * 1024 }, // 2MB limit
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/')) {
@@ -119,6 +106,24 @@ const adminAuthMiddleware = (req: any, res: any, next: any) => {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
+  // ===== PUBLIC OBJECT STORAGE (Persistent file serving) =====
+  
+  // Serve public objects from object storage (logos, etc.)
+  app.get("/public-objects/:filePath(*)", async (req, res) => {
+    const filePath = req.params.filePath;
+    const objectStorageService = new ObjectStorageService();
+    try {
+      const file = await objectStorageService.searchPublicObject(filePath);
+      if (!file) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      objectStorageService.downloadObject(file, res);
+    } catch (error) {
+      console.error("Error searching for public object:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // ===== TENANCY RESOLUTION (Public) =====
   
   // Resolve subdomain to dealership for frontend routing
@@ -4251,7 +4256,7 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
   
-  // Upload dealership logo
+  // Upload dealership logo (using persistent object storage)
   app.post("/api/dealership/branding/logo", authMiddleware, requireRole("master"), requireDealership, logoUpload.single('logo'), async (req, res) => {
     try {
       const dealershipId = req.dealershipId!;
@@ -4260,16 +4265,20 @@ Format your response in clear sections with actionable recommendations.`;
         return res.status(400).json({ error: "No file uploaded" });
       }
       
-      const logoUrl = `/uploads/logos/${req.file.filename}`;
+      const objectStorageService = new ObjectStorageService();
       
-      // Delete old logo file if exists
+      // Delete old logo from object storage if exists
       const existingBranding = await storage.getDealershipBranding(dealershipId);
-      if (existingBranding?.logoUrl) {
-        const oldPath = path.join(process.cwd(), 'public', existingBranding.logoUrl);
-        if (fs.existsSync(oldPath)) {
-          fs.unlinkSync(oldPath);
-        }
+      if (existingBranding?.logoUrl && existingBranding.logoUrl.startsWith('/public-objects/')) {
+        await objectStorageService.deleteObject(existingBranding.logoUrl);
       }
+      
+      // Upload new logo to object storage
+      const logoUrl = await objectStorageService.uploadLogoFromBuffer(
+        req.file.buffer,
+        dealershipId,
+        req.file.mimetype
+      );
       
       // Update or create branding record
       await storage.upsertDealershipBranding({
@@ -4293,10 +4302,10 @@ Format your response in clear sections with actionable recommendations.`;
       const branding = await storage.getDealershipBranding(dealershipId);
       
       if (branding?.logoUrl) {
-        // Delete old file if exists
-        const oldPath = path.join(process.cwd(), 'public', branding.logoUrl);
-        if (fs.existsSync(oldPath)) {
-          fs.unlinkSync(oldPath);
+        // Delete from object storage if it's an object storage URL
+        if (branding.logoUrl.startsWith('/public-objects/')) {
+          const objectStorageService = new ObjectStorageService();
+          await objectStorageService.deleteObject(branding.logoUrl);
         }
       }
       
