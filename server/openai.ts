@@ -9,22 +9,30 @@ export interface ChatMessage {
   content: string;
 }
 
-async function getOpenAIClient(dealershipId: number): Promise<OpenAI> {
+async function getOpenAIClient(dealershipId: number): Promise<{ client: OpenAI; source: string }> {
   // Try to get dealership-specific API key
   const apiKeys = await storage.getDealershipApiKeys(dealershipId);
   
-  if (apiKeys?.openaiApiKey) {
+  if (apiKeys?.openaiApiKey && apiKeys.openaiApiKey.length > 20) {
     // Use dealership's own OpenAI API key
-    return new OpenAI({
-      apiKey: apiKeys.openaiApiKey
-    });
+    console.log(`Using dealership ${dealershipId} OpenAI API key (length: ${apiKeys.openaiApiKey.length})`);
+    return {
+      client: new OpenAI({
+        apiKey: apiKeys.openaiApiKey
+      }),
+      source: 'dealership'
+    };
   }
   
   // Fallback to Replit's AI Integrations service
-  return new OpenAI({
-    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY
-  });
+  console.log(`Using Replit AI Integrations fallback for dealership ${dealershipId}`);
+  return {
+    client: new OpenAI({
+      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY
+    }),
+    source: 'replit'
+  };
 }
 
 export async function generateChatResponse(
@@ -66,18 +74,22 @@ Always be helpful, concise, and action-oriented. If you don't have specific info
     };
 
     // Get the appropriate OpenAI client (dealership-specific or fallback)
-    const openai = await getOpenAIClient(dealershipId);
+    const { client: openai, source } = await getOpenAIClient(dealershipId);
+    
+    // Use gpt-4o-mini for dealership keys (better compatibility), gpt-5 for Replit AI Integrations
+    const model = source === 'dealership' ? 'gpt-4o-mini' : 'gpt-5';
 
     const response = await openai.chat.completions.create({
-      model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+      model: model,
       messages: [systemMessage, ...messages],
       max_completion_tokens: 500,
       temperature: 1,
     });
 
     return response.choices[0]?.message?.content || "I apologize, but I'm having trouble responding right now. Please try again or contact our sales team directly.";
-  } catch (error) {
-    console.error("OpenAI API error:", error);
+  } catch (error: any) {
+    console.error("OpenAI API error:", error?.message || error);
+    console.error("Full error:", JSON.stringify(error, null, 2));
     throw new Error("Failed to generate chat response");
   }
 }
@@ -177,10 +189,13 @@ export async function generateVehicleDescription(vehicle: VehicleData, dealershi
       .replace(/\{\{FULL_CONTENT\}\}/g, fullContentSection);
 
     // Get the appropriate OpenAI client
-    const openaiClient = await getOpenAIClient(dealershipId);
+    const { client: openaiClient, source } = await getOpenAIClient(dealershipId);
+    
+    // Use gpt-4o-mini for dealership keys, gpt-5 for Replit AI Integrations
+    const model = source === 'dealership' ? 'gpt-4o-mini' : 'gpt-5';
 
     const response = await openaiClient.chat.completions.create({
-      model: "gpt-5",
+      model: model,
       messages: [
         {
           role: "system",
