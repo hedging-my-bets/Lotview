@@ -58,9 +58,11 @@ export function ConversationViewer({ dealershipId, dealershipName }: Conversatio
       if (categoryFilter !== "all") {
         params.set("category", categoryFilter);
       }
+      const token = localStorage.getItem('auth_token');
       const response = await fetch(`/api/conversations?${params.toString()}`, {
         credentials: "include",
         headers: {
+          "Authorization": token ? `Bearer ${token}` : "",
           "x-dealership-id": dealershipId.toString()
         }
       });

@@ -6,7 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { MessageSquare, Settings, Sparkles, Users, LogOut, DollarSign, Plus, Edit2, Trash2, Target, Webhook, Star, X, Code, ExternalLink, Car, Upload, ImageIcon, Loader2 } from "lucide-react";
+import { MessageSquare, Settings, Sparkles, Users, LogOut, DollarSign, Plus, Edit2, Trash2, Target, Webhook, Star, X, Code, ExternalLink, Car, Upload, ImageIcon, Loader2, RefreshCw } from "lucide-react";
+import { ConversationViewer } from "@/components/ConversationViewer";
 import { useToast } from "@/hooks/use-toast";
 import { InventoryManagement } from "@/components/InventoryManagement";
 import {
@@ -33,6 +34,8 @@ interface User {
   role: string;
   isActive: boolean;
   createdAt: string;
+  dealershipId?: number;
+  dealershipName?: string;
 }
 
 interface CreditScoreTier {
@@ -2344,17 +2347,26 @@ export default function Dashboard() {
             <TabsContent value="conversations">
               <Card>
                 <CardHeader>
-                  <CardTitle>Live Conversations</CardTitle>
+                  <CardTitle className="flex items-center gap-2">
+                    <MessageSquare className="h-5 w-5 text-indigo-600" />
+                    Live Conversations
+                  </CardTitle>
                   <CardDescription>
                     Monitor chatbot conversations in real-time and view conversation history
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="py-12 text-center">
-                  <MessageSquare className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                  <p className="text-muted-foreground mb-4">Chatbot conversation monitoring coming soon</p>
-                  <p className="text-sm text-muted-foreground">
-                    Track customer interactions with SMS handoff to GoHighLevel
-                  </p>
+                <CardContent>
+                  {user?.dealershipId ? (
+                    <ConversationViewer 
+                      dealershipId={user.dealershipId} 
+                      dealershipName={user.dealershipName || "Your Dealership"} 
+                    />
+                  ) : (
+                    <div className="py-12 text-center text-muted-foreground">
+                      <MessageSquare className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                      <p>Unable to load conversations. Please contact support.</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>

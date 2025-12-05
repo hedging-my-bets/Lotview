@@ -3376,7 +3376,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get all conversations (with optional category filter) - ADMIN ONLY
-  app.get("/api/conversations", authMiddleware, requireRole("master", "super_admin"), async (req, res) => {
+  app.get("/api/conversations", authMiddleware, requireRole("manager", "admin", "master", "super_admin"), async (req, res) => {
     try {
       const authReq = req as AuthRequest;
       const headerDealershipId = req.headers['x-dealership-id'] ? parseInt(req.headers['x-dealership-id'] as string) : null;
@@ -3425,7 +3425,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get conversation by ID - ADMIN ONLY
-  app.get("/api/conversations/:id", authMiddleware, requireRole("master", "super_admin"), async (req, res) => {
+  app.get("/api/conversations/:id", authMiddleware, requireRole("manager", "admin", "master", "super_admin"), async (req, res) => {
     try {
       const authReq = req as AuthRequest;
       const headerDealershipId = req.headers['x-dealership-id'] ? parseInt(req.headers['x-dealership-id'] as string) : null;
