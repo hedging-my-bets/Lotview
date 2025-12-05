@@ -629,6 +629,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Get scraper activity logs (super admin only)
+  app.get("/api/super-admin/scraper-logs", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const dealershipId = req.query.dealershipId ? parseInt(req.query.dealershipId as string) : undefined;
+      const limit = parseInt(req.query.limit as string) || 50;
+      
+      const logs = await storage.getScraperActivityLogs(dealershipId, limit);
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching scraper logs:", error);
+      res.status(500).json({ error: "Failed to fetch scraper logs" });
+    }
+  });
+  
   // Get all users across all dealerships (super admin only)
   app.get("/api/super-admin/users", authMiddleware, superAdminOnly, async (req, res) => {
     try {
@@ -5684,6 +5698,43 @@ Format your response in clear sections with actionable recommendations.`;
     } catch (error) {
       console.error("Error saving manager settings:", error);
       res.status(500).json({ error: "Failed to save settings" });
+    }
+  });
+
+  // Get dealership branding (manager)
+  app.get("/api/manager/branding", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const branding = await storage.getDealershipBranding(dealershipId);
+      res.json(branding || { dealershipId });
+    } catch (error) {
+      console.error("Error fetching branding:", error);
+      res.status(500).json({ error: "Failed to fetch branding" });
+    }
+  });
+
+  // Update dealership branding (manager)
+  app.post("/api/manager/branding", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { logoUrl, faviconUrl, primaryColor, secondaryColor, heroHeadline, heroSubheadline, heroImageUrl, tagline } = req.body;
+
+      const branding = await storage.upsertDealershipBranding({
+        dealershipId,
+        logoUrl,
+        faviconUrl,
+        primaryColor,
+        secondaryColor,
+        heroHeadline,
+        heroSubheadline,
+        heroImageUrl,
+        tagline
+      });
+
+      res.json(branding);
+    } catch (error) {
+      console.error("Error updating branding:", error);
+      res.status(500).json({ error: "Failed to update branding" });
     }
   });
 

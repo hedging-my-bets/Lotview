@@ -1313,3 +1313,35 @@ export const insertGhlApiLogSchema = createInsertSchema(ghlApiLogs).omit({
 
 export type InsertGhlApiLog = z.infer<typeof insertGhlApiLogSchema>;
 export type GhlApiLog = typeof ghlApiLogs.$inferSelect;
+
+// ====== SCRAPER ACTIVITY LOGS ======
+
+// Scraper activity logs - track all inventory sync operations
+export const scraperActivityLogs = pgTable("scraper_activity_logs", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").references(() => dealerships.id, { onDelete: 'cascade' }),
+  scrapeSourceId: integer("scrape_source_id").references(() => scrapeSources.id, { onDelete: 'set null' }),
+  sourceType: text("source_type").notNull(), // 'cargurus', 'autotrader', 'manual', 'apify', 'puppeteer'
+  sourceName: text("source_name"), // Human-readable source name
+  status: text("status").notNull(), // 'started', 'running', 'completed', 'failed', 'partial'
+  vehiclesFound: integer("vehicles_found").default(0),
+  vehiclesAdded: integer("vehicles_added").default(0),
+  vehiclesUpdated: integer("vehicles_updated").default(0),
+  vehiclesRemoved: integer("vehicles_removed").default(0),
+  errorCount: integer("error_count").default(0),
+  errorMessages: text("error_messages"), // JSON array of error messages
+  duration: integer("duration"), // Duration in milliseconds
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+  triggeredBy: text("triggered_by").default('scheduled'), // 'scheduled', 'manual', 'webhook'
+  metadata: text("metadata"), // Additional JSON metadata
+});
+
+export const insertScraperActivityLogSchema = createInsertSchema(scraperActivityLogs).omit({
+  id: true,
+  startedAt: true,
+  completedAt: true,
+});
+
+export type InsertScraperActivityLog = z.infer<typeof insertScraperActivityLogSchema>;
+export type ScraperActivityLog = typeof scraperActivityLogs.$inferSelect;

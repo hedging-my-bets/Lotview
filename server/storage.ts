@@ -143,7 +143,13 @@ import {
   type InsertGhlAppointmentSync,
   ghlApiLogs,
   type GhlApiLog,
-  type InsertGhlApiLog
+  type InsertGhlApiLog,
+  scraperActivityLogs,
+  type ScraperActivityLog,
+  type InsertScraperActivityLog,
+  dealershipBranding,
+  type DealershipBranding,
+  type InsertDealershipBranding
 } from "@shared/schema";
 import { eq, desc, sql, and, gte, lte, lt, gt, inArray, or, ilike } from "drizzle-orm";
 
@@ -496,6 +502,16 @@ export interface IStorage {
   createMarketSnapshot(snapshot: InsertMarketSnapshot): Promise<MarketSnapshot>;
   getLatestMarketSnapshot(dealershipId: number, make: string, model: string): Promise<MarketSnapshot | undefined>;
   getLatestMarketSnapshotDate(dealershipId: number): Promise<Date | null>;
+  
+  // ====== SCRAPER ACTIVITY LOGS ======
+  createScraperActivityLog(log: InsertScraperActivityLog): Promise<ScraperActivityLog>;
+  updateScraperActivityLog(id: number, updates: Partial<InsertScraperActivityLog>): Promise<ScraperActivityLog | undefined>;
+  getScraperActivityLogs(dealershipId?: number, limit?: number): Promise<ScraperActivityLog[]>;
+  getLatestScraperLog(dealershipId: number, sourceType?: string): Promise<ScraperActivityLog | undefined>;
+  
+  // ====== DEALERSHIP BRANDING ======
+  getDealershipBranding(dealershipId: number): Promise<DealershipBranding | undefined>;
+  upsertDealershipBranding(branding: InsertDealershipBranding): Promise<DealershipBranding>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3308,6 +3324,66 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(marketListings.scrapedAt))
       .limit(1);
     return result[0]?.scrapedAt || null;
+  }
+  
+  // ====== SCRAPER ACTIVITY LOGS ======
+  async createScraperActivityLog(log: InsertScraperActivityLog): Promise<ScraperActivityLog> {
+    const result = await db.insert(scraperActivityLogs).values(log).returning();
+    return result[0];
+  }
+  
+  async updateScraperActivityLog(id: number, updates: Partial<InsertScraperActivityLog>): Promise<ScraperActivityLog | undefined> {
+    const result = await db.update(scraperActivityLogs)
+      .set(updates)
+      .where(eq(scraperActivityLogs.id, id))
+      .returning();
+    return result[0];
+  }
+  
+  async getScraperActivityLogs(dealershipId?: number, limit: number = 50): Promise<ScraperActivityLog[]> {
+    if (dealershipId) {
+      return await db.select().from(scraperActivityLogs)
+        .where(eq(scraperActivityLogs.dealershipId, dealershipId))
+        .orderBy(desc(scraperActivityLogs.startedAt))
+        .limit(limit);
+    }
+    return await db.select().from(scraperActivityLogs)
+      .orderBy(desc(scraperActivityLogs.startedAt))
+      .limit(limit);
+  }
+  
+  async getLatestScraperLog(dealershipId: number, sourceType?: string): Promise<ScraperActivityLog | undefined> {
+    const conditions = [eq(scraperActivityLogs.dealershipId, dealershipId)];
+    if (sourceType) {
+      conditions.push(eq(scraperActivityLogs.sourceType, sourceType));
+    }
+    const result = await db.select().from(scraperActivityLogs)
+      .where(and(...conditions))
+      .orderBy(desc(scraperActivityLogs.startedAt))
+      .limit(1);
+    return result[0];
+  }
+  
+  // ====== DEALERSHIP BRANDING ======
+  async getDealershipBranding(dealershipId: number): Promise<DealershipBranding | undefined> {
+    const result = await db.select().from(dealershipBranding)
+      .where(eq(dealershipBranding.dealershipId, dealershipId))
+      .limit(1);
+    return result[0];
+  }
+  
+  async upsertDealershipBranding(branding: InsertDealershipBranding): Promise<DealershipBranding> {
+    const existing = await this.getDealershipBranding(branding.dealershipId);
+    if (existing) {
+      const result = await db.update(dealershipBranding)
+        .set({ ...branding, updatedAt: new Date() })
+        .where(eq(dealershipBranding.dealershipId, branding.dealershipId))
+        .returning();
+      return result[0];
+    } else {
+      const result = await db.insert(dealershipBranding).values(branding).returning();
+      return result[0];
+    }
   }
 }
 

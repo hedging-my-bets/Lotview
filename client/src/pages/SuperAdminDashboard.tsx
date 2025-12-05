@@ -496,6 +496,11 @@ export default function SuperAdminDashboard() {
             <span className="hidden sm:inline">Audit Logs</span>
             <span className="sm:hidden">Logs</span>
           </TabsTrigger>
+          <TabsTrigger value="scraper-logs" data-testid="tab-scraper-logs" className="text-xs sm:text-sm px-2 sm:px-3 py-2 bg-orange-600/10 hover:bg-orange-600/20">
+            <RefreshCw className="h-4 w-4 mr-1 sm:mr-2 text-orange-600" />
+            <span className="hidden sm:inline text-orange-600 font-medium">Scraper Logs</span>
+            <span className="sm:hidden text-orange-600">Scraper</span>
+          </TabsTrigger>
           <TabsTrigger value="scrape-sources" data-testid="tab-scrape-sources" className="text-xs sm:text-sm px-2 sm:px-3 py-2">
             <Link2 className="h-4 w-4 mr-1 sm:mr-2" />
             <span className="hidden sm:inline">Scrape Sources</span>
@@ -786,6 +791,31 @@ export default function SuperAdminDashboard() {
                   </Table>
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Scraper Activity Logs Tab */}
+        <TabsContent value="scraper-logs">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                <div>
+                  <CardTitle>Scraper Activity Logs</CardTitle>
+                  <CardDescription>Real-time activity from inventory scraping jobs</CardDescription>
+                </div>
+                <Button 
+                  onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/super-admin/scraper-logs"] })}
+                  variant="outline"
+                  size="sm"
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Refresh
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <ScraperLogsTable />
             </CardContent>
           </Card>
         </TabsContent>
@@ -1914,6 +1944,116 @@ function CreateScrapeSourceDialog({ dealerships, onSuccess }: { dealerships: Dea
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+interface ScraperActivityLog {
+  id: number;
+  dealershipId: number | null;
+  scrapeSourceId: number | null;
+  sourceType: string;
+  sourceName: string | null;
+  status: string;
+  vehiclesFound: number;
+  vehiclesAdded: number;
+  vehiclesUpdated: number;
+  vehiclesRemoved: number;
+  errorCount: number;
+  errorMessages: string | null;
+  duration: number | null;
+  startedAt: string;
+  completedAt: string | null;
+  triggeredBy: string;
+}
+
+function ScraperLogsTable() {
+  const { data: logs, isLoading } = useQuery<ScraperActivityLog[]>({
+    queryKey: ["/api/super-admin/scraper-logs"],
+    queryFn: async () => {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch("/api/super-admin/scraper-logs?limit=100", {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error("Failed to fetch scraper logs");
+      return response.json();
+    },
+    refetchInterval: 30000,
+  });
+
+  if (isLoading) {
+    return <div className="text-center py-8 text-muted-foreground">Loading scraper logs...</div>;
+  }
+
+  if (!logs || logs.length === 0) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        <RefreshCw className="h-12 w-12 mx-auto mb-4 opacity-50" />
+        <p>No scraper activity recorded yet.</p>
+        <p className="text-sm">Logs will appear here when inventory sync jobs run.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Time</TableHead>
+            <TableHead>Source</TableHead>
+            <TableHead>Type</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead className="text-right">Found</TableHead>
+            <TableHead className="text-right">Added</TableHead>
+            <TableHead className="text-right">Updated</TableHead>
+            <TableHead className="text-right">Removed</TableHead>
+            <TableHead className="text-right">Duration</TableHead>
+            <TableHead>Triggered</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {logs.map((log) => (
+            <TableRow key={log.id} data-testid={`scraper-log-${log.id}`}>
+              <TableCell className="text-sm">
+                {format(new Date(log.startedAt), "MMM d, h:mm a")}
+              </TableCell>
+              <TableCell className="font-medium">
+                {log.sourceName || `Dealership ${log.dealershipId}`}
+              </TableCell>
+              <TableCell>
+                <Badge variant="outline">{log.sourceType}</Badge>
+              </TableCell>
+              <TableCell>
+                <Badge 
+                  variant={
+                    log.status === 'completed' ? 'default' : 
+                    log.status === 'failed' ? 'destructive' : 
+                    log.status === 'running' ? 'secondary' : 'outline'
+                  }
+                >
+                  {log.status === 'running' && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
+                  {log.status === 'completed' && <CheckCircle2 className="h-3 w-3 mr-1" />}
+                  {log.status === 'failed' && <XCircle className="h-3 w-3 mr-1" />}
+                  {log.status}
+                </Badge>
+              </TableCell>
+              <TableCell className="text-right">{log.vehiclesFound}</TableCell>
+              <TableCell className="text-right text-green-600">+{log.vehiclesAdded}</TableCell>
+              <TableCell className="text-right text-blue-600">{log.vehiclesUpdated}</TableCell>
+              <TableCell className="text-right text-red-600">-{log.vehiclesRemoved}</TableCell>
+              <TableCell className="text-right text-muted-foreground">
+                {log.duration ? `${(log.duration / 1000).toFixed(1)}s` : '—'}
+              </TableCell>
+              <TableCell>
+                <Badge variant="outline" className="text-xs">
+                  {log.triggeredBy}
+                </Badge>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }
 
