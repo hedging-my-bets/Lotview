@@ -571,7 +571,16 @@ export default function SuperAdminDashboard() {
                         <TableRow key={dealership.id} data-testid={`dealership-row-${dealership.id}`}>
                           <TableCell className="font-medium">{dealership.name}</TableCell>
                           <TableCell>{dealership.slug}</TableCell>
-                          <TableCell>{dealership.subdomain}</TableCell>
+                          <TableCell>
+                            <a 
+                              href={`https://${dealership.subdomain}.lotview.ai`} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline"
+                            >
+                              {dealership.subdomain}.lotview.ai
+                            </a>
+                          </TableCell>
                           <TableCell>
                             <Badge variant={dealership.isActive ? "default" : "secondary"}>
                               {dealership.isActive ? "Active" : "Inactive"}
@@ -2197,12 +2206,17 @@ function EditDealershipDialog({ dealership, onSuccess }: { dealership: Dealershi
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="edit-subdomain">Subdomain *</Label>
-                    <Input
-                      id="edit-subdomain"
-                      value={formData.subdomain}
-                      onChange={(e) => setFormData({ ...formData, subdomain: e.target.value })}
-                      required
-                    />
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="edit-subdomain"
+                        value={formData.subdomain}
+                        onChange={(e) => setFormData({ ...formData, subdomain: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
+                        required
+                        className="flex-1"
+                      />
+                      <span className="text-sm text-muted-foreground whitespace-nowrap">.lotview.ai</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Accessible at: <strong>{formData.subdomain || 'subdomain'}.lotview.ai</strong></p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="edit-phone">Phone</Label>
@@ -2433,14 +2447,19 @@ function CreateDealershipDialog({ onSubmit }: { onSubmit: (data: any) => void })
           </div>
           <div className="space-y-2">
             <Label htmlFor="subdomain">Subdomain *</Label>
-            <Input
-              id="subdomain"
-              value={formData.subdomain}
-              onChange={(e) => setFormData({ ...formData, subdomain: e.target.value })}
-              placeholder="olympic"
-              required
-              data-testid="input-dealership-subdomain"
-            />
+            <div className="flex items-center gap-2">
+              <Input
+                id="subdomain"
+                value={formData.subdomain}
+                onChange={(e) => setFormData({ ...formData, subdomain: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
+                placeholder="olympic"
+                required
+                data-testid="input-dealership-subdomain"
+                className="flex-1"
+              />
+              <span className="text-sm text-muted-foreground whitespace-nowrap">.lotview.ai</span>
+            </div>
+            <p className="text-xs text-muted-foreground">Dealership will be at: <strong>{formData.subdomain || 'subdomain'}.lotview.ai</strong></p>
           </div>
           <div className="border-t pt-4">
             <h4 className="font-medium mb-3">Contact Information</h4>

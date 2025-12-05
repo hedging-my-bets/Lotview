@@ -470,14 +470,18 @@ export default function OnboardingWizard({ onComplete }: { onComplete?: () => vo
               </div>
               <div className="space-y-2">
                 <Label htmlFor="dealership-subdomain">Subdomain *</Label>
-                <Input
-                  id="dealership-subdomain"
-                  data-testid="input-dealership-subdomain"
-                  value={formData.dealership.subdomain}
-                  onChange={(e) => updateField('dealership', 'subdomain', e.target.value.toLowerCase())}
-                  placeholder="olympic"
-                />
-                <p className="text-xs text-muted-foreground">{formData.dealership.subdomain || 'subdomain'}.olympicautogroup.ca</p>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="dealership-subdomain"
+                    data-testid="input-dealership-subdomain"
+                    value={formData.dealership.subdomain}
+                    onChange={(e) => updateField('dealership', 'subdomain', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                    placeholder="olympic"
+                    className="flex-1"
+                  />
+                  <span className="text-sm text-muted-foreground whitespace-nowrap">.lotview.ai</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Your dealership will be accessible at <strong>{formData.dealership.subdomain || 'subdomain'}.lotview.ai</strong></p>
               </div>
             </div>
 
@@ -1276,7 +1280,7 @@ export default function OnboardingWizard({ onComplete }: { onComplete?: () => vo
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Subdomain:</span>
-                      <span className="font-medium">{formData.dealership.subdomain || '(Not set)'}.olympicautogroup.ca</span>
+                      <span className="font-medium">{formData.dealership.subdomain || '(Not set)'}.lotview.ai</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Location:</span>
