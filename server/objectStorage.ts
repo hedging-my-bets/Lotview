@@ -140,8 +140,22 @@ export class ObjectStorageService {
 
     const publicPath = publicPaths[0];
     const objectId = randomUUID();
-    const extension = mimeType.split('/')[1] || 'png';
-    const fullPath = `${publicPath}/logos/dealership-${dealershipId}-${objectId}.${extension}`;
+    
+    const extensionMap: Record<string, string> = {
+      'image/png': 'png',
+      'image/jpeg': 'jpg',
+      'image/jpg': 'jpg',
+      'image/gif': 'gif',
+      'image/webp': 'webp',
+      'image/svg+xml': 'svg',
+      'image/bmp': 'bmp',
+      'image/x-icon': 'ico',
+      'image/vnd.microsoft.icon': 'ico',
+    };
+    const extension = extensionMap[mimeType] || 'png';
+    
+    const relativePath = `logos/dealership-${dealershipId}-${objectId}.${extension}`;
+    const fullPath = `${publicPath}/${relativePath}`;
     
     const { bucketName, objectName } = parseObjectPath(fullPath);
     const bucket = objectStorageClient.bucket(bucketName);
@@ -154,7 +168,12 @@ export class ObjectStorageService {
       },
     });
 
-    return `/public-objects/logos/dealership-${dealershipId}-${objectId}.${extension}`;
+    await setObjectAclPolicy(file, {
+      owner: `dealership-${dealershipId}`,
+      visibility: 'public',
+    });
+
+    return `/public-objects/${relativePath}`;
   }
 
   async deleteObject(objectPath: string): Promise<void> {
