@@ -600,7 +600,7 @@ For separate billing per dealership:
 
 ---
 
-## 8. AI Chat Configuration
+## 11. AI Chat Configuration
 
 ### Configure Chat Prompts
 
@@ -638,9 +638,9 @@ Our dealership specializes in [brands] and we're located at [address].
 
 ---
 
-## 9. Facebook Integration
+## 12. Facebook Integration
 
-### 9.1 Facebook App Setup
+### 12.1 Facebook App Setup
 
 #### Step 1: Create Facebook App
 
@@ -699,7 +699,7 @@ For production use:
    - Video walkthrough (optional but helpful)
 3. Submit for review (takes 1-5 business days)
 
-### 9.2 Facebook OAuth Flow
+### 12.2 Facebook OAuth Flow
 
 #### Connecting a Facebook Page
 
@@ -723,7 +723,7 @@ User clicks "Connect"
   → User redirected to dashboard
 ```
 
-### 9.3 Facebook Catalog API (for Automotive Ads)
+### 12.3 Facebook Catalog API (for Automotive Ads)
 
 The Catalog API enables **Facebook Automotive Inventory Ads** - dynamic ads that show your actual vehicles to interested buyers.
 
@@ -805,11 +805,11 @@ Vehicles are formatted per Facebook's [Automotive Catalog spec](https://develope
 }
 ```
 
-### 9.4 Facebook Marketplace Posting
+### 12.4 Facebook Marketplace Posting
 
 #### Automatic Posting Setup
 
-1. Connect your Facebook Page (see 9.2)
+1. Connect your Facebook Page (see 12.2)
 2. Go to **Dashboard** → **Facebook Posting**
 3. Configure your schedule:
    - **Post Times**: When to post (e.g., 9 AM, 2 PM, 6 PM)
@@ -852,7 +852,7 @@ Features:
 #UsedCars #{MAKE} #{MODEL} #{CITY}
 ```
 
-### 9.5 Facebook Token Management
+### 12.5 Facebook Token Management
 
 Facebook access tokens expire. LotView handles this automatically:
 
@@ -880,7 +880,7 @@ Facebook access tokens expire. LotView handles this automatically:
 
 ---
 
-## 10. PBS DMS Integration
+## 13. PBS DMS Integration
 
 PBS Partner Hub integration syncs contacts, appointments, and service data with your PBS Dealer Management System.
 
@@ -969,7 +969,7 @@ Cache is invalidated on updates.
 
 ---
 
-## 11. GoHighLevel CRM Integration
+## 14. GoHighLevel CRM Integration
 
 GoHighLevel (GHL) integration enables:
 - Bidirectional contact sync
@@ -1062,7 +1062,7 @@ GHL tokens expire after ~24 hours. LotView handles this:
 
 ---
 
-## 12. Call Analysis Setup
+## 15. Call Analysis Setup
 
 AI-powered call analysis scores sales calls and provides coaching insights.
 
@@ -1499,57 +1499,191 @@ The scraper automatically detects special badges from vehicle descriptions:
 
 ---
 
-## 14. Market Pricing & Analysis
+## 17. Market Pricing & Analysis
 
-### MarketCheck API
+Market pricing tools help you understand how your vehicles compare to competitors and identify pricing opportunities.
 
-Provides competitive market data:
+### What Market Analysis Provides
 
-#### Step 1: Get API Key
+| Feature | What It Tells You | Why It Matters |
+|---------|-------------------|----------------|
+| **Price Comparison** | How your price compares to similar vehicles | Know if you're priced competitively |
+| **Days on Market** | Average time similar vehicles take to sell | Identify slow-moving inventory |
+| **Price Trending** | Is the market price going up or down | Time your pricing decisions |
+| **Competitive Listings** | Other dealers selling similar vehicles | Know your competition |
 
-1. Sign up at [marketcheck.com](https://www.marketcheck.com)
-2. Choose a plan (free tier available)
-3. Copy API key from dashboard
+### MarketCheck API Setup
 
-#### Step 2: Configure
+MarketCheck provides automotive market data across North America.
 
-Add secret: `MARKETCHECK_API_KEY=your-api-key`
+#### Step 1: Create MarketCheck Account
 
-Or per-dealership in **API Keys** settings.
+1. Go to [marketcheck.com](https://www.marketcheck.com)
+2. Click **"Try for Free"** or **"Get Started"**
+3. Select a plan:
+   - **Free Tier**: 100 API calls/month (good for testing)
+   - **Basic**: 1,000 calls/month
+   - **Pro**: 10,000+ calls/month
 
-#### Features
+#### Step 2: Get Your API Key
 
-| Feature | Description |
-|---------|-------------|
-| Price Comparison | How your price compares to market |
-| Days on Market | Average time to sell similar vehicles |
-| Price Trending | Is price going up or down |
-| Competitive Listings | Similar vehicles for sale |
+1. After signing up, go to your **Dashboard**
+2. Click **"API Keys"** or **"Developers"**
+3. Click **"Create API Key"**
+4. Copy the key (looks like: `mk_live_XXXXXXXXXXXXXXXX`)
+
+#### Step 3: Add to LotView
+
+**Option A: Global (all dealerships)**
+1. In Replit, go to **Secrets**
+2. Add: `MARKETCHECK_API_KEY` = `your-api-key`
+
+**Option B: Per-Dealership**
+1. Go to **Super Admin Dashboard** → **Dealerships** → **API Keys**
+2. Enter the MarketCheck API Key for that dealership
 
 ### Geocoder.ca (Canadian Addresses)
 
-For address geocoding and distance calculations:
+Geocoder.ca provides Canadian-specific address lookup and distance calculations.
+
+#### What It Does
+
+- Converts addresses to latitude/longitude
+- Calculates driving distances between locations
+- Detects customer location from IP address
+- Powers regional pricing comparisons
+
+#### Setup
+
+1. Create account at [geocoder.ca](https://geocoder.ca)
+2. Get credentials from your account
+3. Add to Replit Secrets:
 
 ```
 GEOCODER_CA_USERNAME=your-username
 GEOCODER_CA_PASSWORD=your-password
 ```
 
-Used for:
-- Customer location detection
-- Delivery distance calculations
-- Regional pricing analysis
+### AI-Powered Market Summaries
 
-### AI Market Summaries
+When OpenAI is configured, the system generates natural language market insights:
 
-OpenAI generates natural language market summaries:
-- Price positioning
-- Demand trends
-- Recommended actions
+**Example AI Summary:**
+> "Your 2023 Honda Civic EX-L is priced at $28,500, which is approximately 3% below the market average of $29,400 for similar vehicles in the Vancouver area. Based on 47 comparable listings, vehicles in this condition typically sell within 18 days. Consider holding your current price - demand for this model has increased 12% month-over-month."
+
+### Using Market Analysis
+
+1. Go to **Dashboard** → **Inventory**
+2. Click on any vehicle
+3. Click **"Market Analysis"** button
+4. View:
+   - Price comparison chart
+   - Competitor listings
+   - AI recommendations
 
 ---
 
-## 15. Subdomain Configuration
+## 18. Google Analytics & Remarketing
+
+Track visitor behavior and retarget interested customers with ads.
+
+### Understanding Analytics Terms
+
+| Term | What It Means |
+|------|---------------|
+| **Google Tag Manager (GTM)** | A container that holds all your tracking codes in one place |
+| **Google Analytics (GA4)** | Tracks how people use your website |
+| **Facebook Pixel** | Tracks visitors so Facebook can show them ads later |
+| **Remarketing** | Showing ads to people who visited your site |
+
+### Google Tag Manager Setup
+
+GTM is the easiest way to manage all your tracking - add it once, then manage everything through GTM's interface.
+
+#### Step 1: Create GTM Account
+
+1. Go to [tagmanager.google.com](https://tagmanager.google.com)
+2. Click **"Create Account"**
+3. Fill in:
+   - **Account Name**: Your company name
+   - **Container Name**: `LotView` or your dealership name
+   - **Target Platform**: Web
+4. Accept the terms
+5. **Copy your Container ID** (format: `GTM-XXXXXXX`)
+
+#### Step 2: Add GTM to LotView
+
+The GTM code is already in the codebase. You just need to update the ID:
+
+1. In your Replit project, open `client/index.html`
+2. Find `GTM-OLYMPIC` (appears twice)
+3. Replace with your Container ID: `GTM-XXXXXXX`
+
+Or configure per-dealership:
+1. Go to **Super Admin Dashboard** → **Dealerships** → **Integrations**
+2. Enter your GTM Container ID
+
+#### Step 3: Add Google Analytics Tag in GTM
+
+1. In GTM, go to **Tags** → **New**
+2. Click **Tag Configuration** → **Google Analytics: GA4 Configuration**
+3. Enter your GA4 Measurement ID (format: `G-XXXXXXXXXX`)
+4. Click **Triggering** → **All Pages**
+5. Save and **Publish**
+
+### Facebook Pixel Setup
+
+#### Step 1: Create Facebook Pixel
+
+1. Go to [Facebook Events Manager](https://business.facebook.com/events_manager)
+2. Click **"Connect Data Sources"**
+3. Select **"Web"**
+4. Choose **"Facebook Pixel"**
+5. Name it (e.g., "Olympic Hyundai Pixel")
+6. **Copy the Pixel ID** (format: `123456789012345`)
+
+#### Step 2: Add Pixel via GTM
+
+1. In GTM, go to **Tags** → **New**
+2. Click **Tag Configuration** → **Custom HTML**
+3. Paste the Facebook Pixel base code
+4. Click **Triggering** → **All Pages**
+5. Save and **Publish**
+
+Or add directly to LotView settings.
+
+### What Events Are Tracked
+
+LotView automatically tracks these events (when pixels are configured):
+
+| Event | When It Fires | Why It Matters |
+|-------|---------------|----------------|
+| `PageView` | Every page load | Basic traffic tracking |
+| `ViewContent` | Vehicle detail page viewed | Shows interest in specific vehicles |
+| `Search` | Inventory filtered/searched | Shows what customers want |
+| `Lead` | Contact form submitted | Conversion tracking |
+| `InitiateCheckout` | Financing calculator used | Shows serious buyers |
+| `Contact` | Chat started | Engagement tracking |
+
+### Remarketing Audiences
+
+With pixels set up, you can create audiences:
+
+**High-Intent Audience:**
+- Viewed 3+ vehicles
+- Used financing calculator
+- Did NOT submit lead form
+
+**Vehicle-Specific Audience:**
+- Viewed SUVs only
+- In last 7 days
+- Price range $30,000-$50,000
+
+These audiences can be targeted with Facebook, Google, or display ads.
+
+---
+
+## 19. Subdomain Configuration
 
 Each dealership can have a custom subdomain like `olympic.lotview.ai`.
 
@@ -1597,34 +1731,9 @@ Value: [Your Replit deployment URL]
 | `boundary.lotview.ai` | Boundary Hyundai inventory |
 | `kia.lotview.ai` | Kia Vancouver inventory |
 
----
-
-## 16. SEO Configuration
-
-### Meta Tags
-
-Edit `client/index.html` for global defaults:
-
-```html
-<title>LotView.ai - AI-Powered Vehicle Inventory</title>
-<meta name="description" content="Browse our selection of quality vehicles with AI-powered search and financing tools." />
-<meta property="og:title" content="LotView.ai" />
-<meta property="og:description" content="Find your perfect vehicle with AI assistance" />
-<meta property="og:image" content="https://your-domain.replit.app/og-image.jpg" />
-<meta name="twitter:card" content="summary_large_image" />
-```
-
-### Per-Dealership SEO
-
-Customize in dealership settings:
-- Page titles (include dealership name)
-- Meta descriptions
-- Open Graph images
-- Local business schema
-
 ### Structured Data (Schema.org)
 
-LotView automatically generates structured data:
+LotView automatically generates structured data for search engines:
 
 ```json
 {
@@ -1649,7 +1758,7 @@ LotView automatically generates structured data:
 
 ### Sitemap
 
-Generate sitemap at `/sitemap.xml`:
+A sitemap is automatically generated at `/sitemap.xml`:
 - All vehicle listing pages
 - Category pages
 - Legal pages
@@ -1657,282 +1766,347 @@ Generate sitemap at `/sitemap.xml`:
 
 ---
 
-## 17. Google Analytics & Remarketing
+## 20. Object Storage Setup
 
-### Google Tag Manager (GTM)
+### What is Object Storage?
 
-#### Step 1: Create GTM Container
+Object storage is like a cloud-based file cabinet where LotView stores:
+- Vehicle images
+- Uploaded documents
+- Dealership logos
+- Call recordings
 
-1. Go to [tagmanager.google.com](https://tagmanager.google.com)
-2. Create account → Create container
-3. Choose **"Web"** as platform
-4. Copy Container ID (format: `GTM-XXXXXXX`)
+### Why Use Object Storage?
 
-#### Step 2: Configure in LotView
+| Storage Type | Survives Deployments | Best For |
+|--------------|---------------------|----------|
+| Local Files | No | Temporary files |
+| Object Storage | Yes | Permanent files (images, documents) |
+| Database | Yes | Structured data (vehicles, users) |
 
-1. **Super Admin** → **Dealership** → **Integrations**
-2. Enter GTM Container ID
-3. Save
+### Auto-Configured by Replit
 
-### Google Analytics 4 (GA4)
+Replit automatically provides object storage. These secrets are set automatically:
 
-#### Step 1: Create GA4 Property
-
-1. Go to [analytics.google.com](https://analytics.google.com)
-2. Admin → Create Property
-3. Follow setup wizard
-4. Copy Measurement ID (format: `G-XXXXXXXXXX`)
-
-#### Step 2: Configure
-
-1. **Super Admin** → **Dealership** → **Integrations**
-2. Enter Google Analytics ID
-3. Save
-
-### Google Ads Remarketing
-
-#### Step 1: Get Remarketing Tag
-
-1. Go to [ads.google.com](https://ads.google.com)
-2. Tools & Settings → Audience Manager
-3. Copy Remarketing Tag ID (format: `AW-XXXXXXXXX`)
-
-#### Step 2: Configure
-
-1. **Super Admin** → **Dealership** → **Integrations**
-2. Enter Google Ads ID
-3. Save
-
-### Facebook Pixel
-
-#### Step 1: Create Pixel
-
-1. Go to [Facebook Events Manager](https://www.facebook.com/events_manager)
-2. Connect Data Sources → Web → Facebook Pixel
-3. Name your pixel
-4. Copy Pixel ID (numeric, like `123456789012345`)
-
-#### Step 2: Configure
-
-1. **Super Admin** → **Dealership** → **Integrations**
-2. Enter Facebook Pixel ID
-3. Save
-
-### Events Tracked
-
-| Event | When Triggered |
-|-------|----------------|
-| `PageView` | Every page load |
-| `ViewContent` | Vehicle detail page |
-| `Search` | Inventory search/filter |
-| `Lead` | Form submission |
-| `InitiateCheckout` | Financing calculator use |
-| `Contact` | Chat started |
-
----
-
-## 18. Object Storage Setup
-
-LotView uses Replit Object Storage for file uploads.
-
-### Auto-Configured
-
-Replit automatically provides:
-- `DEFAULT_OBJECT_STORAGE_BUCKET_ID` - Bucket identifier
-- `PUBLIC_OBJECT_SEARCH_PATHS` - Public file paths
-- `PRIVATE_OBJECT_DIR` - Private uploads directory
+| Secret | Purpose |
+|--------|---------|
+| `DEFAULT_OBJECT_STORAGE_BUCKET_ID` | Your storage bucket identifier |
+| `PUBLIC_OBJECT_SEARCH_PATHS` | Where public files are stored |
+| `PRIVATE_OBJECT_DIR` | Where private uploads go |
 
 ### Directory Structure
 
 ```
 bucket/
-├── public/          # Publicly accessible files
-│   ├── logos/       # Dealership logos
-│   └── vehicles/    # Vehicle images
-└── .private/        # Private files
-    └── uploads/     # User uploads
+├── public/              ← Publicly accessible files
+│   ├── logos/           ← Dealership logos
+│   ├── vehicles/        ← Vehicle images
+│   └── branding/        ← Hero images, etc.
+└── .private/            ← Private files (not public)
+    └── uploads/         ← User uploads, call recordings
 ```
 
-### Uploading Images
+### How Files Get Stored
 
-Images are stored when:
-1. **Scraping**: Auto-downloaded from source websites
-2. **Manual Upload**: Dashboard → Add Vehicle → Upload Images
-3. **API**: `POST /api/vehicles/:id/images`
+**Automatic:**
+- When scraping, vehicle images are downloaded and stored
+- When calls are analyzed, recordings are saved
+
+**Manual:**
+- Dashboard → Add Vehicle → Upload Images
+- Branding settings → Upload Logo
+
+### Accessing Files
+
+Public files are accessible via URL:
+```
+https://your-bucket.storage.replit.com/public/vehicles/image-123.jpg
+```
 
 ---
 
-## 19. Scheduled Jobs & Cron Tasks
+## 21. Scheduled Jobs & Cron Tasks
 
-All scheduled jobs use `node-cron`:
+LotView runs automated tasks on schedules to keep everything synchronized.
 
-| Schedule | Job | Description |
-|----------|-----|-------------|
-| `0 0 * * *` | Inventory Sync | Midnight - Scrape and update inventory |
-| `0 3 * * *` | Facebook Token Refresh | 3 AM - Refresh expiring tokens |
-| `0 3 * * *` | Market Analysis | 3 AM - Update market pricing data |
-| `0 4 * * *` | Facebook Catalog Sync | 4 AM - Sync inventory to Facebook Catalog |
-| `0 5 * * *` | GHL CRM Sync | 5 AM - Bidirectional CRM reconciliation |
-| `* * * * *` | Facebook Posting Queue | Every minute - Process pending posts |
+### Understanding Scheduled Jobs
 
-### Enable/Disable Scheduler
+| Job | When It Runs | What It Does |
+|-----|--------------|--------------|
+| **Inventory Sync** | Daily at midnight | Scrapes all active sources for new vehicles |
+| **Facebook Token Refresh** | Daily at 3 AM | Refreshes expiring Facebook tokens |
+| **Market Analysis** | Daily at 3 AM | Updates market pricing data |
+| **Facebook Catalog Sync** | Daily at 4 AM | Syncs inventory to Facebook Catalogs |
+| **GHL CRM Sync** | Daily at 5 AM | Bidirectional sync with GoHighLevel |
+| **Facebook Posting Queue** | Every minute | Processes scheduled Facebook posts |
 
-Set environment variable:
-```
-SCHEDULER_ENABLED=true   # Enable all scheduled jobs
-SCHEDULER_ENABLED=false  # Disable all scheduled jobs
-```
+### Enabling/Disabling the Scheduler
+
+To turn all scheduled jobs on or off:
+
+1. Go to Replit **Secrets**
+2. Set `SCHEDULER_ENABLED`:
+   - `true` = All jobs run on schedule
+   - `false` = No jobs run automatically (manual only)
 
 ### Monitoring Jobs
 
-Check job execution in:
-1. **Server logs**: Replit console output
-2. **Database tables**: `pbs_api_logs`, `ghl_api_logs`
-3. **Audit logs**: `audit_logs` table
+Check if jobs are running correctly:
+
+**Server Logs:**
+1. In Replit, look at the **Console** output
+2. Search for job names like "Inventory sync started"
+
+**Database Tables:**
+| Table | What It Tracks |
+|-------|----------------|
+| `pbs_api_logs` | PBS DMS API calls |
+| `ghl_api_logs` | GoHighLevel API calls |
+| `audit_logs` | Important system events |
+| `scraper_activity_logs` | Scraping results |
+
+### Running Jobs Manually
+
+If you need to run a job immediately:
+
+**Inventory Sync:**
+- Dashboard → Inventory → Click **"Sync Now"**
+
+**Facebook Catalog Sync:**
+- Super Admin → FB Catalogs → Select dealership → Click **"Sync Now"**
 
 ---
 
-## 20. Publishing & Deployment
+## 22. Publishing & Deployment
 
-### Development Mode
+### Development vs Production
 
-The app runs on port 5000 with Vite dev server for hot reload.
+| Mode | URL | Purpose |
+|------|-----|---------|
+| **Development** | Replit preview (port 5000) | Testing changes |
+| **Production** | `your-app.replit.app` | Live for customers |
 
-### Production Deployment
+### Step 1: Test in Development
 
-1. Click **"Publish"** button in Replit (top right)
+Before publishing:
+- [ ] All features work correctly
+- [ ] No errors in console
+- [ ] Branding looks correct
+- [ ] Inventory displays properly
+- [ ] Chat works
+
+### Step 2: Publish
+
+1. Click the **"Publish"** button (top right of Replit)
 2. Choose deployment type:
-   - **Autoscale** (recommended) - Scales with traffic
-   - **Reserved VM** - Dedicated resources
+
+| Type | Best For | Cost |
+|------|----------|------|
+| **Autoscale** | Production sites | Pay per use |
+| **Reserved VM** | High traffic sites | Fixed monthly |
+
 3. Click **"Publish"**
 
-Replit handles:
-- Building React frontend
-- Bundling Express server with esbuild
-- SSL/TLS certificates
+### What Replit Handles Automatically
+
+- Building the React frontend
+- Bundling the Express server
+- SSL/TLS certificates (HTTPS)
 - Health checks
 - Custom domains
+- Auto-restart on crashes
 
-### Post-Deployment Checklist
+### Step 3: Post-Deployment Checklist
 
+- [ ] Site loads at production URL
 - [ ] All secrets are set for production
-- [ ] Database migrations applied
-- [ ] Facebook OAuth redirects updated to production URL
-- [ ] GHL webhooks updated to production URL
+- [ ] Database connects properly
+- [ ] Facebook OAuth uses production URL
+- [ ] GHL webhooks point to production URL
 - [ ] Facebook App domains updated
-- [ ] SSL certificate active
-- [ ] Custom domain configured (if applicable)
+- [ ] SSL certificate is active (green lock icon)
 
 ---
 
-## 21. Updating Without Losing Data
+## 23. Updating Without Losing Data
 
-### What Persists (Safe)
+### What Happens During Updates
 
-| Data | Storage | Survives Updates |
-|------|---------|------------------|
-| All database tables | PostgreSQL | ✅ Yes |
-| Vehicles, users, settings | Database | ✅ Yes |
-| API keys | Database (encrypted) | ✅ Yes |
-| Chat conversations | Database | ✅ Yes |
-| Call recordings | Database + Object Storage | ✅ Yes |
-| Uploaded images | Object Storage | ✅ Yes |
+When you make changes and republish:
 
-### What Does NOT Persist
-
-- Files in filesystem (use Object Storage)
-- In-memory caches (rebuilt on restart)
+| What | Happens |
+|------|---------|
+| Code files | Replaced with new version |
+| Database data | Preserved (unchanged) |
+| Object storage files | Preserved (unchanged) |
+| Secrets | Preserved (unchanged) |
+| In-memory caches | Cleared (rebuilt on restart) |
 
 ### Safe Update Process
 
-1. Make code changes in Replit
-2. Test thoroughly in development
-3. Click **"Republish"**
-4. Database data is preserved
-5. Only code is updated
+1. Make code changes in Replit editor
+2. Test in development mode (click Run)
+3. Verify everything works
+4. Click **"Republish"**
+5. Wait 30-60 seconds for deployment
+6. Verify production site works
+
+### What's Safe (Persists Across Updates)
+
+| Data Type | Storage Location | Safe? |
+|-----------|-----------------|-------|
+| All vehicles | PostgreSQL database | Yes |
+| User accounts | PostgreSQL database | Yes |
+| Chat conversations | PostgreSQL database | Yes |
+| API keys (encrypted) | PostgreSQL database | Yes |
+| Uploaded images | Object Storage | Yes |
+| Call recordings | Object Storage | Yes |
+| Dealership settings | PostgreSQL database | Yes |
+
+### What's NOT Safe
+
+- Files created in the filesystem (use Object Storage instead)
+- In-memory session data (sessions rebuild automatically)
 
 ### Database Migrations
 
-New columns/tables are automatically added on deploy via Drizzle ORM. Existing data is never deleted.
+Drizzle ORM handles schema changes automatically:
+- New columns are added automatically
+- New tables are created automatically
+- Existing data is never deleted by migrations
 
-### Rollback If Needed
+### Rolling Back (If Something Goes Wrong)
 
-1. In Replit, use **History** tab
-2. Click **"Rollback"**
-3. Choose a previous checkpoint
-4. Database can be restored too
+1. In Replit, click **History** tab (left panel)
+2. Browse previous checkpoints
+3. Click **"Rollback"** on a working version
+4. Your code returns to that state
+5. Database can also be rolled back (separate option)
 
 ---
 
-## 22. Troubleshooting
+## 24. Troubleshooting
 
-### Common Issues
+### Common Issues and Solutions
 
 #### "Database connection failed"
-- Check `DATABASE_URL` secret is set
-- Verify Neon database is not paused (free tier pauses after inactivity)
+
+**Symptoms:** App won't start, error mentions "database" or "PostgreSQL"
+
+**Solutions:**
+1. Check `DATABASE_URL` secret is set correctly
+2. If using Neon free tier, the database may be paused after inactivity
+   - Go to Neon dashboard and resume it
+3. Try running `npm run db:push` in the shell
 
 #### "Facebook OAuth error"
-- Verify `FACEBOOK_APP_ID` and `FACEBOOK_APP_SECRET`
-- Check redirect URI matches exactly in Facebook App settings
-- Ensure app is in **Live** mode (not Development) for production
+
+**Symptoms:** Can't connect Facebook, error during authorization
+
+**Solutions:**
+1. Verify `FACEBOOK_APP_ID` and `FACEBOOK_APP_SECRET` are correct
+2. Check the redirect URI in Facebook App settings matches exactly:
+   - `https://your-domain.replit.app/api/facebook/oauth/callback`
+3. Ensure Facebook app is in **Live** mode (not Development)
+4. Check that all required permissions are approved
 
 #### "Facebook token expired"
-- Go to **Facebook** tab → **"Reconnect"**
-- Complete OAuth flow again
+
+**Symptoms:** Facebook features stop working, "token expired" error
+
+**Solutions:**
+1. Go to **Dashboard** → **Facebook** tab
+2. Click **"Reconnect"**
+3. Complete the OAuth flow again
 
 #### "PBS API 401 Unauthorized"
-- Session expired - will auto-refresh
-- Verify credentials are correct
-- Check PBS account is active
+
+**Symptoms:** PBS sync fails, "unauthorized" error
+
+**Solutions:**
+1. Check PBS credentials are correct in dealership settings
+2. Session may have expired - system will auto-refresh
+3. Verify PBS account is active with your PBS representative
 
 #### "GHL token refresh failed"
-- Re-authenticate: **GHL Integration** → **"Reconnect"**
-- Check `GHL_CLIENT_ID` and `GHL_CLIENT_SECRET`
+
+**Symptoms:** GoHighLevel sync stops working
+
+**Solutions:**
+1. Go to dealership GHL settings
+2. Click **"Reconnect"**
+3. Re-authorize with GoHighLevel
+4. Verify `GHL_CLIENT_ID` and `GHL_CLIENT_SECRET` are correct
 
 #### "Scraper blocked by Cloudflare"
-- Use Apify integration instead
-- Configure proxies in `SCRAPER_PROXIES`
-- Wait and retry (rate limiting)
+
+**Symptoms:** AutoTrader scraping fails, 403 or timeout errors
+
+**Solutions:**
+1. Use Apify integration instead (more reliable)
+2. Wait and retry (may be rate limited)
+3. Configure proxies in `SCRAPER_PROXIES` secret
 
 #### "Call analysis not working"
-- Verify OpenAI API key is configured
-- Check GHL webhook is sending `CallCompleted` events
-- Ensure call recording is enabled in GHL
+
+**Symptoms:** Calls not being analyzed, no scores appearing
+
+**Solutions:**
+1. Verify OpenAI API key is configured
+2. Check GHL webhook is sending `CallCompleted` events
+3. Ensure call recording is enabled in GHL phone settings
+4. Check `ghl_api_logs` table for errors
 
 #### "Chat not responding"
-- Check OpenAI API key
-- Verify key has credits remaining
-- Check browser console for errors
+
+**Symptoms:** AI chat doesn't reply, spinning or timeout
+
+**Solutions:**
+1. Check OpenAI API key is valid
+2. Verify key has credits remaining (check OpenAI dashboard)
+3. Look at browser console (F12) for JavaScript errors
+4. Check server logs for API errors
 
 ### Log Locations
 
-| Log Type | Location |
-|----------|----------|
-| Server logs | Replit console output |
-| PBS API logs | `pbs_api_logs` table |
-| GHL API logs | `ghl_api_logs` table |
-| Audit logs | `audit_logs` table |
-| Impersonation logs | `impersonation_sessions` table |
+| Log Type | Where to Find It |
+|----------|------------------|
+| Server output | Replit Console (bottom panel) |
+| PBS API calls | Database: `pbs_api_logs` table |
+| GHL API calls | Database: `ghl_api_logs` table |
+| System events | Database: `audit_logs` table |
+| Impersonation | Database: `impersonation_sessions` table |
+| Scraping results | Database: `scraper_activity_logs` table |
+
+### Getting Help
+
+1. Check this guide's relevant section
+2. Review server logs in Replit Console
+3. Check database tables for error details
+4. Contact your system administrator
 
 ---
 
-## 23. Quick Reference: All Secrets
+## 25. Quick Reference: All Secrets
+
+Here's a complete list of all environment variables/secrets used by LotView.
 
 ```bash
 # ============================================
-# REQUIRED SECRETS
+# REQUIRED - Database (Auto-configured by Replit)
 # ============================================
-
-# Database (auto-configured by Replit)
 DATABASE_URL=postgresql://...
 
-# Authentication (generate with: openssl rand -hex 32)
-JWT_SECRET=your-jwt-secret-64-chars-minimum
+# ============================================
+# REQUIRED - Authentication
+# Generate with: openssl rand -hex 32
+# ============================================
+JWT_SECRET=your-64-character-secret-minimum
 SESSION_SECRET=your-session-secret
 
 # ============================================
 # FACEBOOK INTEGRATION
+# Get from: developers.facebook.com
 # ============================================
 FACEBOOK_APP_ID=your-facebook-app-id
 FACEBOOK_APP_SECRET=your-facebook-app-secret
@@ -1940,19 +2114,21 @@ FACEBOOK_REDIRECT_URI=https://your-domain.replit.app/api/facebook/oauth/callback
 
 # ============================================
 # GOHIGHLEVEL CRM
+# Get from: marketplace.gohighlevel.com
 # ============================================
 GHL_CLIENT_ID=your-ghl-client-id
 GHL_CLIENT_SECRET=your-ghl-client-secret
 GHL_REDIRECT_URI=https://your-domain.replit.app/api/ghl/auth/callback
 
 # ============================================
-# OPENAI (auto-configured by Replit)
+# OPENAI - Auto-configured by Replit
+# Or set manually for per-dealership keys
 # ============================================
 AI_INTEGRATIONS_OPENAI_API_KEY=auto-configured
 AI_INTEGRATIONS_OPENAI_BASE_URL=auto-configured
 
 # ============================================
-# OPTIONAL APIs (can be per-dealership)
+# OPTIONAL APIs - Can be global or per-dealership
 # ============================================
 MARKETCHECK_API_KEY=your-marketcheck-api-key
 APIFY_API_TOKEN=your-apify-token
@@ -1962,7 +2138,7 @@ GEOCODER_CA_PASSWORD=your-password
 SCRAPER_PROXIES=http://proxy1:port,http://proxy2:port
 
 # ============================================
-# OBJECT STORAGE (auto-configured by Replit)
+# OBJECT STORAGE - Auto-configured by Replit
 # ============================================
 DEFAULT_OBJECT_STORAGE_BUCKET_ID=auto-configured
 PUBLIC_OBJECT_SEARCH_PATHS=auto-configured
@@ -1973,6 +2149,31 @@ PRIVATE_OBJECT_DIR=auto-configured
 # ============================================
 SCHEDULER_ENABLED=true
 ```
+
+### Quick Secret Setup Checklist
+
+**Minimum Required (for basic functionality):**
+- [ ] `DATABASE_URL` - Auto-configured by Replit
+- [ ] `JWT_SECRET` - Generate and add manually
+- [ ] `SESSION_SECRET` - Generate and add manually
+
+**For Facebook features:**
+- [ ] `FACEBOOK_APP_ID`
+- [ ] `FACEBOOK_APP_SECRET`
+- [ ] `FACEBOOK_REDIRECT_URI`
+
+**For GoHighLevel CRM:**
+- [ ] `GHL_CLIENT_ID`
+- [ ] `GHL_CLIENT_SECRET`
+- [ ] `GHL_REDIRECT_URI`
+
+**For market analysis:**
+- [ ] `MARKETCHECK_API_KEY`
+- [ ] `GEOCODER_CA_USERNAME` / `GEOCODER_CA_PASSWORD`
+
+**For AutoTrader scraping:**
+- [ ] `APIFY_API_TOKEN`
+- [ ] `APIFY_AUTOTRADER_ACTOR_ID`
 
 ---
 
