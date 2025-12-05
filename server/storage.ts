@@ -501,29 +501,35 @@ export interface IStorage {
 export class DatabaseStorage implements IStorage {
   // ====== DEALERSHIP MANAGEMENT ======
   async getDealership(id: number): Promise<Dealership | undefined> {
-    // Database columns: id, name, slug, subdomain, is_active, created_at, updated_at
-    const result = await db.execute(
-      sql`SELECT id, name, slug, subdomain, is_active, created_at, updated_at 
-          FROM dealerships WHERE id = ${id} LIMIT 1`
-    );
-    return result.rows[0] as any;
+    const result = await db
+      .select()
+      .from(dealerships)
+      .where(eq(dealerships.id, id))
+      .limit(1);
+    return result[0];
   }
 
   async getDealershipBySlug(slug: string): Promise<Dealership | undefined> {
-    const result = await db.execute(
-      sql`SELECT id, name, slug, subdomain, is_active, created_at, updated_at 
-          FROM dealerships WHERE slug = ${slug} LIMIT 1`
-    );
-    return result.rows[0] as any;
+    const result = await db
+      .select()
+      .from(dealerships)
+      .where(eq(dealerships.slug, slug))
+      .limit(1);
+    return result[0];
   }
 
   async getDealershipBySubdomain(subdomain: string): Promise<Dealership | undefined> {
-    const result = await db.execute(
-      sql`SELECT id, name, slug, subdomain, is_active, created_at, updated_at,
-          address, city, province, postal_code, phone, timezone, default_currency
-          FROM dealerships WHERE LOWER(subdomain) = LOWER(${subdomain}) AND is_active = true LIMIT 1`
-    );
-    return result.rows[0] as any;
+    const result = await db
+      .select()
+      .from(dealerships)
+      .where(
+        and(
+          sql`LOWER(${dealerships.subdomain}) = LOWER(${subdomain})`,
+          eq(dealerships.isActive, true)
+        )
+      )
+      .limit(1);
+    return result[0];
   }
 
   async getAllDealerships(): Promise<Dealership[]> {
