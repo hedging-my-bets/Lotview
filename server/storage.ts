@@ -106,6 +106,9 @@ import {
   globalSettings,
   type GlobalSetting,
   type InsertGlobalSetting,
+  superAdminConfigs,
+  type SuperAdminConfig,
+  type InsertSuperAdminConfig,
   auditLogs,
   type AuditLog,
   type InsertAuditLog,
@@ -168,6 +171,10 @@ export interface IStorage {
   getAllGlobalSettings(): Promise<GlobalSetting[]>;
   setGlobalSetting(setting: InsertGlobalSetting): Promise<GlobalSetting>;
   deleteGlobalSetting(key: string): Promise<boolean>;
+  
+  // ====== SUPER ADMIN - CONFIG (secrets password, etc) ======
+  getSuperAdminConfig(key: string): Promise<SuperAdminConfig | undefined>;
+  setSuperAdminConfig(key: string, value: string, updatedBy: number | null): Promise<SuperAdminConfig>;
   
   // ====== SUPER ADMIN - AUDIT LOGGING ======
   logAuditAction(log: InsertAuditLog): Promise<AuditLog>;
@@ -2843,6 +2850,29 @@ export class DatabaseStorage implements IStorage {
   async deleteGlobalSetting(key: string): Promise<boolean> {
     await db.delete(globalSettings).where(eq(globalSettings.key, key));
     return true;
+  }
+
+  // ====== SUPER ADMIN - CONFIG (secrets password, etc) ======
+  async getSuperAdminConfig(key: string): Promise<SuperAdminConfig | undefined> {
+    const result = await db.select().from(superAdminConfigs).where(eq(superAdminConfigs.key, key)).limit(1);
+    return result[0];
+  }
+
+  async setSuperAdminConfig(key: string, value: string, updatedBy: number | null): Promise<SuperAdminConfig> {
+    const existing = await this.getSuperAdminConfig(key);
+    
+    if (existing) {
+      const result = await db.update(superAdminConfigs)
+        .set({ value, updatedBy, updatedAt: new Date() })
+        .where(eq(superAdminConfigs.key, key))
+        .returning();
+      return result[0];
+    } else {
+      const result = await db.insert(superAdminConfigs)
+        .values({ key, value, updatedBy })
+        .returning();
+      return result[0];
+    }
   }
 
   // ====== SUPER ADMIN - AUDIT LOGGING ======

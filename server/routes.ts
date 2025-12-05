@@ -348,6 +348,154 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // ===== SUPER ADMIN ROUTES (Super Admin Only) =====
   
+  // Restart server endpoint - reloads API keys and configurations
+  app.post("/api/super-admin/restart-server", authMiddleware, superAdminOnly, async (req: AuthRequest, res) => {
+    try {
+      const userId = req.user?.id || 0;
+      const userEmail = req.user?.email || 'unknown';
+      
+      // Log the restart action
+      await storage.logAuditAction({
+        userId,
+        userEmail,
+        action: 'restart_server',
+        resource: 'system',
+        resourceId: null,
+        details: JSON.stringify({ reason: 'Manual restart to reload API keys' }),
+        ipAddress: req.ip || req.socket.remoteAddress || null,
+        userAgent: req.headers['user-agent'] || null,
+      });
+      
+      res.json({ success: true, message: 'Server restart initiated' });
+      
+      // Delay restart slightly to allow response to be sent
+      setTimeout(() => {
+        console.log('Server restart requested by super admin');
+        process.exit(0); // Process manager will restart
+      }, 500);
+    } catch (error) {
+      console.error("Error initiating server restart:", error);
+      res.status(500).json({ error: "Failed to restart server" });
+    }
+  });
+  
+  // Secrets password management
+  app.get("/api/super-admin/secrets/password-status", authMiddleware, superAdminOnly, async (req: AuthRequest, res) => {
+    try {
+      const config = await storage.getSuperAdminConfig('secrets_password_hash');
+      res.json({ isSet: !!config });
+    } catch (error) {
+      console.error("Error checking secrets password status:", error);
+      res.status(500).json({ error: "Failed to check password status" });
+    }
+  });
+
+  app.post("/api/super-admin/secrets/verify-password", authMiddleware, superAdminOnly, async (req: AuthRequest, res) => {
+    try {
+      const { password } = req.body;
+      if (!password) {
+        return res.status(400).json({ error: "Password required" });
+      }
+      
+      const config = await storage.getSuperAdminConfig('secrets_password_hash');
+      if (!config) {
+        // No password set yet - first time setup
+        return res.json({ valid: false, needsSetup: true });
+      }
+      
+      const bcrypt = await import('bcryptjs');
+      const isValid = await bcrypt.compare(password, config.value);
+      res.json({ valid: isValid, needsSetup: false });
+    } catch (error) {
+      console.error("Error verifying secrets password:", error);
+      res.status(500).json({ error: "Failed to verify password" });
+    }
+  });
+  
+  app.post("/api/super-admin/secrets/set-password", authMiddleware, superAdminOnly, async (req: AuthRequest, res) => {
+    try {
+      const { password, currentPassword } = req.body;
+      if (!password || password.length < 6) {
+        return res.status(400).json({ error: "Password must be at least 6 characters" });
+      }
+      
+      const existingConfig = await storage.getSuperAdminConfig('secrets_password_hash');
+      
+      // If password already exists, verify current password first
+      if (existingConfig) {
+        if (!currentPassword) {
+          return res.status(400).json({ error: "Current password required" });
+        }
+        const bcrypt = await import('bcryptjs');
+        const isValid = await bcrypt.compare(currentPassword, existingConfig.value);
+        if (!isValid) {
+          return res.status(401).json({ error: "Current password incorrect" });
+        }
+      }
+      
+      const bcrypt = await import('bcryptjs');
+      const passwordHash = await bcrypt.hash(password, 10);
+      
+      await storage.setSuperAdminConfig('secrets_password_hash', passwordHash, req.user?.id || null);
+      
+      // Log the action
+      await storage.logAuditAction({
+        userId: req.user?.id || 0,
+        userEmail: req.user?.email || 'unknown',
+        action: existingConfig ? 'update_secrets_password' : 'set_secrets_password',
+        resource: 'super_admin_config',
+        resourceId: 'secrets_password_hash',
+        details: null,
+        ipAddress: req.ip || req.socket.remoteAddress || null,
+        userAgent: req.headers['user-agent'] || null,
+      });
+      
+      res.json({ success: true, message: 'Secrets password updated' });
+    } catch (error) {
+      console.error("Error setting secrets password:", error);
+      res.status(500).json({ error: "Failed to set password" });
+    }
+  });
+  
+  // Get all dealership API keys (requires secrets password verification via header)
+  app.get("/api/super-admin/secrets/all-api-keys", authMiddleware, superAdminOnly, async (req: AuthRequest, res) => {
+    try {
+      const secretsPassword = req.headers['x-secrets-password'] as string;
+      if (!secretsPassword) {
+        return res.status(401).json({ error: "Secrets password required" });
+      }
+      
+      const config = await storage.getSuperAdminConfig('secrets_password_hash');
+      if (!config) {
+        return res.status(400).json({ error: "Secrets password not set up" });
+      }
+      
+      const bcrypt = await import('bcryptjs');
+      const isValid = await bcrypt.compare(secretsPassword, config.value);
+      if (!isValid) {
+        return res.status(401).json({ error: "Invalid secrets password" });
+      }
+      
+      // Get all dealerships with their API keys
+      const dealerships = await storage.getAllDealerships();
+      const allApiKeys = await Promise.all(
+        dealerships.map(async (d) => {
+          const keys = await storage.getDealershipApiKeys(d.id);
+          return {
+            dealershipId: d.id,
+            dealershipName: d.name,
+            keys: keys || null
+          };
+        })
+      );
+      
+      res.json(allApiKeys);
+    } catch (error) {
+      console.error("Error fetching all API keys:", error);
+      res.status(500).json({ error: "Failed to fetch API keys" });
+    }
+  });
+  
   // Get all dealerships (super admin only)
   app.get("/api/super-admin/dealerships", authMiddleware, superAdminOnly, async (req, res) => {
     try {
@@ -2758,6 +2906,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // VDP Content Editing - GM and Sales Manager can edit headline, subheadline, description
+  // These manual edits are preserved across scraper updates
+  app.patch("/api/vehicles/:id/vdp-content", authMiddleware, requireRole("manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const dealershipId = req.dealershipId!;
+      const userId = req.user?.id;
+      
+      const { manualHeadline, manualSubheadline, manualDescription } = req.body;
+      
+      // Validate that at least one field is being updated
+      if (manualHeadline === undefined && manualSubheadline === undefined && manualDescription === undefined) {
+        return res.status(400).json({ error: "At least one field (manualHeadline, manualSubheadline, or manualDescription) is required" });
+      }
+      
+      // Build update object with manual edit flags
+      const updateData: any = {
+        isManuallyEdited: true,
+        lastEditedBy: userId,
+        lastEditedAt: new Date(),
+      };
+      
+      if (manualHeadline !== undefined) updateData.manualHeadline = manualHeadline;
+      if (manualSubheadline !== undefined) updateData.manualSubheadline = manualSubheadline;
+      if (manualDescription !== undefined) updateData.manualDescription = manualDescription;
+      
+      const vehicle = await storage.updateVehicle(id, updateData, dealershipId);
+      
+      if (!vehicle) {
+        return res.status(404).json({ error: "Vehicle not found" });
+      }
+      
+      res.json(vehicle);
+    } catch (error) {
+      console.error("Error updating VDP content:", error);
+      res.status(500).json({ error: "Failed to update VDP content" });
+    }
+  });
+
   // Delete vehicle (master only)
   app.delete("/api/vehicles/:id", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
     try {
@@ -4409,6 +4596,57 @@ Format your response in clear sections with actionable recommendations.`;
     } catch (error) {
       console.error("Error deleting logo:", error);
       res.status(500).json({ error: "Failed to delete logo" });
+    }
+  });
+  
+  // ===== VDP FOOTER ROUTES (General Manager) =====
+  
+  // Get dealership VDP footer
+  app.get("/api/dealership/vdp-footer", authMiddleware, requireRole("manager", "admin", "master", "super_admin"), requireDealership, async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const dealership = await storage.getDealershipById(dealershipId);
+      
+      res.json({
+        vdpFooterDescription: dealership?.vdpFooterDescription || null,
+      });
+    } catch (error) {
+      console.error("Error fetching VDP footer:", error);
+      res.status(500).json({ error: "Failed to fetch VDP footer" });
+    }
+  });
+  
+  // Update dealership VDP footer (General Manager only)
+  app.patch("/api/dealership/vdp-footer", authMiddleware, requireRole("master"), requireDealership, async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { vdpFooterDescription } = req.body;
+      
+      const updated = await storage.updateDealership(dealershipId, { vdpFooterDescription });
+      
+      if (!updated) {
+        return res.status(404).json({ error: "Dealership not found" });
+      }
+      
+      res.json({ vdpFooterDescription: updated.vdpFooterDescription });
+    } catch (error) {
+      console.error("Error updating VDP footer:", error);
+      res.status(500).json({ error: "Failed to update VDP footer" });
+    }
+  });
+  
+  // Public endpoint to get VDP footer (for displaying on VDP pages)
+  app.get("/api/public/vdp-footer", async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId || 1;
+      const dealership = await storage.getDealershipById(dealershipId);
+      
+      res.json({
+        vdpFooterDescription: dealership?.vdpFooterDescription || null,
+      });
+    } catch (error) {
+      console.error("Error fetching public VDP footer:", error);
+      res.status(500).json({ error: "Failed to fetch VDP footer" });
     }
   });
   

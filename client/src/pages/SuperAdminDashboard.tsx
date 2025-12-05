@@ -53,6 +53,7 @@ interface GlobalSetting {
 interface AuditLog {
   id: number;
   userId: number;
+  userEmail?: string;
   action: string;
   resource: string;
   resourceId: string | null;
@@ -60,6 +61,18 @@ interface AuditLog {
   ipAddress: string | null;
   userAgent: string | null;
   createdAt: string;
+}
+
+interface DealershipSecrets {
+  dealershipId: number;
+  dealershipName: string;
+  openaiApiKey: string | null;
+  facebookAppId: string | null;
+  facebookAppSecret: string | null;
+  marketcheckKey: string | null;
+  apifyToken: string | null;
+  geminiApiKey: string | null;
+  ghlApiKey: string | null;
 }
 
 interface User {
@@ -164,6 +177,25 @@ export default function SuperAdminDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
+  
+  // Secrets tab state
+  const [secretsPassword, setSecretsPassword] = useState('');
+  const [secretsUnlocked, setSecretsUnlocked] = useState(false);
+  const [showSecretsPasswordDialog, setShowSecretsPasswordDialog] = useState(false);
+  const [settingSecretsPassword, setSettingSecretsPassword] = useState(false);
+  const [newSecretsPassword, setNewSecretsPassword] = useState('');
+  const [confirmSecretsPassword, setConfirmSecretsPassword] = useState('');
+  const [isSecretsPasswordSet, setIsSecretsPasswordSet] = useState<boolean | null>(null);
+  const [secretsPasswordError, setSecretsPasswordError] = useState('');
+  const [showChangePasswordDialog, setShowChangePasswordDialog] = useState(false);
+  const [oldSecretsPassword, setOldSecretsPassword] = useState('');
+  const [showSecretFields, setShowSecretFields] = useState<Record<string, boolean>>({});
+  const [showRestartConfirm, setShowRestartConfirm] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
+  
+  // Dealership secrets data
+  const [dealershipSecrets, setDealershipSecrets] = useState<DealershipSecrets[]>([]);
+  const [loadingSecrets, setLoadingSecrets] = useState(false);
 
   const handleLogout = async () => {
     const token = localStorage.getItem('auth_token');
@@ -198,6 +230,27 @@ export default function SuperAdminDashboard() {
     }
     setUser(parsedUser);
   }, [setLocation]);
+  
+  // Check if secrets password is set
+  useEffect(() => {
+    const checkSecretsPassword = async () => {
+      try {
+        const token = localStorage.getItem('auth_token');
+        const response = await fetch('/api/super-admin/secrets/password-status', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setIsSecretsPasswordSet(data.isSet);
+        } else {
+          setIsSecretsPasswordSet(false);
+        }
+      } catch (error) {
+        setIsSecretsPasswordSet(false);
+      }
+    };
+    checkSecretsPassword();
+  }, []);
 
   // Dealerships
   const { data: dealerships = [], isLoading: dealershipsLoading } = useQuery<Dealership[]>({
@@ -597,10 +650,67 @@ export default function SuperAdminDashboard() {
           <h1 className="text-2xl sm:text-3xl font-bold">Super Admin Dashboard</h1>
           <p className="text-muted-foreground">System-wide administration and configuration</p>
         </div>
-        <Button onClick={handleLogout} variant="outline" data-testid="button-logout" className="w-full sm:w-auto">
-          <LogOut className="w-4 h-4 mr-2" />
-          Logout
-        </Button>
+        <div className="flex gap-2 w-full sm:w-auto">
+          <Dialog open={showRestartConfirm} onOpenChange={setShowRestartConfirm}>
+            <DialogTrigger asChild>
+              <Button variant="outline" data-testid="button-restart-server" className="flex-1 sm:flex-none">
+                <RefreshCw className="w-4 h-4 mr-2" />
+                <Server className="w-4 h-4 mr-2" />
+                Restart Server
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Restart Server</DialogTitle>
+                <DialogDescription>
+                  Are you sure you want to restart the server? This will temporarily interrupt all active connections.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button variant="outline" onClick={() => setShowRestartConfirm(false)}>
+                  Cancel
+                </Button>
+                <Button 
+                  variant="destructive" 
+                  disabled={isRestarting}
+                  onClick={async () => {
+                    setIsRestarting(true);
+                    try {
+                      const token = localStorage.getItem('auth_token');
+                      const response = await fetch('/api/super-admin/restart-server', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` },
+                      });
+                      if (response.ok) {
+                        toast({ title: "Success", description: "Server restart initiated successfully" });
+                      } else {
+                        const error = await response.json();
+                        throw new Error(error.error || "Failed to restart server");
+                      }
+                    } catch (error) {
+                      toast({ 
+                        title: "Error", 
+                        description: error instanceof Error ? error.message : "Failed to restart server",
+                        variant: "destructive"
+                      });
+                    } finally {
+                      setIsRestarting(false);
+                      setShowRestartConfirm(false);
+                    }
+                  }}
+                  data-testid="confirm-restart"
+                >
+                  {isRestarting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                  Restart
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          <Button onClick={handleLogout} variant="outline" data-testid="button-logout" className="flex-1 sm:flex-none">
+            <LogOut className="w-4 h-4 mr-2" />
+            Logout
+          </Button>
+        </div>
       </div>
 
       <Tabs defaultValue="dealerships" className="space-y-4">
@@ -615,10 +725,10 @@ export default function SuperAdminDashboard() {
             <span className="hidden sm:inline">API Integrations</span>
             <span className="sm:hidden">APIs</span>
           </TabsTrigger>
-          <TabsTrigger value="settings" data-testid="tab-settings" className="text-xs sm:text-sm px-2 sm:px-3 py-2">
-            <Key className="h-4 w-4 mr-1 sm:mr-2" />
-            <span className="hidden sm:inline">Global Settings</span>
-            <span className="sm:hidden">Settings</span>
+          <TabsTrigger value="secrets" data-testid="tab-secrets" className="text-xs sm:text-sm px-2 sm:px-3 py-2 bg-red-600/10 hover:bg-red-600/20">
+            <Shield className="h-4 w-4 mr-1 sm:mr-2 text-red-600" />
+            <span className="hidden sm:inline text-red-600 font-medium">SECRETS</span>
+            <span className="sm:hidden text-red-600">Secrets</span>
           </TabsTrigger>
           <TabsTrigger value="audit" data-testid="tab-audit" className="text-xs sm:text-sm px-2 sm:px-3 py-2">
             <FileText className="h-4 w-4 mr-1 sm:mr-2" />
@@ -812,86 +922,403 @@ export default function SuperAdminDashboard() {
           </Card>
         </TabsContent>
 
-        {/* Global Settings Tab */}
-        <TabsContent value="settings">
+        {/* SECRETS Tab */}
+        <TabsContent value="secrets">
           <Card>
             <CardHeader>
               <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                 <div>
-                  <CardTitle>Global Settings</CardTitle>
-                  <CardDescription>Configure system-wide API keys and settings</CardDescription>
+                  <CardTitle className="flex items-center gap-2">
+                    <Shield className="h-5 w-5 text-red-600" />
+                    Secrets Management
+                  </CardTitle>
+                  <CardDescription>
+                    View and manage all dealership API keys. This section is password-protected.
+                  </CardDescription>
                 </div>
-                <AddSettingDialog onSubmit={(data) => setSettingMutation.mutate(data)} />
+                {secretsUnlocked && (
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setShowChangePasswordDialog(true)}
+                    data-testid="change-secrets-password"
+                  >
+                    <KeyRound className="h-4 w-4 mr-2" />
+                    Change Password
+                  </Button>
+                )}
               </div>
             </CardHeader>
             <CardContent>
-              {settingsLoading ? (
-                <div className="text-center py-8 text-muted-foreground">Loading settings...</div>
-              ) : (
-                <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Key</TableHead>
-                      <TableHead>Value</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Updated</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {settings.map((setting) => (
-                      <TableRow key={setting.id} data-testid={`setting-row-${setting.key}`}>
-                        <TableCell className="font-mono font-medium">{setting.key}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {setting.isSecret && !showSecrets[setting.key] ? (
-                              <span className="text-muted-foreground">••••••••</span>
-                            ) : (
-                              <span className="font-mono text-sm">{setting.value}</span>
-                            )}
-                            {setting.isSecret && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setShowSecrets({ ...showSecrets, [setting.key]: !showSecrets[setting.key] })}
-                                data-testid={`toggle-secret-${setting.key}`}
-                              >
-                                {showSecrets[setting.key] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                              </Button>
-                            )}
+              {!secretsUnlocked ? (
+                <div className="flex flex-col items-center justify-center py-12 space-y-6">
+                  <div className="p-4 bg-red-600/10 rounded-full">
+                    <Shield className="h-12 w-12 text-red-600" />
+                  </div>
+                  <div className="text-center">
+                    <h3 className="text-lg font-semibold mb-2">
+                      {isSecretsPasswordSet === null ? "Checking..." : isSecretsPasswordSet ? "Enter Password" : "Set Up Secrets Password"}
+                    </h3>
+                    <p className="text-muted-foreground max-w-md">
+                      {isSecretsPasswordSet === null 
+                        ? "Please wait while we check your secrets password status..."
+                        : isSecretsPasswordSet 
+                          ? "Enter your secrets password to access dealership API keys and sensitive configuration."
+                          : "Create a password to protect access to sensitive API keys and secrets."}
+                    </p>
+                  </div>
+                  
+                  {isSecretsPasswordSet !== null && (
+                    <div className="w-full max-w-sm space-y-4">
+                      {isSecretsPasswordSet ? (
+                        <>
+                          <div className="space-y-2">
+                            <Label htmlFor="secrets-password">Password</Label>
+                            <Input
+                              id="secrets-password"
+                              type="password"
+                              value={secretsPassword}
+                              onChange={(e) => {
+                                setSecretsPassword(e.target.value);
+                                setSecretsPasswordError('');
+                              }}
+                              placeholder="Enter your secrets password"
+                              data-testid="input-secrets-password"
+                            />
                           </div>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">{setting.description || "—"}</TableCell>
-                        <TableCell>
-                          <Badge variant={setting.isSecret ? "default" : "secondary"}>
-                            {setting.isSecret ? "Secret" : "Public"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{format(new Date(setting.updatedAt), "PPP")}</TableCell>
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              if (confirm(`Delete setting "${setting.key}"?`)) {
-                                deleteSettingMutation.mutate(setting.key);
+                          {secretsPasswordError && (
+                            <p className="text-sm text-destructive">{secretsPasswordError}</p>
+                          )}
+                          <Button 
+                            className="w-full" 
+                            disabled={settingSecretsPassword || !secretsPassword}
+                            onClick={async () => {
+                              setSettingSecretsPassword(true);
+                              setSecretsPasswordError('');
+                              try {
+                                const token = localStorage.getItem('auth_token');
+                                const response = await fetch('/api/super-admin/secrets/verify-password', {
+                                  method: 'POST',
+                                  headers: { 
+                                    'Authorization': `Bearer ${token}`,
+                                    'Content-Type': 'application/json'
+                                  },
+                                  body: JSON.stringify({ password: secretsPassword })
+                                });
+                                if (response.ok) {
+                                  setSecretsUnlocked(true);
+                                  setLoadingSecrets(true);
+                                  const keysResponse = await fetch('/api/super-admin/secrets/all-api-keys', {
+                                    headers: { 
+                                      'Authorization': `Bearer ${token}`,
+                                      'X-Secrets-Password': secretsPassword
+                                    }
+                                  });
+                                  if (keysResponse.ok) {
+                                    const data = await keysResponse.json();
+                                    setDealershipSecrets(data);
+                                  }
+                                  setLoadingSecrets(false);
+                                  toast({ title: "Unlocked", description: "Secrets section unlocked successfully" });
+                                } else {
+                                  const error = await response.json();
+                                  setSecretsPasswordError(error.error || 'Invalid password');
+                                }
+                              } catch (error) {
+                                setSecretsPasswordError('Failed to verify password');
+                              } finally {
+                                setSettingSecretsPassword(false);
                               }
                             }}
-                            data-testid={`delete-setting-${setting.key}`}
+                            data-testid="unlock-secrets"
                           >
-                            <Trash2 className="h-4 w-4 text-destructive" />
+                            {settingSecretsPassword ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Shield className="h-4 w-4 mr-2" />}
+                            Unlock Secrets
                           </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                        </>
+                      ) : (
+                        <>
+                          <div className="space-y-2">
+                            <Label htmlFor="new-secrets-password">New Password</Label>
+                            <Input
+                              id="new-secrets-password"
+                              type="password"
+                              value={newSecretsPassword}
+                              onChange={(e) => {
+                                setNewSecretsPassword(e.target.value);
+                                setSecretsPasswordError('');
+                              }}
+                              placeholder="Create a strong password"
+                              data-testid="input-new-secrets-password"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="confirm-secrets-password">Confirm Password</Label>
+                            <Input
+                              id="confirm-secrets-password"
+                              type="password"
+                              value={confirmSecretsPassword}
+                              onChange={(e) => {
+                                setConfirmSecretsPassword(e.target.value);
+                                setSecretsPasswordError('');
+                              }}
+                              placeholder="Confirm your password"
+                              data-testid="input-confirm-secrets-password"
+                            />
+                          </div>
+                          {secretsPasswordError && (
+                            <p className="text-sm text-destructive">{secretsPasswordError}</p>
+                          )}
+                          <Button 
+                            className="w-full" 
+                            disabled={settingSecretsPassword || !newSecretsPassword || !confirmSecretsPassword}
+                            onClick={async () => {
+                              if (newSecretsPassword !== confirmSecretsPassword) {
+                                setSecretsPasswordError('Passwords do not match');
+                                return;
+                              }
+                              if (newSecretsPassword.length < 6) {
+                                setSecretsPasswordError('Password must be at least 6 characters');
+                                return;
+                              }
+                              setSettingSecretsPassword(true);
+                              setSecretsPasswordError('');
+                              try {
+                                const token = localStorage.getItem('auth_token');
+                                const response = await fetch('/api/super-admin/secrets/set-password', {
+                                  method: 'POST',
+                                  headers: { 
+                                    'Authorization': `Bearer ${token}`,
+                                    'Content-Type': 'application/json'
+                                  },
+                                  body: JSON.stringify({ password: newSecretsPassword })
+                                });
+                                if (response.ok) {
+                                  setIsSecretsPasswordSet(true);
+                                  setSecretsPassword(newSecretsPassword);
+                                  setSecretsUnlocked(true);
+                                  setLoadingSecrets(true);
+                                  const keysResponse = await fetch('/api/super-admin/secrets/all-api-keys', {
+                                    headers: { 
+                                      'Authorization': `Bearer ${token}`,
+                                      'X-Secrets-Password': newSecretsPassword
+                                    }
+                                  });
+                                  if (keysResponse.ok) {
+                                    const data = await keysResponse.json();
+                                    setDealershipSecrets(data);
+                                  }
+                                  setLoadingSecrets(false);
+                                  toast({ title: "Success", description: "Secrets password set successfully" });
+                                } else {
+                                  const error = await response.json();
+                                  setSecretsPasswordError(error.error || 'Failed to set password');
+                                }
+                              } catch (error) {
+                                setSecretsPasswordError('Failed to set password');
+                              } finally {
+                                setSettingSecretsPassword(false);
+                                setNewSecretsPassword('');
+                                setConfirmSecretsPassword('');
+                              }
+                            }}
+                            data-testid="set-secrets-password"
+                          >
+                            {settingSecretsPassword ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <KeyRound className="h-4 w-4 mr-2" />}
+                            Set Password
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : loadingSecrets ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Loader2 className="h-8 w-8 mx-auto mb-4 animate-spin" />
+                  Loading secrets...
+                </div>
+              ) : dealershipSecrets.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Shield className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No API keys configured for any dealership.</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {dealershipSecrets.map((secrets) => (
+                    <Card key={secrets.dealershipId} className="border-2">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <Building2 className="h-4 w-4" />
+                          {secrets.dealershipName}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <SecretField 
+                            label="OpenAI API Key" 
+                            value={secrets.openaiApiKey} 
+                            fieldKey={`${secrets.dealershipId}-openai`}
+                            showSecretFields={showSecretFields}
+                            setShowSecretFields={setShowSecretFields}
+                          />
+                          <SecretField 
+                            label="Facebook App ID" 
+                            value={secrets.facebookAppId} 
+                            fieldKey={`${secrets.dealershipId}-fb-app-id`}
+                            showSecretFields={showSecretFields}
+                            setShowSecretFields={setShowSecretFields}
+                          />
+                          <SecretField 
+                            label="Facebook App Secret" 
+                            value={secrets.facebookAppSecret} 
+                            fieldKey={`${secrets.dealershipId}-fb-app-secret`}
+                            showSecretFields={showSecretFields}
+                            setShowSecretFields={setShowSecretFields}
+                          />
+                          <SecretField 
+                            label="MarketCheck Key" 
+                            value={secrets.marketcheckKey} 
+                            fieldKey={`${secrets.dealershipId}-marketcheck`}
+                            showSecretFields={showSecretFields}
+                            setShowSecretFields={setShowSecretFields}
+                          />
+                          <SecretField 
+                            label="Apify Token" 
+                            value={secrets.apifyToken} 
+                            fieldKey={`${secrets.dealershipId}-apify`}
+                            showSecretFields={showSecretFields}
+                            setShowSecretFields={setShowSecretFields}
+                          />
+                          <SecretField 
+                            label="Gemini API Key" 
+                            value={secrets.geminiApiKey} 
+                            fieldKey={`${secrets.dealershipId}-gemini`}
+                            showSecretFields={showSecretFields}
+                            setShowSecretFields={setShowSecretFields}
+                          />
+                          <SecretField 
+                            label="GHL API Key" 
+                            value={secrets.ghlApiKey} 
+                            fieldKey={`${secrets.dealershipId}-ghl`}
+                            showSecretFields={showSecretFields}
+                            setShowSecretFields={setShowSecretFields}
+                          />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
               )}
             </CardContent>
           </Card>
+          
+          {/* Change Password Dialog */}
+          <Dialog open={showChangePasswordDialog} onOpenChange={setShowChangePasswordDialog}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Change Secrets Password</DialogTitle>
+                <DialogDescription>
+                  Enter your current password and a new password to update your secrets access.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="old-password">Current Password</Label>
+                  <Input
+                    id="old-password"
+                    type="password"
+                    value={oldSecretsPassword}
+                    onChange={(e) => setOldSecretsPassword(e.target.value)}
+                    placeholder="Enter current password"
+                    data-testid="input-old-secrets-password"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="new-password">New Password</Label>
+                  <Input
+                    id="new-password"
+                    type="password"
+                    value={newSecretsPassword}
+                    onChange={(e) => setNewSecretsPassword(e.target.value)}
+                    placeholder="Enter new password"
+                    data-testid="input-change-new-password"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="confirm-new-password">Confirm New Password</Label>
+                  <Input
+                    id="confirm-new-password"
+                    type="password"
+                    value={confirmSecretsPassword}
+                    onChange={(e) => setConfirmSecretsPassword(e.target.value)}
+                    placeholder="Confirm new password"
+                    data-testid="input-change-confirm-password"
+                  />
+                </div>
+                {secretsPasswordError && (
+                  <p className="text-sm text-destructive">{secretsPasswordError}</p>
+                )}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => {
+                  setShowChangePasswordDialog(false);
+                  setOldSecretsPassword('');
+                  setNewSecretsPassword('');
+                  setConfirmSecretsPassword('');
+                  setSecretsPasswordError('');
+                }}>
+                  Cancel
+                </Button>
+                <Button 
+                  disabled={settingSecretsPassword || !oldSecretsPassword || !newSecretsPassword || !confirmSecretsPassword}
+                  onClick={async () => {
+                    if (newSecretsPassword !== confirmSecretsPassword) {
+                      setSecretsPasswordError('Passwords do not match');
+                      return;
+                    }
+                    if (newSecretsPassword.length < 6) {
+                      setSecretsPasswordError('Password must be at least 6 characters');
+                      return;
+                    }
+                    setSettingSecretsPassword(true);
+                    setSecretsPasswordError('');
+                    try {
+                      const token = localStorage.getItem('auth_token');
+                      const response = await fetch('/api/super-admin/secrets/change-password', {
+                        method: 'POST',
+                        headers: { 
+                          'Authorization': `Bearer ${token}`,
+                          'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ 
+                          oldPassword: oldSecretsPassword, 
+                          newPassword: newSecretsPassword 
+                        })
+                      });
+                      if (response.ok) {
+                        setSecretsPassword(newSecretsPassword);
+                        setShowChangePasswordDialog(false);
+                        setOldSecretsPassword('');
+                        setNewSecretsPassword('');
+                        setConfirmSecretsPassword('');
+                        toast({ title: "Success", description: "Secrets password changed successfully" });
+                      } else {
+                        const error = await response.json();
+                        setSecretsPasswordError(error.error || 'Failed to change password');
+                      }
+                    } catch (error) {
+                      setSecretsPasswordError('Failed to change password');
+                    } finally {
+                      setSettingSecretsPassword(false);
+                    }
+                  }}
+                  data-testid="confirm-change-password"
+                >
+                  {settingSecretsPassword ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                  Change Password
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         {/* Audit Logs Tab */}
@@ -911,6 +1338,7 @@ export default function SuperAdminDashboard() {
                       <TableRow>
                         <TableHead>Timestamp</TableHead>
                         <TableHead>User ID</TableHead>
+                        <TableHead>Email</TableHead>
                         <TableHead>Action</TableHead>
                         <TableHead>Resource</TableHead>
                         <TableHead>Details</TableHead>
@@ -922,6 +1350,7 @@ export default function SuperAdminDashboard() {
                         <TableRow key={log.id} data-testid={`audit-log-${log.id}`}>
                           <TableCell>{format(new Date(log.createdAt), "PPpp")}</TableCell>
                           <TableCell>{log.userId}</TableCell>
+                          <TableCell className="text-muted-foreground">{log.userEmail || "—"}</TableCell>
                           <TableCell>
                             <Badge>{log.action}</Badge>
                           </TableCell>
@@ -3187,6 +3616,50 @@ function AddSettingDialog({ onSubmit }: { onSubmit: (data: any) => void }) {
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function SecretField({ 
+  label, 
+  value, 
+  fieldKey,
+  showSecretFields,
+  setShowSecretFields
+}: { 
+  label: string; 
+  value: string | null; 
+  fieldKey: string;
+  showSecretFields: Record<string, boolean>;
+  setShowSecretFields: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+}) {
+  if (!value) {
+    return (
+      <div className="space-y-1">
+        <Label className="text-xs text-muted-foreground">{label}</Label>
+        <p className="text-sm text-muted-foreground italic">Not configured</p>
+      </div>
+    );
+  }
+  
+  const isVisible = showSecretFields[fieldKey] || false;
+  
+  return (
+    <div className="space-y-1">
+      <Label className="text-xs text-muted-foreground">{label}</Label>
+      <div className="flex items-center gap-2">
+        <code className="text-xs bg-muted px-2 py-1 rounded flex-1 overflow-hidden">
+          {isVisible ? value : '•'.repeat(Math.min(value.length, 20))}
+        </code>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowSecretFields(prev => ({ ...prev, [fieldKey]: !isVisible }))}
+          data-testid={`toggle-secret-${fieldKey}`}
+        >
+          {isVisible ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+        </Button>
+      </div>
+    </div>
   );
 }
 
