@@ -11,7 +11,8 @@ import {
   insertPostingQueueSchema,
   insertPostingScheduleSchema,
   ghlAccounts,
-  ghlContactSync
+  ghlContactSync,
+  dealershipContacts
 } from "@shared/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import { fromZodError } from "zod-validation-error";
@@ -4509,6 +4510,30 @@ Format your response in clear sections with actionable recommendations.`;
     } catch (error) {
       console.error("Error deleting dealership fee:", error);
       res.status(500).json({ error: "Failed to delete dealership fee" });
+    }
+  });
+  
+  // ===== DEALERSHIP CONTACTS/WEBSITE ROUTES =====
+  
+  // Get dealership website URL (for managers to view their site)
+  app.get("/api/dealership/website-url", authMiddleware, requireRole("manager", "admin", "master", "super_admin"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId || req.user?.dealershipId;
+      if (!dealershipId) {
+        return res.status(400).json({ error: "Dealership not found" });
+      }
+      
+      // Query dealership_contacts for website URL
+      const contacts = await db.query.dealershipContacts.findFirst({
+        where: eq(dealershipContacts.dealershipId, dealershipId)
+      });
+      
+      res.json({ 
+        websiteUrl: contacts?.websiteUrl || null 
+      });
+    } catch (error) {
+      console.error("Error fetching website URL:", error);
+      res.status(500).json({ error: "Failed to fetch website URL" });
     }
   });
   

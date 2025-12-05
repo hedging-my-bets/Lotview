@@ -311,6 +311,7 @@ export default function Manager() {
   const [, setLocation] = useLocation();
   const [user, setUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [websiteUrl, setWebsiteUrl] = useState<string | null>(null);
   const { toast } = useToast();
 
   // VIN state
@@ -388,6 +389,7 @@ export default function Manager() {
       loadSettings();
       loadMetrics();
       loadChatPrompts();
+      loadWebsiteUrl();
     }
   }, [user]);
 
@@ -539,6 +541,21 @@ export default function Manager() {
       }
     } catch (error) {
       console.error("Error loading settings:", error);
+    }
+  };
+
+  const loadWebsiteUrl = async () => {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('/api/dealership/website-url', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setWebsiteUrl(data.websiteUrl);
+      }
+    } catch (error) {
+      console.error("Error loading website URL:", error);
     }
   };
 
@@ -1106,7 +1123,13 @@ export default function Manager() {
             </div>
             <div className="flex flex-col sm:flex-row gap-2">
               <Button 
-                onClick={() => window.open('/', '_blank')} 
+                onClick={() => {
+                  if (websiteUrl) {
+                    window.open(websiteUrl, '_blank');
+                  } else {
+                    window.open('/', '_blank');
+                  }
+                }} 
                 variant="outline" 
                 data-testid="button-website-view" 
                 className="w-full sm:w-auto"

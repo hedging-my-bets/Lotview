@@ -338,6 +338,7 @@ export default function Dashboard() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [websiteUrl, setWebsiteUrl] = useState<string | null>(null);
   const { toast } = useToast();
 
   // New user form state
@@ -463,11 +464,28 @@ export default function Dashboard() {
       await loadWebhookEvents(token);
       await loadChatPrompts(token);
       await loadDealershipFees(token);
+      await loadWebsiteUrl(token);
     } catch (error) {
       console.error("Auth check failed:", error);
       setLocation('/login');
     } finally {
       setIsLoading(false);
+    }
+  };
+  
+  const loadWebsiteUrl = async (token: string) => {
+    try {
+      const response = await fetch('/api/dealership/website-url', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setWebsiteUrl(data.websiteUrl);
+      }
+    } catch (error) {
+      console.error("Failed to load website URL:", error);
     }
   };
 
@@ -1307,7 +1325,13 @@ export default function Dashboard() {
                 </Button>
               )}
               <Button 
-                onClick={() => window.open('/', '_blank')} 
+                onClick={() => {
+                  if (websiteUrl) {
+                    window.open(websiteUrl, '_blank');
+                  } else {
+                    window.open('/', '_blank');
+                  }
+                }} 
                 variant="outline" 
                 data-testid="button-website-view" 
                 className="w-full sm:w-auto"
