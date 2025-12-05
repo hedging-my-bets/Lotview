@@ -1345,3 +1345,103 @@ export const insertScraperActivityLogSchema = createInsertSchema(scraperActivity
 
 export type InsertScraperActivityLog = z.infer<typeof insertScraperActivityLogSchema>;
 export type ScraperActivityLog = typeof scraperActivityLogs.$inferSelect;
+
+// ====== CALL ANALYSIS SYSTEM ======
+
+// Call analysis criteria - configurable criteria for AI to evaluate calls
+export const callAnalysisCriteria = pgTable("call_analysis_criteria", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  name: text("name").notNull(), // e.g., "Script Adherence", "Professionalism", "Closing Technique"
+  description: text("description"), // Detailed description for AI to understand
+  category: text("category").notNull().default('general'), // 'greeting', 'qualification', 'objection_handling', 'closing', 'general'
+  weight: integer("weight").notNull().default(1), // Weight for overall score calculation (1-10)
+  isActive: boolean("is_active").notNull().default(true),
+  promptGuidance: text("prompt_guidance"), // Additional AI prompt guidance for this criterion
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertCallAnalysisCriteriaSchema = createInsertSchema(callAnalysisCriteria).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertCallAnalysisCriteria = z.infer<typeof insertCallAnalysisCriteriaSchema>;
+export type CallAnalysisCriteria = typeof callAnalysisCriteria.$inferSelect;
+
+// Call recordings - store call data from GHL webhooks
+export const callRecordings = pgTable("call_recordings", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  ghlCallId: text("ghl_call_id").notNull(), // GHL message/call ID
+  ghlContactId: text("ghl_contact_id"), // GHL contact ID if available
+  callerPhone: text("caller_phone").notNull(),
+  dealershipPhone: text("dealership_phone").notNull(), // The tracking number called
+  direction: text("direction").notNull(), // 'inbound', 'outbound'
+  duration: integer("duration").notNull(), // Duration in seconds
+  callStatus: text("call_status").notNull(), // 'completed', 'missed', 'voicemail', 'busy', 'no_answer'
+  recordingUrl: text("recording_url"), // URL to the call recording
+  transcription: text("transcription"), // Full call transcription
+  // Caller/contact info
+  callerName: text("caller_name"),
+  // Salesperson info
+  salespersonId: integer("salesperson_id").references(() => users.id, { onDelete: 'set null' }),
+  salespersonName: text("salesperson_name"),
+  // Analysis status
+  analysisStatus: text("analysis_status").notNull().default('pending'), // 'pending', 'processing', 'completed', 'failed', 'skipped'
+  analysisError: text("analysis_error"),
+  analyzedAt: timestamp("analyzed_at"),
+  // AI Analysis results (JSON stored as text)
+  overallScore: integer("overall_score"), // 0-100 overall score
+  criteriaScores: text("criteria_scores"), // JSON: { criterionId: score, ... }
+  sentiment: text("sentiment"), // 'positive', 'neutral', 'negative'
+  keyInsights: text("key_insights"), // JSON array of key insights
+  coachingRecommendations: text("coaching_recommendations"), // JSON array of recommendations
+  actionItems: text("action_items"), // JSON array of follow-up actions
+  leadQualification: text("lead_qualification"), // 'hot', 'warm', 'cold', 'not_qualified'
+  // Flags
+  needsReview: boolean("needs_review").notNull().default(false), // Flag for manager attention
+  reviewedBy: integer("reviewed_by").references(() => users.id, { onDelete: 'set null' }),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewNotes: text("review_notes"),
+  // Timestamps
+  callStartedAt: timestamp("call_started_at").notNull(),
+  callEndedAt: timestamp("call_ended_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertCallRecordingSchema = createInsertSchema(callRecordings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertCallRecording = z.infer<typeof insertCallRecordingSchema>;
+export type CallRecording = typeof callRecordings.$inferSelect;
+
+// ====== SUPER ADMIN IMPERSONATION ======
+
+// Impersonation sessions - audit trail for super admin login-as feature
+export const impersonationSessions = pgTable("impersonation_sessions", {
+  id: serial("id").primaryKey(),
+  superAdminId: integer("super_admin_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  targetUserId: integer("target_user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  targetDealershipId: integer("target_dealership_id").references(() => dealerships.id, { onDelete: 'cascade' }),
+  reason: text("reason"), // Optional reason for impersonation
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  endedAt: timestamp("ended_at"), // NULL if session is still active
+  actionsPerformed: integer("actions_performed").notNull().default(0), // Count of actions during session
+});
+
+export const insertImpersonationSessionSchema = createInsertSchema(impersonationSessions).omit({
+  id: true,
+  startedAt: true,
+});
+
+export type InsertImpersonationSession = z.infer<typeof insertImpersonationSessionSchema>;
+export type ImpersonationSession = typeof impersonationSessions.$inferSelect;
