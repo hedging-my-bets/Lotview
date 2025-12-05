@@ -1325,13 +1325,7 @@ export default function Dashboard() {
                 </Button>
               )}
               <Button 
-                onClick={() => {
-                  if (websiteUrl) {
-                    window.open(websiteUrl, '_blank');
-                  } else {
-                    window.open('/', '_blank');
-                  }
-                }} 
+                onClick={() => window.open('/', '_blank')} 
                 variant="outline" 
                 data-testid="button-website-view" 
                 className="w-full sm:w-auto"
