@@ -18,6 +18,7 @@ export const dealerships = pgTable("dealerships", {
   phone: text("phone"), // Contact phone number
   timezone: text("timezone").default("America/Vancouver"), // Timezone for scheduling
   defaultCurrency: text("default_currency").default("CAD"), // Default currency code
+  vdpFooterDescription: text("vdp_footer_description"), // Universal footer text for all VDP pages (set by GM)
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -136,6 +137,12 @@ export const vehicles = pgTable("vehicles", {
   carfaxUrl: text("carfax_url"), // Link to Carfax vehicle history report
   dealerVdpUrl: text("dealer_vdp_url"), // Link to dealer's vehicle detail page
   videoUrl: text("video_url"), // Generated video URL from Gemini Veo
+  manualHeadline: text("manual_headline"), // Manually edited headline (preserved across scrapes)
+  manualSubheadline: text("manual_subheadline"), // Manually edited subheadline (preserved across scrapes)
+  manualDescription: text("manual_description"), // Manually edited description (preserved across scrapes)
+  isManuallyEdited: boolean("is_manually_edited").default(false), // Flag to preserve manual edits during scraper updates
+  lastEditedBy: integer("last_edited_by"), // User ID who last edited manually
+  lastEditedAt: timestamp("last_edited_at"), // When vehicle was last manually edited
   createdAt: timestamp("created_at").defaultNow().notNull(),
   lastScrapedAt: timestamp("last_scraped_at").defaultNow(), // Track when vehicle was last scraped (for incremental sync)
 });
@@ -355,10 +362,30 @@ export const insertGlobalSettingSchema = createInsertSchema(globalSettings).omit
 export type InsertGlobalSetting = z.infer<typeof insertGlobalSettingSchema>;
 export type GlobalSetting = typeof globalSettings.$inferSelect;
 
+// Super Admin Configs - System-wide configuration like secrets password
+export const superAdminConfigs = pgTable("super_admin_configs", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(), // e.g., 'secrets_password_hash'
+  value: text("value").notNull(), // Encrypted/hashed value
+  updatedBy: integer("updated_by").references(() => users.id), // Super admin who last updated
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertSuperAdminConfigSchema = createInsertSchema(superAdminConfigs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertSuperAdminConfig = z.infer<typeof insertSuperAdminConfigSchema>;
+export type SuperAdminConfig = typeof superAdminConfigs.$inferSelect;
+
 // Audit logs - Track all super admin actions
 export const auditLogs = pgTable("audit_logs", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id), // Super admin who performed action
+  userEmail: text("user_email"), // User email address for display in audit logs
   action: text("action").notNull(), // e.g., 'create_dealership', 'update_global_setting'
   resource: text("resource").notNull(), // e.g., 'dealership', 'global_setting'
   resourceId: text("resource_id"), // ID of affected resource
