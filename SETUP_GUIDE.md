@@ -1,43 +1,71 @@
 # LotView.ai - Complete Setup & Configuration Guide
 
-A comprehensive step-by-step guide to configure and deploy LotView.ai for your dealership(s). This covers **everything**: API keys, onboarding, SEO, scraping, subdomains, Facebook Catalog, Marketplace posting, ChatGPT, PBS DMS, GoHighLevel CRM, Call Analysis, and more.
+**The Ultimate Beginner's Guide** - A comprehensive step-by-step guide to configure and deploy LotView.ai for your dealership(s). This covers **everything**: API keys, onboarding, logos, favicons, SEO, scraping, subdomains, Facebook Catalog, Marketplace posting, ChatGPT, PBS DMS, GoHighLevel CRM, Call Analysis, and more.
+
+**No computer experience required!** Follow each step exactly as written.
 
 ---
 
 ## Table of Contents
 
+**GETTING STARTED**
 1. [Prerequisites](#1-prerequisites)
 2. [Initial Database Setup](#2-initial-database-setup)
 3. [Environment Variables & Secrets](#3-environment-variables--secrets)
+
+**USERS & ACCESS**
 4. [Super Admin Setup](#4-super-admin-setup)
 5. [Dealership Onboarding](#5-dealership-onboarding)
 6. [User Management & Roles](#6-user-management--roles)
-7. [OpenAI / ChatGPT Integration](#7-openai--chatgpt-integration)
-8. [AI Chat Configuration](#8-ai-chat-configuration)
-9. [Facebook Integration](#9-facebook-integration)
-   - [Facebook App Setup](#91-facebook-app-setup)
-   - [Facebook OAuth Flow](#92-facebook-oauth-flow)
-   - [Facebook Catalog API](#93-facebook-catalog-api-for-automotive-ads)
-   - [Facebook Marketplace Posting](#94-facebook-marketplace-posting)
-   - [Facebook Token Management](#95-facebook-token-management)
-10. [PBS DMS Integration](#10-pbs-dms-integration)
-11. [GoHighLevel CRM Integration](#11-gohighlevel-crm-integration)
-12. [Call Analysis Setup](#12-call-analysis-setup)
-13. [Inventory Scraping](#13-inventory-scraping)
-    - [AutoTrader.ca Scraping](#131-autotraderca-scraping)
-    - [CarGurus Scraping](#132-cargurus-scraping)
-    - [Apify Integration](#133-apify-integration)
-    - [Custom Dealer Website Scraping](#134-custom-dealer-website-scraping)
-14. [Market Pricing & Analysis](#14-market-pricing--analysis)
-15. [Subdomain Configuration](#15-subdomain-configuration)
-16. [SEO Configuration](#16-seo-configuration)
-17. [Google Analytics & Remarketing](#17-google-analytics--remarketing)
-18. [Object Storage Setup](#18-object-storage-setup)
-19. [Scheduled Jobs & Cron Tasks](#19-scheduled-jobs--cron-tasks)
-20. [Publishing & Deployment](#20-publishing--deployment)
-21. [Updating Without Losing Data](#21-updating-without-losing-data)
-22. [Troubleshooting](#22-troubleshooting)
-23. [Quick Reference: All Secrets](#23-quick-reference-all-secrets)
+
+**BRANDING & APPEARANCE**
+7. [Logo & Favicon Setup](#7-logo--favicon-setup)
+8. [Dealership Branding](#8-dealership-branding)
+9. [SEO Configuration](#9-seo-configuration)
+
+**AI & CHAT**
+10. [OpenAI / ChatGPT Integration](#10-openai--chatgpt-integration)
+11. [AI Chat Configuration](#11-ai-chat-configuration)
+
+**FACEBOOK**
+12. [Facebook Integration](#12-facebook-integration)
+    - [Facebook App Setup](#121-facebook-app-setup)
+    - [Facebook OAuth Flow](#122-facebook-oauth-flow)
+    - [Facebook Catalog API](#123-facebook-catalog-api-for-automotive-ads)
+    - [Facebook Marketplace Posting](#124-facebook-marketplace-posting)
+    - [Facebook Token Management](#125-facebook-token-management)
+
+**CRM & DMS**
+13. [PBS DMS Integration](#13-pbs-dms-integration)
+14. [GoHighLevel CRM Integration](#14-gohighlevel-crm-integration)
+15. [Call Analysis Setup](#15-call-analysis-setup)
+
+**INVENTORY**
+16. [Inventory Scraping - Complete Guide](#16-inventory-scraping---complete-guide)
+    - [Finding Your Scraping URLs](#161-finding-your-scraping-urls)
+    - [Dealer Website Scraping](#162-dealer-website-scraping)
+    - [CarGurus Scraping](#163-cargurus-scraping)
+    - [AutoTrader.ca Scraping](#164-autotraderca-scraping)
+    - [Apify Integration](#165-apify-integration)
+    - [Adding Scrape Sources in the App](#166-adding-scrape-sources-in-the-app)
+
+**MARKETING**
+17. [Market Pricing & Analysis](#17-market-pricing--analysis)
+18. [Google Analytics & Remarketing](#18-google-analytics--remarketing)
+
+**TECHNICAL**
+19. [Subdomain Configuration](#19-subdomain-configuration)
+20. [Object Storage Setup](#20-object-storage-setup)
+21. [Scheduled Jobs & Cron Tasks](#21-scheduled-jobs--cron-tasks)
+
+**DEPLOYMENT**
+22. [Publishing & Deployment](#22-publishing--deployment)
+23. [Updating Without Losing Data](#23-updating-without-losing-data)
+
+**HELP**
+24. [Troubleshooting](#24-troubleshooting)
+25. [Quick Reference: All Secrets](#25-quick-reference-all-secrets)
+26. [Complete Dealership Onboarding Checklist](#26-complete-dealership-onboarding-checklist)
 
 ---
 
@@ -299,7 +327,243 @@ For support and debugging:
 
 ---
 
-## 7. OpenAI / ChatGPT Integration
+## 7. Logo & Favicon Setup
+
+Your dealership's logo and favicon (the small icon in browser tabs) are essential for branding.
+
+### Understanding Logo vs Favicon
+
+| Item | What It Is | Where It Appears | Recommended Size |
+|------|------------|------------------|------------------|
+| **Logo** | Your dealership's main logo | Website header, emails, documents | 400x100 pixels (PNG with transparent background) |
+| **Favicon** | Tiny icon | Browser tabs, bookmarks | 32x32 or 64x64 pixels (PNG or ICO) |
+| **Open Graph Image** | Social sharing image | Facebook, Twitter, LinkedIn previews | 1200x630 pixels (JPG or PNG) |
+
+### Step 1: Prepare Your Logo Files
+
+You need THREE image files:
+
+1. **Main Logo** (`logo.png`)
+   - Your full dealership logo
+   - Transparent background (PNG format)
+   - About 400 pixels wide
+
+2. **Favicon** (`favicon.png`)
+   - A tiny, simplified version of your logo
+   - 32x32 or 64x64 pixels
+   - Works well at small sizes
+
+3. **Social Sharing Image** (`opengraph.jpg`)
+   - Image shown when your site is shared on Facebook/LinkedIn
+   - 1200x630 pixels
+   - Include your logo and tagline
+
+### Step 2: Where to Get These Made
+
+If you don't have these files:
+
+**Free Options:**
+- [Canva](https://www.canva.com) - Create logos and resize images for free
+- [Favicon.io](https://favicon.io) - Generate favicons from images or text
+- [Photopea](https://www.photopea.com) - Free online Photoshop alternative
+
+**What to Ask Your Designer:**
+> "I need a logo at 400x100 pixels with transparent background (PNG), a favicon at 64x64 pixels (PNG), and a social sharing image at 1200x630 pixels (JPG) with our logo centered."
+
+### Step 3: Upload Global Files (For Entire Platform)
+
+To change the favicon and social image for the entire platform:
+
+1. In your Replit project, navigate to: `client/public/`
+2. Replace these files:
+   - `favicon.png` - Your new favicon
+   - `opengraph.jpg` - Your social sharing image
+
+**How to upload in Replit:**
+1. Click the **Files** panel on the left
+2. Navigate to `client` → `public`
+3. Right-click → **Upload File**
+4. Select your new image files
+5. Make sure they have the exact same names as the originals
+
+### Step 4: Upload Per-Dealership Logos
+
+Each dealership can have its own logo:
+
+1. Go to **Super Admin Dashboard** → **Dealerships**
+2. Select the dealership
+3. Go to the **Branding** tab
+4. Upload or enter URL for:
+   - **Logo URL**: Direct link to your logo image
+   - **Favicon URL**: Direct link to your favicon
+
+**Getting a Logo URL:**
+- Upload your logo to your website and copy the URL
+- Or use a free image host like [Imgur](https://imgur.com) or [Cloudinary](https://cloudinary.com)
+- The URL should look like: `https://example.com/images/my-logo.png`
+
+### Step 5: Update HTML Meta Tags (Advanced)
+
+For complete control, edit `client/index.html`:
+
+```html
+<!-- Line 27: Change favicon -->
+<link rel="icon" type="image/png" href="/favicon.png" />
+
+<!-- Lines 12 and 17: Change social sharing image -->
+<meta property="og:image" content="/opengraph.jpg" />
+<meta name="twitter:image" content="/opengraph.jpg" />
+```
+
+---
+
+## 8. Dealership Branding
+
+Customize colors, headlines, and promotional content for each dealership.
+
+### Branding Options
+
+| Setting | What It Does | Example |
+|---------|--------------|---------|
+| **Logo URL** | Main logo displayed in header | `https://yoursite.com/logo.png` |
+| **Favicon URL** | Browser tab icon | `https://yoursite.com/favicon.png` |
+| **Primary Color** | Main brand color | `#022d60` (dark blue) |
+| **Secondary Color** | Accent color | `#00aad2` (light blue) |
+| **Hero Headline** | Main text on inventory page | "Find Your Perfect Vehicle" |
+| **Hero Subheadline** | Supporting text | "Quality Pre-Owned Cars in Vancouver" |
+| **Hero Image URL** | Background image for hero section | `https://yoursite.com/hero.jpg` |
+| **Tagline** | Short dealership slogan | "Drive with Confidence" |
+| **Promo Banner** | Optional promotional message | "0% Financing This Weekend Only!" |
+
+### How to Find Your Brand Colors
+
+**From Your Existing Website:**
+1. Go to your dealership website
+2. Right-click on a colored element → **Inspect**
+3. Look for `color:` or `background-color:` values
+4. Copy the hex code (like `#022d60`)
+
+**From Your Logo:**
+1. Upload your logo to [ColorKit](https://colorkit.co/color-palette-from-image/)
+2. It will extract the main colors
+3. Copy the hex codes
+
+### Configuring Branding
+
+1. Go to **Super Admin Dashboard** → **Dealerships**
+2. Select a dealership
+3. Go to the **Branding** tab
+4. Fill in all fields:
+
+```
+Logo URL:           https://your-dealership.com/logo.png
+Favicon URL:        https://your-dealership.com/favicon.png
+Primary Color:      #022d60
+Secondary Color:    #00aad2
+Hero Headline:      Olympic Hyundai Vancouver
+Hero Subheadline:   Your Trusted Hyundai Dealer Since 1995
+Tagline:            Drive with Confidence
+Promo Banner:       Spring Sale - Save up to $5,000!
+Promo Active:       ✓ (check to show)
+```
+
+5. Click **Save**
+
+### Testing Your Branding
+
+After saving:
+1. Open your dealership's subdomain in a new browser tab
+2. Check that:
+   - Logo appears in the header
+   - Colors match your brand
+   - Hero section shows correct headlines
+   - Favicon shows in browser tab (may need to refresh)
+
+---
+
+## 9. SEO Configuration
+
+SEO (Search Engine Optimization) helps your website appear in Google search results.
+
+### What SEO Settings Control
+
+| Setting | What It Does | Example |
+|---------|--------------|---------|
+| **Page Title** | Shows in browser tab and Google results | "Olympic Hyundai - Used Cars in Vancouver" |
+| **Meta Description** | Description in Google results | "Browse quality pre-owned vehicles..." |
+| **Open Graph Title** | Title when shared on Facebook | Same as page title |
+| **Open Graph Description** | Description when shared on Facebook | Same as meta description |
+| **Open Graph Image** | Image when shared on Facebook | Your hero image or logo |
+
+### Step 1: Update Global SEO (Entire Platform)
+
+Edit the file `client/index.html`:
+
+```html
+<!-- Page Title (Line 7) -->
+<title>LotView.ai - Turn Your Inventory Into a 24/7 Sales Agent</title>
+
+<!-- Meta Description (Line 8) -->
+<meta name="description" content="LotView syncs your inventory, chats with leads, and books test drives automatically." />
+
+<!-- Facebook/LinkedIn Preview (Lines 9-12) -->
+<meta property="og:title" content="LotView.ai - Turn Your Inventory Into a 24/7 Sales Agent" />
+<meta property="og:description" content="LotView syncs your inventory, chats with leads, and books test drives automatically." />
+<meta property="og:type" content="website" />
+<meta property="og:image" content="/opengraph.jpg" />
+
+<!-- Twitter Preview (Lines 13-17) -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="LotView.ai - Turn Your Inventory Into a 24/7 Sales Agent" />
+<meta name="twitter:description" content="LotView syncs your inventory, chats with leads, and books test drives automatically." />
+<meta name="twitter:image" content="/opengraph.jpg" />
+```
+
+### Step 2: Update Google Tag Manager ID
+
+If you have Google Tag Manager:
+
+1. Find your GTM Container ID (looks like `GTM-XXXXXXX`)
+2. Edit `client/index.html`
+3. Replace `GTM-OLYMPIC` with your actual GTM ID on lines 20-24 and 35-36
+
+### Step 3: Per-Dealership SEO
+
+Each dealership can have custom SEO through the **Branding** settings:
+
+1. **Hero Headline** → Becomes page title
+2. **Hero Subheadline** → Becomes meta description
+3. **Hero Image URL** → Becomes social sharing image
+
+### SEO Best Practices for Dealerships
+
+**Page Titles:**
+- Keep under 60 characters
+- Include dealership name and location
+- Example: "Olympic Hyundai Vancouver | Used Cars & SUVs"
+
+**Meta Descriptions:**
+- Keep under 160 characters
+- Include a call to action
+- Example: "Browse 100+ quality pre-owned vehicles at Olympic Hyundai Vancouver. Easy financing available. Visit us today!"
+
+**Keywords to Include:**
+- Dealership name
+- City/location
+- "Used cars", "pre-owned", your brands
+- "Financing", "trade-in" if applicable
+
+### Testing Your SEO
+
+1. **Google Rich Results Test**: [search.google.com/test/rich-results](https://search.google.com/test/rich-results)
+2. **Facebook Debugger**: [developers.facebook.com/tools/debug](https://developers.facebook.com/tools/debug)
+3. **LinkedIn Post Inspector**: [linkedin.com/post-inspector](https://www.linkedin.com/post-inspector)
+
+Enter your website URL to see how it appears in search/social results.
+
+---
+
+## 10. OpenAI / ChatGPT Integration
 
 LotView.ai uses OpenAI GPT for:
 - Customer-facing AI chatbot
@@ -884,102 +1148,354 @@ For new dealerships:
 
 ---
 
-## 13. Inventory Scraping
+## 16. Inventory Scraping - Complete Guide
 
-LotView can automatically pull vehicle inventory from various sources.
+This section explains **exactly** how to set up inventory scraping for any dealership, including how to find all the URLs you need.
 
-### 13.1 AutoTrader.ca Scraping
+### What is Scraping?
 
-#### Direct Puppeteer Scraping
+Scraping automatically pulls vehicle inventory from websites. Instead of manually entering each car, the system visits your listing pages and extracts all the vehicle details automatically.
 
-AutoTrader.ca uses Cloudflare protection. LotView uses:
-- Puppeteer with stealth plugins
-- User agent rotation
-- Challenge page handling
-- Proxy support (optional)
+### Supported Scraping Sources
 
-#### Configuration
+| Source Type | Reliability | Best For |
+|-------------|-------------|----------|
+| **Your Dealer Website** | ⭐⭐⭐⭐⭐ | Primary inventory source |
+| **CarGurus.ca** | ⭐⭐⭐⭐⭐ | Deal ratings, market comparison |
+| **AutoTrader.ca** | ⭐⭐⭐ | Wide market data (may have blocks) |
+| **Apify (Cloud)** | ⭐⭐⭐⭐⭐ | Most reliable for AutoTrader |
 
-1. Find your AutoTrader dealer ID (from your listing URL)
-2. Configure in **Settings** → **Inventory Sources**
-3. Add AutoTrader.ca with dealer URL
+---
 
-#### Cloudflare Bypass
+### 16.1 Finding Your Scraping URLs
 
-If blocked:
-- Configure proxies in `SCRAPER_PROXIES` env var
-- Use Apify integration (more reliable)
+#### How to Find Your Dealer Website Inventory URL
 
-### 13.2 CarGurus Scraping
+1. Go to your dealership website (e.g., `www.olympichyundaivancouver.com`)
+2. Navigate to your **Used Inventory** or **Pre-Owned Vehicles** page
+3. Make sure you're viewing **ALL used vehicles** (not filtered)
+4. **Copy the URL from your browser's address bar**
 
-CarGurus is scraped using Cheerio (HTML parsing):
+**Example URLs by Website Platform:**
 
-1. Find your CarGurus dealer listing URL
-2. Configure in **Settings** → **Inventory Sources**
-3. Scraper extracts: VIN, price, mileage, images, descriptions
+| Platform | Example URL Pattern |
+|----------|---------------------|
+| DealerSocket | `https://www.dealername.com/vehicles/used/?st=price,desc&view=grid&sc=used` |
+| DealerOn | `https://www.dealername.com/used-vehicles/` |
+| Dealer Inspire | `https://www.dealername.com/used-inventory/` |
+| PBS Websites | `https://www.dealername.com/used-cars/` |
 
-### 13.3 Apify Integration
+**Real Examples (Currently Configured):**
 
-For reliable, cloud-based scraping:
-
-#### Step 1: Get Apify Credentials
-
-1. Create account at [apify.com](https://apify.com)
-2. Get **API Token** from Account → Integrations
-3. Find or create an AutoTrader.ca Actor
-
-#### Step 2: Configure in LotView
-
-Add to Replit Secrets:
 ```
-APIFY_API_TOKEN=your-api-token
-APIFY_AUTOTRADER_ACTOR_ID=your-actor-id
+Olympic Hyundai Vancouver:
+https://www.olympichyundaivancouver.com/vehicles/used/?st=price,desc&view=grid&sc=used
+
+Boundary Hyundai:
+https://www.boundaryhyundai.com/vehicles/used/?st=price,desc&view=grid&sc=used
+
+Kia Vancouver:
+https://www.kiavancouver.com/vehicles/used/?st=year,desc&view=grid&sc=used
 ```
 
-Or configure per-dealership in **API Keys** settings.
+#### How to Find Your CarGurus Dealer URL
 
-#### How It Works
+1. Go to [cargurus.ca](https://www.cargurus.ca)
+2. Search for your dealership name in the search bar
+3. Click on your dealership from the results
+4. **Copy the URL from your browser's address bar**
 
-1. LotView triggers Apify Actor with dealer URL
-2. Actor runs in Apify cloud
-3. Results returned via API
-4. Vehicles parsed and saved to database
-
-### 13.4 Custom Dealer Website Scraping
-
-For other websites, customize `server/scraper.ts`:
-
-1. Open `server/scraper.ts`
-2. Find the `DEALERSHIPS` configuration
-3. Update selectors for your website's HTML structure
-
-Example:
-```typescript
-$('.vehicle-listing').each((i, elem) => {
-  const year = parseInt($(elem).find('.vehicle-year').text());
-  const make = $(elem).find('.vehicle-make').text();
-  const model = $(elem).find('.vehicle-model').text();
-  const price = parseInt($(elem).find('.price').text().replace(/[^0-9]/g, ''));
-  // ... extract all fields
-});
+**The URL will look like:**
 ```
+https://www.cargurus.ca/Cars/m-[Dealer-Name]-sp[DEALER_ID]
+```
+
+**Real Examples:**
+
+```
+Olympic Hyundai Vancouver:
+https://www.cargurus.ca/Cars/m-Olympic-Hyundai-Vancouver-sp459833
+
+Boundary Hyundai:
+https://www.cargurus.ca/Cars/m-Boundary-Hyundai-sp393663
+
+Kia Vancouver:
+https://www.cargurus.ca/Cars/m-Kia-Vancouver-sp357122
+```
+
+**How to Find Your CarGurus Dealer ID:**
+- Look at the end of the URL: `sp459833`
+- The number after `sp` is your dealer ID: `459833`
+
+#### How to Find Your AutoTrader.ca Dealer URL
+
+1. Go to [autotrader.ca](https://www.autotrader.ca)
+2. Click **"Find a Dealer"** in the menu
+3. Search for your dealership name
+4. Click on your dealership
+5. Click **"View Inventory"**
+6. **Copy the URL**
+
+**The URL will look like:**
+```
+https://www.autotrader.ca/dealer/[province]/[city]/[dealer-name]/[DEALER_ID]
+```
+
+**Example:**
+```
+https://www.autotrader.ca/dealer/bc/vancouver/olympic-hyundai-vancouver/57421
+```
+
+---
+
+### 16.2 Dealer Website Scraping
+
+The most reliable method - scrape directly from your own website.
+
+#### Step 1: Get Your Inventory Page URL
+
+Follow the instructions in 16.1 to find your dealer website inventory URL.
+
+**Tips for the best URL:**
+- Use the "View All" or "Show All" option if available
+- Sort by price or date (add `?st=price,desc` if supported)
+- Make sure it shows ALL used vehicles, not just one brand
+
+#### Step 2: Add to Scrape Sources
+
+1. Go to **Super Admin Dashboard** → **Dealerships**
+2. Select your dealership
+3. Go to **Inventory Sources** tab
+4. Click **"Add Source"**
+5. Fill in:
+
+| Field | Value |
+|-------|-------|
+| Source Name | Olympic Hyundai Vancouver |
+| Source URL | `https://www.olympichyundaivancouver.com/vehicles/used/?st=price,desc&view=grid&sc=used` |
+| Source Type | `dealer_website` |
+| Is Active | ✓ (checked) |
+| Scrape Frequency | `daily` |
+
+6. Click **Save**
+
+#### Step 3: Test the Scraper
+
+1. Go to **Dashboard** → **Inventory**
+2. Click **"Sync Now"** button
+3. Wait 2-5 minutes
+4. Refresh the page
+5. Verify vehicles appear
+
+---
+
+### 16.3 CarGurus Scraping
+
+CarGurus provides additional data like deal ratings ("Great Deal", "Good Deal").
+
+#### Step 1: Find Your CarGurus URL
+
+Follow instructions in 16.1 to get your CarGurus dealer page URL.
+
+#### Step 2: Add CarGurus Source
+
+1. Go to **Super Admin Dashboard** → **Dealerships**
+2. Select your dealership
+3. Go to **Inventory Sources** tab
+4. Click **"Add Source"**
+5. Fill in:
+
+| Field | Value |
+|-------|-------|
+| Source Name | Olympic Hyundai - CarGurus |
+| Source URL | `https://www.cargurus.ca/Cars/m-Olympic-Hyundai-Vancouver-sp459833` |
+| Source Type | `cargurus` |
+| Is Active | ✓ (checked) |
+| Scrape Frequency | `daily` |
+
+6. Click **Save**
+
+#### What CarGurus Provides
+
+| Data | Description |
+|------|-------------|
+| Price | Listed price |
+| Deal Rating | "Great Deal", "Good Deal", "Fair Deal", etc. |
+| Days on Market | How long the vehicle has been listed |
+| Price History | Price drops over time |
+| Similar Vehicles | Comparison data |
+
+---
+
+### 16.4 AutoTrader.ca Scraping
+
+AutoTrader.ca uses Cloudflare protection which can block scrapers. We recommend using Apify (Section 16.5) for AutoTrader.
+
+#### Direct Scraping (May Be Blocked)
+
+If you want to try direct scraping:
+
+1. Add to **Inventory Sources**:
+
+| Field | Value |
+|-------|-------|
+| Source Name | Olympic Hyundai - AutoTrader |
+| Source URL | `https://www.autotrader.ca/dealer/bc/vancouver/olympic-hyundai-vancouver/57421` |
+| Source Type | `autotrader` |
+
+2. If blocked, you'll see errors in the scraper logs
+3. Switch to Apify integration (recommended)
+
+---
+
+### 16.5 Apify Integration (Recommended for AutoTrader)
+
+Apify is a cloud scraping service that handles Cloudflare protection automatically.
+
+#### Step 1: Create Apify Account
+
+1. Go to [apify.com](https://apify.com)
+2. Click **"Sign up free"**
+3. Create account with email or Google
+
+#### Step 2: Get Your API Token
+
+1. After logging in, click your **profile icon** (top right)
+2. Click **"Settings"**
+3. Click **"Integrations"** tab
+4. Under **API Token**, click **"Copy"**
+5. Save this token - you'll need it!
+
+**Your token looks like:** `apify_api_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX`
+
+#### Step 3: Find AutoTrader Actor
+
+1. In Apify, go to **Store** (left menu)
+2. Search for **"AutoTrader"** or **"Canadian Cars"**
+3. Find an Actor that scrapes AutoTrader.ca
+4. Click on it and copy the **Actor ID**
+
+**Actor ID looks like:** `username/autotrader-scraper` or `abc123`
+
+#### Step 4: Add Secrets to Replit
+
+1. In your Replit project, go to **Secrets** (Tools panel)
+2. Add these secrets:
+
+| Key | Value |
+|-----|-------|
+| `APIFY_API_TOKEN` | `apify_api_XXXXX...` |
+| `APIFY_AUTOTRADER_ACTOR_ID` | `username/autotrader-scraper` |
+
+#### Step 5: Configure Per-Dealership (Optional)
+
+For different Apify settings per dealership:
+
+1. Go to **Super Admin Dashboard** → **Dealerships** → **API Keys**
+2. Enter dealership-specific Apify credentials
+
+---
+
+### 16.6 Adding Scrape Sources in the App
+
+#### Complete Walkthrough
+
+**Step 1: Access Inventory Sources**
+
+1. Login as **Super Admin** or **Master** user
+2. Go to **Super Admin Dashboard**
+3. Click on **Dealerships** tab
+4. Click on the dealership you want to configure
+5. Click **"Inventory Sources"** or **"Scrape Sources"** tab
+
+**Step 2: Add a New Source**
+
+Click **"Add Source"** and fill in:
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| **Source Name** | Friendly name for this source | "Olympic Hyundai Website" |
+| **Source URL** | The full URL to scrape | See examples above |
+| **Source Type** | Type of website | `dealer_website`, `cargurus`, `autotrader` |
+| **Filter Group** | Which category vehicles go into | "Used Vehicles" (optional) |
+| **Is Active** | Enable/disable scraping | ✓ Checked |
+| **Scrape Frequency** | How often to scrape | `daily`, `hourly`, `weekly` |
+
+**Step 3: Save and Test**
+
+1. Click **Save**
+2. Go to **Dashboard** → **Inventory**
+3. Click **"Sync Now"**
+4. Check the logs for success/errors
+5. Verify vehicles appear after sync
+
+#### Recommended Setup Per Dealership
+
+For best results, configure **2-3 sources** per dealership:
+
+| Order | Source | Purpose |
+|-------|--------|---------|
+| 1 | Dealer Website | Primary source - most accurate |
+| 2 | CarGurus | Deal ratings and market data |
+| 3 | Apify/AutoTrader | Additional market comparison |
+
+#### Example Complete Setup
+
+**Olympic Hyundai Vancouver:**
+
+| Source Name | Source Type | URL |
+|-------------|-------------|-----|
+| Olympic Hyundai Website | `dealer_website` | `https://www.olympichyundaivancouver.com/vehicles/used/?st=price,desc&view=grid&sc=used` |
+| Olympic Hyundai CarGurus | `cargurus` | `https://www.cargurus.ca/Cars/m-Olympic-Hyundai-Vancouver-sp459833` |
+
+**Boundary Hyundai:**
+
+| Source Name | Source Type | URL |
+|-------------|-------------|-----|
+| Boundary Hyundai Website | `dealer_website` | `https://www.boundaryhyundai.com/vehicles/used/?st=price,desc&view=grid&sc=used` |
+| Boundary Hyundai CarGurus | `cargurus` | `https://www.cargurus.ca/Cars/m-Boundary-Hyundai-sp393663` |
+
+**Kia Vancouver:**
+
+| Source Name | Source Type | URL |
+|-------------|-------------|-----|
+| Kia Vancouver Website | `dealer_website` | `https://www.kiavancouver.com/vehicles/used/?st=year,desc&view=grid&sc=used` |
+| Kia Vancouver CarGurus | `cargurus` | `https://www.cargurus.ca/Cars/m-Kia-Vancouver-sp357122` |
+
+---
 
 ### Scraper Schedule
 
-- **Automatic**: Runs daily at midnight
-- **Manual**: **Dashboard** → **Inventory** → **"Sync Now"**
+| Schedule | Time | What Happens |
+|----------|------|--------------|
+| **Automatic** | Daily at midnight (12:00 AM) | All active sources scraped |
+| **Manual** | Anytime | Click "Sync Now" in Inventory dashboard |
 
 ### Badge Detection
 
-Scraper automatically detects badges from descriptions:
+The scraper automatically detects special badges from vehicle descriptions:
 
-| Badge | Keywords Detected |
-|-------|-------------------|
-| One Owner | "one owner", "1 owner", "single owner" |
-| No Accidents | "no accidents", "accident free", "clean history" |
-| Clean Title | "clean title", "clear title" |
-| Certified Pre-Owned | "certified", "cpo", "certified pre-owned" |
-| Low Kilometers | "low km", "low kilometers", "low mileage" |
+| Badge | Keywords That Trigger It |
+|-------|-------------------------|
+| 🏆 One Owner | "one owner", "1 owner", "single owner" |
+| ✅ No Accidents | "no accidents", "accident free", "clean history", "accident-free" |
+| 📄 Clean Title | "clean title", "clear title" |
+| ⭐ Certified Pre-Owned | "certified", "cpo", "certified pre-owned" |
+| 🚗 Low Kilometers | Auto-calculated: under 12,000 km per year |
+| 🔥 Manager Special | "manager special", "manager's special" |
+| 🆕 New Arrival | "new arrival", "just arrived" |
+| ⛽ Fuel Efficient | "fuel efficient", "great fuel economy" |
+| 💎 Fully Loaded | "fully loaded", "loaded" |
+
+### Troubleshooting Scraping
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| No vehicles found | Wrong URL | Verify URL shows vehicles in browser |
+| Partial results | Page pagination | May need to add "view all" parameter |
+| Blocked (403 error) | Cloudflare protection | Use Apify integration |
+| Missing images | Different image loading | May need technical adjustment |
+| Duplicate vehicles | Multiple sources | System auto-dedupes by VIN |
 
 ---
 
@@ -1456,6 +1972,177 @@ PRIVATE_OBJECT_DIR=auto-configured
 # SCHEDULER
 # ============================================
 SCHEDULER_ENABLED=true
+```
+
+---
+
+## 26. Complete Dealership Onboarding Checklist
+
+Use this checklist when adding a new dealership to LotView.ai. Complete each step in order.
+
+### Phase 1: Basic Setup (Required)
+
+**Account & Access:**
+- [ ] Create dealership in Super Admin Dashboard
+  - Name: ________________
+  - Slug: ________________ (URL-safe, e.g., `olympic-hyundai`)
+  - Location: ________________
+
+- [ ] Create Master user (General Manager) for dealership
+  - Email: ________________
+  - Role: Master
+
+**Branding:**
+- [ ] Upload or link logo (400x100 PNG)
+  - URL: ________________
+- [ ] Upload or link favicon (64x64 PNG)
+  - URL: ________________
+- [ ] Set primary color: #________________
+- [ ] Set secondary color: #________________
+- [ ] Set hero headline: ________________
+- [ ] Set hero subheadline: ________________
+- [ ] Set tagline: ________________
+
+**Inventory Sources:**
+- [ ] Add dealer website source
+  - URL: ________________
+  - Type: `dealer_website`
+- [ ] Add CarGurus source
+  - URL: ________________
+  - Type: `cargurus`
+- [ ] Test scraping with "Sync Now"
+- [ ] Verify vehicles appear in inventory
+
+### Phase 2: AI & Chat (Recommended)
+
+**OpenAI Configuration:**
+- [ ] Verify OpenAI access (Replit auto-configured OR per-dealership key)
+- [ ] Test AI chat functionality
+
+**Chat Customization:**
+- [ ] Set system prompt with dealership info
+- [ ] Set welcome message
+- [ ] Configure temperature and max tokens
+- [ ] Test chat on public inventory page
+
+### Phase 3: Facebook Integration (Optional)
+
+**Facebook Setup:**
+- [ ] Add Facebook App credentials (if separate app)
+  - App ID: ________________
+  - App Secret: ________________
+- [ ] Complete OAuth connection
+- [ ] Select Facebook Pages to connect
+- [ ] Configure ad templates
+
+**Facebook Catalog (For Automotive Ads):**
+- [ ] Create/link Facebook Catalog ID
+  - Catalog ID: ________________
+- [ ] Add System User Access Token
+- [ ] Enable auto-sync if desired
+- [ ] Test catalog sync
+
+### Phase 4: CRM Integration (Optional)
+
+**PBS DMS:**
+- [ ] Obtain PBS Partner Hub credentials
+  - Partner Code: ________________
+  - Dealer Code: ________________
+  - Username: ________________
+- [ ] Configure PBS connection
+- [ ] Test contact lookup
+- [ ] Enable sync features as needed
+
+**GoHighLevel:**
+- [ ] Complete GHL OAuth connection
+- [ ] Map calendars (sales/service)
+- [ ] Map pipelines
+- [ ] Configure webhook events
+- [ ] Enable bidirectional sync
+- [ ] Test lead sync
+
+### Phase 5: Analytics & Marketing (Optional)
+
+**Tracking:**
+- [ ] Set up Google Tag Manager container
+  - GTM ID: GTM-________________
+- [ ] Configure Google Analytics
+- [ ] Set up Facebook Pixel
+  - Pixel ID: ________________
+- [ ] Configure remarketing pixels
+
+### Phase 6: Final Testing
+
+**Functionality Tests:**
+- [ ] Browse inventory as guest
+- [ ] Test vehicle search/filtering
+- [ ] Test financing calculator
+- [ ] Test AI chat
+- [ ] Test contact forms
+- [ ] Test on mobile devices
+
+**Staff Tests:**
+- [ ] Login as Master user
+- [ ] Access dashboard
+- [ ] View analytics
+- [ ] Access Call Analysis (if GHL connected)
+- [ ] Create test salesperson account
+- [ ] Verify role permissions
+
+### Post-Onboarding
+
+**Documentation:**
+- [ ] Record all configured URLs in this document
+- [ ] Save API keys securely
+- [ ] Note any custom configurations
+
+**Training:**
+- [ ] Train General Manager on dashboard
+- [ ] Train sales team on chat monitoring
+- [ ] Document any dealership-specific workflows
+
+### Quick Reference: Dealership Details
+
+Fill this out and keep for reference:
+
+```
+DEALERSHIP ONBOARDING RECORD
+============================
+
+Dealership Name: _______________________________
+Slug: _______________________________
+Subdomain: _______________________________.lotview.ai
+Created Date: _______________________________
+
+MASTER USER
+-----------
+Name: _______________________________
+Email: _______________________________
+
+INVENTORY SOURCES
+-----------------
+Website URL: _______________________________
+CarGurus URL: _______________________________
+AutoTrader URL: _______________________________
+
+BRANDING
+--------
+Logo URL: _______________________________
+Primary Color: #_______________
+Secondary Color: #_______________
+
+INTEGRATIONS
+------------
+Facebook App ID: _______________________________
+Facebook Catalog ID: _______________________________
+GHL Location ID: _______________________________
+PBS Dealer Code: _______________________________
+
+NOTES
+-----
+_______________________________
+_______________________________
+_______________________________
 ```
 
 ---
