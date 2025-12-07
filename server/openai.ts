@@ -45,8 +45,24 @@ export async function generateChatResponse(
     // Load the active prompt for this dealership and scenario
     const promptData = await storage.getActivePromptForScenario(dealershipId, scenario);
     
+    // Get current date and time in Pacific timezone (Vancouver)
+    const now = new Date();
+    const pacificTime = now.toLocaleString('en-US', { 
+      timeZone: 'America/Vancouver',
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+    const dateTimeContext = `Current date and time: ${pacificTime} (Pacific Time)`;
+    
     // If no custom prompt, use a default system message
     let systemContent = `You are a helpful car sales consultant. Be friendly, concise, and focused on helping customers.
+
+${dateTimeContext}
 
 ${vehicleContext ? `Current vehicle being discussed: ${vehicleContext}` : ""}
 
@@ -66,8 +82,8 @@ Your goals:
 Be helpful and action-oriented. If you don't have specific information, offer to connect them with a sales representative.`;
 
     if (promptData) {
-      // Use the database prompt with vehicle context if available
-      systemContent = promptData.systemPrompt;
+      // Use the database prompt with date/time and vehicle context
+      systemContent = `${dateTimeContext}\n\n${promptData.systemPrompt}`;
       if (vehicleContext) {
         systemContent += `\n\nCurrent vehicle being discussed: ${vehicleContext}`;
       }
