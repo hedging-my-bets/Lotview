@@ -33,6 +33,8 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
   const [smsOfferShown, setSmsOfferShown] = useState(false);
   const [smsDeclined, setSmsDeclined] = useState(false);
   const [awaitingPhone, setAwaitingPhone] = useState(false);
+  const [leadSyncedToGHL, setLeadSyncedToGHL] = useState(false);
+  const [capturedContact, setCapturedContact] = useState<{ phone?: string; email?: string; name?: string }>({});
   const ctaAutoSentRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast} = useToast();
@@ -64,6 +66,103 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
     
     setIsOpen(false);
     chatContext.closeChat();
+  };
+
+  // Detect phone and email in user messages
+  const detectContactInfo = (text: string): { phone?: string; email?: string; name?: string } => {
+    const contact: { phone?: string; email?: string; name?: string } = {};
+    
+    // Phone regex - matches various formats like (555) 123-4567, 555-123-4567, 5551234567
+    const phoneRegex = /\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/;
+    const phoneMatch = text.match(phoneRegex);
+    if (phoneMatch) {
+      contact.phone = phoneMatch[0].replace(/[^\d]/g, ''); // Normalize to digits only
+    }
+    
+    // Email regex
+    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+    const emailMatch = text.match(emailRegex);
+    if (emailMatch) {
+      contact.email = emailMatch[0].toLowerCase();
+    }
+    
+    return contact;
+  };
+
+  // Extract name from conversation (looks for patterns like "my name is X" or "I'm X")
+  const extractNameFromConversation = (msgs: ChatMessage[]): string | undefined => {
+    for (const msg of msgs) {
+      if (msg.role === 'user') {
+        const content = msg.content.toLowerCase();
+        // Match patterns like "my name is John" or "I'm John" or "it's John"
+        const namePatterns = [
+          /my name is\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)/i,
+          /i'm\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)/i,
+          /i am\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)/i,
+          /this is\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)/i,
+          /call me\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)/i,
+          /^([a-zA-Z]+)$/i, // Single word response (likely name when asked)
+        ];
+        
+        for (const pattern of namePatterns) {
+          const match = msg.content.match(pattern);
+          if (match && match[1] && match[1].length > 1 && match[1].length < 30) {
+            // Skip common non-name words
+            const skipWords = ['yes', 'no', 'hi', 'hello', 'hey', 'sure', 'ok', 'okay', 'thanks', 'thank'];
+            if (!skipWords.includes(match[1].toLowerCase())) {
+              return match[1];
+            }
+          }
+        }
+      }
+    }
+    return undefined;
+  };
+
+  // Auto-sync lead to GHL when contact info is captured
+  const autoSyncLeadToGHL = async (phone?: string, email?: string, currentMessages?: ChatMessage[]) => {
+    if (leadSyncedToGHL || (!phone && !email)) return;
+    
+    try {
+      const name = extractNameFromConversation(currentMessages || messages);
+      const category = action || 'general';
+      
+      const response = await fetch('/api/chat/auto-sync-lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: conversationId || null, // Only pass real ID, not fallback
+          phone: phone,
+          email: email,
+          name: name,
+          messages: (currentMessages || messages).map(m => ({ role: m.role, content: m.content })),
+          vehicleInfo: vehicle ? {
+            vehicleName: vehicleName,
+            vehicleId: vehicle.id,
+          } : undefined,
+          category: category,
+          source: 'website_chat', // Could be 'facebook_marketplace' or 'messenger'
+        }),
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        setLeadSyncedToGHL(true);
+        setCapturedContact({ phone, email, name });
+        console.log('[ChatBot] Lead auto-synced to GHL:', result.contactId);
+      } else if (result.skipped) {
+        // Mark as synced to prevent repeated attempts when GHL not configured
+        setLeadSyncedToGHL(true);
+        console.log('[ChatBot] GHL sync skipped - not configured');
+      } else {
+        console.warn('[ChatBot] GHL sync failed:', result.error);
+        // Don't mark as synced on failure - allow retry
+      }
+    } catch (error) {
+      console.error('[ChatBot] Error auto-syncing to GHL:', error);
+      // Don't mark as synced on error - allow retry
+    }
   };
 
   // Sync with ChatContext
@@ -392,12 +491,18 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
         scenario
       );
 
-      setMessages(prev => {
-        const updated = [...prev, { role: "assistant" as const, content: response }];
-        // Track with correct message count after adding assistant response
-        trackChatMessage(vehicle, updated.length);
-        return updated;
-      });
+      const updatedMessages = [...messages, userMessage, { role: "assistant" as const, content: response }];
+      setMessages(updatedMessages);
+      trackChatMessage(vehicle, updatedMessages.length);
+      
+      // Detect contact info in user message and auto-sync to GHL if not already synced
+      if (!leadSyncedToGHL) {
+        const detected = detectContactInfo(userMessage.content);
+        if (detected.phone || detected.email) {
+          // Auto-sync lead to GHL with transcript
+          autoSyncLeadToGHL(detected.phone, detected.email, updatedMessages);
+        }
+      }
 
       // After a few messages, offer SMS handoff ONCE if not already shown, declined, or completed
       if (messages.length >= 4 && !handoffRequested && !smsOfferShown && !smsDeclined && !wantsText) {

@@ -404,4 +404,120 @@ Customer requested SMS follow-up.`;
       };
     }
   }
+
+  /**
+   * Auto-sync chat lead to GHL when contact info is captured
+   * Supports both phone and email, with source tagging
+   */
+  async autoSyncChatLead(data: {
+    phone?: string;
+    email?: string;
+    name?: string;
+    category: string;
+    vehicleName?: string;
+    vehicleId?: number;
+    source: 'website_chat' | 'facebook_marketplace' | 'messenger';
+    messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+    dealershipName?: string;
+  }): Promise<{ success: boolean; contactId?: string; conversationId?: string; error?: string }> {
+    try {
+      const { phone, email, name, category, vehicleName, source, messages, dealershipName } = data;
+      
+      if (!phone && !email) {
+        return { success: false, error: "Phone or email required" };
+      }
+
+      const sourceLabels: Record<string, string> = {
+        'website_chat': 'Website Chat',
+        'facebook_marketplace': 'Facebook Marketplace',
+        'messenger': 'Facebook Messenger'
+      };
+
+      const categoryLabels: Record<string, string> = {
+        'test-drive': 'Test Drive Request',
+        'get-approved': 'Financing Pre-Approval',
+        'value-trade': 'Trade-In Valuation',
+        'reserve': 'Vehicle Reservation',
+        'general': 'General Inquiry'
+      };
+
+      const sourceLabel = sourceLabels[source] || 'Website Chat';
+      const categoryLabel = categoryLabels[category] || 'General Inquiry';
+      
+      const tags = [
+        `chat-${category}`,
+        'chatbot-lead',
+        source === 'facebook_marketplace' ? 'fb-marketplace-lead' : 
+        source === 'messenger' ? 'fb-messenger-lead' : 'website-lead',
+        'auto-captured',
+        dealershipName?.toLowerCase().replace(/\s+/g, '-') || 'dealership'
+      ].filter(Boolean);
+
+      let existingContact = phone ? await this.getContactByPhone(phone) : null;
+      if (!existingContact && email) {
+        existingContact = await this.getContactByEmail(email);
+      }
+
+      const customFields: { id: string; value: string }[] = [
+        { id: "lead_source", value: `AI Chatbot - ${sourceLabel}` },
+        { id: "chat_category", value: categoryLabel },
+      ];
+
+      if (vehicleName) {
+        customFields.push({ id: "interested_vehicle", value: vehicleName });
+      }
+
+      let contact: GHLContact;
+
+      if (existingContact) {
+        contact = existingContact;
+        console.log(`[GHL] Found existing contact: ${contact.id}`);
+      } else {
+        const nameParts = name?.split(' ') || [];
+        contact = await this.createOrUpdateContact({
+          firstName: nameParts[0] || 'Chat',
+          lastName: nameParts.slice(1).join(' ') || 'Lead',
+          phone: phone,
+          email: email,
+          tags,
+          customFields,
+        });
+        console.log(`[GHL] Created new contact: ${contact.id}`);
+      }
+
+      const chatSummary = messages
+        .map((m) => `${m.role === 'user' ? '👤 Customer' : '🤖 AI'}: ${m.content}`)
+        .join('\n\n');
+
+      const transcriptNote = 
+`🔔 Auto-Captured Lead - ${sourceLabel}
+📋 Category: ${categoryLabel}
+${vehicleName ? `🚗 Interested in: ${vehicleName}` : ''}
+${name ? `👤 Name: ${name}` : ''}
+${phone ? `📱 Phone: ${phone}` : ''}
+${email ? `📧 Email: ${email}` : ''}
+
+📝 Chat Transcript:
+${chatSummary}
+
+---
+Lead automatically captured from ${sourceLabel}.`;
+
+      const conversation = await this.createConversation(contact.id, transcriptNote);
+
+      console.log(`[GHL] Auto-synced chat lead - Contact: ${contact.id}, Conversation: ${conversation.id}, Source: ${source}`);
+
+      return { 
+        success: true, 
+        contactId: contact.id, 
+        conversationId: conversation.id 
+      };
+    } catch (error) {
+      console.error("[GHL] Error auto-syncing chat lead:", error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : "Unknown error" 
+      };
+    }
+  }
 }

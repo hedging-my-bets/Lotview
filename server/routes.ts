@@ -4179,6 +4179,105 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
 
+  // Auto-sync chat lead to GHL when contact info is captured (PUBLIC - called automatically by chatbot)
+  // Tenant middleware provides dealershipId from subdomain/header
+  app.post("/api/chat/auto-sync-lead", async (req, res) => {
+    try {
+      const { 
+        conversationId, 
+        phone, 
+        email, 
+        name, 
+        messages, 
+        vehicleInfo, 
+        category,
+        source 
+      } = req.body;
+
+      if (!messages || !Array.isArray(messages)) {
+        return res.status(400).json({ error: "messages array is required" });
+      }
+
+      if (!phone && !email) {
+        return res.status(400).json({ error: "Phone or email is required" });
+      }
+
+      // Gracefully handle missing dealership - tenant middleware may not resolve
+      const dealershipId = req.dealershipId;
+      if (!dealershipId) {
+        console.log(`[Auto-Sync] No dealership resolved - skipping sync`);
+        return res.json({ 
+          success: false, 
+          skipped: true,
+          message: "Dealership not resolved" 
+        });
+      }
+      
+      // Get GHL client for this dealership
+      const { GHLClient } = await import("./ghl-client");
+      const ghlClient = await GHLClient.getInstanceForDealership(dealershipId);
+      
+      if (!ghlClient) {
+        console.log(`[Auto-Sync] GHL not configured for dealership ${dealershipId} - skipping sync`);
+        return res.json({ 
+          success: false, 
+          skipped: true,
+          message: "GHL not configured for this dealership" 
+        });
+      }
+
+      const dealership = await storage.getDealership(dealershipId);
+      
+      const result = await ghlClient.autoSyncChatLead({
+        phone: phone || undefined,
+        email: email || undefined,
+        name: name || undefined,
+        category: category || 'general',
+        vehicleName: vehicleInfo?.vehicleName,
+        vehicleId: vehicleInfo?.vehicleId,
+        source: source || 'website_chat',
+        messages: messages,
+        dealershipName: dealership?.name,
+      });
+
+      if (result.success) {
+        console.log(`[Auto-Sync] Successfully synced lead to GHL - Contact: ${result.contactId}`);
+        
+        // Only update conversation handoff if we have a valid numeric conversationId
+        if (conversationId && typeof conversationId === 'number') {
+          try {
+            await storage.updateConversationHandoff(conversationId, dealershipId, {
+              handoffRequested: true,
+              handoffPhone: phone || null,
+              handoffSent: true,
+              handoffSentAt: new Date(),
+            });
+          } catch (updateError) {
+            // Non-fatal - conversation may not exist yet
+            console.warn(`[Auto-Sync] Could not update conversation ${conversationId}:`, updateError);
+          }
+        }
+        
+        res.json({ 
+          success: true, 
+          contactId: result.contactId,
+          conversationId: result.conversationId,
+          message: "Lead synced to CRM for follow-up" 
+        });
+      } else {
+        console.warn(`[Auto-Sync] GHL sync failed: ${result.error}`);
+        res.json({ 
+          success: false, 
+          error: result.error,
+          message: "Failed to sync lead to CRM" 
+        });
+      }
+    } catch (error) {
+      console.error("Error auto-syncing chat lead:", error);
+      res.status(500).json({ error: "Failed to sync lead to CRM" });
+    }
+  });
+
   // ===== FINANCING RULES ROUTES (Master Only) =====
   
   // Get all credit score tiers
