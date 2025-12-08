@@ -6017,6 +6017,7 @@ Format your response in clear sections with actionable recommendations.`;
         dealership: listing.sellerName,
         source: listing.source,
         listingType: listing.listingType,
+        listingUrl: listing.listingUrl,
         postedDate: listing.postedDate,
         scrapedAt: listing.scrapedAt
       }));

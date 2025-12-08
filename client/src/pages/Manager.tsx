@@ -1970,13 +1970,36 @@ export default function Manager() {
                                 >
                                   <div className="flex items-center justify-between">
                                     <div className="flex-1">
-                                      <div className="font-medium">
-                                        {comp.year} {comp.make} {comp.model}
-                                        {comp.trim && ` ${comp.trim}`}
+                                      <div className="font-medium flex items-center gap-2">
+                                        {comp.listingUrl ? (
+                                          <a 
+                                            href={comp.listingUrl} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="text-primary hover:underline"
+                                            data-testid={`link-comparison-${index}`}
+                                          >
+                                            {comp.year} {comp.make} {comp.model}
+                                            {comp.trim && ` ${comp.trim}`}
+                                          </a>
+                                        ) : (
+                                          <span>
+                                            {comp.year} {comp.make} {comp.model}
+                                            {comp.trim && ` ${comp.trim}`}
+                                          </span>
+                                        )}
+                                        {comp.source && (
+                                          <Badge variant="outline" className="text-xs capitalize">
+                                            {comp.source.replace('_scraper', '').replace('_', ' ')}
+                                          </Badge>
+                                        )}
                                       </div>
                                       <div className="text-sm text-muted-foreground mt-1">
-                                        Stock #{comp.stockNumber} • {comp.location} • {comp.dealership}
+                                        {comp.stockNumber && `Stock #${comp.stockNumber} • `}{comp.location} • {comp.dealership}
                                         {comp.mileage && ` • ${comp.mileage.toLocaleString()} mi`}
+                                        {comp.listingType && (
+                                          <span className="ml-1">• {comp.listingType === 'dealer' ? 'Dealer' : 'Private'}</span>
+                                        )}
                                       </div>
                                     </div>
                                     <div className="text-right ml-4">
@@ -1984,6 +2007,17 @@ export default function Manager() {
                                       <div className={`text-sm ${comp.priceDifference >= 0 ? 'text-red-600' : 'text-green-600'}`}>
                                         {comp.priceDifference >= 0 ? '+' : ''}{comp.percentageDifference}% vs avg
                                       </div>
+                                      {comp.listingUrl && (
+                                        <a 
+                                          href={comp.listingUrl} 
+                                          target="_blank" 
+                                          rel="noopener noreferrer"
+                                          className="text-xs text-primary hover:underline flex items-center justify-end gap-1 mt-1"
+                                        >
+                                          <ExternalLink className="w-3 h-3" />
+                                          View Listing
+                                        </a>
+                                      )}
                                     </div>
                                   </div>
                                 </div>

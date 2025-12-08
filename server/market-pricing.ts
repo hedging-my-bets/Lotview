@@ -20,6 +20,10 @@ export interface PricingComparison {
   dealership: string;
   priceDifference: number;
   percentageDifference: number;
+  source?: string;
+  listingUrl?: string;
+  listingType?: string;
+  postedDate?: Date | null;
 }
 
 export interface MarketPricingResult {
@@ -49,8 +53,9 @@ export interface Vehicle {
   odometer?: number; // Legacy field for internal inventory compatibility
   location: string;
   dealership: string;
-  source?: string; // 'autotrader', 'kijiji', 'internal'
+  source?: string; // 'autotrader', 'kijiji', 'internal', 'craigslist', 'cargurus'
   listingType?: string; // 'dealer', 'private'
+  listingUrl?: string; // Original listing URL for external sources
   postedDate?: Date | null;
   scrapedAt?: Date | null;
 }
@@ -124,7 +129,7 @@ export function analyzeMarketPricing(
     high: sortedPrices[q3Index]
   };
 
-  // Create detailed comparisons
+  // Create detailed comparisons with source and URL info
   const comparisons: PricingComparison[] = comparables.map(v => {
     const priceDiff = v.price - averagePrice;
     const percentDiff = ((priceDiff / averagePrice) * 100);
@@ -140,7 +145,11 @@ export function analyzeMarketPricing(
       location: v.location,
       dealership: v.dealership,
       priceDifference: Math.round(priceDiff),
-      percentageDifference: Math.round(percentDiff * 10) / 10
+      percentageDifference: Math.round(percentDiff * 10) / 10,
+      source: v.source,
+      listingUrl: v.listingUrl,
+      listingType: v.listingType,
+      postedDate: v.postedDate
     };
   }).sort((a, b) => a.price - b.price);
 
