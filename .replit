@@ -1,10 +1,10 @@
-modules = ["nodejs-20", "web", "postgresql-16"]
+modules = ["nodejs-20", "web", "postgresql-16", "python-3.11"]
 run = "npm run dev"
 hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["chromium", "xorg.libxcb", "xorg.libX11", "glib", "nss", "nspr", "at-spi2-atk", "cups", "libdrm", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXext", "xorg.libXfixes", "xorg.libXrandr", "mesa", "gtk3", "pango", "cairo", "alsa-lib", "atk", "dbus", "expat", "libxkbcommon", "gdk-pixbuf", "zip"]
+packages = ["alsa-lib", "at-spi2-atk", "atk", "cairo", "chromium", "cups", "dbus", "expat", "freetype", "gdk-pixbuf", "glib", "gtk3", "lcms2", "libdrm", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "libxkbcommon", "mesa", "nspr", "nss", "openjpeg", "pango", "tcl", "tk", "xorg.libX11", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXext", "xorg.libXfixes", "xorg.libXrandr", "xorg.libxcb", "zip", "zlib"]
 
 [deployment]
 deploymentTarget = "autoscale"
@@ -19,6 +19,10 @@ externalPort = 80
 localPort = 5432
 externalPort = 3001
 exposeLocalhost = true
+
+[[ports]]
+localPort = 34457
+externalPort = 8008
 
 [[ports]]
 localPort = 34881

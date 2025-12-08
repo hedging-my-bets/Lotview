@@ -117,11 +117,17 @@ export async function saveConversation(
   messages: ChatMessage[],
   sessionId: string,
   vehicleId?: number,
-  vehicleName?: string
+  vehicleName?: string,
+  dealershipId?: number
 ): Promise<{ id: number } | undefined> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (dealershipId) {
+    headers["x-dealership-id"] = dealershipId.toString();
+  }
   const response = await fetch("/api/conversations", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
+    credentials: "include",
     body: JSON.stringify({ category, messages, sessionId, vehicleId, vehicleName }),
   });
   if (!response.ok) throw new Error("Failed to save conversation");

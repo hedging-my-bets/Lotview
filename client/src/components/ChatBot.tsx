@@ -4,6 +4,7 @@ import { X, MessageSquare, Send, Loader2 } from "lucide-react";
 import { sendChatMessage, saveConversation, type ChatMessage } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useChat } from "@/contexts/ChatContext";
+import { useTenant } from "@/contexts/TenantContext";
 import { trackCTAClick, trackChatMessage, trackChatOpen, getSessionId } from "@/lib/tracking";
 
 interface ChatBotProps {
@@ -23,6 +24,7 @@ interface ChatBotProps {
 
 export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
   const chatContext = useChat();
+  const { dealership } = useTenant();
   const [isOpen, setIsOpen] = useState(false);
   const [hasOpened, setHasOpened] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -51,7 +53,8 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
           messages,
           sessionId,
           vehicle?.id,
-          vehicleName
+          vehicleName,
+          dealership?.id
         );
         
         // Store conversation ID for potential handoff
@@ -331,7 +334,8 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
           messages,
           sessionId,
           vehicle?.id,
-          vehicleName
+          vehicleName,
+          dealership?.id
         );
         
         if (savedConv?.id) {
