@@ -418,8 +418,103 @@ Customer requested SMS follow-up.`;
   }
 
   /**
+   * Detect intent category from USER messages only using keyword matching
+   * Only analyzes user-authored messages to avoid false positives from AI responses
+   */
+  private detectCategoryFromMessages(messages: Array<{ role: string; content: string }>): string {
+    // Only analyze user messages to avoid AI greeting triggering false positives
+    const userText = messages
+      .filter(m => m.role === 'user')
+      .map(m => m.content.toLowerCase())
+      .join(' ');
+    
+    // Test Drive keywords - user explicitly asks for test drive
+    if (/test\s*drive|book\s*(a\s*)?drive|schedule\s*(a\s*)?drive|come\s*(in|by)\s+and\s+(see|look|check)|want\s+to\s+see\s+it/i.test(userText)) {
+      return 'test-drive';
+    }
+    
+    // Financing keywords - user asks about financing
+    if (/financ|pre-?approv|credit\s*(score|check|application)|loan|monthly\s*payment|what.*payment|can\s*i\s*afford|qualify/i.test(userText)) {
+      return 'get-approved';
+    }
+    
+    // Trade-in keywords - user asks about trading their current vehicle
+    if (/trade|trade-?in|my\s*(current\s*)?(car|vehicle|suv|truck)|sell\s*my|apprais|what.*worth/i.test(userText)) {
+      return 'value-trade';
+    }
+    
+    // Reservation keywords - user wants to reserve or buy
+    if (/reserve|put\s*(a\s*)?hold|deposit|secure|want\s*to\s*buy|ready\s*to\s*buy|purchase/i.test(userText)) {
+      return 'reserve';
+    }
+    
+    return 'general';
+  }
+
+  /**
+   * Extract vehicle name from AI's greeting message (it usually mentions the vehicle)
+   * Handles hyphenated makes like Mercedes-Benz, Rolls-Royce, etc.
+   */
+  private extractVehicleFromMessages(messages: Array<{ role: string; content: string }>): string | undefined {
+    // Look for vehicle patterns in assistant messages (AI usually greets with vehicle name)
+    // Pattern handles: "2024 Mercedes-Benz GLE 350", "2023 Ford F-150 Raptor", etc.
+    const vehiclePattern = /(?:looking at|interested in|about|for)\s+(?:the\s+)?(\d{4}\s+[\w-]+(?:\s+[\w-]+){1,4})/i;
+    
+    for (const msg of messages) {
+      if (msg.role === 'assistant') {
+        const match = msg.content.match(vehiclePattern);
+        if (match && match[1]) {
+          // Clean up the vehicle name - remove trailing punctuation and extra text
+          return match[1].replace(/[.,!?].*$/, '').trim();
+        }
+      }
+    }
+    
+    // Fallback: Look for year + make + model pattern anywhere in messages
+    // Handles hyphenated makes and multi-word models
+    const altPattern = /(\d{4}\s+[\w-]+(?:\s+[\w-]+){1,3})/i;
+    for (const msg of messages) {
+      if (msg.role === 'assistant') {
+        const match = msg.content.match(altPattern);
+        if (match && match[1]) {
+          return match[1].replace(/[.,!?].*$/, '').trim();
+        }
+      }
+    }
+    
+    return undefined;
+  }
+
+  /**
+   * Format full transcript for GHL custom field (respects character limits)
+   */
+  private formatTranscriptForField(messages: Array<{ role: string; content: string }>, maxChars: number = 2000): string {
+    // Build transcript with full messages, newest last
+    let transcript = '';
+    
+    for (const msg of messages) {
+      const prefix = msg.role === 'user' ? '👤 ' : '🤖 ';
+      const line = `${prefix}${msg.content}\n\n`;
+      
+      if ((transcript + line).length <= maxChars) {
+        transcript += line;
+      } else {
+        // If we're running out of space, truncate remaining messages
+        const remaining = maxChars - transcript.length - 50;
+        if (remaining > 0) {
+          transcript += `${prefix}${msg.content.slice(0, remaining)}...`;
+        }
+        break;
+      }
+    }
+    
+    return transcript.trim();
+  }
+
+  /**
    * Auto-sync chat lead to GHL when contact info is captured
    * Supports both phone and email, with source tagging
+   * Automatically detects intent and vehicle from conversation
    */
   async autoSyncChatLead(data: {
     phone?: string;
@@ -433,10 +528,25 @@ Customer requested SMS follow-up.`;
     dealershipName?: string;
   }): Promise<{ success: boolean; contactId?: string; conversationId?: string; error?: string }> {
     try {
-      const { phone, email, name, category, vehicleName, source, messages, dealershipName } = data;
+      const { phone, email, name, source, messages, dealershipName } = data;
+      let { category, vehicleName } = data;
       
       if (!phone && !email) {
         return { success: false, error: "Phone or email required" };
+      }
+
+      // Auto-detect category from conversation if not explicitly set or is 'general'
+      if (!category || category === 'general') {
+        category = this.detectCategoryFromMessages(messages);
+        console.log(`[GHL] Auto-detected category: ${category}`);
+      }
+
+      // Auto-extract vehicle name from conversation if not provided
+      if (!vehicleName) {
+        vehicleName = this.extractVehicleFromMessages(messages);
+        if (vehicleName) {
+          console.log(`[GHL] Auto-extracted vehicle: ${vehicleName}`);
+        }
       }
 
       const sourceLabels: Record<string, string> = {
@@ -470,19 +580,15 @@ Customer requested SMS follow-up.`;
         existingContact = await this.getContactByEmail(email);
       }
 
-      // Create a brief summary for the comments field (max 400 chars)
-      const chatSummaryForComments = messages
-        .slice(-4) // Last 4 messages
-        .map((m) => `${m.role === 'user' ? 'Customer' : 'AI'}: ${m.content.slice(0, 80)}${m.content.length > 80 ? '...' : ''}`)
-        .join(' | ')
-        .slice(0, 400);
+      // Create full transcript for comments field (max 2000 chars for GHL)
+      const fullTranscript = this.formatTranscriptForField(messages, 2000);
 
       // Map to user's existing GHL custom fields using field keys
       const customFields: { key: string; field_value: string }[] = [
         // chat_category - requires user to create this field in GHL
         { key: "chat_category", field_value: categoryLabel },
-        // any_comments_or_concerns - existing field for brief summary
-        { key: "any_comments_or_concerns", field_value: `[${categoryLabel}] ${chatSummaryForComments}` },
+        // any_comments_or_concerns - existing field for full transcript
+        { key: "any_comments_or_concerns", field_value: `[${categoryLabel}]\n${fullTranscript}` },
       ];
 
       // Vehicle interested in - use year_make_model for inventory vehicle

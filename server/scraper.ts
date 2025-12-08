@@ -1,8 +1,8 @@
 import puppeteer from 'puppeteer';
 import { execSync } from 'child_process';
-import { sql, eq, and } from 'drizzle-orm';
+import { sql, eq, and, inArray, lt, isNull, or } from 'drizzle-orm';
 import { db } from './db';
-import { vehicles } from '@shared/schema';
+import { vehicles, vehicleViews } from '@shared/schema';
 import { scrapeAllCarGurusDealers } from './cargurus-scraper';
 import { generateVehicleDescription } from './openai';
 import { scrapeAllDealerListings, scrapeDealerListingsWithCallback, type DealerVehicleListing } from './dealer-listing-scraper';
@@ -1226,12 +1226,22 @@ export async function testBadgeDetection() {
 
 // NEW: Incremental scraping that saves each vehicle immediately
 // This prevents data loss when the scraper is interrupted
+// Also removes vehicles that are no longer on the source website (sold)
 export async function scrapeAllDealershipsIncremental(): Promise<number> {
   console.log('Starting INCREMENTAL inventory scrape (saves each vehicle immediately)...');
+  
+  // Track scrape start time to identify stale vehicles
+  const scrapeStartTime = new Date();
+  
+  // Track which dealerships were successfully scraped (have at least 1 vehicle)
+  const scrapedDealershipIds = new Set<number>();
   
   try {
     // Callback that saves each vehicle as it's scraped
     const onVehicleSaved = async (listing: DealerVehicleListing) => {
+      // Track this dealership as successfully scraped
+      scrapedDealershipIds.add(listing.dealershipId);
+      
       // Convert listing to ScrapedVehicle format
       const vehicleData: ScrapedVehicle = {
         year: listing.year,
@@ -1261,6 +1271,53 @@ export async function scrapeAllDealershipsIncremental(): Promise<number> {
     console.log(`  - Total: ${result.total} vehicles`);
     console.log(`  - New: ${result.inserted} vehicles`);
     console.log(`  - Updated: ${result.updated} vehicles`);
+    console.log(`  - Dealerships scraped: ${scrapedDealershipIds.size}`);
+    
+    // STEP: Remove sold vehicles (those not found in this scrape)
+    // Only delete from dealerships that were successfully scraped
+    // This prevents deleting all vehicles if a dealership scrape fails
+    if (result.total > 0 && scrapedDealershipIds.size > 0) {
+      console.log('\n=== CLEANING UP SOLD VEHICLES ===');
+      
+      const dealershipIdsArray = Array.from(scrapedDealershipIds);
+      
+      // Find vehicles whose lastScrapedAt is before the scrape start time
+      // ONLY for dealerships that were successfully scraped
+      const staleVehicles = await db.select({ 
+        id: vehicles.id, 
+        vin: vehicles.vin, 
+        year: vehicles.year, 
+        make: vehicles.make, 
+        model: vehicles.model,
+        dealershipId: vehicles.dealershipId 
+      })
+        .from(vehicles)
+        .where(
+          and(
+            inArray(vehicles.dealershipId, dealershipIdsArray),
+            or(
+              lt(vehicles.lastScrapedAt, scrapeStartTime),
+              isNull(vehicles.lastScrapedAt)
+            )
+          )
+        );
+      
+      if (staleVehicles.length > 0) {
+        console.log(`Found ${staleVehicles.length} vehicles no longer on source website:`);
+        for (const v of staleVehicles) {
+          console.log(`  - ${v.year} ${v.make} ${v.model} (VIN: ${v.vin || 'N/A'}) [Dealership ${v.dealershipId}]`);
+        }
+        
+        // Delete stale vehicles (first delete related views to avoid foreign key constraint)
+        const staleIds = staleVehicles.map(v => v.id);
+        await db.delete(vehicleViews).where(inArray(vehicleViews.vehicleId, staleIds));
+        await db.delete(vehicles).where(inArray(vehicles.id, staleIds));
+        
+        console.log(`✓ Removed ${staleVehicles.length} sold/stale vehicles`);
+      } else {
+        console.log('✓ No stale vehicles to remove');
+      }
+    }
     
     return result.total;
   } catch (error) {
