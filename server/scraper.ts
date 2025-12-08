@@ -2,7 +2,7 @@ import puppeteer from 'puppeteer';
 import { execSync } from 'child_process';
 import { sql, eq, and, inArray, lt, isNull, or } from 'drizzle-orm';
 import { db } from './db';
-import { vehicles, vehicleViews } from '@shared/schema';
+import { vehicles, vehicleViews, chatConversations } from '@shared/schema';
 import { scrapeAllCarGurusDealers } from './cargurus-scraper';
 import { generateVehicleDescription } from './openai';
 import { scrapeAllDealerListings, scrapeDealerListingsWithCallback, type DealerVehicleListing } from './dealer-listing-scraper';
@@ -1380,9 +1380,16 @@ export async function scrapeAllDealershipsIncremental(): Promise<number> {
           console.log(`  - ${v.year} ${v.make} ${v.model} ${v.trim} (VIN: ${v.vin || 'N/A'}) [Dealership ${v.dealershipId}] Last scraped: ${lastScrape}`);
         }
         
-        // Delete stale vehicles (first delete related views to avoid foreign key constraint)
+        // Delete stale vehicles (first delete related records to avoid foreign key constraints)
         const staleIds = staleVehicles.map(v => v.id);
+        
+        // Delete related chat conversations first
+        await db.delete(chatConversations).where(inArray(chatConversations.vehicleId, staleIds));
+        
+        // Delete related vehicle views
         await db.delete(vehicleViews).where(inArray(vehicleViews.vehicleId, staleIds));
+        
+        // Now delete the vehicles
         await db.delete(vehicles).where(inArray(vehicles.id, staleIds));
         
         console.log(`✓ Removed ${staleVehicles.length} sold/stale vehicles`);
