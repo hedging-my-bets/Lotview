@@ -124,8 +124,9 @@ export class GHLClient {
     lastName?: string;
     email?: string;
     phone?: string;
+    source?: string;
     tags?: string[];
-    customFields?: { id: string; value: string }[];
+    customFields?: { key: string; field_value: string }[];
   }): Promise<GHLContact> {
     const payload = {
       locationId: this.locationId,
@@ -133,6 +134,19 @@ export class GHLClient {
     };
 
     const result = await this.makeRequest("/contacts/", "POST", payload);
+    return result.contact;
+  }
+
+  async updateContact(contactId: string, data: {
+    source?: string;
+    tags?: string[];
+    customFields?: { key: string; field_value: string }[];
+  }): Promise<GHLContact> {
+    const payload = {
+      ...data,
+    };
+
+    const result = await this.makeRequest(`/contacts/${contactId}`, "PUT", payload);
     return result.contact;
   }
 
@@ -230,8 +244,8 @@ export class GHLClient {
             ...contactInfo,
             tags,
             customFields: [
-              { id: "interested_vehicle", value: vehicleName },
-              { id: "cta_type", value: ctaType },
+              { key: "year_make_model", field_value: vehicleName },
+              { key: "what_is_your_desired_vehicle", field_value: vehicleName },
             ],
           });
         }
@@ -241,8 +255,8 @@ export class GHLClient {
           lastName: "Visitor",
           tags,
           customFields: [
-            { id: "interested_vehicle", value: vehicleName },
-            { id: "cta_type", value: ctaType },
+            { key: "year_make_model", field_value: vehicleName },
+            { key: "what_is_your_desired_vehicle", field_value: vehicleName },
           ],
         });
       }
@@ -295,11 +309,12 @@ export class GHLClient {
       if (!contact) {
         contact = await this.createOrUpdateContact({
           phone,
+          source: "AI Chatbot",
           tags,
           customFields: [
-            { id: "chat_category", value: categoryLabel },
-            { id: "interested_vehicle", value: vehicleName || "Not specified" },
-            { id: "lead_source", value: "AI Chatbot" }
+            { key: "chat_category", field_value: categoryLabel },
+            { key: "year_make_model", field_value: vehicleName || "Not specified" },
+            { key: "what_is_your_desired_vehicle", field_value: vehicleName || "Not specified" }
           ]
         });
       }
@@ -361,17 +376,13 @@ Customer requested SMS follow-up.`;
         existingContact = await this.getContactByEmail(data.email);
       }
 
-      const customFields: { id: string; value: string }[] = [
-        { id: "lead_source", value: "AI Chatbot" },
-        { id: "chat_category", value: data.category },
+      const customFields: { key: string; field_value: string }[] = [
+        { key: "chat_category", field_value: data.category },
       ];
 
       if (data.vehicleName) {
-        customFields.push({ id: "interested_vehicle", value: data.vehicleName });
-      }
-
-      if (data.vehicleId) {
-        customFields.push({ id: "vehicle_id", value: data.vehicleId.toString() });
+        customFields.push({ key: "year_make_model", field_value: data.vehicleName });
+        customFields.push({ key: "what_is_your_desired_vehicle", field_value: data.vehicleName });
       }
 
       let contact: GHLContact;
@@ -385,6 +396,7 @@ Customer requested SMS follow-up.`;
           lastName: nameParts.slice(1).join(' ') || 'Lead',
           phone: data.phone,
           email: data.email,
+          source: "AI Chatbot",
           tags,
           customFields,
         });
@@ -458,20 +470,37 @@ Customer requested SMS follow-up.`;
         existingContact = await this.getContactByEmail(email);
       }
 
-      const customFields: { id: string; value: string }[] = [
-        { id: "lead_source", value: `AI Chatbot - ${sourceLabel}` },
-        { id: "chat_category", value: categoryLabel },
+      // Create a brief summary for the comments field (max 400 chars)
+      const chatSummaryForComments = messages
+        .slice(-4) // Last 4 messages
+        .map((m) => `${m.role === 'user' ? 'Customer' : 'AI'}: ${m.content.slice(0, 80)}${m.content.length > 80 ? '...' : ''}`)
+        .join(' | ')
+        .slice(0, 400);
+
+      // Map to user's existing GHL custom fields using field keys
+      const customFields: { key: string; field_value: string }[] = [
+        // chat_category - requires user to create this field in GHL
+        { key: "chat_category", field_value: categoryLabel },
+        // any_comments_or_concerns - existing field for brief summary
+        { key: "any_comments_or_concerns", field_value: `[${categoryLabel}] ${chatSummaryForComments}` },
       ];
 
+      // Vehicle interested in - use year_make_model for inventory vehicle
       if (vehicleName) {
-        customFields.push({ id: "interested_vehicle", value: vehicleName });
+        customFields.push({ key: "year_make_model", field_value: vehicleName });
+        customFields.push({ key: "what_is_your_desired_vehicle", field_value: vehicleName });
       }
 
       let contact: GHLContact;
 
       if (existingContact) {
-        contact = existingContact;
-        console.log(`[GHL] Found existing contact: ${contact.id}`);
+        // Update existing contact with the new field values
+        contact = await this.updateContact(existingContact.id, {
+          source: `AI Chatbot - ${sourceLabel}`,
+          tags,
+          customFields,
+        });
+        console.log(`[GHL] Updated existing contact: ${contact.id}`);
       } else {
         const nameParts = name?.split(' ') || [];
         contact = await this.createOrUpdateContact({
@@ -479,6 +508,7 @@ Customer requested SMS follow-up.`;
           lastName: nameParts.slice(1).join(' ') || 'Lead',
           phone: phone,
           email: email,
+          source: `AI Chatbot - ${sourceLabel}`, // Use top-level source field
           tags,
           customFields,
         });
