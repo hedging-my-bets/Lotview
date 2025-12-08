@@ -801,6 +801,45 @@ async function scrapeInventoryPage(inventoryUrl: string, dealershipName: string,
             bodyStyle = bodyStyleElem.textContent.replace('Body Style:', '').trim();
           }
           
+          // Extract trim from detail page heading or data attributes
+          let trim = '';
+          
+          // Strategy 1: Look for trim in data-field attribute
+          const trimEl = document.querySelector('[data-field="trim"]');
+          if (trimEl) {
+            trim = trimEl.textContent?.trim() || trimEl.getAttribute('data-value') || '';
+          }
+          
+          // Strategy 2: Look for Trim in specs list
+          if (!trim) {
+            const trimSpecEl = Array.from(document.querySelectorAll('li, .spec-item, [class*="spec"]')).find(el =>
+              el.textContent?.includes('Trim:') || el.textContent?.match(/^Trim\s*:/i)
+            );
+            if (trimSpecEl && trimSpecEl.textContent) {
+              const trimMatch = trimSpecEl.textContent.match(/Trim[:\s]+(.+)/i);
+              if (trimMatch) {
+                trim = trimMatch[1].trim();
+              }
+            }
+          }
+          
+          // Strategy 3: Extract from h1 heading (format: "2024 Make Model Trim | extras")
+          if (!trim) {
+            const h1 = document.querySelector('h1');
+            if (h1 && h1.textContent) {
+              const h1Text = h1.textContent.split('|')[0].trim();
+              const parts = h1Text.split(/\s+/);
+              // If we have more than 3 parts (year make model), the rest is likely trim
+              if (parts.length > 3) {
+                // Check if first part is a year
+                const firstPart = parts[0];
+                if (/^20\d{2}$/.test(firstPart)) {
+                  trim = parts.slice(3).join(' ').trim();
+                }
+              }
+            }
+          }
+          
           return {
             images: images.slice(0, 10), // Limit to 10 images
             description,
@@ -809,12 +848,29 @@ async function scrapeInventoryPage(inventoryUrl: string, dealershipName: string,
             stockNumber,
             carfaxUrl,
             bodyStyle,
-            odometer
+            odometer,
+            trim
           };
         });
         
         const type = determineBodyType(detailData.bodyStyle || v.bodyStyle);
-        const finalDescription = detailData.description || `${v.year} ${v.make} ${v.model} ${v.trim}`.trim();
+        
+        // Validate and select best trim - prefer detail page trim over card trim
+        // Filter out pure numbers, single characters, or clearly invalid trims
+        const validateTrim = (trim: string): string => {
+          if (!trim || trim.length === 0) return '';
+          // Filter out pure numbers (like "2" or "3.5")
+          if (/^\d+\.?\d*$/.test(trim)) return '';
+          // Filter out single characters
+          if (trim.length === 1) return '';
+          // Filter out very short generic strings
+          if (['n/a', 'na', '-', '.', 'tbd'].includes(trim.toLowerCase())) return '';
+          return trim;
+        };
+        
+        const finalTrim = validateTrim(detailData.trim) || validateTrim(v.trim) || 'Base';
+        
+        const finalDescription = detailData.description || `${v.year} ${v.make} ${v.model} ${finalTrim}`.trim();
         
         // Use detail images if available, otherwise fall back to primary image
         const finalImages = detailData.images.length > 0 ? detailData.images : [v.primaryImage];
@@ -829,7 +885,7 @@ async function scrapeInventoryPage(inventoryUrl: string, dealershipName: string,
           year: v.year,
           make: v.make,
           model: v.model,
-          trim: v.trim,
+          trim: finalTrim,
           type,
           price: v.price,
           odometer: finalOdometer,
@@ -854,11 +910,21 @@ async function scrapeInventoryPage(inventoryUrl: string, dealershipName: string,
         const badges = detectBadges(v.cardText + ' ' + v.heading, v.year, v.odometer);
         const type = determineBodyType(v.bodyStyle);
         
+        // Validate trim in fallback case too
+        const validateTrimFallback = (trim: string): string => {
+          if (!trim || trim.length === 0) return '';
+          if (/^\d+\.?\d*$/.test(trim)) return '';
+          if (trim.length === 1) return '';
+          if (['n/a', 'na', '-', '.', 'tbd'].includes(trim.toLowerCase())) return '';
+          return trim;
+        };
+        const fallbackTrim = validateTrimFallback(v.trim) || 'Base';
+        
         scrapedVehicles.push({
           year: v.year,
           make: v.make,
           model: v.model,
-          trim: v.trim,
+          trim: fallbackTrim,
           type,
           price: v.price,
           odometer: v.odometer,
@@ -867,7 +933,7 @@ async function scrapeInventoryPage(inventoryUrl: string, dealershipName: string,
           location: v.location,
           dealership: v.dealership,
           dealershipId: v.dealershipId,
-          description: `${v.year} ${v.make} ${v.model} ${v.trim}`.trim()
+          description: `${v.year} ${v.make} ${v.model} ${fallbackTrim}`.trim()
         });
       } finally {
         // Close the detail page if it's not the main page
@@ -1280,16 +1346,21 @@ export async function scrapeAllDealershipsIncremental(): Promise<number> {
       console.log('\n=== CLEANING UP SOLD VEHICLES ===');
       
       const dealershipIdsArray = Array.from(scrapedDealershipIds);
+      console.log(`Checking dealerships: ${dealershipIdsArray.join(', ')}`);
+      console.log(`Scrape start time: ${scrapeStartTime.toISOString()}`);
       
       // Find vehicles whose lastScrapedAt is before the scrape start time
       // ONLY for dealerships that were successfully scraped
+      // Also grab lastScrapedAt for debugging
       const staleVehicles = await db.select({ 
         id: vehicles.id, 
         vin: vehicles.vin, 
         year: vehicles.year, 
         make: vehicles.make, 
         model: vehicles.model,
-        dealershipId: vehicles.dealershipId 
+        trim: vehicles.trim,
+        dealershipId: vehicles.dealershipId,
+        lastScrapedAt: vehicles.lastScrapedAt
       })
         .from(vehicles)
         .where(
@@ -1305,7 +1376,8 @@ export async function scrapeAllDealershipsIncremental(): Promise<number> {
       if (staleVehicles.length > 0) {
         console.log(`Found ${staleVehicles.length} vehicles no longer on source website:`);
         for (const v of staleVehicles) {
-          console.log(`  - ${v.year} ${v.make} ${v.model} (VIN: ${v.vin || 'N/A'}) [Dealership ${v.dealershipId}]`);
+          const lastScrape = v.lastScrapedAt ? v.lastScrapedAt.toISOString() : 'never';
+          console.log(`  - ${v.year} ${v.make} ${v.model} ${v.trim} (VIN: ${v.vin || 'N/A'}) [Dealership ${v.dealershipId}] Last scraped: ${lastScrape}`);
         }
         
         // Delete stale vehicles (first delete related views to avoid foreign key constraint)
@@ -1316,6 +1388,22 @@ export async function scrapeAllDealershipsIncremental(): Promise<number> {
         console.log(`✓ Removed ${staleVehicles.length} sold/stale vehicles`);
       } else {
         console.log('✓ No stale vehicles to remove');
+        
+        // Debug: Show sample of recently scraped vehicles for this dealership
+        const sampleVehicles = await db.select({ 
+          year: vehicles.year, 
+          make: vehicles.make, 
+          model: vehicles.model,
+          lastScrapedAt: vehicles.lastScrapedAt
+        })
+          .from(vehicles)
+          .where(inArray(vehicles.dealershipId, dealershipIdsArray))
+          .limit(5);
+        
+        console.log(`Sample of vehicles in scraped dealerships:`);
+        for (const v of sampleVehicles) {
+          console.log(`  - ${v.year} ${v.make} ${v.model} - Last scraped: ${v.lastScrapedAt?.toISOString() || 'never'}`);
+        }
       }
     }
     
