@@ -541,16 +541,16 @@ export default function VehicleDetail() {
                 </button>
               </div>
 
-              {/* Dealer Website Link */}
+              {/* Carfax Link */}
               {car.dealerVdpUrl && (
                 <a
                   href={car.dealerVdpUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full bg-gradient-to-r from-slate-700 to-slate-900 hover:from-slate-800 hover:to-black text-white py-4 rounded-xl font-bold text-base shadow-lg transition flex items-center justify-center gap-2"
-                  data-testid="button-view-dealer-website"
+                  data-testid="button-view-carfax"
                 >
-                  <Car className="w-5 h-5" /> View Full Details at {car.dealership}
+                  <FileText className="w-5 h-5" /> View Carfax
                 </a>
               )}
 
