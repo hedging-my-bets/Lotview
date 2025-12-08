@@ -88,7 +88,12 @@ export class MarketCheckService {
       }
       if (radiusKm) {
         // Convert km to miles for MarketCheck API
-        const radiusMiles = Math.round(radiusKm * 0.621371);
+        // Cap at 100 miles max (subscription limit)
+        const MAX_RADIUS_MILES = 100;
+        const radiusMiles = Math.min(Math.round(radiusKm * 0.621371), MAX_RADIUS_MILES);
+        if (Math.round(radiusKm * 0.621371) > MAX_RADIUS_MILES) {
+          console.log(`[MarketCheck] Radius capped from ${Math.round(radiusKm * 0.621371)} to ${MAX_RADIUS_MILES} miles (subscription limit)`);
+        }
         queryParams.append('radius', radiusMiles.toString());
       }
 

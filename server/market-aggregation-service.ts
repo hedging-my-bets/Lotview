@@ -90,8 +90,8 @@ export class MarketAggregationService {
         result.errors.push(`MarketCheck: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     } else {
-      console.log('[MarketAggregation] MarketCheck API not configured');
-      result.errors.push('MarketCheck API key not configured');
+      // MarketCheck is optional - don't treat as error, just log for visibility
+      console.log('[MarketAggregation] MarketCheck API not configured (optional)');
     }
 
     // 2. Try Apify AutoTrader.ca actor (second priority)
@@ -121,8 +121,8 @@ export class MarketAggregationService {
         result.errors.push(`Apify: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     } else {
-      console.log('[MarketAggregation] Apify service not configured');
-      result.errors.push('Apify API token not configured');
+      // Apify is optional - don't treat as error, just log for visibility
+      console.log('[MarketAggregation] Apify service not configured (optional)');
     }
 
     // 3. Try direct Puppeteer scraper (fallback)
