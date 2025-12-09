@@ -20,6 +20,7 @@ import { Separator } from "@/components/ui/separator";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Progress } from "@/components/ui/progress";
 import { AiPromptEnhancer } from "@/components/AiPromptEnhancer";
+import { FollowUpSequenceEditor } from "@/components/FollowUpSequenceEditor";
 
 // Inventory Analysis Tab Component
 function InventoryAnalysisTab() {
@@ -343,7 +344,7 @@ export default function Manager() {
     defaultRadiusKm: 50
   });
   const [isSavingSettings, setIsSavingSettings] = useState(false);
-  const [activeManagerTab, setActiveManagerTab] = useState<'appraisal' | 'inventory' | 'my-inventory' | 'conversations' | 'prompts' | 'settings' | 'history'>('appraisal');
+  const [activeManagerTab, setActiveManagerTab] = useState<'appraisal' | 'inventory' | 'my-inventory' | 'conversations' | 'prompts' | 'settings' | 'history' | 'followup'>('appraisal');
 
   // Conversations state
   const [allConversations, setAllConversations] = useState<{
@@ -1523,6 +1524,16 @@ export default function Manager() {
                 >
                   <Clock className="w-4 h-4" />
                   Appraisal History
+                </Button>
+                <Button
+                  variant={activeManagerTab === 'followup' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setActiveManagerTab('followup')}
+                  data-testid="tab-followup-sequences"
+                  className="flex items-center gap-2"
+                >
+                  <Send className="w-4 h-4" />
+                  Follow-up Sequences
                 </Button>
               </div>
             </CardHeader>
@@ -2863,6 +2874,13 @@ export default function Manager() {
                       </p>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Follow-up Sequences Tab */}
+              {activeManagerTab === 'followup' && (
+                <div data-testid="tab-content-followup">
+                  <FollowUpSequenceEditor dealershipId={user?.dealershipId || 1} />
                 </div>
               )}
             </CardContent>
