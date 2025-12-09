@@ -136,6 +136,44 @@ function isLowKilometers(year: number, odometer: number): boolean {
   return odometer > 0 && odometer <= expectedMaxKm;
 }
 
+// Check if a vehicle appears to be NEW (not used) based on various indicators
+// This function uses multiple signals to accurately detect new cars
+function isLikelyNewVehicle(year: number, odometer: number | null, rawOdometerKm: number | null, isNewCondition: boolean): boolean {
+  const currentYear = new Date().getFullYear();
+  const nextYear = currentYear + 1;
+  
+  // PRIMARY: If the page explicitly says it's new (from DOM/text detection)
+  if (isNewCondition) {
+    console.log(`    ⚠ NEW CAR DETECTED: Page explicitly indicates "New" condition`);
+    return true;
+  }
+  
+  // If it's next year's model, it's definitely new (dealerships often list next year models early)
+  if (year === nextYear) {
+    console.log(`    ⚠ NEW CAR DETECTED: Year ${year} is next year's model`);
+    return true;
+  }
+  
+  // Check raw odometer (before the 500km filter was applied)
+  // New cars typically have very low odometer readings (0-100 km typically, up to 500 km max)
+  if (rawOdometerKm !== null && rawOdometerKm < 500) {
+    console.log(`    ⚠ NEW CAR DETECTED: Raw odometer ${rawOdometerKm} km is under 500 km threshold`);
+    return true;
+  }
+  
+  // If it's current year AND no odometer data at all, it's suspicious
+  // But we need to be careful - some used cars just don't have odometer listed
+  // Only flag if year is current AND odometer is completely missing (not just filtered)
+  if (year === currentYear && odometer === null && rawOdometerKm === null) {
+    // This is a soft signal - log but don't automatically reject
+    // The isNewCondition check is more reliable
+    console.log(`    ⚡ WARNING: Current year ${year} with no odometer data - may be new or used with missing data`);
+    // Return false to avoid false positives - let the isNewCondition check handle it
+  }
+  
+  return false;
+}
+
 // Helper function to detect badges from text
 function detectBadges(text: string, year?: number, odometer?: number): string[] {
   const badges: string[] = [];
@@ -170,6 +208,8 @@ interface VehicleDetailData {
   vin: string | null;
   price: number | null;
   odometer: number | null;
+  rawOdometerKm: number | null; // Raw odometer value before filtering (for new car detection)
+  isNewCondition: boolean; // Whether the page indicates this is a "New" vehicle
   images: string[];
   trim: string;
   description: string;
@@ -406,6 +446,7 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
         
         // Extract odometer - look for specific odometer patterns, not just any "X km"
         var odometer = null;
+        var rawOdometerKm = null; // Track raw value before 500km filtering (for new car detection)
         
         // Strategy 1: Look for labeled odometer fields (highest confidence)
         var odoSelectors = [
@@ -424,7 +465,11 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
             var odoLabelMatch = odoText.match(/([0-9,]+)/);
             if (odoLabelMatch) {
               var odoVal = parseInt(odoLabelMatch[1].replace(/,/g, ''));
-              // Minimum 500 km to avoid erroneous small values
+              // Track raw value for new car detection (even low values)
+              if (rawOdometerKm === null && odoVal >= 0 && odoVal < 500000) {
+                rawOdometerKm = odoVal;
+              }
+              // Minimum 500 km to avoid erroneous small values for final odometer
               if (odoVal >= 500 && odoVal < 500000) {
                 odometer = odoVal;
               }
@@ -446,6 +491,10 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
             var labelMatch = pageText.match(labelPatterns[li]);
             if (labelMatch) {
               var odoVal = parseInt(labelMatch[1].replace(/,/g, ''));
+              // Track raw value for new car detection
+              if (rawOdometerKm === null && odoVal >= 0 && odoVal < 500000) {
+                rawOdometerKm = odoVal;
+              }
               // Minimum 500 km to avoid erroneous small values (like "100 km away")
               if (odoVal >= 500 && odoVal < 500000) {
                 odometer = odoVal;
@@ -475,6 +524,10 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
               var numMatch = kmMatches[ki].match(/([0-9,]+)/);
               if (numMatch) {
                 var odoVal = parseInt(numMatch[1].replace(/,/g, ''));
+                // Track raw value for new car detection
+                if (rawOdometerKm === null && odoVal >= 0 && odoVal < 500000) {
+                  rawOdometerKm = odoVal;
+                }
                 // Higher minimum (1000 km) for last resort strategy
                 if (odoVal >= 1000 && odoVal < 500000) {
                   odometer = odoVal;
@@ -823,10 +876,63 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
         
         debugImgInfo.push('After bg (CDN only): ' + images.length);
         
+        // DETECT NEW vs USED vehicle condition from page content
+        var isNewCondition = false;
+        var lowerPageText = pageText.toLowerCase();
+        
+        // Strategy 1: Look for explicit "New" labels in DOM elements
+        var conditionSelectors = [
+          '[class*="condition"]',
+          '[class*="stock-type"]',
+          '[class*="vehicle-type"]',
+          '[data-condition]',
+          '[data-stock-type]',
+          '.badge',
+          '.label',
+          '.tag'
+        ];
+        
+        for (var ci = 0; ci < conditionSelectors.length && !isNewCondition; ci++) {
+          var condEl = document.querySelector(conditionSelectors[ci]);
+          if (condEl && condEl.textContent) {
+            var condText = condEl.textContent.toLowerCase().trim();
+            // Check for explicit "New" indication (not "New Arrival" which is different)
+            if (condText === 'new' || condText === 'new vehicle' || condText === 'brand new') {
+              isNewCondition = true;
+            }
+          }
+        }
+        
+        // Strategy 2: Check for MSRP label (new cars show MSRP, used don't)
+        if (!isNewCondition) {
+          if (/\\bMSRP\\b/i.test(pageText) && !/\\bbelow\\s*MSRP\\b/i.test(pageText)) {
+            // Has MSRP but not "below MSRP" (which is sometimes used for used car deals)
+            isNewCondition = true;
+          }
+        }
+        
+        // Strategy 3: Check for explicit "New Vehicle" or "New Car" phrases
+        if (!isNewCondition) {
+          // Be careful to avoid "new arrival", "new to inventory", "new listing"
+          if (/\\b(?:new\\s+(?:vehicle|car|suv|truck|sedan|hatchback)|brand\\s*new)\\b/i.test(pageText)) {
+            isNewCondition = true;
+          }
+        }
+        
+        // Strategy 4: Check URL for /new/ path segment
+        if (!isNewCondition) {
+          var currentUrl = window.location.href.toLowerCase();
+          if (currentUrl.indexOf('/new/') !== -1 || currentUrl.indexOf('/new-vehicles/') !== -1) {
+            isNewCondition = true;
+          }
+        }
+        
         return {
           vin: vin,
           price: price,
           odometer: odometer,
+          rawOdometerKm: rawOdometerKm,
+          isNewCondition: isNewCondition,
           images: images,
           trim: trim,
           description: description,
@@ -905,6 +1011,8 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
         vin: data.vin,
         price: data.price,
         odometer: data.odometer,
+        rawOdometerKm: data.rawOdometerKm,
+        isNewCondition: data.isNewCondition,
         images: precisionImages.length > 0 ? precisionImages : data.images,
         trim: data.trim,
         description: data.description,
@@ -929,6 +1037,8 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
         vin: null,
         price: null,
         odometer: null,
+        rawOdometerKm: null,
+        isNewCondition: false,
         images: [],
         trim: 'Base',
         description: 'Used vehicle. Contact dealer for more information.',
@@ -945,6 +1055,8 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
     vin: null,
     price: null,
     odometer: null,
+    rawOdometerKm: null,
+    isNewCondition: false,
     images: [],
     trim: 'Base',
     description: 'Used vehicle. Contact dealer for more information.',
@@ -1266,6 +1378,15 @@ async function scrapeDealerListings(
         } else {
           throw pageError;
         }
+      }
+      
+      // FILTER: Skip new vehicles (very low odometer, next year models, or explicit "New" condition)
+      // This prevents new cars from being added to used car inventory
+      if (isLikelyNewVehicle(urlData.year, detailData.odometer, detailData.rawOdometerKm, detailData.isNewCondition)) {
+        console.log(`    ❌ SKIPPING: ${urlData.year} ${urlData.make} ${urlData.model} - appears to be a NEW vehicle, not used`);
+        // Human-like delay before continuing to next
+        await randomDelay(400, 800);
+        continue; // Skip this vehicle
       }
       
       // Recalculate badges with year and odometer for accurate Low Kilometers detection
