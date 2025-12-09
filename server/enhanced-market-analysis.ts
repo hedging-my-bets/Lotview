@@ -23,6 +23,16 @@ export interface PercentileBreakdown {
   p90: number;
 }
 
+export interface CompetitorListing {
+  year: number;
+  make: string;
+  model: string;
+  trim?: string;
+  price: number;
+  mileage?: number;
+  listingUrl: string;
+}
+
 export interface CompetitorInfo {
   sellerName: string;
   listingCount: number;
@@ -30,6 +40,7 @@ export interface CompetitorInfo {
   lowestPrice: number;
   highestPrice: number;
   priceRange: string;
+  listings: CompetitorListing[];
 }
 
 export interface DaysOnMarketInfo {
@@ -301,13 +312,26 @@ export class EnhancedMarketAnalysisService {
       const prices = sellerListings.map((l: MarketListing) => l.price).sort((a: number, b: number) => a - b);
       const avgPrice = Math.round(prices.reduce((a: number, b: number) => a + b, 0) / prices.length);
       
+      const competitorListings: CompetitorListing[] = sellerListings
+        .slice(0, 5)
+        .map((l: MarketListing) => ({
+          year: l.year,
+          make: l.make,
+          model: l.model,
+          trim: l.trim || undefined,
+          price: l.price,
+          mileage: l.mileage || undefined,
+          listingUrl: l.listingUrl
+        }));
+      
       competitors.push({
         sellerName,
         listingCount: sellerListings.length,
         averagePrice: avgPrice,
         lowestPrice: prices[0],
         highestPrice: prices[prices.length - 1],
-        priceRange: `$${prices[0].toLocaleString()} - $${prices[prices.length - 1].toLocaleString()}`
+        priceRange: `$${prices[0].toLocaleString()} - $${prices[prices.length - 1].toLocaleString()}`,
+        listings: competitorListings
       });
     }
 

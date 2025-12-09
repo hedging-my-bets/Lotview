@@ -1906,30 +1906,58 @@ export default function Manager() {
                                   <Users className="w-5 h-5" />
                                   Competitor Dealer Radar ({enhancedResults.competitors.length} dealers)
                                 </h4>
-                                <div className="overflow-x-auto">
-                                  <table className="w-full text-sm">
-                                    <thead>
-                                      <tr className="text-left border-b border-orange-200 dark:border-orange-800">
-                                        <th className="pb-2 font-medium">Dealer Name</th>
-                                        <th className="pb-2 font-medium text-center">Listings</th>
-                                        <th className="pb-2 font-medium text-right">Avg Price</th>
-                                        <th className="pb-2 font-medium text-right">Price Range</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {enhancedResults.competitors.slice(0, 5).map((comp: any, idx: number) => (
-                                        <tr key={idx} className="border-b border-orange-100 dark:border-orange-900/50">
-                                          <td className="py-2 font-medium">{comp.sellerName}</td>
-                                          <td className="py-2 text-center">
-                                            <Badge variant="secondary">{comp.listingCount}</Badge>
-                                          </td>
-                                          <td className="py-2 text-right font-semibold">${comp.averagePrice?.toLocaleString()}</td>
-                                          <td className="py-2 text-right text-muted-foreground">{comp.priceRange}</td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
+                                <Accordion type="multiple" className="space-y-2">
+                                  {enhancedResults.competitors.slice(0, 5).map((comp: any, idx: number) => (
+                                    <AccordionItem key={idx} value={`dealer-${idx}`} className="border border-orange-200 dark:border-orange-800 rounded-lg overflow-hidden">
+                                      <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-orange-100/50 dark:hover:bg-orange-900/20">
+                                        <div className="flex items-center justify-between w-full pr-4">
+                                          <span className="font-medium">{comp.sellerName}</span>
+                                          <div className="flex items-center gap-4 text-sm">
+                                            <Badge variant="secondary">{comp.listingCount} listings</Badge>
+                                            <span className="font-semibold">${comp.averagePrice?.toLocaleString()} avg</span>
+                                            <span className="text-muted-foreground hidden sm:inline">{comp.priceRange}</span>
+                                          </div>
+                                        </div>
+                                      </AccordionTrigger>
+                                      <AccordionContent className="px-4 pb-4">
+                                        {comp.listings && comp.listings.length > 0 ? (
+                                          <div className="space-y-2">
+                                            {comp.listings.map((listing: any, listIdx: number) => (
+                                              <a
+                                                key={listIdx}
+                                                href={listing.listingUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex items-center justify-between p-3 bg-white dark:bg-background border border-orange-100 dark:border-orange-900/30 rounded-lg hover:bg-orange-50 dark:hover:bg-orange-950/30 transition-colors"
+                                                data-testid={`competitor-listing-${idx}-${listIdx}`}
+                                              >
+                                                <div>
+                                                  <div className="font-medium flex items-center gap-2">
+                                                    {listing.year} {listing.make} {listing.model}
+                                                    {listing.trim && <span className="text-muted-foreground">({listing.trim})</span>}
+                                                    <ExternalLink className="w-3 h-3 text-muted-foreground" />
+                                                  </div>
+                                                  {listing.mileage && (
+                                                    <div className="text-sm text-muted-foreground">
+                                                      {listing.mileage.toLocaleString()} km
+                                                    </div>
+                                                  )}
+                                                </div>
+                                                <div className="font-bold text-lg">
+                                                  ${listing.price?.toLocaleString()}
+                                                </div>
+                                              </a>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <div className="text-sm text-muted-foreground py-2">
+                                            No listing details available
+                                          </div>
+                                        )}
+                                      </AccordionContent>
+                                    </AccordionItem>
+                                  ))}
+                                </Accordion>
                               </div>
                             )}
 

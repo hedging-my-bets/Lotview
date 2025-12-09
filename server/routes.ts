@@ -10,6 +10,7 @@ import {
   insertAdTemplateSchema,
   insertPostingQueueSchema,
   insertPostingScheduleSchema,
+  insertVehicleAppraisalSchema,
   ghlAccounts,
   ghlContactSync,
   dealershipContacts
@@ -6748,6 +6749,140 @@ Format your response in clear sections with actionable recommendations.`;
     } catch (error) {
       console.error("Error refreshing inventory analysis:", error);
       res.status(500).json({ error: "Failed to refresh inventory analysis" });
+    }
+  });
+
+  // ===== VEHICLE APPRAISAL ROUTES (Manager+) =====
+  
+  // Get all appraisals for dealership
+  app.get("/api/manager/appraisals", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = parseInt(req.query.offset as string) || 0;
+      
+      const result = await storage.getVehicleAppraisals(dealershipId, limit, offset);
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching appraisals:", error);
+      res.status(500).json({ error: "Failed to fetch appraisals" });
+    }
+  });
+  
+  // Get single appraisal by ID
+  app.get("/api/manager/appraisals/:id", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ error: "Invalid appraisal ID" });
+      }
+      
+      const appraisal = await storage.getVehicleAppraisalById(id, dealershipId);
+      if (!appraisal) {
+        return res.status(404).json({ error: "Appraisal not found" });
+      }
+      
+      res.json(appraisal);
+    } catch (error) {
+      console.error("Error fetching appraisal:", error);
+      res.status(500).json({ error: "Failed to fetch appraisal" });
+    }
+  });
+  
+  // Check if VIN has previous appraisal
+  app.get("/api/manager/appraisals/vin/:vin", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const vin = req.params.vin.toUpperCase().trim();
+      
+      if (!vin || vin.length < 11) {
+        return res.status(400).json({ error: "Invalid VIN" });
+      }
+      
+      const appraisal = await storage.getVehicleAppraisalByVin(vin, dealershipId);
+      res.json({ exists: !!appraisal, appraisal: appraisal || null });
+    } catch (error) {
+      console.error("Error checking VIN appraisal:", error);
+      res.status(500).json({ error: "Failed to check VIN appraisal" });
+    }
+  });
+  
+  // Create new appraisal
+  app.post("/api/manager/appraisals", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const authReq = req as AuthRequest;
+      const userId = authReq.user?.id;
+      
+      const validationResult = insertVehicleAppraisalSchema.safeParse({
+        ...req.body,
+        dealershipId,
+        createdBy: userId
+      });
+      
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          error: "Validation failed", 
+          details: fromZodError(validationResult.error).toString() 
+        });
+      }
+      
+      const appraisal = await storage.createVehicleAppraisal(validationResult.data);
+      res.status(201).json(appraisal);
+    } catch (error) {
+      console.error("Error creating appraisal:", error);
+      res.status(500).json({ error: "Failed to create appraisal" });
+    }
+  });
+  
+  // Update appraisal
+  app.patch("/api/manager/appraisals/:id", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ error: "Invalid appraisal ID" });
+      }
+      
+      // Check if appraisal exists
+      const existing = await storage.getVehicleAppraisalById(id, dealershipId);
+      if (!existing) {
+        return res.status(404).json({ error: "Appraisal not found" });
+      }
+      
+      // Sanitize updates - don't allow changing dealershipId
+      const { dealershipId: _, id: __, ...updates } = req.body;
+      
+      const updated = await storage.updateVehicleAppraisal(id, dealershipId, updates);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating appraisal:", error);
+      res.status(500).json({ error: "Failed to update appraisal" });
+    }
+  });
+  
+  // Delete appraisal
+  app.delete("/api/manager/appraisals/:id", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ error: "Invalid appraisal ID" });
+      }
+      
+      const deleted = await storage.deleteVehicleAppraisal(id, dealershipId);
+      if (!deleted) {
+        return res.status(404).json({ error: "Appraisal not found" });
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting appraisal:", error);
+      res.status(500).json({ error: "Failed to delete appraisal" });
     }
   });
 
