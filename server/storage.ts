@@ -619,6 +619,7 @@ export interface IStorage {
   getPriceWatchesByVehicle(dealershipId: number, vehicleId: number): Promise<PriceWatch[]>;
   getPriceWatchById(id: number, dealershipId: number): Promise<PriceWatch | undefined>;
   getPriceWatchByContact(dealershipId: number, vehicleId: number, contactPhone: string): Promise<PriceWatch | undefined>;
+  getPriceWatchesWithPriceDrops(dealershipId: number): Promise<(PriceWatch & { vehicle: Vehicle; dropPercent: number })[]>;
   createPriceWatch(watch: InsertPriceWatch): Promise<PriceWatch>;
   updatePriceWatch(id: number, dealershipId: number, watch: Partial<InsertPriceWatch>): Promise<PriceWatch | undefined>;
   deletePriceWatch(id: number, dealershipId: number): Promise<boolean>;
@@ -4043,6 +4044,52 @@ export class DatabaseStorage implements IStorage {
         eq(priceWatches.id, id),
         eq(priceWatches.dealershipId, dealershipId)
       ));
+  }
+  
+  async getPriceWatchesWithPriceDrops(dealershipId: number): Promise<(PriceWatch & { vehicle: Vehicle; dropPercent: number })[]> {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    
+    const activePriceWatches = await db.select()
+      .from(priceWatches)
+      .innerJoin(vehicles, and(
+        eq(priceWatches.vehicleId, vehicles.id),
+        eq(vehicles.dealershipId, dealershipId)
+      ))
+      .where(and(
+        eq(priceWatches.dealershipId, dealershipId),
+        eq(priceWatches.isActive, true),
+        eq(priceWatches.notifyOnPriceDrop, true),
+        gt(priceWatches.priceWhenSubscribed, 0),
+        or(
+          sql`${priceWatches.lastNotifiedAt} IS NULL`,
+          lt(priceWatches.lastNotifiedAt, twentyFourHoursAgo)
+        )
+      ));
+    
+    const result: (PriceWatch & { vehicle: Vehicle; dropPercent: number })[] = [];
+    
+    for (const row of activePriceWatches) {
+      const watch = row.price_watches;
+      const vehicle = row.vehicles;
+      
+      const currentPrice = vehicle.price;
+      const originalPrice = watch.priceWhenSubscribed!;
+      
+      if (currentPrice >= originalPrice) continue;
+      
+      const dropPercent = Math.round(((originalPrice - currentPrice) / originalPrice) * 100);
+      const minDropPercent = watch.minPriceDropPercent || 5;
+      
+      if (dropPercent < minDropPercent) continue;
+      
+      result.push({
+        ...watch,
+        vehicle,
+        dropPercent
+      });
+    }
+    
+    return result;
   }
   
   // Competitor Price Alerts

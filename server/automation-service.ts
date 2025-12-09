@@ -7,7 +7,9 @@ import type {
   InsertAutomationLog,
   Dealership,
   AppointmentReminder,
-  PbsAppointmentCache
+  PbsAppointmentCache,
+  PriceWatch,
+  Vehicle
 } from "@shared/schema";
 
 interface SequenceStep {
@@ -682,6 +684,246 @@ export class AutomationService {
       return `Hi ${firstName}! Just a reminder that your ${appointmentLabel} at ${dealershipName} is coming up in about 2 hours (${timeStr}). See you soon! Reply STOP to opt out.`;
     }
   }
+
+  async processPriceDropAlerts(): Promise<{ processed: number; successful: number; failed: number }> {
+    console.log(`[Automation] Processing price drop alerts for dealership ${this.dealershipId}`);
+
+    const priceDrops = await storage.getPriceWatchesWithPriceDrops(this.dealershipId);
+    
+    if (priceDrops.length === 0) {
+      console.log(`[Automation] No price drops to alert for dealership ${this.dealershipId}`);
+      return { processed: 0, successful: 0, failed: 0 };
+    }
+
+    console.log(`[Automation] Found ${priceDrops.length} price drops to alert`);
+
+    const dealership = await storage.getDealership(this.dealershipId);
+    const dealershipName = dealership?.name || 'Your Dealership';
+
+    let successful = 0;
+    let failed = 0;
+
+    for (const priceDropWatch of priceDrops) {
+      try {
+        const result = await this.sendPriceDropAlert(priceDropWatch, dealershipName);
+        if (result.success) {
+          successful++;
+        } else {
+          failed++;
+        }
+      } catch (error) {
+        failed++;
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        console.error(`[Automation] Error processing price drop alert ${priceDropWatch.id}:`, error);
+        
+        await this.logAction({
+          dealershipId: this.dealershipId,
+          automationType: 'price_drop',
+          actionType: 'failed',
+          sourceTable: 'price_watches',
+          sourceId: priceDropWatch.id,
+          contactName: priceDropWatch.contactName || undefined,
+          contactPhone: priceDropWatch.contactPhone || undefined,
+          success: false,
+          errorMessage,
+        });
+      }
+    }
+
+    console.log(`[Automation] Price drop alerts completed: ${successful} successful, ${failed} failed`);
+    return { processed: priceDrops.length, successful, failed };
+  }
+
+  private async sendPriceDropAlert(
+    watchWithDrop: PriceWatch & { vehicle: Vehicle; dropPercent: number },
+    dealershipName: string
+  ): Promise<{ success: boolean; error?: string }> {
+    if (!watchWithDrop.contactPhone) {
+      await this.logAction({
+        dealershipId: this.dealershipId,
+        automationType: 'price_drop',
+        actionType: 'skipped',
+        sourceTable: 'price_watches',
+        sourceId: watchWithDrop.id,
+        contactName: watchWithDrop.contactName || undefined,
+        success: false,
+        errorMessage: 'No phone number available',
+      });
+      return { success: false, error: 'No phone number' };
+    }
+
+    let ghlContactId = watchWithDrop.contactId;
+
+    if (!ghlContactId) {
+      const searchResult = await this.ghlService.searchContacts({ phone: watchWithDrop.contactPhone });
+      if (searchResult.success && searchResult.data?.contacts?.length) {
+        ghlContactId = searchResult.data.contacts[0].id;
+      } else {
+        const createResult = await this.ghlService.createContact({
+          firstName: watchWithDrop.contactName?.split(' ')[0] || 'Customer',
+          lastName: watchWithDrop.contactName?.split(' ').slice(1).join(' ') || '',
+          phone: watchWithDrop.contactPhone,
+          email: watchWithDrop.contactEmail || undefined,
+          source: 'Lotview Price Drop Alert',
+        });
+        
+        if (createResult.success && createResult.data) {
+          ghlContactId = createResult.data.id;
+        } else {
+          await this.logAction({
+            dealershipId: this.dealershipId,
+            automationType: 'price_drop',
+            actionType: 'failed',
+            sourceTable: 'price_watches',
+            sourceId: watchWithDrop.id,
+            contactName: watchWithDrop.contactName || undefined,
+            contactPhone: watchWithDrop.contactPhone || undefined,
+            success: false,
+            errorMessage: 'Failed to create GHL contact',
+          });
+          return { success: false, error: 'Failed to create GHL contact' };
+        }
+      }
+    }
+
+    const message = this.formatPriceDropMessage(watchWithDrop, dealershipName);
+
+    const sendResult = await this.sendSMS(ghlContactId, message);
+
+    if (sendResult.success) {
+      await storage.updatePriceWatch(watchWithDrop.id, this.dealershipId, {
+        lastNotifiedAt: new Date(),
+        contactId: ghlContactId,
+      });
+
+      await this.logAction({
+        dealershipId: this.dealershipId,
+        automationType: 'price_drop',
+        actionType: 'sent',
+        sourceTable: 'price_watches',
+        sourceId: watchWithDrop.id,
+        contactId: ghlContactId,
+        contactName: watchWithDrop.contactName || undefined,
+        contactPhone: watchWithDrop.contactPhone || undefined,
+        messageType: 'sms',
+        messageContent: message.substring(0, 500),
+        success: true,
+        externalId: sendResult.data?.messageId || undefined,
+        metadata: JSON.stringify({
+          vehicleId: watchWithDrop.vehicleId,
+          vehicleName: `${watchWithDrop.vehicle.year} ${watchWithDrop.vehicle.make} ${watchWithDrop.vehicle.model}`,
+          originalPrice: watchWithDrop.priceWhenSubscribed,
+          newPrice: watchWithDrop.vehicle.price,
+          dropPercent: watchWithDrop.dropPercent,
+        }),
+      });
+
+      return { success: true };
+    } else {
+      await this.logAction({
+        dealershipId: this.dealershipId,
+        automationType: 'price_drop',
+        actionType: 'failed',
+        sourceTable: 'price_watches',
+        sourceId: watchWithDrop.id,
+        contactId: ghlContactId || undefined,
+        contactName: watchWithDrop.contactName || undefined,
+        contactPhone: watchWithDrop.contactPhone || undefined,
+        messageType: 'sms',
+        messageContent: message.substring(0, 500),
+        success: false,
+        errorMessage: sendResult.error,
+      });
+
+      return { success: false, error: sendResult.error };
+    }
+  }
+
+  private formatPriceDropMessage(
+    watchWithDrop: PriceWatch & { vehicle: Vehicle; dropPercent: number },
+    dealershipName: string
+  ): string {
+    const firstName = watchWithDrop.contactName?.split(' ')[0] || 'there';
+    const vehicle = watchWithDrop.vehicle;
+    const vehicleName = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
+    const originalPrice = watchWithDrop.priceWhenSubscribed || 0;
+    const newPrice = vehicle.price;
+    const savings = originalPrice - newPrice;
+
+    return `Hi ${firstName}! Great news from ${dealershipName}! The ${vehicleName} you were interested in just dropped in price by ${watchWithDrop.dropPercent}% - now $${newPrice.toLocaleString()} (save $${savings.toLocaleString()})! This won't last long. Reply to learn more or call us today! Reply STOP to opt out.`;
+  }
+
+  async autoSubscribePriceWatch(params: {
+    vehicleId: number;
+    contactName?: string;
+    contactPhone?: string;
+    contactEmail?: string;
+    sourceType: 'vehicle_view' | 'chat' | 'inquiry' | 'manual';
+    sourceId?: string;
+  }): Promise<{ success: boolean; watchId?: number; error?: string }> {
+    if (!params.contactPhone && !params.contactEmail) {
+      return { success: false, error: 'Contact phone or email required' };
+    }
+
+    const vehicle = await storage.getVehicleById(params.vehicleId, this.dealershipId);
+    if (!vehicle) {
+      return { success: false, error: 'Vehicle not found' };
+    }
+
+    if (params.contactPhone) {
+      const normalizedPhone = this.normalizePhoneNumber(params.contactPhone);
+      if (normalizedPhone) {
+        const existing = await storage.getPriceWatchByContact(
+          this.dealershipId,
+          params.vehicleId,
+          normalizedPhone
+        );
+        
+        if (existing) {
+          await storage.incrementPriceWatchViewCount(existing.id, this.dealershipId);
+          console.log(`[Automation] Incremented view count for existing price watch ${existing.id}`);
+          return { success: true, watchId: existing.id };
+        }
+      }
+    }
+
+    const watch = await storage.createPriceWatch({
+      dealershipId: this.dealershipId,
+      vehicleId: params.vehicleId,
+      contactName: params.contactName || null,
+      contactPhone: params.contactPhone ? this.normalizePhoneNumber(params.contactPhone) : null,
+      contactEmail: params.contactEmail || null,
+      sourceType: params.sourceType,
+      sourceId: params.sourceId || null,
+      viewCount: 1,
+      notifyOnPriceDrop: true,
+      notifyOnSold: true,
+      minPriceDropPercent: 5,
+      isActive: true,
+      priceWhenSubscribed: vehicle.price,
+    });
+
+    console.log(`[Automation] Created price watch ${watch.id} for vehicle ${params.vehicleId}`);
+
+    await this.logAction({
+      dealershipId: this.dealershipId,
+      automationType: 'price_drop',
+      actionType: 'subscribed',
+      sourceTable: 'price_watches',
+      sourceId: watch.id,
+      contactName: params.contactName || undefined,
+      contactPhone: params.contactPhone || undefined,
+      success: true,
+      metadata: JSON.stringify({
+        vehicleId: params.vehicleId,
+        vehicleName: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+        priceWhenSubscribed: vehicle.price,
+        sourceType: params.sourceType,
+      }),
+    });
+
+    return { success: true, watchId: watch.id };
+  }
 }
 
 export async function processAllDealershipFollowUps(): Promise<void> {
@@ -699,6 +941,8 @@ export async function processAllDealershipFollowUps(): Promise<void> {
       
       await automation.scanAndCreateAppointmentReminders();
       await automation.processDueAppointmentReminders();
+      
+      await automation.processPriceDropAlerts();
       
     } catch (error) {
       console.error(`[Automation] Error processing dealership ${dealership.id}:`, error);
