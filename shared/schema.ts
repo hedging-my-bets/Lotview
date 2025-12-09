@@ -1909,3 +1909,56 @@ export const insertSequenceAnalyticsSchema = createInsertSchema(sequenceAnalytic
 
 export type InsertSequenceAnalytics = z.infer<typeof insertSequenceAnalyticsSchema>;
 export type SequenceAnalytics = typeof sequenceAnalytics.$inferSelect;
+
+// ====== VEHICLE APPRAISALS ======
+// Stores saved VIN lookups, market analysis results, and quotes for later recall
+export const vehicleAppraisals = pgTable("vehicle_appraisals", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  createdBy: integer("created_by").references(() => users.id, { onDelete: 'set null' }),
+  // VIN and decoded data
+  vin: text("vin").notNull(),
+  year: integer("year"),
+  make: text("make"),
+  model: text("model"),
+  trim: text("trim"),
+  bodyType: text("body_type"),
+  engineInfo: text("engine_info"), // e.g., "V6, 3.5L"
+  driveType: text("drive_type"), // e.g., "AWD"
+  transmission: text("transmission"),
+  fuelType: text("fuel_type"),
+  // Vehicle condition and details
+  mileage: integer("mileage"),
+  exteriorColor: text("exterior_color"),
+  interiorColor: text("interior_color"),
+  condition: text("condition"), // 'excellent', 'good', 'fair', 'poor'
+  conditionNotes: text("condition_notes"),
+  // Pricing and quotes
+  askingPrice: integer("asking_price"), // Suggested asking price (cents)
+  tradeinValue: integer("tradein_value"), // Estimated trade-in value (cents)
+  wholesaleValue: integer("wholesale_value"), // Wholesale/auction value (cents)
+  retailValue: integer("retail_value"), // Retail market value (cents)
+  // Market analysis data (stored as JSON for flexibility)
+  marketAnalysisData: text("market_analysis_data"), // JSON string of full market analysis results
+  comparableCount: integer("comparable_count"), // Number of comparable listings found
+  averageMarketPrice: integer("average_market_price"), // Average price from market analysis (cents)
+  marketPriceRange: text("market_price_range"), // e.g., "$25,000 - $32,000"
+  daysOnMarketAvg: integer("days_on_market_avg"),
+  // Competitor listings URLs (JSON array of top competitors)
+  competitorListings: text("competitor_listings"), // JSON array: [{url, dealer, price, listingDate}]
+  // Notes and status
+  notes: text("notes"),
+  status: text("status").notNull().default('draft'), // 'draft', 'quoted', 'purchased', 'passed'
+  // Timestamps
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertVehicleAppraisalSchema = createInsertSchema(vehicleAppraisals).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertVehicleAppraisal = z.infer<typeof insertVehicleAppraisalSchema>;
+export type VehicleAppraisal = typeof vehicleAppraisals.$inferSelect;

@@ -197,7 +197,10 @@ import {
   type InsertReengagementCampaign,
   sequenceAnalytics,
   type SequenceAnalytics,
-  type InsertSequenceAnalytics
+  type InsertSequenceAnalytics,
+  vehicleAppraisals,
+  type VehicleAppraisal,
+  type InsertVehicleAppraisal
 } from "@shared/schema";
 import { eq, desc, sql, and, gte, lte, lt, gt, inArray, or, ilike } from "drizzle-orm";
 
@@ -712,6 +715,15 @@ export interface IStorage {
     averageConversionRate: number;
     topPerformingSequences: { sequenceId: number; name: string; conversionRate: number }[];
   }>;
+  
+  // ====== VEHICLE APPRAISALS ======
+  getVehicleAppraisals(dealershipId: number, limit?: number, offset?: number): Promise<{ appraisals: VehicleAppraisal[]; total: number }>;
+  getVehicleAppraisalById(id: number, dealershipId: number): Promise<VehicleAppraisal | undefined>;
+  getVehicleAppraisalByVin(vin: string, dealershipId: number): Promise<VehicleAppraisal | undefined>;
+  searchVehicleAppraisals(dealershipId: number, query: string, limit?: number): Promise<VehicleAppraisal[]>;
+  createVehicleAppraisal(appraisal: InsertVehicleAppraisal): Promise<VehicleAppraisal>;
+  updateVehicleAppraisal(id: number, dealershipId: number, appraisal: Partial<InsertVehicleAppraisal>): Promise<VehicleAppraisal | undefined>;
+  deleteVehicleAppraisal(id: number, dealershipId: number): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4736,6 +4748,89 @@ export class DatabaseStorage implements IStorage {
           : 0
       }))
     };
+  }
+  
+  // ====== VEHICLE APPRAISALS ======
+  async getVehicleAppraisals(dealershipId: number, limit: number = 50, offset: number = 0): Promise<{ appraisals: VehicleAppraisal[]; total: number }> {
+    const countResult = await db.select({ count: sql<number>`count(*)` })
+      .from(vehicleAppraisals)
+      .where(eq(vehicleAppraisals.dealershipId, dealershipId));
+    
+    const appraisals = await db.select()
+      .from(vehicleAppraisals)
+      .where(eq(vehicleAppraisals.dealershipId, dealershipId))
+      .orderBy(desc(vehicleAppraisals.updatedAt))
+      .limit(limit)
+      .offset(offset);
+    
+    return { appraisals, total: Number(countResult[0]?.count || 0) };
+  }
+  
+  async getVehicleAppraisalById(id: number, dealershipId: number): Promise<VehicleAppraisal | undefined> {
+    const result = await db.select()
+      .from(vehicleAppraisals)
+      .where(and(
+        eq(vehicleAppraisals.id, id),
+        eq(vehicleAppraisals.dealershipId, dealershipId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+  
+  async getVehicleAppraisalByVin(vin: string, dealershipId: number): Promise<VehicleAppraisal | undefined> {
+    const normalizedVin = vin.trim().toUpperCase();
+    const result = await db.select()
+      .from(vehicleAppraisals)
+      .where(and(
+        sql`UPPER(${vehicleAppraisals.vin}) = ${normalizedVin}`,
+        eq(vehicleAppraisals.dealershipId, dealershipId)
+      ))
+      .orderBy(desc(vehicleAppraisals.updatedAt))
+      .limit(1);
+    return result[0];
+  }
+  
+  async searchVehicleAppraisals(dealershipId: number, query: string, limit: number = 20): Promise<VehicleAppraisal[]> {
+    const searchTerm = `%${query}%`;
+    return await db.select()
+      .from(vehicleAppraisals)
+      .where(and(
+        eq(vehicleAppraisals.dealershipId, dealershipId),
+        or(
+          ilike(vehicleAppraisals.vin, searchTerm),
+          ilike(vehicleAppraisals.make, searchTerm),
+          ilike(vehicleAppraisals.model, searchTerm),
+          ilike(vehicleAppraisals.notes, searchTerm)
+        )
+      ))
+      .orderBy(desc(vehicleAppraisals.updatedAt))
+      .limit(limit);
+  }
+  
+  async createVehicleAppraisal(appraisal: InsertVehicleAppraisal): Promise<VehicleAppraisal> {
+    const result = await db.insert(vehicleAppraisals).values(appraisal).returning();
+    return result[0];
+  }
+  
+  async updateVehicleAppraisal(id: number, dealershipId: number, appraisal: Partial<InsertVehicleAppraisal>): Promise<VehicleAppraisal | undefined> {
+    const result = await db.update(vehicleAppraisals)
+      .set({ ...appraisal, updatedAt: new Date() })
+      .where(and(
+        eq(vehicleAppraisals.id, id),
+        eq(vehicleAppraisals.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+  
+  async deleteVehicleAppraisal(id: number, dealershipId: number): Promise<boolean> {
+    const result = await db.delete(vehicleAppraisals)
+      .where(and(
+        eq(vehicleAppraisals.id, id),
+        eq(vehicleAppraisals.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result.length > 0;
   }
 }
 
