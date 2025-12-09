@@ -326,7 +326,7 @@ export default function Manager() {
     defaultRadiusKm: 50
   });
   const [isSavingSettings, setIsSavingSettings] = useState(false);
-  const [activeManagerTab, setActiveManagerTab] = useState<'appraisal' | 'inventory' | 'my-inventory' | 'conversations' | 'prompts' | 'settings'>('appraisal');
+  const [activeManagerTab, setActiveManagerTab] = useState<'appraisal' | 'inventory' | 'my-inventory' | 'conversations' | 'prompts' | 'settings' | 'history'>('appraisal');
 
   // Conversations state
   const [allConversations, setAllConversations] = useState<{
@@ -378,6 +378,14 @@ export default function Manager() {
   const [editingPromptId, setEditingPromptId] = useState<number | null>(null);
   const [editedPrompt, setEditedPrompt] = useState<{ greeting: string; systemPrompt: string }>({ greeting: '', systemPrompt: '' });
   const [isSavingPrompt, setIsSavingPrompt] = useState(false);
+
+  // Appraisal state
+  const [previousAppraisal, setPreviousAppraisal] = useState<any>(null);
+  const [isSavingAppraisal, setIsSavingAppraisal] = useState(false);
+  const [appraisalNotes, setAppraisalNotes] = useState("");
+  const [quotedPrice, setQuotedPrice] = useState("");
+  const [appraisalHistory, setAppraisalHistory] = useState<any[]>([]);
+  const [isLoadingAppraisalHistory, setIsLoadingAppraisalHistory] = useState(false);
 
   useEffect(() => {
     checkAuth();
@@ -950,6 +958,32 @@ export default function Manager() {
           radiusKm: prev.radiusKm || String(settings.defaultRadiusKm || 50)
         }));
 
+        // Check for previous appraisal with this VIN
+        try {
+          const appraisalRes = await fetch(`/api/manager/appraisals/vin/${vin}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (appraisalRes.ok) {
+            const appraisalData = await appraisalRes.json();
+            if (appraisalData) {
+              setPreviousAppraisal(appraisalData);
+              toast({
+                title: "Previous Appraisal Found",
+                description: `This vehicle was appraised on ${new Date(appraisalData.createdAt).toLocaleDateString()}`,
+              });
+            } else {
+              setPreviousAppraisal(null);
+            }
+          }
+        } catch (appraisalError) {
+          console.error('Error checking for previous appraisal:', appraisalError);
+          setPreviousAppraisal(null);
+        }
+
+        // Reset appraisal form fields
+        setAppraisalNotes("");
+        setQuotedPrice("");
+
         toast({
           title: "VIN Decoded Successfully",
           description: `${result.year || ''} ${result.make || ''} ${result.model || ''}`.trim(),
@@ -1100,6 +1134,131 @@ export default function Manager() {
       setIsAnalyzing(false);
     }
   };
+
+  // Save appraisal function
+  const handleSaveAppraisal = async () => {
+    if (!vin || !vinResults) {
+      toast({
+        title: "Missing Information",
+        description: "Please decode a VIN first before saving an appraisal",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSavingAppraisal(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      
+      const appraisalData = {
+        vin: vin.toUpperCase(),
+        year: vinResults.year,
+        make: vinResults.make,
+        model: vinResults.model,
+        trim: vinResults.trim,
+        bodyType: vinResults.bodyType,
+        driveType: vinResults.driveType,
+        fuelType: vinResults.fuelType,
+        engineDescription: vinResults.engineDescription,
+        transmission: vinResults.transmission,
+        mileage: pricingForm.mileage ? parseInt(pricingForm.mileage) : null,
+        marketData: enhancedResults || pricingResults || null,
+        quotedPrice: quotedPrice ? parseFloat(quotedPrice) : null,
+        notes: appraisalNotes || null,
+      };
+
+      const response = await fetch('/api/manager/appraisals', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(appraisalData),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save appraisal');
+      }
+
+      const savedAppraisal = await response.json();
+      setPreviousAppraisal(savedAppraisal);
+      
+      toast({
+        title: "Appraisal Saved",
+        description: `Appraisal for ${vinResults.year} ${vinResults.make} ${vinResults.model} has been saved`,
+      });
+    } catch (error) {
+      console.error("Save appraisal error:", error);
+      toast({
+        title: "Error",
+        description: "Failed to save appraisal. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingAppraisal(false);
+    }
+  };
+
+  // Load previous appraisal data into form
+  const loadPreviousAppraisal = () => {
+    if (!previousAppraisal) return;
+    
+    if (previousAppraisal.quotedPrice) {
+      setQuotedPrice(String(previousAppraisal.quotedPrice));
+    }
+    if (previousAppraisal.notes) {
+      setAppraisalNotes(previousAppraisal.notes);
+    }
+    if (previousAppraisal.mileage) {
+      setPricingForm(prev => ({ ...prev, mileage: String(previousAppraisal.mileage) }));
+    }
+    
+    toast({
+      title: "Previous Data Loaded",
+      description: "Previous appraisal data has been loaded into the form",
+    });
+  };
+
+  // Load appraisal history
+  const loadAppraisalHistory = async () => {
+    setIsLoadingAppraisalHistory(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('/api/manager/appraisals', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setAppraisalHistory(Array.isArray(data) ? data : []);
+      } else {
+        console.error('Failed to load appraisal history:', response.status);
+        toast({
+          title: "Error",
+          description: "Failed to load appraisal history",
+          variant: "destructive",
+        });
+        setAppraisalHistory([]);
+      }
+    } catch (error) {
+      console.error('Error loading appraisal history:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load appraisal history",
+        variant: "destructive",
+      });
+      setAppraisalHistory([]);
+    } finally {
+      setIsLoadingAppraisalHistory(false);
+    }
+  };
+
+  // Load appraisal history when history tab is selected
+  useEffect(() => {
+    if (activeManagerTab === 'history' && user) {
+      loadAppraisalHistory();
+    }
+  }, [activeManagerTab, user]);
 
   if (isLoading) {
     return (
@@ -1298,6 +1457,16 @@ export default function Manager() {
                   <Settings className="w-4 h-4" />
                   Settings
                 </Button>
+                <Button
+                  variant={activeManagerTab === 'history' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setActiveManagerTab('history')}
+                  data-testid="tab-appraisal-history"
+                  className="flex items-center gap-2"
+                >
+                  <Clock className="w-4 h-4" />
+                  Appraisal History
+                </Button>
               </div>
             </CardHeader>
             <CardContent>
@@ -1349,6 +1518,34 @@ export default function Manager() {
                       </p>
                     </div>
                   </div>
+
+                  {/* Previous Appraisal Banner */}
+                  {previousAppraisal && (
+                    <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 rounded-lg p-4" data-testid="previous-appraisal-banner">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                        <div>
+                          <h4 className="font-semibold text-amber-800 dark:text-amber-200 flex items-center gap-2">
+                            <Clock className="w-4 h-4" />
+                            Previous Appraisal Found
+                          </h4>
+                          <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                            This vehicle was appraised on {new Date(previousAppraisal.createdAt).toLocaleDateString()} 
+                            {previousAppraisal.quotedPrice && ` with a quote of $${previousAppraisal.quotedPrice.toLocaleString()}`}
+                          </p>
+                        </div>
+                        <Button 
+                          onClick={loadPreviousAppraisal}
+                          variant="outline"
+                          size="sm"
+                          className="border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/30"
+                          data-testid="button-load-previous-appraisal"
+                        >
+                          <RefreshCw className="w-3 h-3 mr-2" />
+                          Load Previous Data
+                        </Button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* VIN Results */}
                   {vinResults && (
@@ -2063,6 +2260,61 @@ export default function Manager() {
                     </div>
                   )}
 
+                  {/* Save Appraisal Section */}
+                  {vinResults && (
+                    <div className="border-t pt-6" data-testid="save-appraisal-section">
+                      <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900 rounded-lg p-6">
+                        <h4 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+                          <Save className="w-5 h-5" />
+                          Save Appraisal
+                        </h4>
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div>
+                            <Label htmlFor="quotedPrice">Quoted Price ($)</Label>
+                            <Input
+                              id="quotedPrice"
+                              type="number"
+                              placeholder="Enter your quoted price"
+                              value={quotedPrice}
+                              onChange={(e) => setQuotedPrice(e.target.value)}
+                              data-testid="input-quoted-price"
+                              className="mt-2"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="appraisalNotes">Notes</Label>
+                            <Input
+                              id="appraisalNotes"
+                              placeholder="Vehicle condition, customer info, etc."
+                              value={appraisalNotes}
+                              onChange={(e) => setAppraisalNotes(e.target.value)}
+                              data-testid="input-appraisal-notes"
+                              className="mt-2"
+                            />
+                          </div>
+                        </div>
+                        <Button
+                          onClick={handleSaveAppraisal}
+                          disabled={isSavingAppraisal}
+                          className="mt-4"
+                          data-testid="button-save-appraisal"
+                        >
+                          {isSavingAppraisal ? (
+                            <>
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                              Saving...
+                            </>
+                          ) : (
+                            <>
+                              <Save className="w-4 h-4 mr-2" />
+                              Save Appraisal
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
                   {!pricingResults && !vinResults && (
                     <div className="border-t pt-6">
                       <div className="text-center py-12 text-muted-foreground">
@@ -2427,6 +2679,100 @@ export default function Manager() {
                       "Save Settings"
                     )}
                   </Button>
+                </div>
+              )}
+
+              {/* Appraisal History Tab */}
+              {activeManagerTab === 'history' && (
+                <div data-testid="tab-content-history" className="space-y-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-lg font-semibold">Appraisal History</h3>
+                      <p className="text-sm text-muted-foreground">View all saved vehicle appraisals</p>
+                    </div>
+                    <Button
+                      onClick={loadAppraisalHistory}
+                      variant="outline"
+                      size="sm"
+                      disabled={isLoadingAppraisalHistory}
+                      data-testid="button-refresh-history"
+                    >
+                      <RefreshCw className={`w-4 h-4 mr-2 ${isLoadingAppraisalHistory ? 'animate-spin' : ''}`} />
+                      Refresh
+                    </Button>
+                  </div>
+
+                  {isLoadingAppraisalHistory ? (
+                    <div className="space-y-4">
+                      {[1, 2, 3].map(i => (
+                        <div key={i} className="h-24 bg-muted rounded animate-pulse" />
+                      ))}
+                    </div>
+                  ) : appraisalHistory.length > 0 ? (
+                    <div className="space-y-3">
+                      {appraisalHistory.map((appraisal: any) => (
+                        <Card key={appraisal.id} data-testid={`appraisal-card-${appraisal.id}`}>
+                          <CardContent className="p-4">
+                            <div className="flex flex-col sm:flex-row justify-between gap-4">
+                              <div>
+                                <h4 className="font-semibold">
+                                  {appraisal.year} {appraisal.make} {appraisal.model}
+                                  {appraisal.trim && ` ${appraisal.trim}`}
+                                </h4>
+                                <p className="text-sm text-muted-foreground font-mono">{appraisal.vin}</p>
+                                {appraisal.mileage && (
+                                  <p className="text-sm text-muted-foreground">
+                                    {appraisal.mileage.toLocaleString()} km
+                                  </p>
+                                )}
+                                {appraisal.notes && (
+                                  <p className="text-sm text-muted-foreground mt-2 italic">
+                                    "{appraisal.notes}"
+                                  </p>
+                                )}
+                              </div>
+                              <div className="text-right">
+                                {appraisal.quotedPrice && (
+                                  <div className="text-lg font-bold text-green-600">
+                                    ${appraisal.quotedPrice.toLocaleString()}
+                                  </div>
+                                )}
+                                <div className="text-xs text-muted-foreground">
+                                  {new Date(appraisal.createdAt).toLocaleDateString()}
+                                </div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="mt-2"
+                                  onClick={() => {
+                                    setVin(appraisal.vin);
+                                    setPreviousAppraisal(appraisal);
+                                    setActiveManagerTab('appraisal');
+                                    toast({
+                                      title: "Appraisal Loaded",
+                                      description: "VIN has been loaded. Click 'Decode VIN' to analyze again."
+                                    });
+                                  }}
+                                  data-testid={`button-view-appraisal-${appraisal.id}`}
+                                >
+                                  <Search className="w-3 h-3 mr-2" />
+                                  Re-analyze
+                                </Button>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <ClipboardCheck className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+                      <h3 className="text-lg font-medium mb-2">No Appraisals Yet</h3>
+                      <p className="text-sm">
+                        Save your first appraisal from the Vehicle Appraisal tab to see it here.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
