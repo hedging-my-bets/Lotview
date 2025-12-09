@@ -341,6 +341,7 @@ export interface IStorage {
   
   // Messenger conversations (Multi-Tenant)
   getMessengerConversations(dealershipId: number, userId?: number, userRole?: string): Promise<(MessengerConversation & { ownerName?: string })[]>;
+  getMessengerConversationById(id: number, dealershipId: number): Promise<(MessengerConversation & { pageAccessToken: string }) | undefined>;
   createMessengerConversation(conversation: InsertMessengerConversation): Promise<MessengerConversation>;
   updateMessengerConversation(id: number, dealershipId: number, data: Partial<InsertMessengerConversation>): Promise<MessengerConversation | undefined>;
   
@@ -1310,6 +1311,39 @@ export class DatabaseStorage implements IStorage {
       ))
       .returning();
     return result[0];
+  }
+
+  async getMessengerConversationById(id: number, dealershipId: number): Promise<(MessengerConversation & { pageAccessToken: string }) | undefined> {
+    const result = await db.select({
+      id: messengerConversations.id,
+      dealershipId: messengerConversations.dealershipId,
+      facebookAccountId: messengerConversations.facebookAccountId,
+      pageId: messengerConversations.pageId,
+      pageName: messengerConversations.pageName,
+      conversationId: messengerConversations.conversationId,
+      participantName: messengerConversations.participantName,
+      participantId: messengerConversations.participantId,
+      lastMessage: messengerConversations.lastMessage,
+      lastMessageAt: messengerConversations.lastMessageAt,
+      unreadCount: messengerConversations.unreadCount,
+      status: messengerConversations.status,
+      createdAt: messengerConversations.createdAt,
+      updatedAt: messengerConversations.updatedAt,
+      pageAccessToken: facebookAccounts.accessToken
+    })
+      .from(messengerConversations)
+      .innerJoin(facebookAccounts, eq(messengerConversations.facebookAccountId, facebookAccounts.id))
+      .where(and(
+        eq(messengerConversations.id, id),
+        eq(messengerConversations.dealershipId, dealershipId)
+      ))
+      .limit(1);
+    
+    if (!result[0] || !result[0].pageAccessToken) {
+      return undefined;
+    }
+    
+    return result[0] as MessengerConversation & { pageAccessToken: string };
   }
 
   // Chat prompts (Multi-Tenant)

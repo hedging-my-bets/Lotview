@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck, ClipboardCheck, BarChart3, Bot, Clock, Sparkles, Pencil, Save, TrendingDown, Minus, ArrowUp, ArrowDown, PackageOpen, ExternalLink, Eye, User } from "lucide-react";
+import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck, ClipboardCheck, BarChart3, Bot, Clock, Sparkles, Pencil, Save, TrendingDown, Minus, ArrowUp, ArrowDown, PackageOpen, ExternalLink, Eye, User, Send } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CompetitorAlertsWidget } from "@/components/CompetitorAlertsWidget";
@@ -294,70 +294,19 @@ function InventoryAnalysisTab() {
                     </div>
                   </div>
                   
-                  {/* Comparable Listings Accordion */}
-                  {vehicle.comparableListings && vehicle.comparableListings.length > 0 && (
-                    <Accordion type="single" collapsible className="mt-4 border-t pt-2">
-                      <AccordionItem value="comparables" className="border-b-0">
-                        <AccordionTrigger className="py-2 text-sm hover:no-underline" data-testid={`trigger-comparables-${vehicle.id}`}>
-                          <div className="flex items-center gap-2">
-                            <Car className="w-4 h-4 text-muted-foreground" />
-                            <span>View {vehicle.comparableListings.length} Comparable Listings</span>
-                          </div>
-                        </AccordionTrigger>
-                        <AccordionContent>
-                          <div className="space-y-2 pt-2">
-                            {vehicle.comparableListings.map((comp: any) => (
-                              <div 
-                                key={comp.id} 
-                                className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-muted/50 rounded-lg gap-2"
-                                data-testid={`comparable-${comp.id}`}
-                              >
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-medium text-sm">
-                                      {comp.year} {comp.make} {comp.model}
-                                    </span>
-                                    {comp.trim && (
-                                      <span className="text-xs text-muted-foreground">{comp.trim}</span>
-                                    )}
-                                  </div>
-                                  <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
-                                    {comp.mileage && (
-                                      <span>{comp.mileage.toLocaleString()} km</span>
-                                    )}
-                                    {comp.city && comp.province && (
-                                      <span>{comp.city}, {comp.province}</span>
-                                    )}
-                                    {comp.sellerName && (
-                                      <span className="truncate max-w-[150px]">{comp.sellerName}</span>
-                                    )}
-                                    {comp.daysOnMarket && (
-                                      <span>{comp.daysOnMarket} days on market</span>
-                                    )}
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                  <span className="font-bold text-sm">{formatCurrency(comp.price)}</span>
-                                  {comp.listingUrl && (
-                                    <a 
-                                      href={comp.listingUrl} 
-                                      target="_blank" 
-                                      rel="noopener noreferrer"
-                                      className="text-primary hover:underline text-xs flex items-center gap-1"
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      <ExternalLink className="w-3 h-3" />
-                                      View
-                                    </a>
-                                  )}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </AccordionContent>
-                      </AccordionItem>
-                    </Accordion>
-                  )}
+                  {/* AutoTrader Search Link */}
+                  <div className="mt-4 border-t pt-3">
+                    <a
+                      href={`https://www.autotrader.ca/cars/bc/vancouver/?rcp=15&rcs=0&prv=BC&prx=500&make=${encodeURIComponent(vehicle.make)}&mdl=${encodeURIComponent(vehicle.model)}${vehicle.trim ? `&trim=${encodeURIComponent(vehicle.trim)}` : ''}&yRng=${vehicle.year}%2C${vehicle.year}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
+                      data-testid={`link-autotrader-${vehicle.id}`}
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      View Similar on AutoTrader (Vancouver, 500km)
+                    </a>
+                  </div>
                 </CardContent>
               </Card>
             ))}
@@ -405,6 +354,8 @@ export default function Manager() {
   } | null>(null);
   const [isLoadingConversations, setIsLoadingConversations] = useState(false);
   const [viewingConversation, setViewingConversation] = useState<any>(null);
+  const [messengerReplyText, setMessengerReplyText] = useState("");
+  const [isSendingReply, setIsSendingReply] = useState(false);
 
   // Market pricing state
   const [pricingForm, setPricingForm] = useState({
@@ -501,6 +452,43 @@ export default function Manager() {
       loadConversations();
     }
   }, [activeManagerTab, user]);
+
+  const sendMessengerReply = async () => {
+    if (!viewingConversation || !messengerReplyText.trim() || viewingConversation.type !== 'messenger') return;
+    
+    setIsSendingReply(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/messenger-conversations/${viewingConversation.id}/reply`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ message: messengerReplyText.trim() })
+      });
+      
+      if (response.ok) {
+        toast({
+          title: "Reply Sent",
+          description: "Your message has been sent successfully"
+        });
+        setMessengerReplyText("");
+        loadConversations();
+      } else {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to send reply');
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to send reply",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSendingReply(false);
+    }
+  };
 
   const loadConversations = async () => {
     setIsLoadingConversations(true);
@@ -2964,6 +2952,42 @@ export default function Manager() {
                   )}
                 </div>
               </ScrollArea>
+
+              {/* Reply input for Messenger conversations - Managers only */}
+              {viewingConversation.type === 'messenger' && (
+                <div className="mt-4 pt-4 border-t">
+                  <div className="flex gap-2">
+                    <Input
+                      value={messengerReplyText}
+                      onChange={(e) => setMessengerReplyText(e.target.value)}
+                      placeholder="Type your reply..."
+                      className="flex-1"
+                      data-testid="input-messenger-reply"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          sendMessengerReply();
+                        }
+                      }}
+                      disabled={isSendingReply}
+                    />
+                    <Button
+                      onClick={sendMessengerReply}
+                      disabled={!messengerReplyText.trim() || isSendingReply}
+                      data-testid="button-send-reply"
+                    >
+                      {isSendingReply ? (
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Press Enter to send or click the send button
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </DialogContent>

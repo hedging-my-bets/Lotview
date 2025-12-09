@@ -36,7 +36,7 @@ export class FacebookService {
       client_id: config.appId,
       redirect_uri: config.redirectUri,
       state,
-      scope: 'pages_manage_posts,pages_read_engagement,catalog_management',
+      scope: 'pages_manage_posts,pages_read_engagement,pages_messaging,catalog_management',
       response_type: 'code'
     });
 
@@ -312,6 +312,61 @@ export class FacebookService {
       config.appSecret !== 'YOUR_FACEBOOK_APP_SECRET' &&
       this.defaultConfig.redirectUri !== 'https://your-domain.replit.app/api/facebook/oauth/callback'
     );
+  }
+
+  /**
+   * Send a message to a Messenger conversation using the Send API.
+   * Requires pages_messaging permission.
+   * @param pageAccessToken - The page access token
+   * @param recipientPsid - The Page-Scoped User ID of the recipient
+   * @param messageText - The message text to send
+   */
+  async sendMessengerMessage(pageAccessToken: string, recipientPsid: string, messageText: string): Promise<{ messageId: string; recipientId: string }> {
+    const response = await fetch(`https://graph.facebook.com/v18.0/me/messages?access_token=${encodeURIComponent(pageAccessToken)}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        recipient: { id: recipientPsid },
+        message: { text: messageText }
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
+      throw new Error(error.error?.message || 'Failed to send message');
+    }
+
+    const data = await response.json();
+    return {
+      messageId: data.message_id,
+      recipientId: data.recipient_id
+    };
+  }
+
+  /**
+   * Get messages from a conversation thread.
+   * @param pageAccessToken - The page access token
+   * @param conversationId - The Facebook conversation ID
+   */
+  async getConversationMessages(pageAccessToken: string, conversationId: string): Promise<Array<{
+    id: string;
+    message: string;
+    from: { id: string; name: string };
+    created_time: string;
+  }>> {
+    const response = await fetch(
+      `https://graph.facebook.com/v18.0/${conversationId}/messages?fields=id,message,from,created_time&access_token=${pageAccessToken}`
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message || 'Failed to get conversation messages');
+    }
+
+    const data = await response.json();
+    return data.data || [];
   }
 }
 

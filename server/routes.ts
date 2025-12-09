@@ -3477,6 +3477,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Send a reply to a Messenger conversation - Manager and above only
+  app.post("/api/messenger-conversations/:id/reply", authMiddleware, requireRole("manager", "admin", "master", "super_admin"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const conversationId = parseInt(req.params.id);
+      const { message } = req.body;
+
+      if (!message || typeof message !== 'string' || message.trim().length === 0) {
+        return res.status(400).json({ error: "Message is required" });
+      }
+
+      // Get the conversation with its page access token
+      const conversation = await storage.getMessengerConversationById(conversationId, dealershipId);
+      
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+
+      if (!conversation.pageAccessToken) {
+        return res.status(400).json({ error: "Facebook page access token not available. Please reconnect the Facebook account." });
+      }
+
+      // Send the message using the Facebook Send API
+      const result = await facebookService.sendMessengerMessage(
+        conversation.pageAccessToken,
+        conversation.participantId,
+        message.trim()
+      );
+
+      // Update the conversation's last message
+      await storage.updateMessengerConversation(conversationId, dealershipId, {
+        lastMessage: `You: ${message.trim().substring(0, 200)}`,
+        lastMessageAt: new Date()
+      });
+
+      res.json({ 
+        success: true, 
+        messageId: result.messageId,
+        message: "Reply sent successfully"
+      });
+    } catch (error: any) {
+      console.error("Error sending messenger reply:", error);
+      res.status(500).json({ error: error.message || "Failed to send reply" });
+    }
+  });
+
   // ===== ALL CONVERSATIONS UNIFIED ENDPOINT =====
   
   // Get all conversations (both website chat and messenger) with role-based filtering
