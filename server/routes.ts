@@ -6167,6 +6167,88 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
 
+  // Get competitor price alerts
+  app.get("/api/manager/competitor-alerts", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const dealershipId = (req as AuthRequest).dealershipId || 1;
+      const { status, severity, vehicleId, limit } = req.query;
+      const alerts = await storage.getCompetitorPriceAlerts(dealershipId, {
+        status: status as string | undefined,
+        severity: severity as string | undefined,
+        vehicleId: vehicleId ? parseInt(vehicleId as string) : undefined
+      }, limit ? parseInt(limit as string) : 50);
+      res.json(alerts);
+    } catch (error) {
+      console.error("Error fetching competitor alerts:", error);
+      res.status(500).json({ error: "Failed to fetch competitor alerts" });
+    }
+  });
+
+  // Get competitor alerts summary for dashboard widget
+  app.get("/api/manager/competitor-alerts/summary", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const dealershipId = (req as AuthRequest).dealershipId || 1;
+      const { createCompetitorMonitoringService } = await import("./competitor-monitoring-service");
+      const service = createCompetitorMonitoringService(dealershipId);
+      const summary = await service.getAlertSummary();
+      res.json(summary);
+    } catch (error) {
+      console.error("Error fetching competitor alert summary:", error);
+      res.status(500).json({ error: "Failed to fetch competitor alert summary" });
+    }
+  });
+
+  // Acknowledge a competitor price alert
+  app.post("/api/manager/competitor-alerts/:id/acknowledge", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const dealershipId = (req as AuthRequest).dealershipId || 1;
+      const userId = (req as AuthRequest).user?.id;
+      const alertId = parseInt(req.params.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+      const alert = await storage.acknowledgeCompetitorPriceAlert(alertId, dealershipId, userId);
+      if (!alert) {
+        return res.status(404).json({ error: "Alert not found" });
+      }
+      res.json(alert);
+    } catch (error) {
+      console.error("Error acknowledging competitor alert:", error);
+      res.status(500).json({ error: "Failed to acknowledge alert" });
+    }
+  });
+
+  // Resolve a competitor price alert
+  app.post("/api/manager/competitor-alerts/:id/resolve", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const dealershipId = (req as AuthRequest).dealershipId || 1;
+      const alertId = parseInt(req.params.id);
+      const { note } = req.body;
+      const alert = await storage.resolveCompetitorPriceAlert(alertId, dealershipId, note);
+      if (!alert) {
+        return res.status(404).json({ error: "Alert not found" });
+      }
+      res.json(alert);
+    } catch (error) {
+      console.error("Error resolving competitor alert:", error);
+      res.status(500).json({ error: "Failed to resolve alert" });
+    }
+  });
+
+  // Trigger manual competitor scan
+  app.post("/api/manager/competitor-scan", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const dealershipId = (req as AuthRequest).dealershipId || 1;
+      const { createCompetitorMonitoringService } = await import("./competitor-monitoring-service");
+      const service = createCompetitorMonitoringService(dealershipId);
+      const result = await service.runCompetitorScan();
+      res.json(result);
+    } catch (error) {
+      console.error("Error running competitor scan:", error);
+      res.status(500).json({ error: "Failed to run competitor scan" });
+    }
+  });
+
   // Get unique makes from market listings (for autocomplete)
   app.get("/api/inventory/makes", authMiddleware, requireRole("manager"), async (req, res) => {
     try {

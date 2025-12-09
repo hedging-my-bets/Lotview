@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck, ClipboardCheck, BarChart3, Bot, Clock, Sparkles, Pencil, Save, TrendingDown, Minus, ArrowUp, ArrowDown, PackageOpen, ExternalLink } from "lucide-react";
+import { CompetitorAlertsWidget } from "@/components/CompetitorAlertsWidget";
 import { useToast } from "@/hooks/use-toast";
 import { InventoryManagement } from "@/components/InventoryManagement";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
@@ -1219,6 +1220,11 @@ export default function Manager() {
                 )}
               </CardContent>
             </Card>
+          </div>
+
+          {/* Competitor Alerts Widget */}
+          <div className="mb-6">
+            <CompetitorAlertsWidget />
           </div>
 
           {/* Manager Settings with Tabs */}
