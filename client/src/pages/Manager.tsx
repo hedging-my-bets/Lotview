@@ -2622,7 +2622,7 @@ export default function Manager() {
                                   </p>
                                   <textarea
                                     id={`greeting-${prompt.id}`}
-                                    className="w-full min-h-[100px] p-3 border rounded-md bg-background resize-y"
+                                    className="w-full min-h-[150px] p-3 border rounded-md bg-background resize-y"
                                     value={editedPrompt.greeting}
                                     onChange={(e) => setEditedPrompt({ ...editedPrompt, greeting: e.target.value })}
                                     placeholder="Enter greeting message..."
@@ -2644,7 +2644,7 @@ export default function Manager() {
                                   </p>
                                   <textarea
                                     id={`system-${prompt.id}`}
-                                    className="w-full min-h-[200px] p-3 border rounded-md bg-background resize-y font-mono text-sm"
+                                    className="w-full min-h-[350px] p-3 border rounded-md bg-background resize-y font-mono text-sm"
                                     value={editedPrompt.systemPrompt}
                                     onChange={(e) => setEditedPrompt({ ...editedPrompt, systemPrompt: e.target.value })}
                                     placeholder="Enter system instructions..."
@@ -2708,7 +2708,7 @@ export default function Manager() {
                                 </div>
                                 <div>
                                   <p className="text-sm font-medium text-muted-foreground mb-1">System Instructions:</p>
-                                  <p className="text-xs bg-muted/50 p-3 rounded-md font-mono whitespace-pre-wrap max-h-[150px] overflow-y-auto">
+                                  <p className="text-xs bg-muted/50 p-3 rounded-md font-mono whitespace-pre-wrap max-h-[400px] overflow-y-auto">
                                     {prompt.systemPrompt}
                                   </p>
                                 </div>
