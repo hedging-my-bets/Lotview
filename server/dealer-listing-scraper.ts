@@ -487,24 +487,32 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
         // Extract trim from title/heading using intelligent detection
         var trim = '';
         
-        // Known trim levels for common brands (order matters - more specific first)
+        // Known trim levels for common brands (order matters - LONGER/MORE SPECIFIC FIRST)
+        // This prevents "SE" from matching before "SEL" or "XSE"
         var knownTrims = [
+          // EV/Hybrid trims (most specific, check first)
+          'Electric Preferred', 'Electric Ultimate', 'Plug-In Hybrid',
+          // Package descriptors (multi-word, check early)
+          'Sun & Leather', 'Leather Package', 'Tech Package',
+          // Long compound trims
+          'High Country', 'King Ranch', 'Value Edition', 'Night Edition',
+          'GT-Line', 'GT Line', 'Off-Road', 'N Line',
           // Hyundai trims
-          'Ultimate', 'Luxury', 'Preferred', 'Essential', 'N Line', 'Calligraphy',
-          'Limited', 'SEL', 'SE', 'Value Edition', 'Night Edition',
-          // Common trims across brands
-          'Platinum', 'Titanium', 'Sport', 'Premium', 'Touring', 'Elite',
-          'GT-Line', 'GT Line', 'GT', 'RS', 'ST', 'SXT', 'R/T', 'SR',
-          'XLE', 'XSE', 'LE', 'TRD', 'Pro', 'Trail', 'Off-Road',
-          'Denali', 'High Country', 'Lariat', 'King Ranch', 'Raptor',
-          'SL', 'S', 'SV', 'SR5', 'Laredo', 'Overland', 'Trailhawk',
-          'Prestige', 'Technik', 'Progressiv', 'Komfort',
-          // AWD/FWD indicators often part of trim
-          'AWD', 'FWD', '4WD', '4x4', 'Quattro', 'xDrive', 'S-AWC',
-          // Package descriptors
-          'Sun & Leather', 'Leather Package', 'Tech Package', 'Convenience',
-          // EV/Hybrid trims
-          'Electric Preferred', 'Electric Ultimate', 'Plug-In Hybrid', 'Hybrid'
+          'Calligraphy', 'Ultimate', 'Preferred', 'Essential', 'Luxury',
+          // Toyota/Lexus (XSE before XLE before SE before LE)
+          'XSE', 'XLE', 'TRD', 'SR5',
+          // Common trims (longer before shorter)
+          'Trailhawk', 'Overland', 'Platinum', 'Titanium', 'Touring',
+          'Premium', 'Limited', 'Denali', 'Lariat', 'Raptor', 'Laredo',
+          'Prestige', 'Technik', 'Progressiv', 'Komfort', 'Convenience',
+          'Elite', 'Sport', 'Trail', 'Hybrid',
+          // Shorter trims (check after longer ones)
+          'SEL', 'SXT', 'Pro',
+          // Single/double letter trims (check LAST to avoid false matches)
+          'GT', 'RS', 'ST', 'SR', 'SL', 'SV', 'SE', 'LE', 'S',
+          'R/T',
+          // AWD/FWD indicators (often appended to trim)
+          'Quattro', 'xDrive', 'S-AWC', 'AWD', 'FWD', '4WD', '4x4'
         ];
         
         // Strategy 1: Look for dedicated trim DOM elements first
