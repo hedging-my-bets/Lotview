@@ -130,20 +130,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Resolve subdomain to dealership for frontend routing
   app.get("/api/tenancy/resolve", async (req, res) => {
     try {
-      const { subdomain } = req.query;
+      const { subdomain, dealershipId } = req.query;
       
-      if (!subdomain || typeof subdomain !== 'string') {
-        return res.json({ dealership: null });
+      let dealership = null;
+      
+      if (subdomain && typeof subdomain === 'string') {
+        const sanitizedSubdomain = subdomain.toLowerCase().replace(/[^a-z0-9-]/g, '');
+        if (sanitizedSubdomain) {
+          dealership = await storage.getDealershipBySubdomain(sanitizedSubdomain);
+        }
+      } else if (dealershipId) {
+        const id = parseInt(dealershipId as string, 10);
+        if (!isNaN(id) && id > 0) {
+          dealership = await storage.getDealership(id);
+        }
       }
-      
-      // Sanitize subdomain input
-      const sanitizedSubdomain = subdomain.toLowerCase().replace(/[^a-z0-9-]/g, '');
-      
-      if (!sanitizedSubdomain) {
-        return res.json({ dealership: null });
-      }
-      
-      const dealership = await storage.getDealershipBySubdomain(sanitizedSubdomain);
       
       if (!dealership || !dealership.isActive) {
         return res.json({ dealership: null });
