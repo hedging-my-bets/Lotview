@@ -484,16 +484,98 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
           }
         }
         
-        // Extract trim from title/heading
-        var trim = 'Base';
-        var h1El = document.querySelector('h1');
-        if (h1El) {
-          var titleText = h1El.textContent || '';
-          // Try to extract trim from title (usually after model name)
-          var trimMatch = titleText.match(/(?:\\d{4}\\s+[A-Za-z-]+\\s+[A-Za-z0-9-]+\\s+)([A-Za-z0-9\\s]+)/i);
-          if (trimMatch && trimMatch[1]) {
-            trim = trimMatch[1].trim();
+        // Extract trim from title/heading using intelligent detection
+        var trim = '';
+        
+        // Known trim levels for common brands (order matters - more specific first)
+        var knownTrims = [
+          // Hyundai trims
+          'Ultimate', 'Luxury', 'Preferred', 'Essential', 'N Line', 'Calligraphy',
+          'Limited', 'SEL', 'SE', 'Value Edition', 'Night Edition',
+          // Common trims across brands
+          'Platinum', 'Titanium', 'Sport', 'Premium', 'Touring', 'Elite',
+          'GT-Line', 'GT Line', 'GT', 'RS', 'ST', 'SXT', 'R/T', 'SR',
+          'XLE', 'XSE', 'LE', 'TRD', 'Pro', 'Trail', 'Off-Road',
+          'Denali', 'High Country', 'Lariat', 'King Ranch', 'Raptor',
+          'SL', 'S', 'SV', 'SR5', 'Laredo', 'Overland', 'Trailhawk',
+          'Prestige', 'Technik', 'Progressiv', 'Komfort',
+          // AWD/FWD indicators often part of trim
+          'AWD', 'FWD', '4WD', '4x4', 'Quattro', 'xDrive', 'S-AWC',
+          // Package descriptors
+          'Sun & Leather', 'Leather Package', 'Tech Package', 'Convenience',
+          // EV/Hybrid trims
+          'Electric Preferred', 'Electric Ultimate', 'Plug-In Hybrid', 'Hybrid'
+        ];
+        
+        // Strategy 1: Look for dedicated trim DOM elements first
+        var trimSelectors = [
+          '[class*="trim"]',
+          '[data-trim]',
+          '[data-field="trim"]',
+          '.vehicle-trim',
+          '.trim-name'
+        ];
+        
+        for (var ti = 0; ti < trimSelectors.length && !trim; ti++) {
+          var trimEl = document.querySelector(trimSelectors[ti]);
+          if (trimEl && trimEl.textContent) {
+            var trimText = trimEl.textContent.trim();
+            // Make sure it's not just noise
+            if (trimText.length > 1 && trimText.length < 50 && !/^\\d+$/.test(trimText)) {
+              trim = trimText;
+            }
           }
+        }
+        
+        // Strategy 2: Extract from h1 title using known trim matching
+        if (!trim) {
+          var h1El = document.querySelector('h1');
+          if (h1El) {
+            var titleText = h1El.textContent || '';
+            
+            // Look for known trim keywords in the title (case-insensitive)
+            for (var ki = 0; ki < knownTrims.length; ki++) {
+              var knownTrim = knownTrims[ki];
+              // Simple case-insensitive search for trim in title
+              var lowerTitle = titleText.toLowerCase();
+              var lowerTrim = knownTrim.toLowerCase();
+              if (lowerTitle.indexOf(lowerTrim) !== -1) {
+                trim = knownTrim;
+                break;
+              }
+            }
+            
+            // Strategy 3: Try to extract trim after removing year/make/model and engine codes
+            if (!trim) {
+              // Remove year (e.g., "2022")
+              var cleaned = titleText.replace(/\\b20\\d{2}\\b/g, '');
+              // Remove common makes
+              cleaned = cleaned.replace(/\\b(Hyundai|Toyota|Honda|Ford|Chevrolet|Nissan|Kia|Mazda|Subaru|Volkswagen|BMW|Mercedes|Audi|Lexus|Acura|Infiniti|Jeep|Dodge|Ram|GMC|Buick|Cadillac|Lincoln|Volvo|Porsche|Land Rover|Jaguar|Genesis|Mini|Fiat|Mitsubishi|Chrysler)\\b/gi, '');
+              // Remove common models - this is tricky, we'll be conservative
+              cleaned = cleaned.replace(/\\b(Kona|Tucson|Santa Fe|Elantra|Sonata|Palisade|Ioniq|Venue|Accent|Civic|Accord|Camry|Corolla|RAV4|CR-V|Pilot|Highlander|Rogue|Altima|Sentra|Pathfinder|Murano|Escape|F-150|Explorer|Edge|Bronco|Malibu|Equinox|Silverado|Traverse|Tahoe|Sorento|Sportage|Telluride|Soul|Forte|CX-5|CX-30|CX-50|Mazda3|Mazda6|Outback|Forester|Crosstrek|Impreza|Tiguan|Jetta|Golf|Passat|Atlas)\\b/gi, '');
+              // Remove engine codes like "2.0L", "1.6T", "3.5L V6"
+              cleaned = cleaned.replace(/\\b\\d+\\.\\d+[LT]?\\b/gi, '');
+              cleaned = cleaned.replace(/\\bV[468]\\b/gi, '');
+              cleaned = cleaned.replace(/\\bTurbo\\b/gi, '');
+              // Remove drivetrain indicators that are NOT part of trim names
+              cleaned = cleaned.replace(/\\b(4dr|2dr|sedan|suv|hatchback|coupe|wagon|convertible)\\b/gi, '');
+              // Remove common feature descriptors that aren't trims
+              cleaned = cleaned.replace(/\\|.*/g, ''); // Remove everything after pipe (feature lists)
+              // Clean up whitespace and punctuation
+              cleaned = cleaned.replace(/[|\\[\\]()]/g, ' ').replace(/\\s+/g, ' ').trim();
+              
+              // If we have something reasonable left, use it
+              if (cleaned.length >= 2 && cleaned.length <= 40 && !/^\\d+$/.test(cleaned)) {
+                // Don't use if it's just numbers or single characters
+                trim = cleaned;
+              }
+            }
+          }
+        }
+        
+        // Default to empty string if no valid trim found (better than "Base" or garbage)
+        if (!trim || trim === 'Base' || /^\\d+$/.test(trim)) {
+          trim = '';
         }
         
         // Extract description
