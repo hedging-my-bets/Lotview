@@ -9426,6 +9426,99 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
 
+  // Facebook Messenger Lead Webhook - triggers follow-up sequence for FB leads
+  // Can be called via webhook from Facebook/GHL or manually by staff
+  // Requires either: authenticated session OR valid API token in header
+  app.post("/api/automation/facebook-lead", async (req, res) => {
+    try {
+      const { 
+        contactName, 
+        contactPhone, 
+        contactEmail, 
+        vehicleInterest,
+        vehicleId,
+        message,
+        source,
+        dealershipId: bodyDealershipId 
+      } = req.body;
+
+      // Determine dealership from authenticated session OR valid API token only
+      // No unauthenticated access allowed - dealershipId in body is NOT sufficient
+      let dealershipId: number | null = null;
+      
+      // Check for authenticated session first (logged-in user)
+      if ((req as any).dealershipId) {
+        dealershipId = (req as any).dealershipId;
+      }
+      // Check for API token in Authorization header (for external webhooks like n8n, Zapier, GHL)
+      else if (req.headers.authorization?.startsWith('Bearer ')) {
+        const tokenPrefix = req.headers.authorization.slice(7, 15); // First 8 chars after "Bearer "
+        const tokenData = await storage.getExternalApiTokenByPrefix(tokenPrefix);
+        if (tokenData) {
+          // Validate the full token using bcrypt
+          const bcrypt = await import('bcryptjs');
+          const fullToken = req.headers.authorization.slice(7);
+          const isValid = await bcrypt.compare(fullToken, tokenData.tokenHash);
+          if (isValid && tokenData.permissions.includes('automation:trigger')) {
+            dealershipId = tokenData.dealershipId;
+            await storage.updateExternalApiTokenLastUsed(tokenData.id);
+          } else {
+            return res.status(401).json({ error: "Invalid API token or missing 'automation:trigger' permission" });
+          }
+        } else {
+          return res.status(401).json({ error: "Unknown API token" });
+        }
+      }
+      
+      if (!dealershipId) {
+        return res.status(401).json({ 
+          error: "Authentication required: provide session cookie or Bearer token with 'automation:trigger' permission" 
+        });
+      }
+      
+      if (!contactPhone && !contactEmail) {
+        return res.status(400).json({ error: "Contact phone or email is required" });
+      }
+
+      const { createAutomationService } = await import('./automation-service');
+      const automation = createAutomationService(dealershipId);
+
+      // Build metadata for personalization
+      const metadata: Record<string, unknown> = {};
+      if (vehicleInterest) metadata.vehicleName = vehicleInterest;
+      if (message) metadata.initialMessage = message;
+      if (source) metadata.source = source;
+
+      // Get dealership name for messages
+      const dealership = await storage.getDealership(dealershipId);
+      if (dealership) metadata.dealershipName = dealership.name;
+
+      const result = await automation.triggerFollowUp({
+        triggerType: 'facebook_messenger',
+        contactName: contactName || undefined,
+        contactPhone: contactPhone || undefined,
+        contactEmail: contactEmail || undefined,
+        sourceType: source || 'facebook_messenger',
+        sourceId: `fb_lead_${Date.now()}`,
+        vehicleId: vehicleId ? parseInt(vehicleId) : undefined,
+        metadata,
+      });
+
+      console.log(`[FB Lead] New lead processed: ${contactName || 'Unknown'} - ${result.success ? 'queued' : result.error}`);
+      
+      res.json({ 
+        success: result.success, 
+        message: result.success 
+          ? 'Lead received and follow-up sequence started' 
+          : result.error,
+        queueItemId: result.queueItemId 
+      });
+    } catch (error) {
+      console.error("Error processing Facebook lead:", error);
+      res.status(500).json({ error: "Failed to process Facebook lead" });
+    }
+  });
+
   // Get automation logs
   app.get("/api/automation/logs", authMiddleware, async (req, res) => {
     try {

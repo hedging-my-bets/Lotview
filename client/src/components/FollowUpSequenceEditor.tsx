@@ -48,6 +48,7 @@ const TRIGGER_TYPE_OPTIONS = [
   { value: "no_activity", label: "No Activity (Cold Lead)", description: "When a lead goes cold for a set number of days" },
   { value: "vehicle_views", label: "Vehicle Views", description: "When a customer views specific vehicles" },
   { value: "post_test_drive", label: "After Test Drive", description: "Follow up after a test drive appointment" },
+  { value: "facebook_messenger", label: "Facebook Messenger Lead", description: "When someone messages you on Facebook" },
   { value: "manual", label: "Manual Trigger", description: "Start sequence manually for specific contacts" },
 ];
 
