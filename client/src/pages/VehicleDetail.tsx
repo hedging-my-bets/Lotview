@@ -555,7 +555,7 @@ export default function VehicleDetail() {
               </div>
 
               {/* Secondary CTAs */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3 mt-3">
                 <button 
                   onClick={() => handleAction("Value Your Trade-in")} 
                   className="w-full bg-card border-2 border-border hover:border-primary text-foreground hover:text-primary py-3 rounded-lg font-bold text-sm transition flex items-center justify-center gap-2"
