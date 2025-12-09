@@ -6650,6 +6650,30 @@ Format your response in clear sections with actionable recommendations.`;
           }
         }
         
+        // Get top comparable listings (up to 10, sorted by price proximity to vehicle)
+        const comparableListings = relevantListings
+          .filter(l => l.price && l.price > 0)
+          .sort((a, b) => {
+            const diffA = Math.abs((a.price || 0) - vehiclePrice);
+            const diffB = Math.abs((b.price || 0) - vehiclePrice);
+            return diffA - diffB;
+          })
+          .slice(0, 10)
+          .map(l => ({
+            id: l.id,
+            year: l.year,
+            make: l.make,
+            model: l.model,
+            trim: l.trim,
+            price: l.price,
+            mileage: l.mileage,
+            sellerName: l.sellerName,
+            city: l.city,
+            province: l.province,
+            listingUrl: l.listingUrl,
+            daysOnMarket: l.daysOnMarket
+          }));
+
         return {
           ...vehicle,
           marketData: {
@@ -6661,6 +6685,7 @@ Format your response in clear sections with actionable recommendations.`;
             p25,
             p75
           },
+          comparableListings,
           percentilePosition,
           priceComparison
         };

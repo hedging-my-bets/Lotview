@@ -5,7 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck, ClipboardCheck, BarChart3, Bot, Clock, Sparkles, Pencil, Save, TrendingDown, Minus, ArrowUp, ArrowDown, PackageOpen, ExternalLink } from "lucide-react";
+import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck, ClipboardCheck, BarChart3, Bot, Clock, Sparkles, Pencil, Save, TrendingDown, Minus, ArrowUp, ArrowDown, PackageOpen, ExternalLink, Eye, User } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { CompetitorAlertsWidget } from "@/components/CompetitorAlertsWidget";
 import { useToast } from "@/hooks/use-toast";
 import { InventoryManagement } from "@/components/InventoryManagement";
@@ -17,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Progress } from "@/components/ui/progress";
+import { AiPromptEnhancer } from "@/components/AiPromptEnhancer";
 
 // Inventory Analysis Tab Component
 function InventoryAnalysisTab() {
@@ -290,6 +293,71 @@ function InventoryAnalysisTab() {
                       )}
                     </div>
                   </div>
+                  
+                  {/* Comparable Listings Accordion */}
+                  {vehicle.comparableListings && vehicle.comparableListings.length > 0 && (
+                    <Accordion type="single" collapsible className="mt-4 border-t pt-2">
+                      <AccordionItem value="comparables" className="border-b-0">
+                        <AccordionTrigger className="py-2 text-sm hover:no-underline" data-testid={`trigger-comparables-${vehicle.id}`}>
+                          <div className="flex items-center gap-2">
+                            <Car className="w-4 h-4 text-muted-foreground" />
+                            <span>View {vehicle.comparableListings.length} Comparable Listings</span>
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                          <div className="space-y-2 pt-2">
+                            {vehicle.comparableListings.map((comp: any) => (
+                              <div 
+                                key={comp.id} 
+                                className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-muted/50 rounded-lg gap-2"
+                                data-testid={`comparable-${comp.id}`}
+                              >
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium text-sm">
+                                      {comp.year} {comp.make} {comp.model}
+                                    </span>
+                                    {comp.trim && (
+                                      <span className="text-xs text-muted-foreground">{comp.trim}</span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
+                                    {comp.mileage && (
+                                      <span>{comp.mileage.toLocaleString()} km</span>
+                                    )}
+                                    {comp.city && comp.province && (
+                                      <span>{comp.city}, {comp.province}</span>
+                                    )}
+                                    {comp.sellerName && (
+                                      <span className="truncate max-w-[150px]">{comp.sellerName}</span>
+                                    )}
+                                    {comp.daysOnMarket && (
+                                      <span>{comp.daysOnMarket} days on market</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <span className="font-bold text-sm">{formatCurrency(comp.price)}</span>
+                                  {comp.listingUrl && (
+                                    <a 
+                                      href={comp.listingUrl} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="text-primary hover:underline text-xs flex items-center gap-1"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <ExternalLink className="w-3 h-3" />
+                                      View
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    </Accordion>
+                  )}
                 </CardContent>
               </Card>
             ))}
@@ -336,6 +404,7 @@ export default function Manager() {
     totalMessengerConversations: number;
   } | null>(null);
   const [isLoadingConversations, setIsLoadingConversations] = useState(false);
+  const [viewingConversation, setViewingConversation] = useState<any>(null);
 
   // Market pricing state
   const [pricingForm, setPricingForm] = useState({
@@ -2423,8 +2492,20 @@ export default function Manager() {
                                           📱 {chat.handoffPhone}
                                         </span>
                                       )}
+                                      <span className="text-muted-foreground">
+                                        {chat.messages?.length || 0} messages
+                                      </span>
                                     </div>
                                   </div>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setViewingConversation(chat)}
+                                    data-testid={`view-chat-${chat.id}`}
+                                  >
+                                    <Eye className="w-4 h-4 mr-1" />
+                                    View
+                                  </Button>
                                 </div>
                               </Card>
                             ))}
@@ -2518,105 +2599,126 @@ export default function Manager() {
                       <div className="h-32 bg-muted rounded animate-pulse" />
                     </div>
                   ) : chatPrompts.length > 0 ? (
-                    <div className="space-y-6">
+                    <Accordion type="single" collapsible className="space-y-3">
                       {chatPrompts.map((prompt) => (
-                        <div 
+                        <AccordionItem 
                           key={prompt.id} 
-                          className="border rounded-lg p-4"
+                          value={`prompt-${prompt.id}`}
+                          className="border rounded-lg px-4"
                           data-testid={`prompt-${prompt.scenario}`}
                         >
-                          <div className="flex items-center justify-between mb-4">
-                            <h4 className="font-semibold text-lg">{formatScenario(prompt.scenario)}</h4>
-                            {editingPromptId !== prompt.id && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => startEditingPrompt(prompt)}
-                                data-testid={`edit-prompt-${prompt.scenario}`}
-                              >
-                                <Pencil className="w-4 h-4 mr-2" />
-                                Edit
-                              </Button>
+                          <AccordionTrigger className="hover:no-underline" data-testid={`trigger-prompt-${prompt.scenario}`}>
+                            <div className="flex items-center gap-3">
+                              <Bot className="w-5 h-5 text-muted-foreground" />
+                              <span className="font-semibold text-lg">{formatScenario(prompt.scenario)}</span>
+                            </div>
+                          </AccordionTrigger>
+                          <AccordionContent className="pb-4">
+                            {editingPromptId === prompt.id ? (
+                              <div className="space-y-4">
+                                <div>
+                                  <Label htmlFor={`greeting-${prompt.id}`}>Greeting Message</Label>
+                                  <p className="text-xs text-muted-foreground mb-2">
+                                    The first message shown to customers when they open the chat
+                                  </p>
+                                  <textarea
+                                    id={`greeting-${prompt.id}`}
+                                    className="w-full min-h-[100px] p-3 border rounded-md bg-background resize-y"
+                                    value={editedPrompt.greeting}
+                                    onChange={(e) => setEditedPrompt({ ...editedPrompt, greeting: e.target.value })}
+                                    placeholder="Enter greeting message..."
+                                    data-testid={`input-greeting-${prompt.scenario}`}
+                                  />
+                                  <AiPromptEnhancer
+                                    currentText={editedPrompt.greeting}
+                                    onApply={(text) => setEditedPrompt({ ...editedPrompt, greeting: text })}
+                                    promptType="greeting"
+                                    context={prompt.scenario}
+                                    disabled={isSavingPrompt}
+                                    dealershipId={user?.dealershipId}
+                                  />
+                                </div>
+                                <div>
+                                  <Label htmlFor={`system-${prompt.id}`}>System Instructions</Label>
+                                  <p className="text-xs text-muted-foreground mb-2">
+                                    Background instructions that guide the AI's behavior and responses
+                                  </p>
+                                  <textarea
+                                    id={`system-${prompt.id}`}
+                                    className="w-full min-h-[200px] p-3 border rounded-md bg-background resize-y font-mono text-sm"
+                                    value={editedPrompt.systemPrompt}
+                                    onChange={(e) => setEditedPrompt({ ...editedPrompt, systemPrompt: e.target.value })}
+                                    placeholder="Enter system instructions..."
+                                    data-testid={`input-system-${prompt.scenario}`}
+                                  />
+                                  <AiPromptEnhancer
+                                    currentText={editedPrompt.systemPrompt}
+                                    onApply={(text) => setEditedPrompt({ ...editedPrompt, systemPrompt: text })}
+                                    promptType="system"
+                                    context={prompt.scenario}
+                                    disabled={isSavingPrompt}
+                                    dealershipId={user?.dealershipId}
+                                  />
+                                </div>
+                                <div className="flex gap-2 pt-2">
+                                  <Button
+                                    onClick={() => savePrompt(prompt)}
+                                    disabled={isSavingPrompt || !editedPrompt.greeting.trim() || !editedPrompt.systemPrompt.trim()}
+                                    data-testid={`save-prompt-${prompt.scenario}`}
+                                  >
+                                    {isSavingPrompt ? (
+                                      <>
+                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                                        Saving...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Save className="w-4 h-4 mr-2" />
+                                        Save Changes
+                                      </>
+                                    )}
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    onClick={cancelEditingPrompt}
+                                    disabled={isSavingPrompt}
+                                    data-testid={`cancel-prompt-${prompt.scenario}`}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="space-y-4">
+                                <div className="flex justify-end">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => startEditingPrompt(prompt)}
+                                    data-testid={`edit-prompt-${prompt.scenario}`}
+                                  >
+                                    <Pencil className="w-4 h-4 mr-2" />
+                                    Edit
+                                  </Button>
+                                </div>
+                                <div>
+                                  <p className="text-sm font-medium text-muted-foreground mb-1">Greeting:</p>
+                                  <p className="text-sm bg-muted/50 p-3 rounded-md whitespace-pre-wrap">
+                                    {prompt.greeting}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-sm font-medium text-muted-foreground mb-1">System Instructions:</p>
+                                  <p className="text-xs bg-muted/50 p-3 rounded-md font-mono whitespace-pre-wrap max-h-[150px] overflow-y-auto">
+                                    {prompt.systemPrompt}
+                                  </p>
+                                </div>
+                              </div>
                             )}
-                          </div>
-                          
-                          {editingPromptId === prompt.id ? (
-                            <div className="space-y-4">
-                              <div>
-                                <Label htmlFor={`greeting-${prompt.id}`}>Greeting Message</Label>
-                                <p className="text-xs text-muted-foreground mb-2">
-                                  The first message shown to customers when they open the chat
-                                </p>
-                                <textarea
-                                  id={`greeting-${prompt.id}`}
-                                  className="w-full min-h-[100px] p-3 border rounded-md bg-background resize-y"
-                                  value={editedPrompt.greeting}
-                                  onChange={(e) => setEditedPrompt({ ...editedPrompt, greeting: e.target.value })}
-                                  placeholder="Enter greeting message..."
-                                  data-testid={`input-greeting-${prompt.scenario}`}
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor={`system-${prompt.id}`}>System Instructions</Label>
-                                <p className="text-xs text-muted-foreground mb-2">
-                                  Background instructions that guide the AI's behavior and responses
-                                </p>
-                                <textarea
-                                  id={`system-${prompt.id}`}
-                                  className="w-full min-h-[200px] p-3 border rounded-md bg-background resize-y font-mono text-sm"
-                                  value={editedPrompt.systemPrompt}
-                                  onChange={(e) => setEditedPrompt({ ...editedPrompt, systemPrompt: e.target.value })}
-                                  placeholder="Enter system instructions..."
-                                  data-testid={`input-system-${prompt.scenario}`}
-                                />
-                              </div>
-                              <div className="flex gap-2 pt-2">
-                                <Button
-                                  onClick={() => savePrompt(prompt)}
-                                  disabled={isSavingPrompt || !editedPrompt.greeting.trim() || !editedPrompt.systemPrompt.trim()}
-                                  data-testid={`save-prompt-${prompt.scenario}`}
-                                >
-                                  {isSavingPrompt ? (
-                                    <>
-                                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                                      Saving...
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Save className="w-4 h-4 mr-2" />
-                                      Save Changes
-                                    </>
-                                  )}
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  onClick={cancelEditingPrompt}
-                                  disabled={isSavingPrompt}
-                                  data-testid={`cancel-prompt-${prompt.scenario}`}
-                                >
-                                  Cancel
-                                </Button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="space-y-4">
-                              <div>
-                                <p className="text-sm font-medium text-muted-foreground mb-1">Greeting:</p>
-                                <p className="text-sm bg-muted/50 p-3 rounded-md whitespace-pre-wrap">
-                                  {prompt.greeting}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-sm font-medium text-muted-foreground mb-1">System Instructions:</p>
-                                <p className="text-xs bg-muted/50 p-3 rounded-md font-mono whitespace-pre-wrap max-h-[150px] overflow-y-auto">
-                                  {prompt.systemPrompt}
-                                </p>
-                              </div>
-                            </div>
-                          )}
-                        </div>
+                          </AccordionContent>
+                        </AccordionItem>
                       ))}
-                    </div>
+                    </Accordion>
                   ) : (
                     <div className="text-center py-8 text-muted-foreground">
                       <MessageSquare className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
@@ -2779,6 +2881,93 @@ export default function Manager() {
           </Card>
         </div>
       </div>
+
+      {/* Conversation Viewer Dialog */}
+      <Dialog open={!!viewingConversation} onOpenChange={() => setViewingConversation(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5" />
+              Conversation Details
+            </DialogTitle>
+          </DialogHeader>
+          {viewingConversation && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Type:</span>{" "}
+                  <Badge variant="outline">
+                    {viewingConversation.category?.replace('-', ' ') || 'General'}
+                  </Badge>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Date:</span>{" "}
+                  {new Date(viewingConversation.createdAt).toLocaleString('en-CA', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
+                </div>
+                {viewingConversation.vehicleName && (
+                  <div className="col-span-2">
+                    <span className="text-muted-foreground">Vehicle:</span>{" "}
+                    <span className="font-medium">{viewingConversation.vehicleName}</span>
+                  </div>
+                )}
+                {viewingConversation.handoffPhone && (
+                  <div className="col-span-2">
+                    <span className="text-muted-foreground">Customer Phone:</span>{" "}
+                    <span className="font-medium">{viewingConversation.handoffPhone}</span>
+                    {viewingConversation.handoffSent && (
+                      <Badge className="ml-2 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
+                        Sent to CRM
+                      </Badge>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <ScrollArea className="h-[400px] rounded-md border p-4">
+                <div className="space-y-4">
+                  {viewingConversation.messages?.map((msg: any, idx: number) => (
+                    <div
+                      key={idx}
+                      className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                    >
+                      {msg.role === "assistant" && (
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                          <Bot className="h-4 w-4 text-primary" />
+                        </div>
+                      )}
+                      <div
+                        className={`max-w-[80%] rounded-lg px-4 py-2 ${
+                          msg.role === "user"
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted"
+                        }`}
+                      >
+                        <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                      </div>
+                      {msg.role === "user" && (
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center">
+                          <User className="h-4 w-4 text-primary-foreground" />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {(!viewingConversation.messages || viewingConversation.messages.length === 0) && (
+                    <div className="text-center text-muted-foreground py-8">
+                      No messages in this conversation
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
