@@ -463,6 +463,7 @@ export interface IStorage {
   // PBS Appointment Cache (Multi-Tenant)
   getPbsAppointmentByPbsId(dealershipId: number, pbsAppointmentId: string): Promise<PbsAppointmentCache | undefined>;
   getPbsAppointmentsByContact(dealershipId: number, pbsContactId: string): Promise<PbsAppointmentCache[]>;
+  getUpcomingPbsAppointments(dealershipId: number, hoursAhead?: number): Promise<PbsAppointmentCache[]>;
   createPbsAppointmentCache(appointment: InsertPbsAppointmentCache): Promise<PbsAppointmentCache>;
   updatePbsAppointmentCache(id: number, dealershipId: number, appointment: Partial<InsertPbsAppointmentCache>): Promise<PbsAppointmentCache | undefined>;
   deleteExpiredPbsAppointmentCache(dealershipId: number): Promise<number>;
@@ -641,6 +642,7 @@ export interface IStorage {
   getAppointmentRemindersByAppointment(dealershipId: number, appointmentId: string): Promise<AppointmentReminder[]>;
   createAppointmentReminder(reminder: InsertAppointmentReminder): Promise<AppointmentReminder>;
   updateAppointmentReminder(id: number, dealershipId: number, reminder: Partial<InsertAppointmentReminder>): Promise<AppointmentReminder | undefined>;
+  lockAppointmentReminderForProcessing(id: number, dealershipId: number): Promise<AppointmentReminder | undefined>;
   deleteAppointmentReminder(id: number, dealershipId: number): Promise<boolean>;
 }
 
@@ -2324,6 +2326,22 @@ export class DatabaseStorage implements IStorage {
         gt(pbsAppointmentCache.expiresAt, new Date())
       ))
       .orderBy(desc(pbsAppointmentCache.scheduledDate));
+  }
+
+  async getUpcomingPbsAppointments(dealershipId: number, hoursAhead: number = 48): Promise<PbsAppointmentCache[]> {
+    const now = new Date();
+    const futureLimit = new Date(now.getTime() + hoursAhead * 60 * 60 * 1000);
+    
+    return await db
+      .select()
+      .from(pbsAppointmentCache)
+      .where(and(
+        eq(pbsAppointmentCache.dealershipId, dealershipId),
+        gte(pbsAppointmentCache.scheduledDate, now),
+        lte(pbsAppointmentCache.scheduledDate, futureLimit),
+        gt(pbsAppointmentCache.expiresAt, now)
+      ))
+      .orderBy(pbsAppointmentCache.scheduledDate);
   }
 
   async createPbsAppointmentCache(appointment: InsertPbsAppointmentCache): Promise<PbsAppointmentCache> {
@@ -4178,6 +4196,18 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(appointmentReminders.id, id),
         eq(appointmentReminders.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+  
+  async lockAppointmentReminderForProcessing(id: number, dealershipId: number): Promise<AppointmentReminder | undefined> {
+    const result = await db.update(appointmentReminders)
+      .set({ status: 'processing', updatedAt: new Date() })
+      .where(and(
+        eq(appointmentReminders.id, id),
+        eq(appointmentReminders.dealershipId, dealershipId),
+        eq(appointmentReminders.status, 'pending')
       ))
       .returning();
     return result[0];

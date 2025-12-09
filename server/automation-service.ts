@@ -5,7 +5,9 @@ import type {
   FollowUpQueue, 
   InsertFollowUpQueue,
   InsertAutomationLog,
-  Dealership 
+  Dealership,
+  AppointmentReminder,
+  PbsAppointmentCache
 } from "@shared/schema";
 
 interface SequenceStep {
@@ -383,10 +385,307 @@ export class AutomationService {
       console.error('[Automation] Failed to log action:', error);
     }
   }
+
+  async scanAndCreateAppointmentReminders(): Promise<{ created24h: number; created2h: number }> {
+    console.log(`[Automation] Scanning PBS appointments for reminders - dealership ${this.dealershipId}`);
+
+    const now = new Date();
+    
+    let created24h = 0;
+    let created2h = 0;
+
+    try {
+      const upcomingAppointments = await storage.getUpcomingPbsAppointments(this.dealershipId, 48);
+      
+      if (upcomingAppointments.length === 0) {
+        console.log(`[Automation] No upcoming PBS appointments for dealership ${this.dealershipId}`);
+        return { created24h: 0, created2h: 0 };
+      }
+
+      console.log(`[Automation] Found ${upcomingAppointments.length} upcoming appointments`);
+
+      for (const appointment of upcomingAppointments) {
+        if (!appointment.scheduledDate) continue;
+
+        const appointmentTime = new Date(appointment.scheduledDate);
+
+        let payload: Record<string, unknown> = {};
+        try {
+          payload = JSON.parse(appointment.payload);
+        } catch {}
+
+        const contactName = (payload.contactName as string) || (payload.firstName as string) || 'Customer';
+        const rawPhone = (payload.contactPhone as string) || (payload.phone as string) || (payload.cellPhone as string);
+        const contactPhone = this.normalizePhoneNumber(rawPhone);
+
+        if (!contactPhone) {
+          console.log(`[Automation] Skipping appointment ${appointment.pbsAppointmentId} - no valid phone number`);
+          continue;
+        }
+
+        const existingReminders = await storage.getAppointmentRemindersByAppointment(
+          this.dealershipId, 
+          appointment.pbsAppointmentId
+        );
+
+        const has24hReminder = existingReminders.some(r => r.reminderType === '24h');
+        const has2hReminder = existingReminders.some(r => r.reminderType === '2h');
+
+        const scheduled24hSendAt = new Date(appointmentTime.getTime() - 24 * 60 * 60 * 1000);
+        const scheduled2hSendAt = new Date(appointmentTime.getTime() - 2 * 60 * 60 * 1000);
+
+        if (!has24hReminder && scheduled24hSendAt > now) {
+          await storage.createAppointmentReminder({
+            dealershipId: this.dealershipId,
+            appointmentSource: 'pbs',
+            appointmentId: appointment.pbsAppointmentId,
+            appointmentType: appointment.appointmentType || 'other',
+            appointmentTime: appointmentTime,
+            contactId: appointment.pbsContactId || null,
+            contactName: contactName,
+            contactPhone: contactPhone,
+            reminderType: '24h',
+            reminderMinutesBefore: 24 * 60,
+            scheduledSendAt: scheduled24hSendAt,
+            status: 'pending',
+          });
+          created24h++;
+          console.log(`[Automation] Created 24h reminder for appointment ${appointment.pbsAppointmentId}`);
+        }
+
+        if (!has2hReminder && scheduled2hSendAt > now) {
+          await storage.createAppointmentReminder({
+            dealershipId: this.dealershipId,
+            appointmentSource: 'pbs',
+            appointmentId: appointment.pbsAppointmentId,
+            appointmentType: appointment.appointmentType || 'other',
+            appointmentTime: appointmentTime,
+            contactId: appointment.pbsContactId || null,
+            contactName: contactName,
+            contactPhone: contactPhone,
+            reminderType: '2h',
+            reminderMinutesBefore: 2 * 60,
+            scheduledSendAt: scheduled2hSendAt,
+            status: 'pending',
+          });
+          created2h++;
+          console.log(`[Automation] Created 2h reminder for appointment ${appointment.pbsAppointmentId}`);
+        }
+      }
+
+      console.log(`[Automation] Created ${created24h} 24h reminders and ${created2h} 2h reminders`);
+      return { created24h, created2h };
+
+    } catch (error) {
+      console.error(`[Automation] Error scanning appointments:`, error);
+      return { created24h, created2h };
+    }
+  }
+
+  private normalizePhoneNumber(phone: string | undefined | null): string | null {
+    if (!phone) return null;
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length === 10) {
+      return `+1${digits}`;
+    } else if (digits.length === 11 && digits.startsWith('1')) {
+      return `+${digits}`;
+    } else if (digits.length > 10) {
+      return `+${digits}`;
+    }
+    return null;
+  }
+
+  async processDueAppointmentReminders(): Promise<{ processed: number; successful: number; failed: number }> {
+    console.log(`[Automation] Processing due appointment reminders for dealership ${this.dealershipId}`);
+
+    const dueReminders = await storage.getDueAppointmentReminders(this.dealershipId, 50);
+    
+    if (dueReminders.length === 0) {
+      console.log(`[Automation] No due appointment reminders for dealership ${this.dealershipId}`);
+      return { processed: 0, successful: 0, failed: 0 };
+    }
+
+    console.log(`[Automation] Found ${dueReminders.length} due appointment reminders`);
+
+    const dealership = await storage.getDealership(this.dealershipId);
+    const dealershipName = dealership?.name || 'Your Dealership';
+
+    let successful = 0;
+    let failed = 0;
+
+    for (const reminder of dueReminders) {
+      try {
+        const lockResult = await storage.lockAppointmentReminderForProcessing(reminder.id, this.dealershipId);
+        
+        if (!lockResult) {
+          console.log(`[Automation] Reminder ${reminder.id} already being processed or not pending, skipping`);
+          continue;
+        }
+
+        const result = await this.sendAppointmentReminder(reminder, dealershipName);
+        if (result.success) {
+          successful++;
+        } else {
+          failed++;
+        }
+      } catch (error) {
+        failed++;
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        console.error(`[Automation] Error processing reminder ${reminder.id}:`, error);
+        
+        try {
+          await storage.updateAppointmentReminder(reminder.id, this.dealershipId, {
+            status: 'failed',
+            errorMessage,
+          });
+        } catch (e) {
+          console.error(`[Automation] Failed to update reminder ${reminder.id} to failed:`, e);
+        }
+      }
+    }
+
+    console.log(`[Automation] Reminders completed: ${successful} successful, ${failed} failed`);
+    return { processed: dueReminders.length, successful, failed };
+  }
+
+  private async sendAppointmentReminder(
+    reminder: AppointmentReminder, 
+    dealershipName: string
+  ): Promise<{ success: boolean; error?: string }> {
+    if (!reminder.contactPhone) {
+      try {
+        await storage.updateAppointmentReminder(reminder.id, this.dealershipId, {
+          status: 'failed',
+          errorMessage: 'No phone number available',
+        });
+      } catch (e) {
+        console.error(`[Automation] Failed to update reminder ${reminder.id}:`, e);
+      }
+      return { success: false, error: 'No phone number' };
+    }
+
+    let ghlContactId = reminder.contactId;
+
+    if (!ghlContactId) {
+      const searchResult = await this.ghlService.searchContacts({ phone: reminder.contactPhone });
+      if (searchResult.success && searchResult.data?.contacts?.length) {
+        ghlContactId = searchResult.data.contacts[0].id;
+      } else {
+        const createResult = await this.ghlService.createContact({
+          firstName: reminder.contactName?.split(' ')[0] || 'Customer',
+          lastName: reminder.contactName?.split(' ').slice(1).join(' ') || '',
+          phone: reminder.contactPhone,
+          source: 'Lotview Appointment Reminder',
+        });
+        
+        if (createResult.success && createResult.data) {
+          ghlContactId = createResult.data.id;
+        } else {
+          try {
+            await storage.updateAppointmentReminder(reminder.id, this.dealershipId, {
+              status: 'failed',
+              errorMessage: 'Failed to create GHL contact',
+            });
+          } catch (e) {
+            console.error(`[Automation] Failed to update reminder ${reminder.id}:`, e);
+          }
+          return { success: false, error: 'Failed to create GHL contact' };
+        }
+      }
+    }
+
+    const message = this.formatReminderMessage(reminder, dealershipName);
+
+    const sendResult = await this.sendSMS(ghlContactId, message);
+
+    if (sendResult.success) {
+      try {
+        await storage.updateAppointmentReminder(reminder.id, this.dealershipId, {
+          status: 'sent',
+          sentAt: new Date(),
+          ghlMessageId: sendResult.data?.messageId || null,
+          contactId: ghlContactId,
+        });
+      } catch (e) {
+        console.error(`[Automation] Failed to update reminder ${reminder.id} to sent:`, e);
+      }
+
+      await this.logAction({
+        dealershipId: this.dealershipId,
+        automationType: 'appointment_reminder',
+        actionType: 'sent',
+        sourceTable: 'appointment_reminders',
+        sourceId: reminder.id,
+        contactId: ghlContactId,
+        contactName: reminder.contactName || undefined,
+        contactPhone: reminder.contactPhone || undefined,
+        messageType: 'sms',
+        messageContent: message.substring(0, 500),
+        success: true,
+        externalId: sendResult.data?.messageId || undefined,
+      });
+
+      return { success: true };
+    } else {
+      try {
+        await storage.updateAppointmentReminder(reminder.id, this.dealershipId, {
+          status: 'failed',
+          errorMessage: sendResult.error,
+        });
+      } catch (e) {
+        console.error(`[Automation] Failed to update reminder ${reminder.id} to failed:`, e);
+      }
+
+      await this.logAction({
+        dealershipId: this.dealershipId,
+        automationType: 'appointment_reminder',
+        actionType: 'failed',
+        sourceTable: 'appointment_reminders',
+        sourceId: reminder.id,
+        contactId: ghlContactId || undefined,
+        contactName: reminder.contactName || undefined,
+        contactPhone: reminder.contactPhone || undefined,
+        messageType: 'sms',
+        messageContent: message.substring(0, 500),
+        success: false,
+        errorMessage: sendResult.error,
+      });
+
+      return { success: false, error: sendResult.error };
+    }
+  }
+
+  private formatReminderMessage(reminder: AppointmentReminder, dealershipName: string): string {
+    const firstName = reminder.contactName?.split(' ')[0] || 'there';
+    const appointmentTime = new Date(reminder.appointmentTime);
+    
+    const timeStr = appointmentTime.toLocaleTimeString('en-US', { 
+      hour: 'numeric', 
+      minute: '2-digit',
+      hour12: true 
+    });
+    const dateStr = appointmentTime.toLocaleDateString('en-US', { 
+      weekday: 'long',
+      month: 'long', 
+      day: 'numeric' 
+    });
+
+    const appointmentLabel = reminder.appointmentType === 'service' 
+      ? 'service appointment' 
+      : reminder.appointmentType === 'sales' 
+        ? 'sales appointment'
+        : 'appointment';
+
+    if (reminder.reminderType === '24h') {
+      return `Hi ${firstName}! This is a friendly reminder from ${dealershipName} about your ${appointmentLabel} tomorrow, ${dateStr} at ${timeStr}. We look forward to seeing you! Reply STOP to opt out.`;
+    } else {
+      return `Hi ${firstName}! Just a reminder that your ${appointmentLabel} at ${dealershipName} is coming up in about 2 hours (${timeStr}). See you soon! Reply STOP to opt out.`;
+    }
+  }
 }
 
 export async function processAllDealershipFollowUps(): Promise<void> {
-  console.log('[Automation] Starting follow-up processing for all dealerships');
+  console.log('[Automation] Starting automation processing for all dealerships');
   
   const dealerships = await storage.getAllDealerships();
   
@@ -395,13 +694,18 @@ export async function processAllDealershipFollowUps(): Promise<void> {
 
     try {
       const automation = new AutomationService(dealership.id);
+      
       await automation.processDueFollowUps();
+      
+      await automation.scanAndCreateAppointmentReminders();
+      await automation.processDueAppointmentReminders();
+      
     } catch (error) {
       console.error(`[Automation] Error processing dealership ${dealership.id}:`, error);
     }
   }
 
-  console.log('[Automation] Completed follow-up processing for all dealerships');
+  console.log('[Automation] Completed automation processing for all dealerships');
 }
 
 export function createAutomationService(dealershipId: number): AutomationService {
