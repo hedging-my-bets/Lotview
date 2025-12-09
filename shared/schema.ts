@@ -1687,3 +1687,225 @@ export const insertAppointmentReminderSchema = createInsertSchema(appointmentRem
 
 export type InsertAppointmentReminder = z.infer<typeof insertAppointmentReminderSchema>;
 export type AppointmentReminder = typeof appointmentReminders.$inferSelect;
+
+// ====== SEQUENCE ANALYTICS & RE-ENGAGEMENT TABLES ======
+
+// Sequence executions - Track each time a sequence is run for a contact
+export const sequenceExecutions = pgTable("sequence_executions", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  sequenceId: integer("sequence_id").notNull().references(() => followUpSequences.id, { onDelete: 'cascade' }),
+  // Contact info
+  contactId: text("contact_id"), // GHL contact ID
+  contactName: text("contact_name"),
+  contactPhone: text("contact_phone"),
+  contactEmail: text("contact_email"),
+  // Trigger info
+  triggerType: text("trigger_type").notNull(), // 'chat_ended', 'no_activity', 'vehicle_views', 'reengagement', 'manual'
+  triggerSource: text("trigger_source"), // What triggered it (vehicle ID, chat ID, etc.)
+  vehicleId: integer("vehicle_id").references(() => vehicles.id, { onDelete: 'set null' }),
+  // Progress
+  currentStep: integer("current_step").notNull().default(1),
+  totalSteps: integer("total_steps").notNull(),
+  status: text("status").notNull().default('active'), // 'active', 'completed', 'converted', 'unsubscribed', 'failed'
+  // Outcome tracking
+  messagesDelivered: integer("messages_delivered").notNull().default(0),
+  messagesOpened: integer("messages_opened").notNull().default(0),
+  responsesReceived: integer("responses_received").notNull().default(0),
+  appointmentsBooked: integer("appointments_booked").notNull().default(0),
+  // Timestamps
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+  lastActivityAt: timestamp("last_activity_at").defaultNow().notNull(),
+});
+
+export const insertSequenceExecutionSchema = createInsertSchema(sequenceExecutions).omit({
+  id: true,
+  startedAt: true,
+});
+
+export type InsertSequenceExecution = z.infer<typeof insertSequenceExecutionSchema>;
+export type SequenceExecution = typeof sequenceExecutions.$inferSelect;
+
+// Sequence messages - Track each individual message sent in a sequence
+export const sequenceMessages = pgTable("sequence_messages", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  executionId: integer("execution_id").notNull().references(() => sequenceExecutions.id, { onDelete: 'cascade' }),
+  sequenceId: integer("sequence_id").notNull().references(() => followUpSequences.id, { onDelete: 'cascade' }),
+  stepNumber: integer("step_number").notNull(),
+  // Message details
+  messageType: text("message_type").notNull(), // 'sms', 'email'
+  messageContent: text("message_content").notNull(),
+  recipientPhone: text("recipient_phone"),
+  recipientEmail: text("recipient_email"),
+  // Delivery status
+  status: text("status").notNull().default('pending'), // 'pending', 'sent', 'delivered', 'opened', 'clicked', 'replied', 'failed', 'bounced'
+  externalMessageId: text("external_message_id"), // GHL/Twilio message ID
+  // Engagement tracking
+  deliveredAt: timestamp("delivered_at"),
+  openedAt: timestamp("opened_at"),
+  clickedAt: timestamp("clicked_at"),
+  repliedAt: timestamp("replied_at"),
+  // Error tracking
+  errorMessage: text("error_message"),
+  retryCount: integer("retry_count").notNull().default(0),
+  // Timestamps
+  scheduledAt: timestamp("scheduled_at").notNull(),
+  sentAt: timestamp("sent_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSequenceMessageSchema = createInsertSchema(sequenceMessages).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertSequenceMessage = z.infer<typeof insertSequenceMessageSchema>;
+export type SequenceMessage = typeof sequenceMessages.$inferSelect;
+
+// Sequence conversions - Track conversions attributed to sequences
+export const sequenceConversions = pgTable("sequence_conversions", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  executionId: integer("execution_id").notNull().references(() => sequenceExecutions.id, { onDelete: 'cascade' }),
+  sequenceId: integer("sequence_id").notNull().references(() => followUpSequences.id, { onDelete: 'cascade' }),
+  // What triggered the conversion
+  triggerMessageId: integer("trigger_message_id").references(() => sequenceMessages.id, { onDelete: 'set null' }),
+  // Conversion details
+  conversionType: text("conversion_type").notNull(), // 'response', 'appointment', 'test_drive', 'sale', 'lead_qualified'
+  conversionValue: integer("conversion_value"), // Monetary value in cents if applicable
+  // Contact at time of conversion
+  contactId: text("contact_id"),
+  contactName: text("contact_name"),
+  // Related records
+  vehicleId: integer("vehicle_id").references(() => vehicles.id, { onDelete: 'set null' }),
+  appointmentId: text("appointment_id"), // External appointment ID
+  // Attribution
+  attributionWindow: integer("attribution_window").notNull().default(7), // Days since last message
+  stepThatConverted: integer("step_that_converted"), // Which step led to conversion
+  // Timestamps
+  convertedAt: timestamp("converted_at").defaultNow().notNull(),
+});
+
+export const insertSequenceConversionSchema = createInsertSchema(sequenceConversions).omit({
+  id: true,
+});
+
+export type InsertSequenceConversion = z.infer<typeof insertSequenceConversionSchema>;
+export type SequenceConversion = typeof sequenceConversions.$inferSelect;
+
+// Contact activity - Track last activity per contact for re-engagement campaigns
+export const contactActivity = pgTable("contact_activity", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  // Contact identification
+  contactId: text("contact_id"), // GHL/PBS contact ID
+  contactName: text("contact_name").notNull(),
+  contactPhone: text("contact_phone"),
+  contactEmail: text("contact_email"),
+  // Source of contact
+  source: text("source").notNull(), // 'pbs', 'ghl', 'chat', 'vehicle_view', 'manual'
+  sourceId: text("source_id"), // External ID from source
+  // Activity tracking
+  lastActivityType: text("last_activity_type").notNull(), // 'vehicle_view', 'chat', 'appointment', 'service', 'purchase', 'message_reply'
+  lastActivityAt: timestamp("last_activity_at").notNull(),
+  lastVehicleViewed: integer("last_vehicle_viewed").references(() => vehicles.id, { onDelete: 'set null' }),
+  totalVehicleViews: integer("total_vehicle_views").notNull().default(0),
+  totalChatSessions: integer("total_chat_sessions").notNull().default(0),
+  totalAppointments: integer("total_appointments").notNull().default(0),
+  // Engagement score (calculated)
+  engagementScore: integer("engagement_score").notNull().default(0), // 0-100 based on activity
+  // Re-engagement status
+  reengagementStatus: text("reengagement_status").notNull().default('active'), // 'active', 'cold', 'reengaged', 'unsubscribed', 'purchased'
+  lastReengagementAt: timestamp("last_reengagement_at"),
+  reengagementCount: integer("reengagement_count").notNull().default(0),
+  // Timestamps
+  firstSeenAt: timestamp("first_seen_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertContactActivitySchema = createInsertSchema(contactActivity).omit({
+  id: true,
+  firstSeenAt: true,
+  updatedAt: true,
+});
+
+export type InsertContactActivity = z.infer<typeof insertContactActivitySchema>;
+export type ContactActivity = typeof contactActivity.$inferSelect;
+
+// Re-engagement campaigns - Track monthly automated outreach to cold contacts
+export const reengagementCampaigns = pgTable("reengagement_campaigns", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  name: text("name").notNull(), // e.g., "December 2024 Win-Back"
+  // Configuration
+  inactiveDaysThreshold: integer("inactive_days_threshold").notNull().default(90), // Contact inactive for X days
+  sequenceId: integer("sequence_id").references(() => followUpSequences.id, { onDelete: 'set null' }), // Which sequence to use
+  targetAudience: text("target_audience").notNull().default('all'), // 'all', 'vehicle_viewers', 'chat_contacts', 'past_customers'
+  maxContactsPerRun: integer("max_contacts_per_run").notNull().default(50), // Rate limit
+  // Scheduling
+  isActive: boolean("is_active").notNull().default(true),
+  runFrequency: text("run_frequency").notNull().default('daily'), // 'daily', 'weekly', 'monthly'
+  lastRunAt: timestamp("last_run_at"),
+  nextRunAt: timestamp("next_run_at"),
+  // Stats
+  totalContactsTargeted: integer("total_contacts_targeted").notNull().default(0),
+  totalContactsReengaged: integer("total_contacts_reengaged").notNull().default(0),
+  totalResponses: integer("total_responses").notNull().default(0),
+  totalConversions: integer("total_conversions").notNull().default(0),
+  // Timestamps
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertReengagementCampaignSchema = createInsertSchema(reengagementCampaigns).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertReengagementCampaign = z.infer<typeof insertReengagementCampaignSchema>;
+export type ReengagementCampaign = typeof reengagementCampaigns.$inferSelect;
+
+// Sequence analytics aggregates - Pre-computed daily stats for dashboard performance
+export const sequenceAnalytics = pgTable("sequence_analytics", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  sequenceId: integer("sequence_id").notNull().references(() => followUpSequences.id, { onDelete: 'cascade' }),
+  // Date for aggregation
+  date: timestamp("date").notNull(),
+  // Execution metrics
+  executionsStarted: integer("executions_started").notNull().default(0),
+  executionsCompleted: integer("executions_completed").notNull().default(0),
+  executionsConverted: integer("executions_converted").notNull().default(0),
+  // Message metrics
+  messagesSent: integer("messages_sent").notNull().default(0),
+  messagesDelivered: integer("messages_delivered").notNull().default(0),
+  messagesOpened: integer("messages_opened").notNull().default(0),
+  messagesClicked: integer("messages_clicked").notNull().default(0),
+  messagesReplied: integer("messages_replied").notNull().default(0),
+  messagesFailed: integer("messages_failed").notNull().default(0),
+  // Conversion metrics
+  responsesReceived: integer("responses_received").notNull().default(0),
+  appointmentsBooked: integer("appointments_booked").notNull().default(0),
+  testDrivesScheduled: integer("test_drives_scheduled").notNull().default(0),
+  salesCompleted: integer("sales_completed").notNull().default(0),
+  totalConversionValue: integer("total_conversion_value").notNull().default(0), // In cents
+  // Rates (stored as percentages * 100 for precision)
+  deliveryRate: integer("delivery_rate"), // messagesDelivered / messagesSent * 10000
+  openRate: integer("open_rate"), // messagesOpened / messagesDelivered * 10000
+  clickRate: integer("click_rate"), // messagesClicked / messagesOpened * 10000
+  replyRate: integer("reply_rate"), // messagesReplied / messagesDelivered * 10000
+  conversionRate: integer("conversion_rate"), // executionsConverted / executionsStarted * 10000
+  // Timestamps
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSequenceAnalyticsSchema = createInsertSchema(sequenceAnalytics).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertSequenceAnalytics = z.infer<typeof insertSequenceAnalyticsSchema>;
+export type SequenceAnalytics = typeof sequenceAnalytics.$inferSelect;

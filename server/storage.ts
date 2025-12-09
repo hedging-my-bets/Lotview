@@ -179,7 +179,25 @@ import {
   type InsertAutomationLog,
   appointmentReminders,
   type AppointmentReminder,
-  type InsertAppointmentReminder
+  type InsertAppointmentReminder,
+  sequenceExecutions,
+  type SequenceExecution,
+  type InsertSequenceExecution,
+  sequenceMessages,
+  type SequenceMessage,
+  type InsertSequenceMessage,
+  sequenceConversions,
+  type SequenceConversion,
+  type InsertSequenceConversion,
+  contactActivity,
+  type ContactActivity,
+  type InsertContactActivity,
+  reengagementCampaigns,
+  type ReengagementCampaign,
+  type InsertReengagementCampaign,
+  sequenceAnalytics,
+  type SequenceAnalytics,
+  type InsertSequenceAnalytics
 } from "@shared/schema";
 import { eq, desc, sql, and, gte, lte, lt, gt, inArray, or, ilike } from "drizzle-orm";
 
@@ -645,6 +663,55 @@ export interface IStorage {
   updateAppointmentReminder(id: number, dealershipId: number, reminder: Partial<InsertAppointmentReminder>): Promise<AppointmentReminder | undefined>;
   lockAppointmentReminderForProcessing(id: number, dealershipId: number): Promise<AppointmentReminder | undefined>;
   deleteAppointmentReminder(id: number, dealershipId: number): Promise<boolean>;
+  
+  // ====== SEQUENCE ANALYTICS & RE-ENGAGEMENT ======
+  // Sequence Executions
+  getSequenceExecutions(dealershipId: number, sequenceId?: number, status?: string, limit?: number): Promise<SequenceExecution[]>;
+  getSequenceExecutionById(id: number, dealershipId: number): Promise<SequenceExecution | undefined>;
+  getActiveExecutionsByContact(dealershipId: number, contactPhone: string): Promise<SequenceExecution[]>;
+  createSequenceExecution(execution: InsertSequenceExecution): Promise<SequenceExecution>;
+  updateSequenceExecution(id: number, dealershipId: number, execution: Partial<InsertSequenceExecution>): Promise<SequenceExecution | undefined>;
+  incrementExecutionMetric(id: number, dealershipId: number, metric: 'messagesDelivered' | 'messagesOpened' | 'responsesReceived' | 'appointmentsBooked'): Promise<void>;
+  
+  // Sequence Messages
+  getSequenceMessages(dealershipId: number, executionId: number): Promise<SequenceMessage[]>;
+  getSequenceMessageById(id: number, dealershipId: number): Promise<SequenceMessage | undefined>;
+  getPendingSequenceMessages(dealershipId: number, limit?: number): Promise<SequenceMessage[]>;
+  createSequenceMessage(message: InsertSequenceMessage): Promise<SequenceMessage>;
+  updateSequenceMessage(id: number, dealershipId: number, message: Partial<InsertSequenceMessage>): Promise<SequenceMessage | undefined>;
+  
+  // Sequence Conversions
+  getSequenceConversions(dealershipId: number, sequenceId?: number, startDate?: Date, endDate?: Date): Promise<SequenceConversion[]>;
+  createSequenceConversion(conversion: InsertSequenceConversion): Promise<SequenceConversion>;
+  
+  // Contact Activity
+  getContactActivity(dealershipId: number, contactPhone?: string, contactEmail?: string): Promise<ContactActivity | undefined>;
+  getInactiveContacts(dealershipId: number, inactiveDays: number, limit?: number): Promise<ContactActivity[]>;
+  getAllContactActivity(dealershipId: number, limit?: number, offset?: number): Promise<{ contacts: ContactActivity[]; total: number }>;
+  upsertContactActivity(activity: InsertContactActivity): Promise<ContactActivity>;
+  updateContactActivity(id: number, dealershipId: number, activity: Partial<InsertContactActivity>): Promise<ContactActivity | undefined>;
+  
+  // Re-engagement Campaigns
+  getReengagementCampaigns(dealershipId: number): Promise<ReengagementCampaign[]>;
+  getActiveReengagementCampaigns(dealershipId: number): Promise<ReengagementCampaign[]>;
+  getReengagementCampaignById(id: number, dealershipId: number): Promise<ReengagementCampaign | undefined>;
+  getDueReengagementCampaigns(): Promise<ReengagementCampaign[]>;
+  createReengagementCampaign(campaign: InsertReengagementCampaign): Promise<ReengagementCampaign>;
+  updateReengagementCampaign(id: number, dealershipId: number, campaign: Partial<InsertReengagementCampaign>): Promise<ReengagementCampaign | undefined>;
+  deleteReengagementCampaign(id: number, dealershipId: number): Promise<boolean>;
+  
+  // Sequence Analytics
+  getSequenceAnalytics(dealershipId: number, sequenceId?: number, startDate?: Date, endDate?: Date): Promise<SequenceAnalytics[]>;
+  upsertSequenceAnalytics(analytics: InsertSequenceAnalytics): Promise<SequenceAnalytics>;
+  getSequencePerformanceSummary(dealershipId: number, startDate?: Date, endDate?: Date): Promise<{
+    totalExecutions: number;
+    totalConversions: number;
+    totalMessagesSent: number;
+    averageOpenRate: number;
+    averageReplyRate: number;
+    averageConversionRate: number;
+    topPerformingSequences: { sequenceId: number; name: string; conversionRate: number }[];
+  }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4268,6 +4335,407 @@ export class DatabaseStorage implements IStorage {
       ))
       .returning();
     return result.length > 0;
+  }
+
+  // ====== SEQUENCE ANALYTICS & RE-ENGAGEMENT ======
+  
+  // Sequence Executions
+  async getSequenceExecutions(dealershipId: number, sequenceId?: number, status?: string, limit: number = 100): Promise<SequenceExecution[]> {
+    const conditions = [eq(sequenceExecutions.dealershipId, dealershipId)];
+    if (sequenceId) conditions.push(eq(sequenceExecutions.sequenceId, sequenceId));
+    if (status) conditions.push(eq(sequenceExecutions.status, status));
+    
+    return await db.select().from(sequenceExecutions)
+      .where(and(...conditions))
+      .orderBy(desc(sequenceExecutions.startedAt))
+      .limit(limit);
+  }
+
+  async getSequenceExecutionById(id: number, dealershipId: number): Promise<SequenceExecution | undefined> {
+    const result = await db.select().from(sequenceExecutions)
+      .where(and(
+        eq(sequenceExecutions.id, id),
+        eq(sequenceExecutions.dealershipId, dealershipId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+
+  async getActiveExecutionsByContact(dealershipId: number, contactPhone: string): Promise<SequenceExecution[]> {
+    return await db.select().from(sequenceExecutions)
+      .where(and(
+        eq(sequenceExecutions.dealershipId, dealershipId),
+        eq(sequenceExecutions.contactPhone, contactPhone),
+        eq(sequenceExecutions.status, 'active')
+      ));
+  }
+
+  async createSequenceExecution(execution: InsertSequenceExecution): Promise<SequenceExecution> {
+    if (!execution.dealershipId) {
+      throw new Error('dealershipId is required when creating sequence executions');
+    }
+    const result = await db.insert(sequenceExecutions).values(execution).returning();
+    return result[0];
+  }
+
+  async updateSequenceExecution(id: number, dealershipId: number, execution: Partial<InsertSequenceExecution>): Promise<SequenceExecution | undefined> {
+    const result = await db.update(sequenceExecutions)
+      .set({ ...execution, lastActivityAt: new Date() })
+      .where(and(
+        eq(sequenceExecutions.id, id),
+        eq(sequenceExecutions.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+
+  async incrementExecutionMetric(id: number, dealershipId: number, metric: 'messagesDelivered' | 'messagesOpened' | 'responsesReceived' | 'appointmentsBooked'): Promise<void> {
+    await db.update(sequenceExecutions)
+      .set({ 
+        [metric]: sql`${sequenceExecutions[metric]} + 1`,
+        lastActivityAt: new Date()
+      })
+      .where(and(
+        eq(sequenceExecutions.id, id),
+        eq(sequenceExecutions.dealershipId, dealershipId)
+      ));
+  }
+
+  // Sequence Messages
+  async getSequenceMessages(dealershipId: number, executionId: number): Promise<SequenceMessage[]> {
+    return await db.select().from(sequenceMessages)
+      .where(and(
+        eq(sequenceMessages.dealershipId, dealershipId),
+        eq(sequenceMessages.executionId, executionId)
+      ))
+      .orderBy(sequenceMessages.stepNumber);
+  }
+
+  async getSequenceMessageById(id: number, dealershipId: number): Promise<SequenceMessage | undefined> {
+    const result = await db.select().from(sequenceMessages)
+      .where(and(
+        eq(sequenceMessages.id, id),
+        eq(sequenceMessages.dealershipId, dealershipId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+
+  async getPendingSequenceMessages(dealershipId: number, limit: number = 50): Promise<SequenceMessage[]> {
+    return await db.select().from(sequenceMessages)
+      .where(and(
+        eq(sequenceMessages.dealershipId, dealershipId),
+        eq(sequenceMessages.status, 'pending'),
+        lte(sequenceMessages.scheduledAt, new Date())
+      ))
+      .orderBy(sequenceMessages.scheduledAt)
+      .limit(limit);
+  }
+
+  async createSequenceMessage(message: InsertSequenceMessage): Promise<SequenceMessage> {
+    if (!message.dealershipId) {
+      throw new Error('dealershipId is required when creating sequence messages');
+    }
+    const result = await db.insert(sequenceMessages).values(message).returning();
+    return result[0];
+  }
+
+  async updateSequenceMessage(id: number, dealershipId: number, message: Partial<InsertSequenceMessage>): Promise<SequenceMessage | undefined> {
+    const result = await db.update(sequenceMessages)
+      .set(message)
+      .where(and(
+        eq(sequenceMessages.id, id),
+        eq(sequenceMessages.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+
+  // Sequence Conversions
+  async getSequenceConversions(dealershipId: number, sequenceId?: number, startDate?: Date, endDate?: Date): Promise<SequenceConversion[]> {
+    const conditions = [eq(sequenceConversions.dealershipId, dealershipId)];
+    if (sequenceId) conditions.push(eq(sequenceConversions.sequenceId, sequenceId));
+    if (startDate) conditions.push(gte(sequenceConversions.convertedAt, startDate));
+    if (endDate) conditions.push(lte(sequenceConversions.convertedAt, endDate));
+    
+    return await db.select().from(sequenceConversions)
+      .where(and(...conditions))
+      .orderBy(desc(sequenceConversions.convertedAt));
+  }
+
+  async createSequenceConversion(conversion: InsertSequenceConversion): Promise<SequenceConversion> {
+    if (!conversion.dealershipId) {
+      throw new Error('dealershipId is required when creating sequence conversions');
+    }
+    const result = await db.insert(sequenceConversions).values(conversion).returning();
+    return result[0];
+  }
+
+  // Contact Activity
+  async getContactActivity(dealershipId: number, contactPhone?: string, contactEmail?: string): Promise<ContactActivity | undefined> {
+    const conditions = [eq(contactActivity.dealershipId, dealershipId)];
+    if (contactPhone) conditions.push(eq(contactActivity.contactPhone, contactPhone));
+    if (contactEmail) conditions.push(eq(contactActivity.contactEmail, contactEmail));
+    
+    const result = await db.select().from(contactActivity)
+      .where(and(...conditions))
+      .limit(1);
+    return result[0];
+  }
+
+  async getInactiveContacts(dealershipId: number, inactiveDays: number, limit: number = 50): Promise<ContactActivity[]> {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - inactiveDays);
+    
+    return await db.select().from(contactActivity)
+      .where(and(
+        eq(contactActivity.dealershipId, dealershipId),
+        lt(contactActivity.lastActivityAt, cutoffDate),
+        eq(contactActivity.reengagementStatus, 'cold')
+      ))
+      .orderBy(contactActivity.lastActivityAt)
+      .limit(limit);
+  }
+
+  async getAllContactActivity(dealershipId: number, limit: number = 100, offset: number = 0): Promise<{ contacts: ContactActivity[]; total: number }> {
+    const contacts = await db.select().from(contactActivity)
+      .where(eq(contactActivity.dealershipId, dealershipId))
+      .orderBy(desc(contactActivity.lastActivityAt))
+      .limit(limit)
+      .offset(offset);
+    
+    const countResult = await db.select({ count: sql<number>`count(*)` })
+      .from(contactActivity)
+      .where(eq(contactActivity.dealershipId, dealershipId));
+    
+    return { contacts, total: Number(countResult[0]?.count || 0) };
+  }
+
+  async upsertContactActivity(activity: InsertContactActivity): Promise<ContactActivity> {
+    if (!activity.dealershipId) {
+      throw new Error('dealershipId is required when creating contact activity');
+    }
+    
+    const existing = await this.getContactActivity(
+      activity.dealershipId,
+      activity.contactPhone || undefined,
+      activity.contactEmail || undefined
+    );
+    
+    if (existing) {
+      const result = await db.update(contactActivity)
+        .set({
+          ...activity,
+          totalVehicleViews: (existing.totalVehicleViews || 0) + (activity.totalVehicleViews || 0),
+          totalChatSessions: (existing.totalChatSessions || 0) + (activity.totalChatSessions || 0),
+          totalAppointments: (existing.totalAppointments || 0) + (activity.totalAppointments || 0),
+          updatedAt: new Date()
+        })
+        .where(eq(contactActivity.id, existing.id))
+        .returning();
+      return result[0];
+    }
+    
+    const result = await db.insert(contactActivity).values(activity).returning();
+    return result[0];
+  }
+
+  async updateContactActivity(id: number, dealershipId: number, activity: Partial<InsertContactActivity>): Promise<ContactActivity | undefined> {
+    const result = await db.update(contactActivity)
+      .set({ ...activity, updatedAt: new Date() })
+      .where(and(
+        eq(contactActivity.id, id),
+        eq(contactActivity.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+
+  // Re-engagement Campaigns
+  async getReengagementCampaigns(dealershipId: number): Promise<ReengagementCampaign[]> {
+    return await db.select().from(reengagementCampaigns)
+      .where(eq(reengagementCampaigns.dealershipId, dealershipId))
+      .orderBy(desc(reengagementCampaigns.createdAt));
+  }
+
+  async getActiveReengagementCampaigns(dealershipId: number): Promise<ReengagementCampaign[]> {
+    return await db.select().from(reengagementCampaigns)
+      .where(and(
+        eq(reengagementCampaigns.dealershipId, dealershipId),
+        eq(reengagementCampaigns.isActive, true)
+      ))
+      .orderBy(reengagementCampaigns.name);
+  }
+
+  async getReengagementCampaignById(id: number, dealershipId: number): Promise<ReengagementCampaign | undefined> {
+    const result = await db.select().from(reengagementCampaigns)
+      .where(and(
+        eq(reengagementCampaigns.id, id),
+        eq(reengagementCampaigns.dealershipId, dealershipId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+
+  async getDueReengagementCampaigns(): Promise<ReengagementCampaign[]> {
+    return await db.select().from(reengagementCampaigns)
+      .where(and(
+        eq(reengagementCampaigns.isActive, true),
+        or(
+          lte(reengagementCampaigns.nextRunAt, new Date()),
+          sql`${reengagementCampaigns.nextRunAt} IS NULL`
+        )
+      ));
+  }
+
+  async createReengagementCampaign(campaign: InsertReengagementCampaign): Promise<ReengagementCampaign> {
+    if (!campaign.dealershipId) {
+      throw new Error('dealershipId is required when creating re-engagement campaigns');
+    }
+    const result = await db.insert(reengagementCampaigns).values(campaign).returning();
+    return result[0];
+  }
+
+  async updateReengagementCampaign(id: number, dealershipId: number, campaign: Partial<InsertReengagementCampaign>): Promise<ReengagementCampaign | undefined> {
+    const result = await db.update(reengagementCampaigns)
+      .set({ ...campaign, updatedAt: new Date() })
+      .where(and(
+        eq(reengagementCampaigns.id, id),
+        eq(reengagementCampaigns.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+
+  async deleteReengagementCampaign(id: number, dealershipId: number): Promise<boolean> {
+    const result = await db.delete(reengagementCampaigns)
+      .where(and(
+        eq(reengagementCampaigns.id, id),
+        eq(reengagementCampaigns.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result.length > 0;
+  }
+
+  // Sequence Analytics
+  async getSequenceAnalytics(dealershipId: number, sequenceId?: number, startDate?: Date, endDate?: Date): Promise<SequenceAnalytics[]> {
+    const conditions = [eq(sequenceAnalytics.dealershipId, dealershipId)];
+    if (sequenceId) conditions.push(eq(sequenceAnalytics.sequenceId, sequenceId));
+    if (startDate) conditions.push(gte(sequenceAnalytics.date, startDate));
+    if (endDate) conditions.push(lte(sequenceAnalytics.date, endDate));
+    
+    return await db.select().from(sequenceAnalytics)
+      .where(and(...conditions))
+      .orderBy(desc(sequenceAnalytics.date));
+  }
+
+  async upsertSequenceAnalytics(analytics: InsertSequenceAnalytics): Promise<SequenceAnalytics> {
+    if (!analytics.dealershipId) {
+      throw new Error('dealershipId is required when creating sequence analytics');
+    }
+    
+    const dateStart = new Date(analytics.date);
+    dateStart.setHours(0, 0, 0, 0);
+    const dateEnd = new Date(dateStart);
+    dateEnd.setHours(23, 59, 59, 999);
+    
+    const existing = await db.select().from(sequenceAnalytics)
+      .where(and(
+        eq(sequenceAnalytics.dealershipId, analytics.dealershipId),
+        eq(sequenceAnalytics.sequenceId, analytics.sequenceId),
+        gte(sequenceAnalytics.date, dateStart),
+        lte(sequenceAnalytics.date, dateEnd)
+      ))
+      .limit(1);
+    
+    if (existing.length > 0) {
+      const result = await db.update(sequenceAnalytics)
+        .set(analytics)
+        .where(eq(sequenceAnalytics.id, existing[0].id))
+        .returning();
+      return result[0];
+    }
+    
+    const result = await db.insert(sequenceAnalytics).values(analytics).returning();
+    return result[0];
+  }
+
+  async getSequencePerformanceSummary(dealershipId: number, startDate?: Date, endDate?: Date): Promise<{
+    totalExecutions: number;
+    totalConversions: number;
+    totalMessagesSent: number;
+    averageOpenRate: number;
+    averageReplyRate: number;
+    averageConversionRate: number;
+    topPerformingSequences: { sequenceId: number; name: string; conversionRate: number }[];
+  }> {
+    const conditions = [eq(sequenceAnalytics.dealershipId, dealershipId)];
+    if (startDate) conditions.push(gte(sequenceAnalytics.date, startDate));
+    if (endDate) conditions.push(lte(sequenceAnalytics.date, endDate));
+    
+    const aggregates = await db.select({
+      totalExecutions: sql<number>`COALESCE(SUM(${sequenceAnalytics.executionsStarted}), 0)`,
+      totalConversions: sql<number>`COALESCE(SUM(${sequenceAnalytics.executionsConverted}), 0)`,
+      totalMessagesSent: sql<number>`COALESCE(SUM(${sequenceAnalytics.messagesSent}), 0)`,
+      totalMessagesDelivered: sql<number>`COALESCE(SUM(${sequenceAnalytics.messagesDelivered}), 0)`,
+      totalMessagesOpened: sql<number>`COALESCE(SUM(${sequenceAnalytics.messagesOpened}), 0)`,
+      totalMessagesReplied: sql<number>`COALESCE(SUM(${sequenceAnalytics.messagesReplied}), 0)`,
+    }).from(sequenceAnalytics).where(and(...conditions));
+    
+    const stats = aggregates[0] || {
+      totalExecutions: 0,
+      totalConversions: 0,
+      totalMessagesSent: 0,
+      totalMessagesDelivered: 0,
+      totalMessagesOpened: 0,
+      totalMessagesReplied: 0
+    };
+    
+    const avgOpenRate = stats.totalMessagesDelivered > 0 
+      ? (Number(stats.totalMessagesOpened) / Number(stats.totalMessagesDelivered)) * 100 
+      : 0;
+    const avgReplyRate = stats.totalMessagesDelivered > 0 
+      ? (Number(stats.totalMessagesReplied) / Number(stats.totalMessagesDelivered)) * 100 
+      : 0;
+    const avgConversionRate = Number(stats.totalExecutions) > 0 
+      ? (Number(stats.totalConversions) / Number(stats.totalExecutions)) * 100 
+      : 0;
+    
+    const topSequences = await db.select({
+      sequenceId: sequenceAnalytics.sequenceId,
+      totalStarted: sql<number>`COALESCE(SUM(${sequenceAnalytics.executionsStarted}), 0)`,
+      totalConverted: sql<number>`COALESCE(SUM(${sequenceAnalytics.executionsConverted}), 0)`,
+    })
+    .from(sequenceAnalytics)
+    .where(and(...conditions))
+    .groupBy(sequenceAnalytics.sequenceId)
+    .orderBy(sql`CASE WHEN SUM(${sequenceAnalytics.executionsStarted}) > 0 THEN SUM(${sequenceAnalytics.executionsConverted})::float / SUM(${sequenceAnalytics.executionsStarted}) ELSE 0 END DESC`)
+    .limit(5);
+    
+    const sequenceIds = topSequences.map(s => s.sequenceId);
+    const sequenceNames = sequenceIds.length > 0 
+      ? await db.select({ id: followUpSequences.id, name: followUpSequences.name })
+          .from(followUpSequences)
+          .where(inArray(followUpSequences.id, sequenceIds))
+      : [];
+    
+    const sequenceNameMap = new Map(sequenceNames.map(s => [s.id, s.name]));
+    
+    return {
+      totalExecutions: Number(stats.totalExecutions),
+      totalConversions: Number(stats.totalConversions),
+      totalMessagesSent: Number(stats.totalMessagesSent),
+      averageOpenRate: Math.round(avgOpenRate * 10) / 10,
+      averageReplyRate: Math.round(avgReplyRate * 10) / 10,
+      averageConversionRate: Math.round(avgConversionRate * 10) / 10,
+      topPerformingSequences: topSequences.map(s => ({
+        sequenceId: s.sequenceId,
+        name: sequenceNameMap.get(s.sequenceId) || 'Unknown',
+        conversionRate: Number(s.totalStarted) > 0 
+          ? Math.round((Number(s.totalConverted) / Number(s.totalStarted)) * 1000) / 10 
+          : 0
+      }))
+    };
   }
 }
 

@@ -445,3 +445,152 @@ async function runAutomationEngine(): Promise<void> {
     throw error;
   }
 }
+
+// ===== RE-ENGAGEMENT CAMPAIGN SCHEDULER =====
+
+let reengagementSchedulerInitialized = false;
+
+/**
+ * Start the re-engagement campaign scheduler.
+ * Runs daily at 6 AM to find inactive contacts (90+ days) and enroll them in re-engagement sequences.
+ */
+export function startReengagementScheduler() {
+  if (reengagementSchedulerInitialized) {
+    console.log('Re-engagement scheduler already running');
+    return;
+  }
+
+  // Process re-engagement campaigns daily at 6 AM (after GHL sync at 5 AM)
+  cron.schedule('0 6 * * *', async () => {
+    console.log('🔄 Running re-engagement campaign engine...');
+    try {
+      await runReengagementEngine();
+      console.log('✓ Re-engagement campaign cycle complete');
+    } catch (error) {
+      console.error('✗ Re-engagement campaign failed:', error);
+    }
+  });
+
+  reengagementSchedulerInitialized = true;
+  console.log('✓ Re-engagement scheduler started (runs daily at 6 AM)');
+}
+
+/**
+ * Process all due re-engagement campaigns across all dealerships.
+ * Finds inactive contacts and enrolls them in configured follow-up sequences.
+ */
+async function runReengagementEngine(): Promise<void> {
+  try {
+    // Get all campaigns that are due to run
+    const dueCampaigns = await storage.getDueReengagementCampaigns();
+    
+    console.log(`[Re-engagement] Found ${dueCampaigns.length} campaigns due to run`);
+    
+    for (const campaign of dueCampaigns) {
+      try {
+        console.log(`[Re-engagement] Processing campaign ${campaign.id}: ${campaign.name} (dealership ${campaign.dealershipId})`);
+        
+        // Skip if no sequence configured
+        if (!campaign.sequenceId) {
+          console.log(`[Re-engagement] No sequence configured for campaign ${campaign.id}, skipping`);
+          continue;
+        }
+        
+        // Find inactive contacts for this dealership
+        const inactiveContacts = await storage.getInactiveContacts(
+          campaign.dealershipId, 
+          campaign.inactiveDaysThreshold,
+          campaign.maxContactsPerRun || 50
+        );
+        
+        if (inactiveContacts.length === 0) {
+          console.log(`[Re-engagement] No inactive contacts found for campaign ${campaign.id}`);
+          
+          // Update campaign stats
+          await storage.updateReengagementCampaign(campaign.id, campaign.dealershipId, {
+            lastRunAt: new Date(),
+            nextRunAt: getNextRunDate(campaign.runFrequency),
+          });
+          continue;
+        }
+        
+        console.log(`[Re-engagement] Found ${inactiveContacts.length} inactive contacts for campaign ${campaign.id}`);
+        
+        // Enroll contacts in the configured sequence
+        let enrolledCount = 0;
+        const { createAutomationService } = await import('./automation-service');
+        const automation = createAutomationService(campaign.dealershipId);
+        
+        for (const contact of inactiveContacts) {
+          try {
+            // Create a sequence execution for tracking
+            const execution = await storage.createSequenceExecution({
+              dealershipId: campaign.dealershipId,
+              sequenceId: campaign.sequenceId!,
+              contactPhone: contact.contactPhone || '',
+              contactEmail: contact.contactEmail || '',
+              contactName: contact.contactName || '',
+              triggerType: 'reengagement_campaign',
+              totalSteps: 1,
+              status: 'active',
+              currentStep: 1,
+            });
+            
+            // Trigger the follow-up sequence via automation service
+            await automation.triggerFollowUp({
+              contactPhone: contact.contactPhone || undefined,
+              contactEmail: contact.contactEmail || undefined,
+              contactName: contact.contactName || undefined,
+              sourceType: 'reengagement',
+              triggerType: 'sequence',
+            });
+            
+            // Update contact activity to mark as contacted
+            await storage.updateContactActivity(contact.id, campaign.dealershipId, {
+              reengagementStatus: 'contacted',
+              lastReengagementAt: new Date(),
+              reengagementCount: (contact.reengagementCount || 0) + 1,
+            });
+            
+            enrolledCount++;
+          } catch (e) {
+            console.error(`[Re-engagement] Error enrolling contact ${contact.id}:`, e);
+          }
+        }
+        
+        // Update campaign stats
+        await storage.updateReengagementCampaign(campaign.id, campaign.dealershipId, {
+          lastRunAt: new Date(),
+          nextRunAt: getNextRunDate(campaign.runFrequency),
+          totalContactsTargeted: (campaign.totalContactsTargeted || 0) + enrolledCount,
+        });
+        
+        console.log(`[Re-engagement] Campaign ${campaign.id}: Enrolled ${enrolledCount} contacts`);
+        
+      } catch (error) {
+        console.error(`[Re-engagement] Error processing campaign ${campaign.id}:`, error);
+      }
+    }
+  } catch (error) {
+    console.error('[Re-engagement] Error in re-engagement engine:', error);
+    throw error;
+  }
+}
+
+/**
+ * Calculate the next run date based on campaign frequency.
+ */
+function getNextRunDate(frequency: string): Date {
+  const now = new Date();
+  switch (frequency) {
+    case 'daily':
+      return new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    case 'weekly':
+      return new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    case 'biweekly':
+      return new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+    case 'monthly':
+    default:
+      return new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  }
+}

@@ -9247,6 +9247,280 @@ Format your response in clear sections with actionable recommendations.`;
       res.status(500).json({ error: "Failed to run automation" });
     }
   });
+
+  // ===== RE-ENGAGEMENT CAMPAIGNS =====
+  
+  // Get all re-engagement campaigns
+  app.get("/api/automation/reengagement-campaigns", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const campaigns = await storage.getReengagementCampaigns(dealershipId);
+      res.json(campaigns);
+    } catch (error) {
+      console.error("Error fetching re-engagement campaigns:", error);
+      res.status(500).json({ error: "Failed to fetch re-engagement campaigns" });
+    }
+  });
+
+  // Get single re-engagement campaign
+  app.get("/api/automation/reengagement-campaigns/:id", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const id = parseInt(req.params.id);
+      const campaign = await storage.getReengagementCampaignById(id, dealershipId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+      res.json(campaign);
+    } catch (error) {
+      console.error("Error fetching re-engagement campaign:", error);
+      res.status(500).json({ error: "Failed to fetch re-engagement campaign" });
+    }
+  });
+
+  // Create re-engagement campaign
+  app.post("/api/automation/reengagement-campaigns", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const campaign = await storage.createReengagementCampaign({
+        ...req.body,
+        dealershipId,
+      });
+      res.status(201).json(campaign);
+    } catch (error) {
+      console.error("Error creating re-engagement campaign:", error);
+      res.status(500).json({ error: "Failed to create re-engagement campaign" });
+    }
+  });
+
+  // Update re-engagement campaign
+  app.patch("/api/automation/reengagement-campaigns/:id", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const id = parseInt(req.params.id);
+      const campaign = await storage.updateReengagementCampaign(id, dealershipId, req.body);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+      res.json(campaign);
+    } catch (error) {
+      console.error("Error updating re-engagement campaign:", error);
+      res.status(500).json({ error: "Failed to update re-engagement campaign" });
+    }
+  });
+
+  // Delete re-engagement campaign
+  app.delete("/api/automation/reengagement-campaigns/:id", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deleteReengagementCampaign(id, dealershipId);
+      if (!deleted) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting re-engagement campaign:", error);
+      res.status(500).json({ error: "Failed to delete re-engagement campaign" });
+    }
+  });
+
+  // ===== SEQUENCE ANALYTICS =====
+
+  // Get sequence performance summary
+  app.get("/api/automation/analytics/summary", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
+      const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
+      const summary = await storage.getSequencePerformanceSummary(dealershipId, startDate, endDate);
+      res.json(summary);
+    } catch (error) {
+      console.error("Error fetching sequence analytics summary:", error);
+      res.status(500).json({ error: "Failed to fetch analytics summary" });
+    }
+  });
+
+  // Get sequence executions (with optional filters)
+  app.get("/api/automation/analytics/executions", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const sequenceId = req.query.sequenceId ? parseInt(req.query.sequenceId as string) : undefined;
+      const status = req.query.status as string | undefined;
+      const limit = parseInt(req.query.limit as string) || 100;
+      const executions = await storage.getSequenceExecutions(dealershipId, sequenceId, status, limit);
+      res.json(executions);
+    } catch (error) {
+      console.error("Error fetching sequence executions:", error);
+      res.status(500).json({ error: "Failed to fetch sequence executions" });
+    }
+  });
+
+  // Get messages for a specific execution
+  app.get("/api/automation/analytics/executions/:executionId/messages", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const executionId = parseInt(req.params.executionId);
+      const messages = await storage.getSequenceMessages(dealershipId, executionId);
+      res.json(messages);
+    } catch (error) {
+      console.error("Error fetching sequence messages:", error);
+      res.status(500).json({ error: "Failed to fetch sequence messages" });
+    }
+  });
+
+  // Get conversions for analytics
+  app.get("/api/automation/analytics/conversions", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const sequenceId = req.query.sequenceId ? parseInt(req.query.sequenceId as string) : undefined;
+      const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
+      const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
+      const conversions = await storage.getSequenceConversions(dealershipId, sequenceId, startDate, endDate);
+      res.json(conversions);
+    } catch (error) {
+      console.error("Error fetching sequence conversions:", error);
+      res.status(500).json({ error: "Failed to fetch sequence conversions" });
+    }
+  });
+
+  // ===== CONTACT ACTIVITY =====
+
+  // Get all contact activity
+  app.get("/api/automation/contact-activity", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const limit = parseInt(req.query.limit as string) || 100;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const result = await storage.getAllContactActivity(dealershipId, limit, offset);
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching contact activity:", error);
+      res.status(500).json({ error: "Failed to fetch contact activity" });
+    }
+  });
+
+  // Get inactive contacts for re-engagement
+  app.get("/api/automation/inactive-contacts", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const inactiveDays = parseInt(req.query.inactiveDays as string) || 90;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const contacts = await storage.getInactiveContacts(dealershipId, inactiveDays, limit);
+      res.json(contacts);
+    } catch (error) {
+      console.error("Error fetching inactive contacts:", error);
+      res.status(500).json({ error: "Failed to fetch inactive contacts" });
+    }
+  });
+
+  // Log/upsert contact activity
+  app.post("/api/automation/contact-activity", authMiddleware, async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const activity = await storage.upsertContactActivity({
+        ...req.body,
+        dealershipId,
+      });
+      res.json(activity);
+    } catch (error) {
+      console.error("Error logging contact activity:", error);
+      res.status(500).json({ error: "Failed to log contact activity" });
+    }
+  });
+
+  // Update contact activity
+  app.patch("/api/automation/contact-activity/:id", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const id = parseInt(req.params.id);
+      const activity = await storage.updateContactActivity(id, dealershipId, req.body);
+      if (!activity) {
+        return res.status(404).json({ error: "Contact activity not found" });
+      }
+      res.json(activity);
+    } catch (error) {
+      console.error("Error updating contact activity:", error);
+      res.status(500).json({ error: "Failed to update contact activity" });
+    }
+  });
+
+  // Record a sequence execution event
+  app.post("/api/automation/sequence-executions", authMiddleware, async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const execution = await storage.createSequenceExecution({
+        ...req.body,
+        dealershipId,
+      });
+      res.status(201).json(execution);
+    } catch (error) {
+      console.error("Error creating sequence execution:", error);
+      res.status(500).json({ error: "Failed to create sequence execution" });
+    }
+  });
+
+  // Update sequence execution status
+  app.patch("/api/automation/sequence-executions/:id", authMiddleware, async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const id = parseInt(req.params.id);
+      const execution = await storage.updateSequenceExecution(id, dealershipId, req.body);
+      if (!execution) {
+        return res.status(404).json({ error: "Sequence execution not found" });
+      }
+      res.json(execution);
+    } catch (error) {
+      console.error("Error updating sequence execution:", error);
+      res.status(500).json({ error: "Failed to update sequence execution" });
+    }
+  });
+
+  // Record a sequence message
+  app.post("/api/automation/sequence-messages", authMiddleware, async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const message = await storage.createSequenceMessage({
+        ...req.body,
+        dealershipId,
+      });
+      res.status(201).json(message);
+    } catch (error) {
+      console.error("Error creating sequence message:", error);
+      res.status(500).json({ error: "Failed to create sequence message" });
+    }
+  });
+
+  // Update sequence message status
+  app.patch("/api/automation/sequence-messages/:id", authMiddleware, async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const id = parseInt(req.params.id);
+      const message = await storage.updateSequenceMessage(id, dealershipId, req.body);
+      if (!message) {
+        return res.status(404).json({ error: "Sequence message not found" });
+      }
+      res.json(message);
+    } catch (error) {
+      console.error("Error updating sequence message:", error);
+      res.status(500).json({ error: "Failed to update sequence message" });
+    }
+  });
+
+  // Record a conversion event
+  app.post("/api/automation/conversions", authMiddleware, async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const conversion = await storage.createSequenceConversion({
+        ...req.body,
+        dealershipId,
+      });
+      res.status(201).json(conversion);
+    } catch (error) {
+      console.error("Error recording conversion:", error);
+      res.status(500).json({ error: "Failed to record conversion" });
+    }
+  });
   
   return httpServer;
 }

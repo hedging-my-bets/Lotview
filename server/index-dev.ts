@@ -7,7 +7,7 @@ import { nanoid } from "nanoid";
 import { createServer as createViteServer, createLogger } from "vite";
 
 import runApp from "./app";
-import { startInventoryScheduler, startMarketAnalysisScheduler, startFacebookCatalogScheduler, startGhlSyncScheduler, startAutomationScheduler } from "./scheduler";
+import { startInventoryScheduler, startMarketAnalysisScheduler, startFacebookCatalogScheduler, startGhlSyncScheduler, startAutomationScheduler, startReengagementScheduler } from "./scheduler";
 import { startPostingScheduler } from "./posting-scheduler";
 
 import viteConfig from "../vite.config";
@@ -80,6 +80,9 @@ export async function setupVite(app: Express, server: Server) {
   
   // Start the automation engine scheduler
   startAutomationScheduler();
+  
+  // Start the re-engagement campaign scheduler
+  startReengagementScheduler();
   
   await runApp(setupVite);
 })();
