@@ -3841,6 +3841,126 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // AI-powered prompt enhancement endpoint
+  app.post("/api/admin/enhance-prompt", authMiddleware, requireRole("manager", "admin", "master", "super_admin"), async (req, res) => {
+    try {
+      const authReq = req as AuthRequest;
+      const dealershipId = authReq.user?.role === "super_admin" 
+        ? (req.body.dealershipId || 1) 
+        : req.dealershipId!;
+      
+      const { text, promptType, context } = req.body;
+      
+      if (!text || !promptType) {
+        return res.status(400).json({ error: "text and promptType are required" });
+      }
+
+      // Import OpenAI client getter
+      const OpenAI = (await import('openai')).default;
+      
+      // Get dealership API keys for custom OpenAI key, or use Replit fallback
+      const apiKeys = await storage.getDealershipApiKeys(dealershipId);
+      
+      let openai: InstanceType<typeof OpenAI>;
+      let model: string;
+      
+      if (apiKeys?.openaiApiKey && apiKeys.openaiApiKey.length > 20) {
+        openai = new OpenAI({ apiKey: apiKeys.openaiApiKey });
+        model = 'gpt-4o-mini';
+      } else {
+        openai = new OpenAI({
+          baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+          apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY
+        });
+        model = 'gpt-5';
+      }
+
+      // Build the enhancement prompt based on type
+      let systemPrompt = '';
+      let userPrompt = '';
+      
+      switch (promptType) {
+        case 'system':
+          systemPrompt = `You are an expert at writing AI system prompts for automotive dealership chatbots.
+Your task is to transform basic instructions into clear, effective AI system prompts that:
+- Give the AI a clear personality and role (friendly automotive sales consultant)
+- Include specific behavioral guidelines
+- Set boundaries on what the AI should/shouldn't do
+- Emphasize customer service excellence
+- Include urgency to capture leads and book appointments
+- Keep responses conversational and not robotic
+Do not use placeholders like [Dealership Name] - write it generically so it works for any dealership.`;
+          userPrompt = `Transform this basic instruction into a world-class AI system prompt for a car dealership chatbot:\n\n"${text}"\n\n${context ? `Context: ${context}` : ''}\n\nWrite only the enhanced prompt, no explanations.`;
+          break;
+          
+        case 'greeting':
+          systemPrompt = `You are an expert copywriter for automotive dealerships.
+Your task is to write warm, engaging greeting messages that:
+- Feel personal and welcoming (not corporate or robotic)
+- Create immediate connection with the customer
+- Hint at value without being pushy
+- Encourage the customer to engage
+- Are concise (1-2 sentences max)
+- Work for text/chat conversations`;
+          userPrompt = `Transform this greeting into a warm, engaging welcome message:\n\n"${text}"\n\n${context ? `Context: ${context}` : ''}\n\nWrite only the enhanced greeting, no explanations.`;
+          break;
+          
+        case 'followup':
+        case 'sms':
+          systemPrompt = `You are an expert at writing follow-up messages for automotive sales.
+Your task is to write compelling SMS/text follow-up messages that:
+- Are brief and mobile-friendly (under 160 characters ideally)
+- Create urgency without being pushy
+- Feel personal, not mass-produced
+- Include a clear call-to-action
+- Get customers to respond or take action
+- Use natural, conversational language
+You can use these personalization variables: {{name}}, {{first_name}}, {{vehicle}}, {{vehicle_name}}, {{price}}, {{dealership}}`;
+          userPrompt = `Transform this into a compelling follow-up text message:\n\n"${text}"\n\n${context ? `Context: ${context}` : ''}\n\nWrite only the enhanced message, no explanations.`;
+          break;
+          
+        case 'email':
+          systemPrompt = `You are an expert at writing follow-up emails for automotive sales.
+Your task is to write professional, effective follow-up emails that:
+- Have a compelling subject line feel (even in body)
+- Are scannable with clear formatting
+- Balance professionalism with warmth
+- Include a strong call-to-action
+- Create urgency without being pushy
+- Feel personal, not template-y
+You can use these personalization variables: {{name}}, {{first_name}}, {{vehicle}}, {{vehicle_name}}, {{price}}, {{dealership}}`;
+          userPrompt = `Transform this into a compelling follow-up email:\n\n"${text}"\n\n${context ? `Context: ${context}` : ''}\n\nWrite only the enhanced email, no explanations.`;
+          break;
+          
+        default:
+          systemPrompt = `You are an expert copywriter for automotive dealerships.
+Your task is to improve any customer-facing message to be more effective, engaging, and professional.`;
+          userPrompt = `Enhance this message for a car dealership:\n\n"${text}"\n\n${context ? `Context: ${context}` : ''}\n\nWrite only the enhanced message, no explanations.`;
+      }
+
+      const response = await openai.chat.completions.create({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        max_completion_tokens: 500,
+        temperature: 0.8
+      });
+
+      const enhanced = response.choices[0]?.message?.content?.trim();
+      
+      if (!enhanced) {
+        return res.status(500).json({ error: "Failed to generate enhancement" });
+      }
+
+      res.json({ enhanced });
+    } catch (error: any) {
+      console.error("Error enhancing prompt:", error);
+      res.status(500).json({ error: error.message || "Failed to enhance prompt" });
+    }
+  });
+
   // Get GHL workflows for linking
   app.get("/api/admin/ghl/workflows", authMiddleware, requireRole("master"), async (req, res) => {
     try {
@@ -8951,10 +9071,25 @@ Format your response in clear sections with actionable recommendations.`;
 
   // ===== AUTOMATION ENGINE ROUTES =====
 
+  // Helper to resolve dealership ID for super admins
+  const resolveAutomationDealershipId = (req: any): number | null => {
+    const authReq = req as AuthRequest;
+    const queryDealershipId = req.query.dealershipId ? parseInt(req.query.dealershipId as string) : null;
+    const bodyDealershipId = req.body?.dealershipId ? parseInt(req.body.dealershipId) : null;
+    
+    if (authReq.user?.role === 'super_admin') {
+      return queryDealershipId || bodyDealershipId || null;
+    }
+    return req.dealershipId || null;
+  };
+
   // Get all follow-up sequences for dealership
   app.get("/api/automation/sequences", authMiddleware, async (req, res) => {
     try {
-      const dealershipId = (req as any).dealershipId;
+      const dealershipId = resolveAutomationDealershipId(req);
+      if (!dealershipId) {
+        return res.status(400).json({ error: "Dealership ID is required" });
+      }
       const sequences = await storage.getFollowUpSequences(dealershipId);
       res.json(sequences);
     } catch (error) {
@@ -8966,7 +9101,10 @@ Format your response in clear sections with actionable recommendations.`;
   // Get a specific sequence
   app.get("/api/automation/sequences/:id", authMiddleware, async (req, res) => {
     try {
-      const dealershipId = (req as any).dealershipId;
+      const dealershipId = resolveAutomationDealershipId(req);
+      if (!dealershipId) {
+        return res.status(400).json({ error: "Dealership ID is required" });
+      }
       const id = parseInt(req.params.id);
       const sequence = await storage.getFollowUpSequenceById(id, dealershipId);
       if (!sequence) {
@@ -8982,7 +9120,10 @@ Format your response in clear sections with actionable recommendations.`;
   // Create a new sequence
   app.post("/api/automation/sequences", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req, res) => {
     try {
-      const dealershipId = (req as any).dealershipId;
+      const dealershipId = resolveAutomationDealershipId(req);
+      if (!dealershipId) {
+        return res.status(400).json({ error: "Dealership ID is required" });
+      }
       const sequence = await storage.createFollowUpSequence({
         ...req.body,
         dealershipId,
@@ -8997,7 +9138,10 @@ Format your response in clear sections with actionable recommendations.`;
   // Update a sequence
   app.patch("/api/automation/sequences/:id", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req, res) => {
     try {
-      const dealershipId = (req as any).dealershipId;
+      const dealershipId = resolveAutomationDealershipId(req);
+      if (!dealershipId) {
+        return res.status(400).json({ error: "Dealership ID is required" });
+      }
       const id = parseInt(req.params.id);
       const sequence = await storage.updateFollowUpSequence(id, dealershipId, req.body);
       if (!sequence) {
@@ -9013,7 +9157,10 @@ Format your response in clear sections with actionable recommendations.`;
   // Delete a sequence
   app.delete("/api/automation/sequences/:id", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req, res) => {
     try {
-      const dealershipId = (req as any).dealershipId;
+      const dealershipId = resolveAutomationDealershipId(req);
+      if (!dealershipId) {
+        return res.status(400).json({ error: "Dealership ID is required" });
+      }
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteFollowUpSequence(id, dealershipId);
       if (!deleted) {

@@ -13,6 +13,7 @@ import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, RefreshCw, CheckCircle2, XCircle, MessageSquare, Bot, Zap, AlertCircle, Link2 } from "lucide-react";
+import { AiPromptEnhancer } from "./AiPromptEnhancer";
 
 interface ChatPrompt {
   id: number;
@@ -317,6 +318,13 @@ export function PromptEditor({ dealershipId }: PromptEditorProps) {
           data-testid="textarea-system-prompt"
         />
         <p className="text-xs text-muted-foreground">This is the main instruction that tells the AI how to behave.</p>
+        <AiPromptEnhancer
+          currentText={formData.systemPrompt}
+          onApply={(enhanced) => setFormData({ ...formData, systemPrompt: enhanced })}
+          promptType="system"
+          context={`Scenario: ${formData.scenario}, Channel: ${formData.channel}`}
+          dealershipId={dealershipId}
+        />
       </div>
 
       <div className="space-y-2">
@@ -330,6 +338,13 @@ export function PromptEditor({ dealershipId }: PromptEditorProps) {
           data-testid="textarea-greeting"
         />
         <p className="text-xs text-muted-foreground">The first message customers see when starting a conversation.</p>
+        <AiPromptEnhancer
+          currentText={formData.greeting}
+          onApply={(enhanced) => setFormData({ ...formData, greeting: enhanced })}
+          promptType="greeting"
+          context={`Scenario: ${formData.scenario}`}
+          dealershipId={dealershipId}
+        />
       </div>
 
       <div className="space-y-2">
@@ -341,6 +356,13 @@ export function PromptEditor({ dealershipId }: PromptEditorProps) {
           placeholder="If the customer hasn't responded, check in with them..."
           className="min-h-[80px]"
           data-testid="textarea-follow-up"
+        />
+        <AiPromptEnhancer
+          currentText={formData.followUpPrompt}
+          onApply={(enhanced) => setFormData({ ...formData, followUpPrompt: enhanced })}
+          promptType="followup"
+          context={`Scenario: ${formData.scenario}`}
+          dealershipId={dealershipId}
         />
       </div>
 

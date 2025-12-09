@@ -17,6 +17,7 @@ import { Building2, Key, FileText, Plus, Eye, EyeOff, Trash2, LogOut, Settings2,
 import OnboardingWizard from "@/components/OnboardingWizard";
 import { GhlIntegrationDialog } from "@/components/GhlIntegrationDialog";
 import { PromptEditor } from "@/components/PromptEditor";
+import { FollowUpSequenceEditor } from "@/components/FollowUpSequenceEditor";
 import { ConversationViewer } from "@/components/ConversationViewer";
 import { InventoryManagement } from "@/components/InventoryManagement";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -1684,7 +1685,10 @@ export default function SuperAdminDashboard() {
                   </TabsList>
                   {dealerships.map((d) => (
                     <TabsContent key={d.id} value={d.id.toString()}>
-                      <PromptEditor dealershipId={d.id} />
+                      <div className="space-y-8">
+                        <PromptEditor dealershipId={d.id} />
+                        <FollowUpSequenceEditor dealershipId={d.id} />
+                      </div>
                     </TabsContent>
                   ))}
                 </Tabs>
