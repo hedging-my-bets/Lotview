@@ -403,6 +403,19 @@ export default function VehicleDetail() {
                 });
               })()}
             </div>
+
+            {/* View Carfax Button - Under Carousel */}
+            {car.dealerVdpUrl && (
+              <a
+                href={car.dealerVdpUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full bg-gradient-to-r from-slate-700 to-slate-900 hover:from-slate-800 hover:to-black text-white py-4 rounded-xl font-bold text-base shadow-lg transition flex items-center justify-center gap-2"
+                data-testid="button-view-carfax"
+              >
+                <FileText className="w-5 h-5" /> View Carfax
+              </a>
+            )}
           </div>
 
           {/* Right Column: Details */}
@@ -540,19 +553,6 @@ export default function VehicleDetail() {
                   <Calendar className="w-5 h-5" /> Book Test Drive
                 </button>
               </div>
-
-              {/* Carfax Link */}
-              {car.dealerVdpUrl && (
-                <a
-                  href={car.dealerVdpUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full bg-gradient-to-r from-slate-700 to-slate-900 hover:from-slate-800 hover:to-black text-white py-4 rounded-xl font-bold text-base shadow-lg transition flex items-center justify-center gap-2"
-                  data-testid="button-view-carfax"
-                >
-                  <FileText className="w-5 h-5" /> View Carfax
-                </a>
-              )}
 
               {/* Secondary CTAs */}
               <div className="grid grid-cols-2 gap-3">
