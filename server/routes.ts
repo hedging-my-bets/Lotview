@@ -8866,6 +8866,158 @@ Format your response in clear sections with actionable recommendations.`;
   
   // Expose broadcast function globally for use in other routes
   (global as any).broadcastNotification = broadcastNotification;
+
+  // ===== AUTOMATION ENGINE ROUTES =====
+
+  // Get all follow-up sequences for dealership
+  app.get("/api/automation/sequences", authMiddleware, async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const sequences = await storage.getFollowUpSequences(dealershipId);
+      res.json(sequences);
+    } catch (error) {
+      console.error("Error fetching sequences:", error);
+      res.status(500).json({ error: "Failed to fetch sequences" });
+    }
+  });
+
+  // Get a specific sequence
+  app.get("/api/automation/sequences/:id", authMiddleware, async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const id = parseInt(req.params.id);
+      const sequence = await storage.getFollowUpSequenceById(id, dealershipId);
+      if (!sequence) {
+        return res.status(404).json({ error: "Sequence not found" });
+      }
+      res.json(sequence);
+    } catch (error) {
+      console.error("Error fetching sequence:", error);
+      res.status(500).json({ error: "Failed to fetch sequence" });
+    }
+  });
+
+  // Create a new sequence
+  app.post("/api/automation/sequences", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const sequence = await storage.createFollowUpSequence({
+        ...req.body,
+        dealershipId,
+      });
+      res.status(201).json(sequence);
+    } catch (error) {
+      console.error("Error creating sequence:", error);
+      res.status(500).json({ error: "Failed to create sequence" });
+    }
+  });
+
+  // Update a sequence
+  app.patch("/api/automation/sequences/:id", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const id = parseInt(req.params.id);
+      const sequence = await storage.updateFollowUpSequence(id, dealershipId, req.body);
+      if (!sequence) {
+        return res.status(404).json({ error: "Sequence not found" });
+      }
+      res.json(sequence);
+    } catch (error) {
+      console.error("Error updating sequence:", error);
+      res.status(500).json({ error: "Failed to update sequence" });
+    }
+  });
+
+  // Delete a sequence
+  app.delete("/api/automation/sequences/:id", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deleteFollowUpSequence(id, dealershipId);
+      if (!deleted) {
+        return res.status(404).json({ error: "Sequence not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting sequence:", error);
+      res.status(500).json({ error: "Failed to delete sequence" });
+    }
+  });
+
+  // Get follow-up queue items
+  app.get("/api/automation/queue", authMiddleware, async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const status = req.query.status as string | undefined;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const items = await storage.getFollowUpQueueItems(dealershipId, status, limit);
+      res.json(items);
+    } catch (error) {
+      console.error("Error fetching queue:", error);
+      res.status(500).json({ error: "Failed to fetch queue" });
+    }
+  });
+
+  // Cancel a queue item
+  app.post("/api/automation/queue/:id/cancel", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const id = parseInt(req.params.id);
+      const item = await storage.updateFollowUpQueueItem(id, dealershipId, { status: 'cancelled' });
+      if (!item) {
+        return res.status(404).json({ error: "Queue item not found" });
+      }
+      res.json(item);
+    } catch (error) {
+      console.error("Error cancelling queue item:", error);
+      res.status(500).json({ error: "Failed to cancel queue item" });
+    }
+  });
+
+  // Manually trigger a follow-up for a contact
+  app.post("/api/automation/trigger", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const { createAutomationService } = await import('./automation-service');
+      const automation = createAutomationService(dealershipId);
+      const result = await automation.triggerFollowUp({
+        ...req.body,
+        sourceType: req.body.sourceType || 'manual',
+      });
+      res.json(result);
+    } catch (error) {
+      console.error("Error triggering follow-up:", error);
+      res.status(500).json({ error: "Failed to trigger follow-up" });
+    }
+  });
+
+  // Get automation logs
+  app.get("/api/automation/logs", authMiddleware, async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const limit = parseInt(req.query.limit as string) || 100;
+      const automationType = req.query.automationType as string | undefined;
+      const logs = await storage.getAutomationLogs(dealershipId, { automationType }, limit);
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching automation logs:", error);
+      res.status(500).json({ error: "Failed to fetch automation logs" });
+    }
+  });
+
+  // Run automation engine manually (for testing)
+  app.post("/api/automation/run", authMiddleware, requireRole('admin', 'master', 'super_admin'), async (req, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const { createAutomationService } = await import('./automation-service');
+      const automation = createAutomationService(dealershipId);
+      const result = await automation.processDueFollowUps();
+      res.json(result);
+    } catch (error) {
+      console.error("Error running automation:", error);
+      res.status(500).json({ error: "Failed to run automation" });
+    }
+  });
   
   return httpServer;
 }

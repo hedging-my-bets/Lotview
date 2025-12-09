@@ -403,3 +403,45 @@ async function runGhlBatchSync(): Promise<void> {
     throw error;
   }
 }
+
+// ===== AUTOMATION ENGINE SCHEDULER =====
+
+let automationSchedulerInitialized = false;
+
+/**
+ * Start the automation engine scheduler.
+ * Runs every 5 minutes to process follow-up sequences, appointment reminders, and price alerts.
+ */
+export function startAutomationScheduler() {
+  if (automationSchedulerInitialized) {
+    console.log('Automation scheduler already running');
+    return;
+  }
+
+  // Process follow-ups every 5 minutes
+  cron.schedule('*/5 * * * *', async () => {
+    console.log('🤖 Running automation engine...');
+    try {
+      await runAutomationEngine();
+      console.log('✓ Automation engine cycle complete');
+    } catch (error) {
+      console.error('✗ Automation engine failed:', error);
+    }
+  });
+
+  automationSchedulerInitialized = true;
+  console.log('✓ Automation scheduler started (runs every 5 minutes)');
+}
+
+/**
+ * Run all automation tasks for all dealerships.
+ */
+async function runAutomationEngine(): Promise<void> {
+  try {
+    const { processAllDealershipFollowUps } = await import('./automation-service');
+    await processAllDealershipFollowUps();
+  } catch (error) {
+    console.error('[Automation] Error in automation engine:', error);
+    throw error;
+  }
+}

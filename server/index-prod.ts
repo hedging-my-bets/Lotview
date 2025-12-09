@@ -5,7 +5,7 @@ import path from "node:path";
 import express, { type Express, type Request } from "express";
 
 import runApp from "./app";
-import { startInventoryScheduler, startMarketAnalysisScheduler, startFacebookCatalogScheduler, startGhlSyncScheduler } from "./scheduler";
+import { startInventoryScheduler, startMarketAnalysisScheduler, startFacebookCatalogScheduler, startGhlSyncScheduler, startAutomationScheduler } from "./scheduler";
 import { startPostingScheduler } from "./posting-scheduler";
 
 export async function serveStatic(app: Express, server: Server) {
@@ -40,6 +40,9 @@ export async function serveStatic(app: Express, server: Server) {
   
   // Start the GoHighLevel CRM sync scheduler
   startGhlSyncScheduler();
+  
+  // Start the automation engine scheduler
+  startAutomationScheduler();
   
   await runApp(serveStatic);
 })();
