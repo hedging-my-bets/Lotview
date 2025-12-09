@@ -416,6 +416,12 @@ export default function VehicleDetail() {
                 <FileText className="w-5 h-5" /> View Carfax
               </a>
             )}
+
+            {/* Vehicle Description - Under Carfax Button */}
+            <div className="glass-panel p-8 rounded-2xl">
+              <h3 className="font-bold text-lg mb-4">Vehicle Description</h3>
+              <p className="text-muted-foreground leading-relaxed">{car.description}</p>
+            </div>
           </div>
 
           {/* Right Column: Details */}
@@ -571,11 +577,6 @@ export default function VehicleDetail() {
                   <Car className="w-4 h-4" /> Reserve Now
                 </button>
               </div>
-            </div>
-
-            <div className="glass-panel p-8 rounded-2xl">
-              <h3 className="font-bold text-lg mb-4">Vehicle Description</h3>
-              <p className="text-muted-foreground leading-relaxed">{car.description}</p>
             </div>
           </div>
         </div>
