@@ -1472,3 +1472,218 @@ export const insertImpersonationSessionSchema = createInsertSchema(impersonation
 
 export type InsertImpersonationSession = z.infer<typeof insertImpersonationSessionSchema>;
 export type ImpersonationSession = typeof impersonationSessions.$inferSelect;
+
+// ====== AUTOMATION ENGINE TABLES ======
+
+// Follow-up sequences - Define automated message sequences
+export const followUpSequences = pgTable("follow_up_sequences", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  name: text("name").notNull(), // e.g., "Cold Lead Revival", "Post Test Drive"
+  description: text("description"),
+  triggerType: text("trigger_type").notNull(), // 'chat_ended', 'no_activity', 'vehicle_views', 'post_test_drive', 'manual'
+  triggerConditions: text("trigger_conditions"), // JSON: { days_inactive: 3, min_views: 2, etc. }
+  // Steps is a JSON array of sequence steps
+  // [{ stepNumber: 1, delayMinutes: 1440, messageType: 'sms', templateText: 'Hi {{name}}...' }, ...]
+  steps: text("steps").notNull(), // JSON array of sequence steps
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertFollowUpSequenceSchema = createInsertSchema(followUpSequences).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertFollowUpSequence = z.infer<typeof insertFollowUpSequenceSchema>;
+export type FollowUpSequence = typeof followUpSequences.$inferSelect;
+
+// Follow-up queue - Track scheduled messages for each contact
+export const followUpQueue = pgTable("follow_up_queue", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  sequenceId: integer("sequence_id").notNull().references(() => followUpSequences.id, { onDelete: 'cascade' }),
+  // Contact info (can be from chat, PBS, or GHL)
+  contactId: text("contact_id"), // GHL contact ID if synced
+  contactName: text("contact_name"),
+  contactPhone: text("contact_phone"),
+  contactEmail: text("contact_email"),
+  // Source tracking
+  sourceType: text("source_type").notNull(), // 'chat', 'vehicle_view', 'pbs_contact', 'manual'
+  sourceId: text("source_id"), // chat conversation ID, etc.
+  vehicleId: integer("vehicle_id").references(() => vehicles.id, { onDelete: 'set null' }), // Related vehicle if any
+  // Sequence progress
+  currentStep: integer("current_step").notNull().default(1),
+  totalSteps: integer("total_steps").notNull(),
+  // Scheduling
+  nextSendAt: timestamp("next_send_at").notNull(),
+  status: text("status").notNull().default('pending'), // 'pending', 'processing', 'sent', 'completed', 'cancelled', 'failed'
+  // Results
+  lastSentAt: timestamp("last_sent_at"),
+  lastError: text("last_error"),
+  ghlMessageId: text("ghl_message_id"), // GHL message ID if sent
+  // Metadata
+  metadata: text("metadata"), // JSON: additional context data
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertFollowUpQueueSchema = createInsertSchema(followUpQueue).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertFollowUpQueue = z.infer<typeof insertFollowUpQueueSchema>;
+export type FollowUpQueue = typeof followUpQueue.$inferSelect;
+
+// Price watches - Track customer interest in specific vehicles for price alerts
+export const priceWatches = pgTable("price_watches", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  vehicleId: integer("vehicle_id").notNull().references(() => vehicles.id, { onDelete: 'cascade' }),
+  // Contact info
+  contactId: text("contact_id"), // GHL contact ID if available
+  contactName: text("contact_name"),
+  contactPhone: text("contact_phone"),
+  contactEmail: text("contact_email"),
+  // How they showed interest
+  sourceType: text("source_type").notNull(), // 'vehicle_view', 'chat', 'manual', 'auto'
+  sourceId: text("source_id"), // Related source ID (chat conversation, etc.)
+  viewCount: integer("view_count").notNull().default(1), // Number of times viewed
+  // Subscription settings
+  notifyOnPriceDrop: boolean("notify_on_price_drop").notNull().default(true),
+  notifyOnSold: boolean("notify_on_sold").notNull().default(true),
+  minPriceDropPercent: integer("min_price_drop_percent").default(5), // Only notify if price drops by at least X%
+  // Status
+  isActive: boolean("is_active").notNull().default(true),
+  lastNotifiedAt: timestamp("last_notified_at"),
+  priceWhenSubscribed: integer("price_when_subscribed"), // Original price when they started watching
+  // Timestamps
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertPriceWatchSchema = createInsertSchema(priceWatches).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertPriceWatch = z.infer<typeof insertPriceWatchSchema>;
+export type PriceWatch = typeof priceWatches.$inferSelect;
+
+// Competitor price alerts - Store alerts when competitors undercut prices
+export const competitorPriceAlerts = pgTable("competitor_price_alerts", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  vehicleId: integer("vehicle_id").references(() => vehicles.id, { onDelete: 'set null' }), // Our matching vehicle
+  // Competitor info
+  competitorDealerId: integer("competitor_dealer_id").references(() => competitorDealers.id, { onDelete: 'set null' }),
+  competitorName: text("competitor_name").notNull(),
+  competitorVehicleUrl: text("competitor_vehicle_url"),
+  // Vehicle comparison
+  competitorYear: integer("competitor_year").notNull(),
+  competitorMake: text("competitor_make").notNull(),
+  competitorModel: text("competitor_model").notNull(),
+  competitorTrim: text("competitor_trim"),
+  competitorPrice: integer("competitor_price").notNull(),
+  competitorOdometer: integer("competitor_odometer"),
+  // Our pricing
+  ourPrice: integer("our_price"),
+  priceDifference: integer("price_difference"), // Positive = competitor is cheaper
+  percentDifference: real("percent_difference"), // Percentage difference
+  // Alert status
+  alertType: text("alert_type").notNull(), // 'undercut', 'new_competitor', 'price_change'
+  severity: text("severity").notNull().default('medium'), // 'low', 'medium', 'high', 'critical'
+  status: text("status").notNull().default('new'), // 'new', 'acknowledged', 'resolved', 'dismissed'
+  acknowledgedBy: integer("acknowledged_by").references(() => users.id, { onDelete: 'set null' }),
+  acknowledgedAt: timestamp("acknowledged_at"),
+  resolvedAt: timestamp("resolved_at"),
+  resolutionNote: text("resolution_note"),
+  // Timestamps
+  detectedAt: timestamp("detected_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertCompetitorPriceAlertSchema = createInsertSchema(competitorPriceAlerts).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertCompetitorPriceAlert = z.infer<typeof insertCompetitorPriceAlertSchema>;
+export type CompetitorPriceAlert = typeof competitorPriceAlerts.$inferSelect;
+
+// Automation logs - Audit trail for all automated actions
+export const automationLogs = pgTable("automation_logs", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  automationType: text("automation_type").notNull(), // 'follow_up', 'appointment_reminder', 'price_alert', 'competitor_alert'
+  actionType: text("action_type").notNull(), // 'triggered', 'sent', 'failed', 'skipped', 'cancelled'
+  // Reference to the source record
+  sourceTable: text("source_table"), // 'follow_up_queue', 'price_watches', etc.
+  sourceId: integer("source_id"),
+  // Contact info
+  contactId: text("contact_id"),
+  contactName: text("contact_name"),
+  contactPhone: text("contact_phone"),
+  // Action details
+  messageType: text("message_type"), // 'sms', 'email', 'internal_alert'
+  messageContent: text("message_content"), // The actual message sent
+  // Results
+  success: boolean("success").notNull(),
+  errorMessage: text("error_message"),
+  externalId: text("external_id"), // GHL message ID, etc.
+  // Metadata
+  metadata: text("metadata"), // JSON: additional context
+  executedAt: timestamp("executed_at").defaultNow().notNull(),
+});
+
+export const insertAutomationLogSchema = createInsertSchema(automationLogs).omit({
+  id: true,
+});
+
+export type InsertAutomationLog = z.infer<typeof insertAutomationLogSchema>;
+export type AutomationLog = typeof automationLogs.$inferSelect;
+
+// Appointment reminders - Track scheduled reminders for appointments
+export const appointmentReminders = pgTable("appointment_reminders", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  // Appointment reference
+  appointmentSource: text("appointment_source").notNull(), // 'pbs', 'ghl', 'manual'
+  appointmentId: text("appointment_id").notNull(), // External appointment ID
+  appointmentType: text("appointment_type").notNull(), // 'test_drive', 'service', 'sales', 'other'
+  appointmentTime: timestamp("appointment_time").notNull(),
+  // Contact info
+  contactId: text("contact_id"),
+  contactName: text("contact_name").notNull(),
+  contactPhone: text("contact_phone"),
+  contactEmail: text("contact_email"),
+  // Vehicle if relevant
+  vehicleId: integer("vehicle_id").references(() => vehicles.id, { onDelete: 'set null' }),
+  vehicleDescription: text("vehicle_description"), // "2024 Honda Civic"
+  // Reminder scheduling
+  reminderType: text("reminder_type").notNull(), // '24h', '2h', '1h', 'custom'
+  reminderMinutesBefore: integer("reminder_minutes_before").notNull(), // How many minutes before appointment
+  scheduledSendAt: timestamp("scheduled_send_at").notNull(),
+  // Status
+  status: text("status").notNull().default('pending'), // 'pending', 'sent', 'failed', 'cancelled'
+  sentAt: timestamp("sent_at"),
+  errorMessage: text("error_message"),
+  ghlMessageId: text("ghl_message_id"),
+  // Timestamps
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertAppointmentReminderSchema = createInsertSchema(appointmentReminders).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertAppointmentReminder = z.infer<typeof insertAppointmentReminderSchema>;
+export type AppointmentReminder = typeof appointmentReminders.$inferSelect;

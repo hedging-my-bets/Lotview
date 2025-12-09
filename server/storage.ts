@@ -161,7 +161,25 @@ import {
   type InsertCallRecording,
   impersonationSessions,
   type ImpersonationSession,
-  type InsertImpersonationSession
+  type InsertImpersonationSession,
+  followUpSequences,
+  type FollowUpSequence,
+  type InsertFollowUpSequence,
+  followUpQueue,
+  type FollowUpQueue,
+  type InsertFollowUpQueue,
+  priceWatches,
+  type PriceWatch,
+  type InsertPriceWatch,
+  competitorPriceAlerts,
+  type CompetitorPriceAlert,
+  type InsertCompetitorPriceAlert,
+  automationLogs,
+  type AutomationLog,
+  type InsertAutomationLog,
+  appointmentReminders,
+  type AppointmentReminder,
+  type InsertAppointmentReminder
 } from "@shared/schema";
 import { eq, desc, sql, and, gte, lte, lt, gt, inArray, or, ilike } from "drizzle-orm";
 
@@ -575,6 +593,55 @@ export interface IStorage {
   endImpersonationSession(id: number, superAdminId: number): Promise<ImpersonationSession | undefined>;
   getImpersonationSessions(limit?: number, offset?: number): Promise<{ sessions: (ImpersonationSession & { superAdminName?: string; targetUserName?: string; targetDealershipName?: string })[]; total: number }>;
   incrementImpersonationActions(id: number): Promise<void>;
+  
+  // ====== AUTOMATION ENGINE ======
+  // Follow-up Sequences (Multi-Tenant)
+  getFollowUpSequences(dealershipId: number): Promise<FollowUpSequence[]>;
+  getActiveFollowUpSequences(dealershipId: number): Promise<FollowUpSequence[]>;
+  getFollowUpSequenceById(id: number, dealershipId: number): Promise<FollowUpSequence | undefined>;
+  createFollowUpSequence(sequence: InsertFollowUpSequence): Promise<FollowUpSequence>;
+  updateFollowUpSequence(id: number, dealershipId: number, sequence: Partial<InsertFollowUpSequence>): Promise<FollowUpSequence | undefined>;
+  deleteFollowUpSequence(id: number, dealershipId: number): Promise<boolean>;
+  
+  // Follow-up Queue (Multi-Tenant)
+  getFollowUpQueueItems(dealershipId: number, status?: string, limit?: number): Promise<FollowUpQueue[]>;
+  getFollowUpQueueById(id: number, dealershipId: number): Promise<FollowUpQueue | undefined>;
+  getPendingFollowUpsByContact(dealershipId: number, contactPhone: string): Promise<FollowUpQueue[]>;
+  getDueFollowUpItems(dealershipId: number, limit?: number): Promise<FollowUpQueue[]>;
+  createFollowUpQueueItem(item: InsertFollowUpQueue): Promise<FollowUpQueue>;
+  updateFollowUpQueueItem(id: number, dealershipId: number, item: Partial<InsertFollowUpQueue>): Promise<FollowUpQueue | undefined>;
+  deleteFollowUpQueueItem(id: number, dealershipId: number): Promise<boolean>;
+  
+  // Price Watches (Multi-Tenant)
+  getPriceWatches(dealershipId: number, vehicleId?: number): Promise<PriceWatch[]>;
+  getActivePriceWatches(dealershipId: number): Promise<PriceWatch[]>;
+  getPriceWatchesByVehicle(dealershipId: number, vehicleId: number): Promise<PriceWatch[]>;
+  getPriceWatchById(id: number, dealershipId: number): Promise<PriceWatch | undefined>;
+  getPriceWatchByContact(dealershipId: number, vehicleId: number, contactPhone: string): Promise<PriceWatch | undefined>;
+  createPriceWatch(watch: InsertPriceWatch): Promise<PriceWatch>;
+  updatePriceWatch(id: number, dealershipId: number, watch: Partial<InsertPriceWatch>): Promise<PriceWatch | undefined>;
+  deletePriceWatch(id: number, dealershipId: number): Promise<boolean>;
+  incrementPriceWatchViewCount(id: number, dealershipId: number): Promise<void>;
+  
+  // Competitor Price Alerts (Multi-Tenant)
+  getCompetitorPriceAlerts(dealershipId: number, filters?: { status?: string; severity?: string; vehicleId?: number }, limit?: number): Promise<CompetitorPriceAlert[]>;
+  getCompetitorPriceAlertById(id: number, dealershipId: number): Promise<CompetitorPriceAlert | undefined>;
+  createCompetitorPriceAlert(alert: InsertCompetitorPriceAlert): Promise<CompetitorPriceAlert>;
+  updateCompetitorPriceAlert(id: number, dealershipId: number, alert: Partial<InsertCompetitorPriceAlert>): Promise<CompetitorPriceAlert | undefined>;
+  acknowledgeCompetitorPriceAlert(id: number, dealershipId: number, userId: number): Promise<CompetitorPriceAlert | undefined>;
+  resolveCompetitorPriceAlert(id: number, dealershipId: number, note?: string): Promise<CompetitorPriceAlert | undefined>;
+  
+  // Automation Logs (Multi-Tenant)
+  getAutomationLogs(dealershipId: number, filters?: { automationType?: string; actionType?: string; startDate?: Date; endDate?: Date }, limit?: number): Promise<AutomationLog[]>;
+  createAutomationLog(log: InsertAutomationLog): Promise<AutomationLog>;
+  
+  // Appointment Reminders (Multi-Tenant)
+  getAppointmentReminders(dealershipId: number, status?: string): Promise<AppointmentReminder[]>;
+  getDueAppointmentReminders(dealershipId: number, limit?: number): Promise<AppointmentReminder[]>;
+  getAppointmentRemindersByAppointment(dealershipId: number, appointmentId: string): Promise<AppointmentReminder[]>;
+  createAppointmentReminder(reminder: InsertAppointmentReminder): Promise<AppointmentReminder>;
+  updateAppointmentReminder(id: number, dealershipId: number, reminder: Partial<InsertAppointmentReminder>): Promise<AppointmentReminder | undefined>;
+  deleteAppointmentReminder(id: number, dealershipId: number): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3738,6 +3805,392 @@ export class DatabaseStorage implements IStorage {
     await db.update(impersonationSessions)
       .set({ actionsPerformed: sql`${impersonationSessions.actionsPerformed} + 1` })
       .where(eq(impersonationSessions.id, id));
+  }
+
+  // ====== AUTOMATION ENGINE ======
+  
+  // Follow-up Sequences
+  async getFollowUpSequences(dealershipId: number): Promise<FollowUpSequence[]> {
+    return await db.select().from(followUpSequences)
+      .where(eq(followUpSequences.dealershipId, dealershipId))
+      .orderBy(desc(followUpSequences.createdAt));
+  }
+  
+  async getActiveFollowUpSequences(dealershipId: number): Promise<FollowUpSequence[]> {
+    return await db.select().from(followUpSequences)
+      .where(and(
+        eq(followUpSequences.dealershipId, dealershipId),
+        eq(followUpSequences.isActive, true)
+      ))
+      .orderBy(followUpSequences.name);
+  }
+  
+  async getFollowUpSequenceById(id: number, dealershipId: number): Promise<FollowUpSequence | undefined> {
+    const result = await db.select().from(followUpSequences)
+      .where(and(
+        eq(followUpSequences.id, id),
+        eq(followUpSequences.dealershipId, dealershipId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+  
+  async createFollowUpSequence(sequence: InsertFollowUpSequence): Promise<FollowUpSequence> {
+    if (!sequence.dealershipId) {
+      throw new Error('dealershipId is required when creating follow-up sequences');
+    }
+    const result = await db.insert(followUpSequences).values(sequence).returning();
+    return result[0];
+  }
+  
+  async updateFollowUpSequence(id: number, dealershipId: number, sequence: Partial<InsertFollowUpSequence>): Promise<FollowUpSequence | undefined> {
+    const result = await db.update(followUpSequences)
+      .set({ ...sequence, updatedAt: new Date() })
+      .where(and(
+        eq(followUpSequences.id, id),
+        eq(followUpSequences.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+  
+  async deleteFollowUpSequence(id: number, dealershipId: number): Promise<boolean> {
+    const result = await db.delete(followUpSequences)
+      .where(and(
+        eq(followUpSequences.id, id),
+        eq(followUpSequences.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result.length > 0;
+  }
+  
+  // Follow-up Queue
+  async getFollowUpQueueItems(dealershipId: number, status?: string, limit: number = 50): Promise<FollowUpQueue[]> {
+    const conditions = [eq(followUpQueue.dealershipId, dealershipId)];
+    if (status) {
+      conditions.push(eq(followUpQueue.status, status));
+    }
+    return await db.select().from(followUpQueue)
+      .where(and(...conditions))
+      .orderBy(followUpQueue.nextSendAt)
+      .limit(limit);
+  }
+  
+  async getFollowUpQueueById(id: number, dealershipId: number): Promise<FollowUpQueue | undefined> {
+    const result = await db.select().from(followUpQueue)
+      .where(and(
+        eq(followUpQueue.id, id),
+        eq(followUpQueue.dealershipId, dealershipId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+  
+  async getPendingFollowUpsByContact(dealershipId: number, contactPhone: string): Promise<FollowUpQueue[]> {
+    return await db.select().from(followUpQueue)
+      .where(and(
+        eq(followUpQueue.dealershipId, dealershipId),
+        eq(followUpQueue.contactPhone, contactPhone),
+        eq(followUpQueue.status, 'pending')
+      ))
+      .orderBy(followUpQueue.nextSendAt);
+  }
+  
+  async getDueFollowUpItems(dealershipId: number, limit: number = 100): Promise<FollowUpQueue[]> {
+    return await db.select().from(followUpQueue)
+      .where(and(
+        eq(followUpQueue.dealershipId, dealershipId),
+        eq(followUpQueue.status, 'pending'),
+        lte(followUpQueue.nextSendAt, new Date())
+      ))
+      .orderBy(followUpQueue.nextSendAt)
+      .limit(limit);
+  }
+  
+  async createFollowUpQueueItem(item: InsertFollowUpQueue): Promise<FollowUpQueue> {
+    if (!item.dealershipId) {
+      throw new Error('dealershipId is required when creating follow-up queue items');
+    }
+    const result = await db.insert(followUpQueue).values(item).returning();
+    return result[0];
+  }
+  
+  async updateFollowUpQueueItem(id: number, dealershipId: number, item: Partial<InsertFollowUpQueue>): Promise<FollowUpQueue | undefined> {
+    const result = await db.update(followUpQueue)
+      .set({ ...item, updatedAt: new Date() })
+      .where(and(
+        eq(followUpQueue.id, id),
+        eq(followUpQueue.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+  
+  async deleteFollowUpQueueItem(id: number, dealershipId: number): Promise<boolean> {
+    const result = await db.delete(followUpQueue)
+      .where(and(
+        eq(followUpQueue.id, id),
+        eq(followUpQueue.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result.length > 0;
+  }
+  
+  // Price Watches
+  async getPriceWatches(dealershipId: number, vehicleId?: number): Promise<PriceWatch[]> {
+    const conditions = [eq(priceWatches.dealershipId, dealershipId)];
+    if (vehicleId) {
+      conditions.push(eq(priceWatches.vehicleId, vehicleId));
+    }
+    return await db.select().from(priceWatches)
+      .where(and(...conditions))
+      .orderBy(desc(priceWatches.createdAt));
+  }
+  
+  async getActivePriceWatches(dealershipId: number): Promise<PriceWatch[]> {
+    return await db.select().from(priceWatches)
+      .where(and(
+        eq(priceWatches.dealershipId, dealershipId),
+        eq(priceWatches.isActive, true)
+      ))
+      .orderBy(desc(priceWatches.createdAt));
+  }
+  
+  async getPriceWatchesByVehicle(dealershipId: number, vehicleId: number): Promise<PriceWatch[]> {
+    return await db.select().from(priceWatches)
+      .where(and(
+        eq(priceWatches.dealershipId, dealershipId),
+        eq(priceWatches.vehicleId, vehicleId),
+        eq(priceWatches.isActive, true)
+      ));
+  }
+  
+  async getPriceWatchById(id: number, dealershipId: number): Promise<PriceWatch | undefined> {
+    const result = await db.select().from(priceWatches)
+      .where(and(
+        eq(priceWatches.id, id),
+        eq(priceWatches.dealershipId, dealershipId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+  
+  async getPriceWatchByContact(dealershipId: number, vehicleId: number, contactPhone: string): Promise<PriceWatch | undefined> {
+    const result = await db.select().from(priceWatches)
+      .where(and(
+        eq(priceWatches.dealershipId, dealershipId),
+        eq(priceWatches.vehicleId, vehicleId),
+        eq(priceWatches.contactPhone, contactPhone)
+      ))
+      .limit(1);
+    return result[0];
+  }
+  
+  async createPriceWatch(watch: InsertPriceWatch): Promise<PriceWatch> {
+    if (!watch.dealershipId) {
+      throw new Error('dealershipId is required when creating price watches');
+    }
+    const result = await db.insert(priceWatches).values(watch).returning();
+    return result[0];
+  }
+  
+  async updatePriceWatch(id: number, dealershipId: number, watch: Partial<InsertPriceWatch>): Promise<PriceWatch | undefined> {
+    const result = await db.update(priceWatches)
+      .set({ ...watch, updatedAt: new Date() })
+      .where(and(
+        eq(priceWatches.id, id),
+        eq(priceWatches.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+  
+  async deletePriceWatch(id: number, dealershipId: number): Promise<boolean> {
+    const result = await db.delete(priceWatches)
+      .where(and(
+        eq(priceWatches.id, id),
+        eq(priceWatches.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result.length > 0;
+  }
+  
+  async incrementPriceWatchViewCount(id: number, dealershipId: number): Promise<void> {
+    await db.update(priceWatches)
+      .set({ 
+        viewCount: sql`${priceWatches.viewCount} + 1`,
+        updatedAt: new Date()
+      })
+      .where(and(
+        eq(priceWatches.id, id),
+        eq(priceWatches.dealershipId, dealershipId)
+      ));
+  }
+  
+  // Competitor Price Alerts
+  async getCompetitorPriceAlerts(dealershipId: number, filters?: { status?: string; severity?: string; vehicleId?: number }, limit: number = 50): Promise<CompetitorPriceAlert[]> {
+    const conditions = [eq(competitorPriceAlerts.dealershipId, dealershipId)];
+    if (filters?.status) {
+      conditions.push(eq(competitorPriceAlerts.status, filters.status));
+    }
+    if (filters?.severity) {
+      conditions.push(eq(competitorPriceAlerts.severity, filters.severity));
+    }
+    if (filters?.vehicleId) {
+      conditions.push(eq(competitorPriceAlerts.vehicleId, filters.vehicleId));
+    }
+    return await db.select().from(competitorPriceAlerts)
+      .where(and(...conditions))
+      .orderBy(desc(competitorPriceAlerts.detectedAt))
+      .limit(limit);
+  }
+  
+  async getCompetitorPriceAlertById(id: number, dealershipId: number): Promise<CompetitorPriceAlert | undefined> {
+    const result = await db.select().from(competitorPriceAlerts)
+      .where(and(
+        eq(competitorPriceAlerts.id, id),
+        eq(competitorPriceAlerts.dealershipId, dealershipId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+  
+  async createCompetitorPriceAlert(alert: InsertCompetitorPriceAlert): Promise<CompetitorPriceAlert> {
+    if (!alert.dealershipId) {
+      throw new Error('dealershipId is required when creating competitor price alerts');
+    }
+    const result = await db.insert(competitorPriceAlerts).values(alert).returning();
+    return result[0];
+  }
+  
+  async updateCompetitorPriceAlert(id: number, dealershipId: number, alert: Partial<InsertCompetitorPriceAlert>): Promise<CompetitorPriceAlert | undefined> {
+    const result = await db.update(competitorPriceAlerts)
+      .set(alert)
+      .where(and(
+        eq(competitorPriceAlerts.id, id),
+        eq(competitorPriceAlerts.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+  
+  async acknowledgeCompetitorPriceAlert(id: number, dealershipId: number, userId: number): Promise<CompetitorPriceAlert | undefined> {
+    const result = await db.update(competitorPriceAlerts)
+      .set({ 
+        status: 'acknowledged', 
+        acknowledgedBy: userId,
+        acknowledgedAt: new Date()
+      })
+      .where(and(
+        eq(competitorPriceAlerts.id, id),
+        eq(competitorPriceAlerts.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+  
+  async resolveCompetitorPriceAlert(id: number, dealershipId: number, note?: string): Promise<CompetitorPriceAlert | undefined> {
+    const result = await db.update(competitorPriceAlerts)
+      .set({ 
+        status: 'resolved', 
+        resolvedAt: new Date(),
+        resolutionNote: note
+      })
+      .where(and(
+        eq(competitorPriceAlerts.id, id),
+        eq(competitorPriceAlerts.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+  
+  // Automation Logs
+  async getAutomationLogs(dealershipId: number, filters?: { automationType?: string; actionType?: string; startDate?: Date; endDate?: Date }, limit: number = 100): Promise<AutomationLog[]> {
+    const conditions = [eq(automationLogs.dealershipId, dealershipId)];
+    if (filters?.automationType) {
+      conditions.push(eq(automationLogs.automationType, filters.automationType));
+    }
+    if (filters?.actionType) {
+      conditions.push(eq(automationLogs.actionType, filters.actionType));
+    }
+    if (filters?.startDate) {
+      conditions.push(gte(automationLogs.executedAt, filters.startDate));
+    }
+    if (filters?.endDate) {
+      conditions.push(lte(automationLogs.executedAt, filters.endDate));
+    }
+    return await db.select().from(automationLogs)
+      .where(and(...conditions))
+      .orderBy(desc(automationLogs.executedAt))
+      .limit(limit);
+  }
+  
+  async createAutomationLog(log: InsertAutomationLog): Promise<AutomationLog> {
+    if (!log.dealershipId) {
+      throw new Error('dealershipId is required when creating automation logs');
+    }
+    const result = await db.insert(automationLogs).values(log).returning();
+    return result[0];
+  }
+  
+  // Appointment Reminders
+  async getAppointmentReminders(dealershipId: number, status?: string): Promise<AppointmentReminder[]> {
+    const conditions = [eq(appointmentReminders.dealershipId, dealershipId)];
+    if (status) {
+      conditions.push(eq(appointmentReminders.status, status));
+    }
+    return await db.select().from(appointmentReminders)
+      .where(and(...conditions))
+      .orderBy(appointmentReminders.scheduledSendAt);
+  }
+  
+  async getDueAppointmentReminders(dealershipId: number, limit: number = 100): Promise<AppointmentReminder[]> {
+    return await db.select().from(appointmentReminders)
+      .where(and(
+        eq(appointmentReminders.dealershipId, dealershipId),
+        eq(appointmentReminders.status, 'pending'),
+        lte(appointmentReminders.scheduledSendAt, new Date())
+      ))
+      .orderBy(appointmentReminders.scheduledSendAt)
+      .limit(limit);
+  }
+  
+  async getAppointmentRemindersByAppointment(dealershipId: number, appointmentId: string): Promise<AppointmentReminder[]> {
+    return await db.select().from(appointmentReminders)
+      .where(and(
+        eq(appointmentReminders.dealershipId, dealershipId),
+        eq(appointmentReminders.appointmentId, appointmentId)
+      ))
+      .orderBy(appointmentReminders.scheduledSendAt);
+  }
+  
+  async createAppointmentReminder(reminder: InsertAppointmentReminder): Promise<AppointmentReminder> {
+    if (!reminder.dealershipId) {
+      throw new Error('dealershipId is required when creating appointment reminders');
+    }
+    const result = await db.insert(appointmentReminders).values(reminder).returning();
+    return result[0];
+  }
+  
+  async updateAppointmentReminder(id: number, dealershipId: number, reminder: Partial<InsertAppointmentReminder>): Promise<AppointmentReminder | undefined> {
+    const result = await db.update(appointmentReminders)
+      .set({ ...reminder, updatedAt: new Date() })
+      .where(and(
+        eq(appointmentReminders.id, id),
+        eq(appointmentReminders.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+  
+  async deleteAppointmentReminder(id: number, dealershipId: number): Promise<boolean> {
+    const result = await db.delete(appointmentReminders)
+      .where(and(
+        eq(appointmentReminders.id, id),
+        eq(appointmentReminders.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result.length > 0;
   }
 }
 
