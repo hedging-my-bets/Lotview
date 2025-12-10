@@ -18,7 +18,8 @@ import {
   ghlAccounts,
   ghlContactSync,
   dealershipContacts,
-  callScoringResponses
+  callScoringResponses,
+  dealershipApiKeys
 } from "@shared/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import { fromZodError } from "zod-validation-error";
@@ -9134,31 +9135,39 @@ Format your response in clear sections with actionable recommendations.`;
         return res.status(400).json({ error: "Missing locationId" });
       }
       
-      // Find the account with this location
+      // First try ghl_accounts table (OAuth-based connections)
+      let dealershipId: number | null = null;
+      let accountId: number | null = null;
+      
       const accounts = await db.select().from(ghlAccounts)
         .where(eq(ghlAccounts.locationId, locationId))
         .limit(1);
       
-      if (accounts.length === 0) {
+      if (accounts.length > 0) {
+        const account = accounts[0];
+        if (!account.isActive) {
+          console.warn(`GHL webhook rejected: account inactive for dealership ${account.dealershipId}`);
+          return res.status(403).json({ error: "Account not active" });
+        }
+        dealershipId = account.dealershipId;
+        accountId = account.id;
+        console.log(`GHL webhook: verified via ghl_accounts - dealership ${dealershipId}, location ${locationId}`);
+      } else {
+        // Fallback: Check dealership_api_keys table (API key-based connections)
+        const apiKeyRecords = await db.select().from(dealershipApiKeys)
+          .where(eq(dealershipApiKeys.ghlLocationId, locationId))
+          .limit(1);
+        
+        if (apiKeyRecords.length > 0) {
+          dealershipId = apiKeyRecords[0].dealershipId;
+          console.log(`GHL webhook: verified via dealership_api_keys - dealership ${dealershipId}, location ${locationId}`);
+        }
+      }
+      
+      if (!dealershipId) {
         console.warn(`GHL webhook for unknown location: ${locationId}`);
         return res.status(404).json({ error: "Location not registered" });
       }
-      
-      const account = accounts[0];
-      const dealershipId = account.dealershipId;
-      
-      // Security: Validate the account is active and locationId matches exactly
-      if (!account.isActive) {
-        console.warn(`GHL webhook rejected: account inactive for dealership ${dealershipId}`);
-        return res.status(403).json({ error: "Account not active" });
-      }
-      
-      if (account.locationId !== locationId) {
-        console.error(`GHL webhook security: locationId mismatch - expected ${account.locationId}, got ${locationId}`);
-        return res.status(403).json({ error: "Location mismatch" });
-      }
-      
-      console.log(`GHL webhook: verified account ${account.id} for dealership ${dealershipId}, location ${locationId}`);
       
       // Verify webhook signature if configured
       const config = await storage.getGhlConfig(dealershipId);
