@@ -1,5 +1,6 @@
 import { storage } from './storage';
 import { facebookService } from './facebook-service';
+import { createGhlApiService, GhlApiService } from './ghl-api-service';
 import type { CrmContact, CrmMessage, InsertCrmMessage, InsertCrmActivity } from '@shared/schema';
 
 interface SendMessageParams {
@@ -28,6 +29,190 @@ interface AIMessageSuggestionParams {
 }
 
 export function createContactMessagingService(dealershipId: number) {
+  const ghlService = createGhlApiService(dealershipId);
+  
+  /**
+   * Ensure a Lotview CRM contact exists in GoHighLevel
+   * Searches by email and phone, creates if not found
+   * Updates the CRM contact with the GHL ID for future use
+   * Logs all sync attempts (success and failure) as CRM activities
+   */
+  async function ensureGhlContact(contact: CrmContact): Promise<{ 
+    success: boolean; 
+    ghlContactId?: string; 
+    error?: string 
+  }> {
+    const logContext = `Contact #${contact.id} (${contact.firstName} ${contact.lastName || ''})`;
+    
+    try {
+      // If we already have a GHL contact ID, verify it still exists
+      if (contact.ghlContactId) {
+        const verifyResult = await ghlService.getContact(contact.ghlContactId);
+        if (verifyResult.success && verifyResult.data) {
+          // Existing GHL contact verified - log the verification
+          console.log(`[ContactMessaging] GHL contact verified: ${contact.ghlContactId}`);
+          
+          await storage.createCrmActivity({
+            dealershipId,
+            contactId: contact.id,
+            userId: null,
+            activityType: 'system',
+            direction: 'outbound',
+            subject: 'GHL contact verified',
+            content: `Existing GHL contact ID verified. GHL ID: ${contact.ghlContactId}. ${logContext}`,
+            status: 'completed',
+          });
+          
+          return { success: true, ghlContactId: contact.ghlContactId };
+        }
+        
+        // GHL contact no longer exists - clear the stale ID and re-sync
+        console.warn(`[ContactMessaging] Stale GHL contact ${contact.ghlContactId} - clearing and re-syncing`);
+        await storage.updateCrmContact(contact.id, dealershipId, { 
+          ghlContactId: null 
+        });
+        contact.ghlContactId = null;
+        
+        // Log the stale ID detection
+        await storage.createCrmActivity({
+          dealershipId,
+          contactId: contact.id,
+          userId: null,
+          activityType: 'system',
+          direction: 'outbound',
+          subject: 'GHL contact stale - re-syncing',
+          content: `Previous GHL ID no longer exists, attempting re-sync. ${logContext}`,
+          status: 'completed',
+        });
+      }
+      
+      // Search for existing contact in GHL by email
+      let foundGhlContact: { id: string } | null = null;
+      let searchMethod = '';
+      
+      if (contact.email) {
+        const searchResult = await ghlService.searchContacts({ email: contact.email });
+        if (searchResult.success && searchResult.data?.contacts?.length) {
+          foundGhlContact = searchResult.data.contacts[0];
+          searchMethod = 'email';
+        }
+      }
+      
+      // If not found by email, try phone
+      if (!foundGhlContact && contact.phone) {
+        const searchResult = await ghlService.searchContacts({ phone: contact.phone });
+        if (searchResult.success && searchResult.data?.contacts?.length) {
+          foundGhlContact = searchResult.data.contacts[0];
+          searchMethod = 'phone';
+        }
+      }
+      
+      // If found, link and log
+      if (foundGhlContact) {
+        await storage.updateCrmContact(contact.id, dealershipId, { 
+          ghlContactId: foundGhlContact.id 
+        });
+        
+        // Log successful lookup
+        await storage.createCrmActivity({
+          dealershipId,
+          contactId: contact.id,
+          userId: null,
+          activityType: 'system',
+          direction: 'outbound',
+          subject: 'GHL contact linked',
+          content: `Found existing GHL contact by ${searchMethod}. GHL ID: ${foundGhlContact.id}. ${logContext}`,
+          status: 'completed',
+        });
+        
+        console.log(`[ContactMessaging] Found GHL contact by ${searchMethod}: ${foundGhlContact.id}`);
+        return { success: true, ghlContactId: foundGhlContact.id };
+      }
+      
+      // Contact not found in GHL - create a new one
+      if (!contact.email && !contact.phone) {
+        const errorMsg = 'Contact has no email or phone to sync with GHL';
+        
+        await storage.createCrmActivity({
+          dealershipId,
+          contactId: contact.id,
+          userId: null,
+          activityType: 'system',
+          direction: 'outbound',
+          subject: 'GHL sync failed - no identifiers',
+          content: `${errorMsg}. ${logContext}`,
+          status: 'failed',
+        });
+        
+        return { success: false, error: errorMsg };
+      }
+      
+      const createResult = await ghlService.createContact({
+        firstName: contact.firstName,
+        lastName: contact.lastName || undefined,
+        email: contact.email || undefined,
+        phone: contact.phone || undefined,
+        source: 'Lotview CRM',
+        tags: contact.leadSource ? [contact.leadSource] : undefined,
+      });
+      
+      if (createResult.success && createResult.data) {
+        await storage.updateCrmContact(contact.id, dealershipId, { 
+          ghlContactId: createResult.data.id 
+        });
+        
+        // Log successful creation
+        await storage.createCrmActivity({
+          dealershipId,
+          contactId: contact.id,
+          userId: null,
+          activityType: 'system',
+          direction: 'outbound',
+          subject: 'GHL contact created',
+          content: `New contact created in GHL. GHL ID: ${createResult.data.id}. ${logContext}`,
+          status: 'completed',
+        });
+        
+        console.log(`[ContactMessaging] Created GHL contact: ${createResult.data.id}`);
+        return { success: true, ghlContactId: createResult.data.id };
+      } else {
+        const errorMsg = createResult.error || 'Unknown error';
+        const errorCode = createResult.errorCode || 'UNKNOWN';
+        
+        console.error(`[ContactMessaging] Failed to create GHL contact: ${errorMsg} (${errorCode})`);
+        
+        // Log the failed sync with GHL error details
+        await storage.createCrmActivity({
+          dealershipId,
+          contactId: contact.id,
+          userId: null,
+          activityType: 'system',
+          direction: 'outbound',
+          subject: 'GHL sync failed',
+          content: `Failed to create contact in GHL. Error: ${errorMsg}. Code: ${errorCode}. ${logContext}`,
+          status: 'failed',
+        });
+        
+        return { success: false, error: `GHL error (${errorCode}): ${errorMsg}` };
+      }
+    } catch (error: any) {
+      console.error('[ContactMessaging] ensureGhlContact error:', error);
+      
+      // Log unexpected errors
+      await storage.createCrmActivity({
+        dealershipId,
+        contactId: contact.id,
+        userId: null,
+        activityType: 'system',
+        direction: 'outbound',
+        subject: 'GHL sync exception',
+        content: `Unexpected error during GHL sync: ${error.message}. ${logContext}`,
+        status: 'failed',
+      });
+      
+      return { success: false, error: error.message };
+    }
+  }
   
   async function sendMessage(params: SendMessageParams): Promise<SendMessageResult> {
     const { contactId, channel, content, subject, sentById, aiGenerated, aiPromptUsed } = params;
@@ -89,14 +274,14 @@ export function createContactMessagingService(dealershipId: number) {
     
     try {
       if (channel === 'email') {
-        const result = await sendEmailMessage(dealershipId, recipientEmail!, subject || '', content);
+        const result = await sendEmailViaGhl(contact, subject || '', content);
         if (result.success) {
           externalMessageId = result.messageId;
         } else {
           sendError = result.error;
         }
       } else if (channel === 'sms') {
-        const result = await sendSmsMessage(dealershipId, recipientPhone!, content);
+        const result = await sendSmsViaGhl(contact, content);
         if (result.success) {
           externalMessageId = result.messageId;
         } else {
@@ -144,6 +329,19 @@ export function createContactMessagingService(dealershipId: number) {
           errorMessage: sendError || 'Unknown error',
         });
         
+        // Log failed message activity
+        await storage.createCrmActivity({
+          dealershipId,
+          contactId,
+          userId: sentById || null,
+          activityType: channel,
+          direction: 'outbound',
+          subject: subject || null,
+          content: `Failed to send: ${sendError}`,
+          status: 'failed',
+          deliveryStatus: 'failed',
+        });
+        
         return { success: false, messageId: message.id, error: sendError };
       }
     } catch (error: any) {
@@ -158,46 +356,57 @@ export function createContactMessagingService(dealershipId: number) {
     }
   }
   
-  async function sendEmailMessage(
-    dealershipId: number,
-    recipientEmail: string,
+  /**
+   * Send email through GoHighLevel's Conversations API
+   * Uses shared ensureGhlContact to sync contact first
+   */
+  async function sendEmailViaGhl(
+    contact: CrmContact,
     subject: string,
     content: string
   ): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
-      const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
-      
-      if (!SENDGRID_API_KEY) {
-        console.warn('[ContactMessaging] SendGrid API key not configured - simulating email send');
-        return { success: true, messageId: `sim_email_${Date.now()}` };
+      // Ensure contact exists in GHL using shared helper
+      const syncResult = await ensureGhlContact(contact);
+      if (!syncResult.success || !syncResult.ghlContactId) {
+        return { 
+          success: false, 
+          error: `Cannot send email - GHL sync failed: ${syncResult.error}` 
+        };
       }
       
-      const dealership = await storage.getDealershipById(dealershipId);
+      // Get or create an email conversation for this contact
+      const conversationResult = await ghlService.getOrCreateConversation(
+        syncResult.ghlContactId, 
+        'TYPE_EMAIL'
+      );
       
-      const fromEmail = 'noreply@lotview.ai';
-      const fromName = dealership?.name || 'Lotview';
+      if (!conversationResult.success || !conversationResult.data) {
+        return { 
+          success: false, 
+          error: `Failed to get GHL email conversation: ${conversationResult.error}` 
+        };
+      }
       
-      const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${SENDGRID_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          personalizations: [{ to: [{ email: recipientEmail }] }],
-          from: { email: fromEmail, name: fromName },
-          subject: subject || 'Message from ' + fromName,
-          content: [{ type: 'text/plain', value: content }],
-        }),
+      const conversation = conversationResult.data;
+      
+      // Send the email through GHL
+      const sendResult = await ghlService.sendMessage(conversation.id, {
+        type: 'Email',
+        subject: subject || 'Message from our team',
+        html: `<p>${content.replace(/\n/g, '<br>')}</p>`,
+        emailTo: contact.email!,
       });
       
-      if (response.ok || response.status === 202) {
-        const messageId = response.headers.get('X-Message-Id') || `sg_${Date.now()}`;
-        return { success: true, messageId };
+      if (sendResult.success && sendResult.data) {
+        console.log('[ContactMessaging] Email sent via GHL:', sendResult.data.id);
+        return { success: true, messageId: sendResult.data.id };
       } else {
-        const errorBody = await response.text();
-        console.error('[ContactMessaging] SendGrid error:', response.status, errorBody);
-        return { success: false, error: `SendGrid error: ${response.status}` };
+        console.error('[ContactMessaging] GHL email send failed:', sendResult.error);
+        return { 
+          success: false, 
+          error: `GHL email failed: ${sendResult.error || 'Unknown error'}` 
+        };
       }
     } catch (error: any) {
       console.error('[ContactMessaging] Email send error:', error);
@@ -205,49 +414,54 @@ export function createContactMessagingService(dealershipId: number) {
     }
   }
   
-  async function sendSmsMessage(
-    dealershipId: number,
-    recipientPhone: string,
+  /**
+   * Send SMS through GoHighLevel's Conversations API
+   * Uses shared ensureGhlContact to sync contact first
+   */
+  async function sendSmsViaGhl(
+    contact: CrmContact,
     content: string
   ): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
-      const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
-      const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
-      const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
-      
-      if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
-        console.warn('[ContactMessaging] Twilio not configured - simulating SMS send');
-        return { success: true, messageId: `sim_sms_${Date.now()}` };
+      // Ensure contact exists in GHL using shared helper
+      const syncResult = await ensureGhlContact(contact);
+      if (!syncResult.success || !syncResult.ghlContactId) {
+        return { 
+          success: false, 
+          error: `Cannot send SMS - GHL sync failed: ${syncResult.error}` 
+        };
       }
       
-      const normalizedPhone = recipientPhone.replace(/\D/g, '');
-      const e164Phone = normalizedPhone.startsWith('1') 
-        ? `+${normalizedPhone}` 
-        : `+1${normalizedPhone}`;
-      
-      const response = await fetch(
-        `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': 'Basic ' + Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64'),
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: new URLSearchParams({
-            From: TWILIO_PHONE_NUMBER,
-            To: e164Phone,
-            Body: content,
-          }),
-        }
+      // Get or create an SMS conversation for this contact
+      const conversationResult = await ghlService.getOrCreateConversation(
+        syncResult.ghlContactId, 
+        'TYPE_SMS'
       );
       
-      if (response.ok) {
-        const result = await response.json();
-        return { success: true, messageId: result.sid };
+      if (!conversationResult.success || !conversationResult.data) {
+        return { 
+          success: false, 
+          error: `Failed to get GHL SMS conversation: ${conversationResult.error}` 
+        };
+      }
+      
+      const conversation = conversationResult.data;
+      
+      // Send the SMS through GHL
+      const sendResult = await ghlService.sendMessage(conversation.id, {
+        type: 'SMS',
+        message: content,
+      });
+      
+      if (sendResult.success && sendResult.data) {
+        console.log('[ContactMessaging] SMS sent via GHL:', sendResult.data.id);
+        return { success: true, messageId: sendResult.data.id };
       } else {
-        const errorBody = await response.json();
-        console.error('[ContactMessaging] Twilio error:', errorBody);
-        return { success: false, error: errorBody.message || 'Twilio error' };
+        console.error('[ContactMessaging] GHL SMS send failed:', sendResult.error);
+        return { 
+          success: false, 
+          error: `GHL SMS failed: ${sendResult.error || 'Unknown error'}` 
+        };
       }
     } catch (error: any) {
       console.error('[ContactMessaging] SMS send error:', error);
@@ -255,6 +469,10 @@ export function createContactMessagingService(dealershipId: number) {
     }
   }
   
+  /**
+   * Send Facebook Messenger message (still uses Facebook API directly)
+   * GHL doesn't have direct Facebook Messenger integration for outbound
+   */
   async function sendFacebookMessage(
     dealershipId: number,
     contact: CrmContact,
@@ -277,13 +495,13 @@ export function createContactMessagingService(dealershipId: number) {
       const conversation = conversations[0];
       
       // Get the Facebook account to get the page access token
-      const facebookAccount = await storage.getFacebookAccountById(conversation.facebookAccountId);
-      if (!facebookAccount || !facebookAccount.pageAccessToken) {
+      const facebookAccount = await storage.getFacebookAccountByIdDirect(conversation.facebookAccountId, dealershipId);
+      if (!facebookAccount || !facebookAccount.accessToken) {
         return { success: false, error: 'Facebook page access token not available' };
       }
       
       const result = await facebookService.sendMessengerMessage(
-        facebookAccount.pageAccessToken,
+        facebookAccount.accessToken,
         contact.facebookId,
         content
       );
@@ -379,5 +597,6 @@ Only output the message content, nothing else.`;
   return {
     sendMessage,
     generateAiMessageSuggestion,
+    ensureGhlContact,
   };
 }

@@ -460,6 +460,7 @@ export interface IStorage {
   createFacebookAccount(account: InsertFacebookAccount): Promise<FacebookAccount>;
   updateFacebookAccount(id: number, userId: number, dealershipId: number, account: Partial<InsertFacebookAccount>): Promise<FacebookAccount | undefined>;
   updateFacebookAccountDirect(id: number, account: Partial<InsertFacebookAccount>): Promise<FacebookAccount | undefined>;
+  getFacebookAccountByIdDirect(id: number, dealershipId: number): Promise<FacebookAccount | undefined>;
   deleteFacebookAccount(id: number, userId: number, dealershipId: number): Promise<boolean>;
   
   // Ad Templates (Multi-Tenant - Defense-in-Depth)
@@ -2147,6 +2148,18 @@ export class DatabaseStorage implements IStorage {
       .set({ ...account, updatedAt: new Date() })
       .where(eq(facebookAccounts.id, id))
       .returning();
+    return result[0];
+  }
+
+  async getFacebookAccountByIdDirect(id: number, dealershipId: number): Promise<FacebookAccount | undefined> {
+    // Get Facebook account by ID with dealership validation only
+    // Used for system operations like messaging where userId isn't available
+    const result = await db.select().from(facebookAccounts).where(
+      and(
+        eq(facebookAccounts.id, id),
+        eq(facebookAccounts.dealershipId, dealershipId)
+      )
+    ).limit(1);
     return result[0];
   }
 
