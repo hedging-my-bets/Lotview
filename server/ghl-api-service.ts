@@ -149,9 +149,17 @@ interface GhlLocationInfo {
   };
 }
 
+// API key credentials from dealership settings (alternative to OAuth)
+interface ApiKeyCredentials {
+  apiKey: string;
+  locationId: string;
+}
+
 export class GhlApiService {
   private dealershipId: number;
   private account: GhlAccount | null = null;
+  private apiKeyCredentials: ApiKeyCredentials | null = null;
+  private useApiKey: boolean = false;
 
   constructor(dealershipId: number) {
     this.dealershipId = dealershipId;
@@ -282,8 +290,35 @@ export class GhlApiService {
     return this.account;
   }
 
+  // Get API key credentials from dealership settings (fallback when no OAuth account)
+  private async getApiKeyCredentials(): Promise<ApiKeyCredentials | null> {
+    if (this.apiKeyCredentials) {
+      return this.apiKeyCredentials;
+    }
+    
+    const apiKeys = await storage.getDealershipApiKeys(this.dealershipId);
+    if (apiKeys?.ghlApiKey && apiKeys?.ghlLocationId) {
+      this.apiKeyCredentials = {
+        apiKey: apiKeys.ghlApiKey,
+        locationId: apiKeys.ghlLocationId
+      };
+      this.useApiKey = true;
+      return this.apiKeyCredentials;
+    }
+    return null;
+  }
+
   // Check if token needs refresh (expires in less than 5 minutes)
   private async ensureValidToken(): Promise<boolean> {
+    // First check if we have API key credentials
+    const apiKeyCreds = await this.getApiKeyCredentials();
+    if (apiKeyCreds) {
+      // API keys don't expire
+      this.useApiKey = true;
+      return true;
+    }
+    
+    // Fall back to OAuth account
     const account = await this.getAccount();
     if (!account) {
       return false;
@@ -300,6 +335,19 @@ export class GhlApiService {
     return true;
   }
 
+  // Get location ID from either API key credentials or OAuth account
+  private async getLocationId(): Promise<string | null> {
+    // First try API key credentials
+    const apiKeyCreds = await this.getApiKeyCredentials();
+    if (apiKeyCreds) {
+      return apiKeyCreds.locationId;
+    }
+    
+    // Fall back to OAuth account
+    const account = await this.getAccount();
+    return account?.locationId || null;
+  }
+
   // Make authenticated API request
   private async apiRequest<T>(
     method: string,
@@ -312,12 +360,25 @@ export class GhlApiService {
     // Ensure valid token
     const tokenValid = await this.ensureValidToken();
     if (!tokenValid) {
-      return { success: false, error: "No valid access token", errorCode: "NO_TOKEN" };
+      return { success: false, error: "No valid access token or API key", errorCode: "NO_TOKEN" };
     }
 
-    const account = await this.getAccount();
-    if (!account) {
-      return { success: false, error: "No GHL account configured", errorCode: "NO_ACCOUNT" };
+    // Determine authorization header based on whether we're using API key or OAuth
+    let authHeader: string;
+    let locationId: string;
+    
+    if (this.useApiKey && this.apiKeyCredentials) {
+      // Using API key from dealership settings
+      authHeader = `Bearer ${this.apiKeyCredentials.apiKey}`;
+      locationId = this.apiKeyCredentials.locationId;
+    } else {
+      // Using OAuth account
+      const account = await this.getAccount();
+      if (!account) {
+        return { success: false, error: "No GHL account configured", errorCode: "NO_ACCOUNT" };
+      }
+      authHeader = `Bearer ${account.accessToken}`;
+      locationId = account.locationId;
     }
 
     const url = `${GHL_API_BASE}${endpoint}`;
@@ -326,7 +387,7 @@ export class GhlApiService {
       const response = await fetch(url, {
         method,
         headers: {
-          "Authorization": `Bearer ${account.accessToken}`,
+          "Authorization": authHeader,
           "Content-Type": "application/json",
           "Version": "2021-07-28",
         },
@@ -408,8 +469,8 @@ export class GhlApiService {
   // ===== CONTACTS API =====
 
   async getContact(contactId: string): Promise<GhlApiResponse<GhlContact>> {
-    const account = await this.getAccount();
-    if (!account) {
+    const locationId = await this.getLocationId();
+    if (!locationId) {
       return { success: false, error: "No account", errorCode: "NO_ACCOUNT" };
     }
     return this.apiRequest<GhlContact>("GET", `/contacts/${contactId}`);
@@ -421,13 +482,13 @@ export class GhlApiService {
     phone?: string;
     limit?: number;
   }): Promise<GhlApiResponse<{ contacts: GhlContact[] }>> {
-    const account = await this.getAccount();
-    if (!account) {
+    const locationId = await this.getLocationId();
+    if (!locationId) {
       return { success: false, error: "No account", errorCode: "NO_ACCOUNT" };
     }
 
     const searchParams = new URLSearchParams();
-    searchParams.set("locationId", account.locationId);
+    searchParams.set("locationId", locationId);
     if (params.query) searchParams.set("query", params.query);
     if (params.email) searchParams.set("email", params.email);
     if (params.phone) searchParams.set("phone", params.phone);
@@ -437,14 +498,14 @@ export class GhlApiService {
   }
 
   async createContact(contact: Partial<GhlContact>): Promise<GhlApiResponse<GhlContact>> {
-    const account = await this.getAccount();
-    if (!account) {
+    const locationId = await this.getLocationId();
+    if (!locationId) {
       return { success: false, error: "No account", errorCode: "NO_ACCOUNT" };
     }
 
     return this.apiRequest<GhlContact>("POST", "/contacts/", {
       ...contact,
-      locationId: account.locationId,
+      locationId,
     });
   }
 
@@ -463,11 +524,11 @@ export class GhlApiService {
   // ===== CALENDARS API =====
 
   async getCalendars(): Promise<GhlApiResponse<{ calendars: GhlCalendar[] }>> {
-    const account = await this.getAccount();
-    if (!account) {
+    const locationId = await this.getLocationId();
+    if (!locationId) {
       return { success: false, error: "No account", errorCode: "NO_ACCOUNT" };
     }
-    return this.apiRequest<{ calendars: GhlCalendar[] }>("GET", `/calendars/?locationId=${account.locationId}`);
+    return this.apiRequest<{ calendars: GhlCalendar[] }>("GET", `/calendars/?locationId=${locationId}`);
   }
 
   async getCalendarEvents(
@@ -475,13 +536,13 @@ export class GhlApiService {
     startTime: string,
     endTime: string
   ): Promise<GhlApiResponse<{ events: GhlCalendarEvent[] }>> {
-    const account = await this.getAccount();
-    if (!account) {
+    const locationId = await this.getLocationId();
+    if (!locationId) {
       return { success: false, error: "No account", errorCode: "NO_ACCOUNT" };
     }
 
     const params = new URLSearchParams({
-      locationId: account.locationId,
+      locationId,
       calendarId,
       startTime,
       endTime,
@@ -491,14 +552,14 @@ export class GhlApiService {
   }
 
   async createCalendarEvent(event: Partial<GhlCalendarEvent>): Promise<GhlApiResponse<GhlCalendarEvent>> {
-    const account = await this.getAccount();
-    if (!account) {
+    const locationId = await this.getLocationId();
+    if (!locationId) {
       return { success: false, error: "No account", errorCode: "NO_ACCOUNT" };
     }
 
     return this.apiRequest<GhlCalendarEvent>("POST", "/calendars/events", {
       ...event,
-      locationId: account.locationId,
+      locationId,
     });
   }
 
@@ -513,12 +574,12 @@ export class GhlApiService {
   // ===== OPPORTUNITIES API =====
 
   async getOpportunities(pipelineId?: string): Promise<GhlApiResponse<{ opportunities: GhlOpportunity[] }>> {
-    const account = await this.getAccount();
-    if (!account) {
+    const locationId = await this.getLocationId();
+    if (!locationId) {
       return { success: false, error: "No account", errorCode: "NO_ACCOUNT" };
     }
 
-    const params = new URLSearchParams({ locationId: account.locationId });
+    const params = new URLSearchParams({ locationId });
     if (pipelineId) params.set("pipelineId", pipelineId);
 
     return this.apiRequest<{ opportunities: GhlOpportunity[] }>("GET", `/opportunities/search?${params.toString()}`);
@@ -529,8 +590,8 @@ export class GhlApiService {
   }
 
   async createOpportunity(opportunity: Partial<GhlOpportunity>): Promise<GhlApiResponse<GhlOpportunity>> {
-    const account = await this.getAccount();
-    if (!account) {
+    const locationId = await this.getLocationId();
+    if (!locationId) {
       return { success: false, error: "No account", errorCode: "NO_ACCOUNT" };
     }
 
@@ -550,21 +611,21 @@ export class GhlApiService {
   // ===== PIPELINES API =====
 
   async getPipelines(): Promise<GhlApiResponse<{ pipelines: GhlPipeline[] }>> {
-    const account = await this.getAccount();
-    if (!account) {
+    const locationId = await this.getLocationId();
+    if (!locationId) {
       return { success: false, error: "No account", errorCode: "NO_ACCOUNT" };
     }
-    return this.apiRequest<{ pipelines: GhlPipeline[] }>("GET", `/opportunities/pipelines?locationId=${account.locationId}`);
+    return this.apiRequest<{ pipelines: GhlPipeline[] }>("GET", `/opportunities/pipelines?locationId=${locationId}`);
   }
 
   // ===== LOCATION INFO =====
 
   async getLocationInfo(): Promise<GhlApiResponse<GhlLocationInfo>> {
-    const account = await this.getAccount();
-    if (!account) {
+    const locationId = await this.getLocationId();
+    if (!locationId) {
       return { success: false, error: "No account", errorCode: "NO_ACCOUNT" };
     }
-    return this.apiRequest<GhlLocationInfo>("GET", `/locations/${account.locationId}`);
+    return this.apiRequest<GhlLocationInfo>("GET", `/locations/${locationId}`);
   }
 
   // ===== CONVERSATIONS API =====
@@ -575,13 +636,13 @@ export class GhlApiService {
     limit?: number;
     lastMessageAfter?: string;
   }): Promise<GhlApiResponse<{ conversations: GhlConversation[] }>> {
-    const account = await this.getAccount();
-    if (!account) {
+    const locationId = await this.getLocationId();
+    if (!locationId) {
       return { success: false, error: "No account", errorCode: "NO_ACCOUNT" };
     }
 
     const searchParams = new URLSearchParams();
-    searchParams.set("locationId", account.locationId);
+    searchParams.set("locationId", locationId);
     if (params?.contactId) searchParams.set("contactId", params.contactId);
     if (params?.type) searchParams.set("type", params.type);
     if (params?.limit) searchParams.set("limit", params.limit.toString());
@@ -627,13 +688,13 @@ export class GhlApiService {
     contactId: string;
     type?: string;
   }): Promise<GhlApiResponse<GhlConversation>> {
-    const account = await this.getAccount();
-    if (!account) {
+    const locationId = await this.getLocationId();
+    if (!locationId) {
       return { success: false, error: "No account", errorCode: "NO_ACCOUNT" };
     }
 
     return this.apiRequest<GhlConversation>("POST", "/conversations/", {
-      locationId: account.locationId,
+      locationId,
       contactId: params.contactId,
       type: params.type || "TYPE_SMS",
     });
@@ -650,8 +711,9 @@ export class GhlApiService {
   // ===== UTILITY METHODS =====
 
   async testConnection(): Promise<{ success: boolean; message: string; locationName?: string }> {
-    const account = await this.getAccount();
-    if (!account) {
+    // Check if we have any valid credentials (API key or OAuth)
+    const locationId = await this.getLocationId();
+    if (!locationId) {
       return { success: false, message: "No GoHighLevel account connected for this dealership" };
     }
 
@@ -659,7 +721,7 @@ export class GhlApiService {
     if (result.success && result.data) {
       return {
         success: true,
-        message: "Connected to GoHighLevel",
+        message: this.useApiKey ? "Connected via API Key" : "Connected to GoHighLevel",
         locationName: result.data.location.name,
       };
     }
