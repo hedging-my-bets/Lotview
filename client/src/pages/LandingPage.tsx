@@ -20,8 +20,7 @@ import {
   Play,
   Sparkles,
   Mail,
-  Phone,
-  Heart
+  Phone
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { getVehicles } from "@/lib/api";
@@ -193,6 +192,13 @@ export default function LandingPage() {
                 </div>
               </div>
             </div>
+            
+            {/* Lead Generation Description */}
+            <div className={`mt-8 transition-all duration-1000 delay-500 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
+              <p className="text-lg text-gray-600 max-w-3xl mx-auto leading-relaxed bg-gray-50 rounded-xl p-6 border border-gray-100">
+                We generate brand new leads for you through Google Ads and Facebook Marketplace, then nurture them into appointments that get forwarded to your management team. We follow-up better than any sales person with 100% accuracy.
+              </p>
+            </div>
           </div>
         </div>
       </section>
@@ -223,20 +229,20 @@ export default function LandingPage() {
               },
               {
                 icon: MessageSquare,
-                title: "The AI BDC That Never Sleeps",
-                description: "Our AI answers customer questions, handles financing inquiries, and books test drives at 3 AM—so your team doesn't have to.",
+                title: "AI Trained on Messages & Calls",
+                description: "Our AI analyzes every customer message and call to understand intent, qualify leads, and respond intelligently—24/7.",
                 color: "from-purple-500 to-purple-600"
               },
               {
                 icon: Calculator,
-                title: "Real Payment Estimates",
-                description: "Show customers exactly what they'll pay with your credit tiers and rates. No guessing. More qualified buyers.",
+                title: "Vehicle Appraisal Tool",
+                description: "Get instant trade-in valuations using real market data. Give customers accurate appraisals that build trust and close deals.",
                 color: "from-green-500 to-green-600"
               },
               {
-                icon: Heart,
-                title: "Revive Dead Leads Automatically",
-                description: "Turn cold leads into warm buyers with smart follow-ups via chat, text, and email. We re-engage the customers you forgot about.",
+                icon: BarChart3,
+                title: "Market Analysis Tool",
+                description: "See how your inventory stacks up against the competition. Price smarter with real-time market intelligence.",
                 color: "from-orange-500 to-orange-600"
               },
               {
@@ -377,7 +383,7 @@ export default function LandingPage() {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+          <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
             {[
               {
                 name: "The Independent",
@@ -410,6 +416,21 @@ export default function LandingPage() {
                 ],
                 cta: "Start Selling",
                 highlighted: true
+              },
+              {
+                name: "Dealer Group",
+                price: "Custom",
+                period: "",
+                description: "For empires with custom requirements.",
+                features: [
+                  "Unlimited locations",
+                  "Everything in Volume Dealer",
+                  "Custom DMS integrations",
+                  "White-label branding",
+                  "SLA & 24/7 support"
+                ],
+                cta: "Contact Sales",
+                highlighted: false
               }
             ].map((plan, index) => (
               <Card 
