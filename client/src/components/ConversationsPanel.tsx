@@ -1030,8 +1030,8 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
 
       {/* Training Mode Dialog - Full Width */}
       <Dialog open={trainingDialogOpen} onOpenChange={(open) => !open && closeTrainingDialog()}>
-        <DialogContent className="max-w-5xl w-[95vw] h-[90vh] flex flex-col overflow-hidden">
-          <DialogHeader className="flex-shrink-0 pb-4 border-b">
+        <DialogContent className="max-w-6xl w-[95vw] h-[90vh] flex flex-col overflow-hidden">
+          <DialogHeader className="flex-shrink-0 pb-3 border-b">
             <DialogTitle className="flex items-center gap-2 text-xl">
               <GraduationCap className="w-6 h-6 text-purple-600" />
               AI Training Mode
@@ -1044,75 +1044,75 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
           </DialogHeader>
 
           {selectedTrainingMessage && (
-            <div className="flex-1 overflow-y-auto space-y-6 py-4">
-              {/* Two Column Layout */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Left Column - Context & Response */}
-                <div className="space-y-4">
-                  {/* Conversation Context Preview */}
-                  <div>
-                    <Label className="text-sm font-medium mb-2 block">Conversation Context</Label>
-                    <div className="max-h-48 overflow-y-auto bg-muted/50 rounded-lg p-3 space-y-2">
-                      {selectedTrainingMessage.context.slice(-6).map((msg, idx) => (
-                        <div key={idx} className={`text-sm ${msg.role === 'user' ? 'text-left' : 'text-right'}`}>
-                          <span className={`inline-block px-3 py-2 rounded-lg max-w-[85%] ${
-                            msg.role === 'user' ? 'bg-gray-200 dark:bg-gray-700' : 'bg-blue-100 dark:bg-blue-900'
-                          }`}>
-                            <span className="font-medium">{msg.role === 'user' ? 'Customer' : 'AI'}:</span>{' '}
-                            {msg.content.length > 150 ? msg.content.substring(0, 150) + '...' : msg.content}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Editable AI Response */}
-                  <div>
-                    <Label className="text-sm font-medium mb-2 flex items-center gap-2">
-                      <Edit3 className="w-4 h-4" />
-                      Edit AI Response
-                    </Label>
-                    <p className="text-xs text-muted-foreground mb-2">
-                      Modify the response to show how the AI should have replied:
-                    </p>
-                    <Textarea
-                      value={editedContent}
-                      onChange={(e) => setEditedContent(e.target.value)}
-                      className="min-h-[150px] text-base"
-                      placeholder="Edit the AI response..."
-                      data-testid="training-edit-input"
-                    />
-                    {editedContent !== selectedTrainingMessage.originalContent && (
-                      <p className="text-xs text-green-600 mt-2 flex items-center gap-1">
-                        <Lightbulb className="w-3 h-3" />
-                        Response modified - click "Get Feedback" to analyze
-                      </p>
-                    )}
+            <div className="flex-1 overflow-y-auto py-4">
+              {/* Two Column Layout - Top Row */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+                {/* Left Column - Conversation Context (Large) */}
+                <div className="flex flex-col">
+                  <Label className="text-sm font-medium mb-2 block">Conversation Context</Label>
+                  <div className="flex-1 min-h-[280px] max-h-[320px] overflow-y-auto bg-muted/50 rounded-lg p-3 space-y-2 border">
+                    {selectedTrainingMessage.context.map((msg, idx) => (
+                      <div key={idx} className={`text-sm ${msg.role === 'user' ? 'text-left' : 'text-right'}`}>
+                        <span className={`inline-block px-3 py-2 rounded-lg max-w-[90%] ${
+                          msg.role === 'user' ? 'bg-gray-200 dark:bg-gray-700' : 'bg-blue-100 dark:bg-blue-900'
+                        }`}>
+                          <span className="font-medium text-xs">{msg.role === 'user' ? 'Customer' : 'AI'}:</span>{' '}
+                          {msg.content}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
-                {/* Right Column - Prompts & Feedback */}
-                <div className="space-y-4">
-                  {/* Current System Prompt */}
-                  <div>
-                    <Label className="text-sm font-medium mb-2 flex items-center gap-2">
-                      <Bot className="w-4 h-4" />
-                      Current System Prompt 
-                      <Badge variant="outline" className="text-xs">
-                        {currentScenario}
-                      </Badge>
-                    </Label>
-                    <div className="bg-muted/50 rounded-lg p-3 max-h-40 overflow-y-auto border">
-                      <p className="text-sm text-muted-foreground whitespace-pre-wrap font-mono">
-                        {currentPrompt || 'Loading prompt...'}
-                      </p>
-                    </div>
+                {/* Right Column - Current System Prompt (Large) */}
+                <div className="flex flex-col">
+                  <Label className="text-sm font-medium mb-2 flex items-center gap-2">
+                    <Bot className="w-4 h-4" />
+                    Current System Prompt 
+                    <Badge variant="outline" className="text-xs">
+                      {currentScenario}
+                    </Badge>
+                  </Label>
+                  <div className="flex-1 min-h-[280px] max-h-[320px] overflow-y-auto bg-muted/50 rounded-lg p-3 border">
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap font-mono">
+                      {currentPrompt || 'Loading prompt...'}
+                    </p>
                   </div>
+                </div>
+              </div>
 
+              {/* Bottom Row */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Bottom Left - Edit AI Response */}
+                <div>
+                  <Label className="text-sm font-medium mb-2 flex items-center gap-2">
+                    <Edit3 className="w-4 h-4" />
+                    Edit AI Response
+                  </Label>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Modify the response to show how the AI should have replied:
+                  </p>
+                  <Textarea
+                    value={editedContent}
+                    onChange={(e) => setEditedContent(e.target.value)}
+                    className="min-h-[120px] text-base"
+                    placeholder="Edit the AI response..."
+                    data-testid="training-edit-input"
+                  />
+                  {editedContent !== selectedTrainingMessage.originalContent && (
+                    <p className="text-xs text-green-600 mt-2 flex items-center gap-1">
+                      <Lightbulb className="w-3 h-3" />
+                      Response modified - click "Get Feedback" to analyze
+                    </p>
+                  )}
+                </div>
+
+                {/* Bottom Right - Feedback & Suggested Prompt */}
+                <div className="space-y-3">
                   {/* AI Feedback Section */}
                   {trainingFeedback && (
-                    <div className="bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
-                      <Label className="text-sm font-medium mb-2 flex items-center gap-2 text-purple-700 dark:text-purple-400">
+                    <div className="bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-lg p-3">
+                      <Label className="text-sm font-medium mb-1 flex items-center gap-2 text-purple-700 dark:text-purple-400">
                         <Lightbulb className="w-4 h-4" />
                         Analysis
                       </Label>
@@ -1120,8 +1120,8 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
                       
                       {/* Changes list */}
                       {promptChanges.length > 0 && (
-                        <div className="mt-3 pt-3 border-t border-purple-200 dark:border-purple-700">
-                          <p className="text-xs font-medium text-purple-700 dark:text-purple-400 mb-2">Suggested Changes:</p>
+                        <div className="mt-2 pt-2 border-t border-purple-200 dark:border-purple-700">
+                          <p className="text-xs font-medium text-purple-700 dark:text-purple-400 mb-1">Suggested Changes:</p>
                           <ul className="text-xs space-y-1">
                             {promptChanges.map((change, idx) => (
                               <li key={idx} className="flex items-start gap-2">
@@ -1135,24 +1135,66 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
                     </div>
                   )}
 
-                  {/* Suggested Prompt - Editable with Green Highlight */}
+                  {/* Suggested Prompt with Diff Highlighting */}
                   {suggestedPrompt && (
-                    <div className="bg-green-50 dark:bg-green-950/30 border-2 border-green-400 dark:border-green-600 rounded-lg p-4">
-                      <Label className="text-sm font-medium mb-2 flex items-center gap-2 text-green-700 dark:text-green-400">
+                    <div className="bg-green-50 dark:bg-green-950/30 border-2 border-green-400 dark:border-green-600 rounded-lg p-3">
+                      <Label className="text-sm font-medium mb-1 flex items-center gap-2 text-green-700 dark:text-green-400">
                         <Sparkles className="w-4 h-4" />
                         Suggested Updated Prompt
                       </Label>
                       <p className="text-xs text-green-600 dark:text-green-500 mb-2">
-                        Review and edit the suggested prompt below, then save to apply to all AI conversations:
+                        Changes highlighted below. Edit and save to apply to all AI conversations:
                       </p>
+                      
+                      {/* Diff View - Show changes */}
+                      <div className="bg-white dark:bg-gray-900 rounded border border-green-300 dark:border-green-700 p-2 mb-2 max-h-[120px] overflow-y-auto">
+                        <div className="text-xs font-mono whitespace-pre-wrap">
+                          {(() => {
+                            const currentLines = (currentPrompt || '').split('\n');
+                            const suggestedLines = suggestedPrompt.split('\n');
+                            const allLines: { type: 'same' | 'added' | 'removed', text: string }[] = [];
+                            
+                            // Simple diff: show removed lines first, then added
+                            const currentSet = new Set(currentLines);
+                            const suggestedSet = new Set(suggestedLines);
+                            
+                            currentLines.forEach(line => {
+                              if (!suggestedSet.has(line) && line.trim()) {
+                                allLines.push({ type: 'removed', text: line });
+                              }
+                            });
+                            
+                            suggestedLines.forEach(line => {
+                              if (!currentSet.has(line) && line.trim()) {
+                                allLines.push({ type: 'added', text: line });
+                              }
+                            });
+                            
+                            if (allLines.length === 0) {
+                              return <span className="text-muted-foreground">No significant changes detected</span>;
+                            }
+                            
+                            return allLines.map((line, idx) => (
+                              <div key={idx} className={`px-1 rounded ${
+                                line.type === 'added' ? 'bg-green-200 dark:bg-green-900/50 text-green-800 dark:text-green-300' :
+                                line.type === 'removed' ? 'bg-red-200 dark:bg-red-900/50 text-red-800 dark:text-red-300 line-through' :
+                                ''
+                              }`}>
+                                {line.type === 'added' ? '+ ' : line.type === 'removed' ? '- ' : ''}{line.text}
+                              </div>
+                            ));
+                          })()}
+                        </div>
+                      </div>
+                      
                       <Textarea
                         value={editablePrompt}
                         onChange={(e) => setEditablePrompt(e.target.value)}
-                        className="min-h-[200px] bg-white dark:bg-gray-900 border-green-300 dark:border-green-700 font-mono text-sm"
+                        className="min-h-[100px] bg-white dark:bg-gray-900 border-green-300 dark:border-green-700 font-mono text-xs"
                         placeholder="Suggested prompt..."
                         data-testid="suggested-prompt-input"
                       />
-                      <div className="flex justify-end gap-2 mt-3">
+                      <div className="flex justify-end gap-2 mt-2">
                         <Button 
                           variant="outline" 
                           size="sm"
@@ -1189,7 +1231,7 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
             </div>
           )}
 
-          <DialogFooter className="flex-shrink-0 flex gap-2 pt-4 border-t">
+          <DialogFooter className="flex-shrink-0 flex gap-2 pt-3 border-t">
             <Button variant="outline" onClick={closeTrainingDialog}>
               Close
             </Button>
