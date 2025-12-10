@@ -59,22 +59,22 @@ Preferred communication style: Simple, everyday language.
 - **Build & Development**: Replit-specific Vite plugins, Font Awesome CDN, Google Fonts (Inter).
 - **Authentication**: JWT, bcrypt.
 - **Sales Manager Tools**: NHTSA API (VIN Decoder), MarketCheck API (Market Pricing), Geocoder.ca API (Geocoding).
-- **Cron Scheduling**: Node-cron (inventory sync, Facebook token refresh, market analysis, Facebook Catalog sync, GHL CRM sync).
+- **Cron Scheduling**: Node-cron (inventory sync, Facebook token refresh, market analysis, Facebook Catalog sync, FWC CRM sync).
 - **AI/LLM**: OpenAI GPT-5 via Replit AI Integrations or per-dealership OpenAI API keys.
 - **Carfax Integration**: Automated scraping of Carfax URLs.
 - **Facebook Integration**: OAuth 2.0, Graph API for page connections, page posting, and Facebook Catalog API.
 - **PBS Partner Hub API**: Integration with PBS DMS for session management, sales, service, and parts modules, caching, logging, and retry logic.
-- **GoHighLevel CRM Integration**: OAuth 2.0 integration for contacts, calendars, opportunities, and conversations APIs. Includes webhook handling, bidirectional sync with PBS DMS, and scheduled batch reconciliation.
-- **Facebook Messenger Conversations**: Integration for split-view inbox, role-based access, and GHL sync.
-- **Call Scoring & Coaching System**: Department-specific scoring templates with weighted criteria, AI draft scores, speaker recognition, and speaking time analysis.
+- **FWC CRM Integration**: Framework Consulting Software integration for contacts, calendars, opportunities, and conversations APIs. Includes webhook handling, bidirectional sync with PBS DMS, and scheduled batch reconciliation.
+- **Facebook Messenger Conversations**: Integration for split-view inbox, role-based access, and FWC sync.
+- **Call Scoring & Coaching System**: Department-specific scoring templates (Sales, Service, Parts, General Inquiry) with weighted criteria, AI draft scores, speaker recognition, and speaking time analysis.
 
-### GHL Call Recording Integration
+### FWC Call Recording Integration
 
 **Webhook Endpoint**: `POST /api/ghl/webhook` or `POST /api/ghl/call-webhook`
 
-**GHL Workflow Setup**:
+**FWC Workflow Setup**:
 1. Create a workflow triggered by "Call Completed" event
-2. Add a 60-second delay (to allow GHL transcription to complete)
+2. Add a 60-second delay (to allow FWC transcription to complete)
 3. Add a webhook action with the following configuration:
    - URL: `https://your-domain.com/api/ghl/webhook`
    - Method: POST
@@ -97,12 +97,12 @@ Preferred communication style: Simple, everyday language.
    ```
 
 **Automatic Processing Flow**:
-1. Webhook receives call data with GHL-provided transcription
+1. Webhook receives call data with FWC-provided transcription
 2. Call recording is stored in `call_recordings` table
 3. AI analysis runs automatically using OpenAI GPT-4o
-4. Department is auto-detected from transcription keywords (sales, service, parts, finance)
+4. Department is auto-detected from transcription keywords (sales, service, parts, general)
 5. Appropriate scoring template is selected based on detected department
 6. AI-generated draft scores are created for each criterion
 7. Manager can review and finalize scores in the Call Scoring UI
 
-**Cost Savings**: Uses GHL's built-in transcription ($0.03/min) instead of in-app transcription.
+**Cost Savings**: Uses FWC's built-in transcription ($0.03/min) instead of in-app transcription.

@@ -2895,11 +2895,61 @@ export default function Manager() {
                   </Card>
 
                   <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
-                    <h4 className="font-medium text-purple-800 dark:text-purple-200 mb-2">GHL Integration Active</h4>
+                    <h4 className="font-medium text-purple-800 dark:text-purple-200 mb-2">FWC Integration Active</h4>
                     <p className="text-sm text-purple-700 dark:text-purple-300">
-                      Call recordings from GoHighLevel are automatically analyzed and scored using AI. 
-                      Set up department-specific templates to customize scoring criteria for sales, service, parts, and finance calls.
+                      Call recordings from Framework Consulting Software are automatically analyzed and scored using AI. 
+                      Set up department-specific templates to customize scoring criteria.
                     </p>
+                  </div>
+
+                  <div className="mt-6">
+                    <h4 className="font-medium mb-4">Department Scoring</h4>
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                      <Card className="cursor-pointer hover:border-blue-500 transition-colors" onClick={() => setLocation('/call-analysis?department=sales')}>
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-medium flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-blue-500" />
+                            Sales
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-xs text-muted-foreground">Vehicle sales calls, test drives, pricing inquiries</p>
+                        </CardContent>
+                      </Card>
+                      <Card className="cursor-pointer hover:border-green-500 transition-colors" onClick={() => setLocation('/call-analysis?department=service')}>
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-medium flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-green-500" />
+                            Service
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-xs text-muted-foreground">Maintenance, repairs, service appointments</p>
+                        </CardContent>
+                      </Card>
+                      <Card className="cursor-pointer hover:border-orange-500 transition-colors" onClick={() => setLocation('/call-analysis?department=parts')}>
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-medium flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-orange-500" />
+                            Parts
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-xs text-muted-foreground">Parts orders, availability, pricing</p>
+                        </CardContent>
+                      </Card>
+                      <Card className="cursor-pointer hover:border-purple-500 transition-colors" onClick={() => setLocation('/call-analysis?department=general')}>
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-medium flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-purple-500" />
+                            General Inquiry
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-xs text-muted-foreground">General questions, directions, hours</p>
+                        </CardContent>
+                      </Card>
+                    </div>
                   </div>
                 </div>
               )}

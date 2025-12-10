@@ -131,7 +131,7 @@ export function GhlIntegrationDialog({ dealershipId, dealershipName, active = fa
   };
 
   const handleDisconnect = async () => {
-    if (!confirm("Are you sure you want to disconnect GoHighLevel? This will stop all syncing.")) return;
+    if (!confirm("Are you sure you want to disconnect FWC? This will stop all syncing.")) return;
     
     try {
       const token = localStorage.getItem("auth_token");
@@ -141,14 +141,14 @@ export function GhlIntegrationDialog({ dealershipId, dealershipName, active = fa
       });
 
       if (res.ok) {
-        toast({ title: "Disconnected", description: "GoHighLevel has been disconnected" });
+        toast({ title: "Disconnected", description: "FWC has been disconnected" });
         setAccount(null);
         onSuccess?.();
       } else {
         throw new Error("Failed to disconnect");
       }
     } catch (error) {
-      toast({ title: "Error", description: "Failed to disconnect GoHighLevel", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to disconnect FWC", variant: "destructive" });
     }
   };
 
@@ -190,9 +190,9 @@ export function GhlIntegrationDialog({ dealershipId, dealershipName, active = fa
 
       const data = await res.json();
       if (data.success) {
-        toast({ title: "Connected", description: `Successfully connected to ${data.locationName || "GoHighLevel"}` });
+        toast({ title: "Connected", description: `Successfully connected to ${data.locationName || "FWC"}` });
       } else {
-        toast({ title: "Connection Failed", description: data.message || "Could not connect to GoHighLevel", variant: "destructive" });
+        toast({ title: "Connection Failed", description: data.message || "Could not connect to FWC", variant: "destructive" });
       }
     } catch (error) {
       toast({ title: "Error", description: "Failed to test connection", variant: "destructive" });
@@ -237,17 +237,17 @@ export function GhlIntegrationDialog({ dealershipId, dealershipName, active = fa
           data-testid={`ghl-integration-${dealershipId}`}
         >
           {active ? <Link2 className="h-4 w-4" /> : <Link2Off className="h-4 w-4" />}
-          <span className="hidden sm:inline">GoHighLevel</span>
+          <span className="hidden sm:inline">FWC</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Settings className="h-5 w-5" />
-            GoHighLevel Integration - {dealershipName}
+            FWC Integration - {dealershipName}
           </DialogTitle>
           <DialogDescription>
-            Connect to GoHighLevel CRM for bidirectional contact and appointment sync
+            Connect to Framework Consulting Software for bidirectional contact and appointment sync
           </DialogDescription>
         </DialogHeader>
 
@@ -260,13 +260,13 @@ export function GhlIntegrationDialog({ dealershipId, dealershipName, active = fa
             <CardHeader>
               <CardTitle className="text-lg">Connect Your Account</CardTitle>
               <CardDescription>
-                Link your GoHighLevel sub-account to enable CRM synchronization with Lotview.ai and PBS DMS.
+                Link your FWC account to enable CRM synchronization with Lotview.ai and PBS DMS.
               </CardDescription>
             </CardHeader>
             <CardContent>
               <Button onClick={handleConnect} className="w-full" data-testid="ghl-connect-btn">
                 <Link2 className="mr-2 h-4 w-4" />
-                Connect to GoHighLevel
+                Connect to FWC
               </Button>
             </CardContent>
           </Card>
@@ -366,7 +366,7 @@ export function GhlIntegrationDialog({ dealershipId, dealershipName, active = fa
                           <Users className="h-4 w-4" />
                           Sync Contacts
                         </Label>
-                        <p className="text-sm text-muted-foreground">Sync contacts between GHL, Lotview, and PBS</p>
+                        <p className="text-sm text-muted-foreground">Sync contacts between FWC, Lotview, and PBS</p>
                       </div>
                       <Switch
                         checked={config?.syncContacts}
@@ -381,7 +381,7 @@ export function GhlIntegrationDialog({ dealershipId, dealershipName, active = fa
                           <Calendar className="h-4 w-4" />
                           Sync Appointments
                         </Label>
-                        <p className="text-sm text-muted-foreground">Sync appointments between GHL and PBS</p>
+                        <p className="text-sm text-muted-foreground">Sync appointments between FWC and PBS</p>
                       </div>
                       <Switch
                         checked={config?.syncAppointments}
@@ -405,7 +405,7 @@ export function GhlIntegrationDialog({ dealershipId, dealershipName, active = fa
                     <div className="flex items-center justify-between pt-4 border-t">
                       <div className="space-y-0.5">
                         <Label className="text-base">Bidirectional Sync</Label>
-                        <p className="text-sm text-muted-foreground">Also sync PBS changes back to GHL</p>
+                        <p className="text-sm text-muted-foreground">Also sync PBS changes back to FWC</p>
                       </div>
                       <Switch
                         checked={config?.bidirectionalSync}
@@ -427,7 +427,7 @@ export function GhlIntegrationDialog({ dealershipId, dealershipName, active = fa
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base">Calendar Mappings</CardTitle>
-                  <CardDescription>Map GHL calendars to appointment types</CardDescription>
+                  <CardDescription>Map FWC calendars to appointment types</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
@@ -465,7 +465,7 @@ export function GhlIntegrationDialog({ dealershipId, dealershipName, active = fa
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base">Pipeline Mappings</CardTitle>
-                  <CardDescription>Map GHL pipelines for opportunity creation</CardDescription>
+                  <CardDescription>Map FWC pipelines for opportunity creation</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
