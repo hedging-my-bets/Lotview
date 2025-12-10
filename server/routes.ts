@@ -1387,6 +1387,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Run Apify market scrape for a dealership (super admin only)
+  app.post("/api/super-admin/dealerships/:dealershipId/apify-scrape", authMiddleware, superAdminOnly, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = parseInt(req.params.dealershipId);
+      const { make, model, yearMin, yearMax, postalCode, province, radiusKm, maxResults } = req.body;
+      
+      if (!make || !model) {
+        return res.status(400).json({ error: "Make and model are required" });
+      }
+      
+      const { getApifyServiceForDealership, clearApifyCache } = await import("./apify-service");
+      
+      // Clear cache to ensure fresh credentials
+      clearApifyCache(dealershipId);
+      
+      const apifyService = await getApifyServiceForDealership(dealershipId);
+      
+      if (!apifyService) {
+        return res.status(400).json({ error: "Apify API token not configured for this dealership" });
+      }
+      
+      // Get market pricing with stats
+      const result = await apifyService.getMarketPricing({
+        make,
+        model,
+        yearMin: yearMin ? parseInt(yearMin) : undefined,
+        yearMax: yearMax ? parseInt(yearMax) : undefined,
+        postalCode,
+        province,
+        radiusKm: radiusKm ? parseInt(radiusKm) : undefined,
+        maxResults: maxResults ? parseInt(maxResults) : 100,
+        dealershipId
+      });
+      
+      // Log audit action
+      await storage.logAuditAction({
+        userId: req.user!.id,
+        action: "APIFY_MARKET_SCRAPE",
+        resource: "apify_scrape",
+        resourceId: String(dealershipId),
+        details: `Scraped ${result.listings.length} listings for ${make} ${model}`,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent']
+      });
+      
+      res.json({
+        success: true,
+        listings: result.listings,
+        stats: result.stats,
+        message: `Found ${result.listings.length} comparable vehicles`
+      });
+    } catch (error) {
+      console.error("Error running Apify scrape:", error);
+      res.status(500).json({ 
+        error: "Scrape failed", 
+        details: error instanceof Error ? error.message : 'Unknown error' 
+      });
+    }
+  });
+
   // Get all dealerships with API key status (super admin only)
   app.get("/api/super-admin/dealerships-with-integrations", authMiddleware, superAdminOnly, async (req, res) => {
     try {
@@ -7358,6 +7418,61 @@ Format your response in clear sections with actionable recommendations.`;
     } catch (error) {
       console.error("Error refreshing inventory analysis:", error);
       res.status(500).json({ error: "Failed to refresh inventory analysis" });
+    }
+  });
+
+  // Get Apify market pricing for a specific vehicle (Manager+)
+  app.post("/api/manager/apify-market-pricing", authMiddleware, requireRole("manager"), async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { make, model, yearMin, yearMax, postalCode, province, radiusKm, maxResults } = req.body;
+      
+      if (!make || !model) {
+        return res.status(400).json({ error: "Make and model are required" });
+      }
+      
+      const { getApifyServiceForDealership } = await import("./apify-service");
+      const apifyService = await getApifyServiceForDealership(dealershipId);
+      
+      if (!apifyService) {
+        return res.json({ 
+          success: false, 
+          error: "Apify not configured",
+          message: "Apify API is not configured for this dealership. Contact your administrator."
+        });
+      }
+      
+      try {
+        const result = await apifyService.getMarketPricing({
+          make,
+          model,
+          yearMin: yearMin ? parseInt(yearMin) : undefined,
+          yearMax: yearMax ? parseInt(yearMax) : undefined,
+          postalCode,
+          province,
+          radiusKm: radiusKm ? parseInt(radiusKm) : undefined,
+          maxResults: maxResults ? parseInt(maxResults) : 50,
+          dealershipId
+        });
+        
+        res.json({
+          success: true,
+          listings: result.listings,
+          stats: result.stats,
+          source: 'apify_autotrader',
+          message: `Found ${result.listings.length} comparable vehicles on AutoTrader.ca`
+        });
+      } catch (scrapeError) {
+        console.error("Apify scrape error:", scrapeError);
+        res.json({ 
+          success: false, 
+          error: "Scrape failed",
+          message: scrapeError instanceof Error ? scrapeError.message : 'Unknown error'
+        });
+      }
+    } catch (error) {
+      console.error("Error getting Apify market pricing:", error);
+      res.status(500).json({ error: "Failed to get market pricing" });
     }
   });
 
