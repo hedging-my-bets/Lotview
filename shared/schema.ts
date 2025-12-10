@@ -257,8 +257,11 @@ export const chatConversations = pgTable("chat_conversations", {
   sessionId: text("session_id").notNull(),
   handoffRequested: boolean("handoff_requested").notNull().default(false), // User requested SMS handoff
   handoffPhone: text("handoff_phone"), // Phone number for SMS handoff
+  handoffEmail: text("handoff_email"), // Email address for follow-up
+  handoffName: text("handoff_name"), // Customer name extracted from conversation
   handoffSent: boolean("handoff_sent").notNull().default(false), // Successfully sent to GHL
   handoffSentAt: timestamp("handoff_sent_at"), // When handoff was sent
+  ghlContactId: text("ghl_contact_id"), // GHL/FWC contact ID for sending messages
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

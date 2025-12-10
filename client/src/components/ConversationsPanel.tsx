@@ -21,7 +21,9 @@ import {
   Mail,
   ClipboardCheck,
   ChevronRight,
-  Search
+  Search,
+  Facebook,
+  MessageCircle
 } from "lucide-react";
 
 interface Message {
@@ -39,6 +41,7 @@ interface Conversation {
   handoffPhone?: string;
   handoffEmail?: string;
   handoffName?: string;
+  ghlContactId?: string;
   messages?: Message[];
   lastMessage?: string;
   createdAt: string;
@@ -70,6 +73,9 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
   const [scheduledMessages, setScheduledMessages] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [trainingMode, setTrainingMode] = useState(false);
+  const [fwcMessageType, setFwcMessageType] = useState<'sms' | 'email' | 'facebook' | null>(null);
+  const [fwcMessageText, setFwcMessageText] = useState("");
+  const [isSendingFwc, setIsSendingFwc] = useState(false);
 
   useEffect(() => {
     loadConversations();
@@ -223,9 +229,105 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
     }
   };
 
+  const sendFwcMessage = async () => {
+    if (!selectedConversation || !fwcMessageType || !fwcMessageText.trim()) {
+      toast({ title: "Error", description: "Please select a message type and enter a message", variant: "destructive" });
+      return;
+    }
+
+    if (!selectedConversation.ghlContactId) {
+      toast({ 
+        title: "FWC Not Linked", 
+        description: "This conversation doesn't have a linked FWC contact. Contact info may be missing.", 
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    setIsSendingFwc(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/conversations/${selectedConversation.id}/fwc-message`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ 
+          type: fwcMessageType,
+          message: fwcMessageText.trim()
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        toast({ title: "Sent", description: data.message || `${fwcMessageType.toUpperCase()} sent successfully` });
+        setFwcMessageText("");
+        setFwcMessageType(null);
+      } else {
+        toast({ title: "Error", description: data.error || "Failed to send message", variant: "destructive" });
+      }
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to send FWC message", variant: "destructive" });
+    } finally {
+      setIsSendingFwc(false);
+    }
+  };
+
   const getContactName = (conv: Conversation): string => {
     if (conv.handoffName) return conv.handoffName;
     if (conv.participantName) return conv.participantName;
+    
+    // Common words that are NOT names
+    const skipWords = ['yes', 'no', 'hi', 'hello', 'hey', 'sure', 'ok', 'okay', 'thanks', 'thank', 'interested', 'looking', 
+      'yeah', 'yep', 'nope', 'maybe', 'please', 'car', 'vehicle', 'price', 'available', 'test', 'drive', 
+      'info', 'information', 'details', 'more', 'about', 'good', 'great', 'nice', 'awesome'];
+    
+    // Try to extract name from messages if not stored
+    if (conv.messages?.length) {
+      for (const msg of conv.messages) {
+        if (msg.role === 'user') {
+          const content = msg.content.trim();
+          
+          // Pattern 1: Explicit name declarations
+          const namePatterns = [
+            /my name is\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)/i,
+            /i'm\s+([a-zA-Z]+)(?:\s|,|\.|\!|$)/i,
+            /i am\s+([a-zA-Z]+)(?:\s|,|\.|\!|$)/i,
+            /this is\s+([a-zA-Z]+)(?:\s|,|\.|\!|$)/i,
+            /call me\s+([a-zA-Z]+)(?:\s|,|\.|\!|$)/i,
+            /^([a-zA-Z]+)\s+here(?:\s|,|\.|\!|$)/i,
+          ];
+          
+          for (const pattern of namePatterns) {
+            const match = content.match(pattern);
+            if (match && match[1] && match[1].length > 1 && match[1].length < 20) {
+              if (!skipWords.includes(match[1].toLowerCase())) {
+                return match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase();
+              }
+            }
+          }
+          
+          // Pattern 2: Single word response that looks like a name (capitalized, 2-15 chars)
+          // Only check short messages (likely name responses to "what's your name?")
+          if (content.length >= 2 && content.length <= 20 && /^[A-Za-z]+$/.test(content)) {
+            const potentialName = content.toLowerCase();
+            if (!skipWords.includes(potentialName) && content.length >= 3) {
+              // Check if previous message (assistant) asked for name
+              const msgIndex = conv.messages.indexOf(msg);
+              if (msgIndex > 0) {
+                const prevMsg = conv.messages[msgIndex - 1];
+                if (prevMsg.role === 'assistant' && /name|who.*you|call you|introduce/i.test(prevMsg.content)) {
+                  return content.charAt(0).toUpperCase() + content.slice(1).toLowerCase();
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    
     if (conv.handoffEmail) return conv.handoffEmail.split('@')[0];
     return 'Unknown';
   };
@@ -240,9 +342,12 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
   };
 
   const getLastMessage = (conv: Conversation): string => {
-    if (conv.messages?.length > 0) {
+    if (conv.messages && conv.messages.length > 0) {
       const lastMsg = conv.messages[conv.messages.length - 1];
       return lastMsg.content.substring(0, 50) + (lastMsg.content.length > 50 ? '...' : '');
+    }
+    if (conv.lastMessage) {
+      return conv.lastMessage.substring(0, 50) + (conv.lastMessage.length > 50 ? '...' : '');
     }
     return 'No messages';
   };
@@ -604,6 +709,114 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
                     <span className="text-muted-foreground">Messages:</span>{' '}
                     <span className="font-medium">{selectedConversation.messages?.length || 0}</span>
                   </div>
+                  {selectedConversation.ghlContactId && (
+                    <div className="text-sm">
+                      <Badge variant="outline" className="text-xs">
+                        FWC Linked
+                      </Badge>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* FWC Follow-up Actions */}
+            {selectedConversation && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <MessageCircle className="w-4 h-4" />
+                    FWC Follow-up
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {/* Message Type Selector */}
+                  <div className="flex gap-1">
+                    <Button
+                      size="sm"
+                      variant={fwcMessageType === 'sms' ? 'default' : 'outline'}
+                      onClick={() => setFwcMessageType(fwcMessageType === 'sms' ? null : 'sms')}
+                      className="flex-1"
+                      disabled={!selectedConversation.handoffPhone}
+                      title={!selectedConversation.handoffPhone ? 'No phone number available' : 'Send SMS'}
+                    >
+                      <Phone className="w-3 h-3 mr-1" />
+                      SMS
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={fwcMessageType === 'email' ? 'default' : 'outline'}
+                      onClick={() => setFwcMessageType(fwcMessageType === 'email' ? null : 'email')}
+                      className="flex-1"
+                      disabled={!selectedConversation.handoffEmail}
+                      title={!selectedConversation.handoffEmail ? 'No email available' : 'Send Email'}
+                    >
+                      <Mail className="w-3 h-3 mr-1" />
+                      Email
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={fwcMessageType === 'facebook' ? 'default' : 'outline'}
+                      onClick={() => setFwcMessageType(fwcMessageType === 'facebook' ? null : 'facebook')}
+                      className="flex-1"
+                      disabled={selectedConversation.type !== 'messenger'}
+                      title={selectedConversation.type !== 'messenger' ? 'Only for Facebook conversations' : 'Send Facebook Message'}
+                    >
+                      <Facebook className="w-3 h-3 mr-1" />
+                      FB
+                    </Button>
+                  </div>
+
+                  {/* Message Input */}
+                  {fwcMessageType && (
+                    <div className="space-y-2">
+                      <textarea
+                        placeholder={`Type your ${fwcMessageType === 'facebook' ? 'Facebook' : fwcMessageType.toUpperCase()} message...`}
+                        value={fwcMessageText}
+                        onChange={(e) => setFwcMessageText(e.target.value)}
+                        className="w-full min-h-[80px] p-2 text-sm border rounded-md resize-none"
+                        data-testid="fwc-message-input"
+                      />
+                      <div className="flex gap-2">
+                        {aiSuggestion && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setFwcMessageText(aiSuggestion)}
+                            className="flex-1"
+                          >
+                            <Sparkles className="w-3 h-3 mr-1" />
+                            Use AI
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          onClick={sendFwcMessage}
+                          disabled={isSendingFwc || !fwcMessageText.trim() || !selectedConversation.ghlContactId}
+                          className="flex-1"
+                          data-testid="send-fwc-message"
+                        >
+                          {isSendingFwc ? (
+                            <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+                          ) : (
+                            <Send className="w-3 h-3 mr-1" />
+                          )}
+                          Send
+                        </Button>
+                      </div>
+                      {!selectedConversation.ghlContactId && (
+                        <p className="text-xs text-amber-600">
+                          No FWC contact linked. Sync required.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {!fwcMessageType && (
+                    <p className="text-xs text-muted-foreground text-center py-2">
+                      Select a channel above to send follow-up
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             )}

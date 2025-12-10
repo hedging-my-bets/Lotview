@@ -3577,6 +3577,82 @@ Provide a single, concise, friendly message that continues the conversation natu
     }
   });
 
+  // Send FWC follow-up message (SMS, Email, or Facebook)
+  app.post("/api/conversations/:id/fwc-message", authMiddleware, requireRole("manager", "admin", "master", "super_admin"), requireDealership, async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const conversationId = parseInt(req.params.id);
+      const { type, message, subject } = req.body;
+
+      if (!type || !['sms', 'email', 'facebook'].includes(type)) {
+        return res.status(400).json({ error: "Invalid message type. Must be 'sms', 'email', or 'facebook'" });
+      }
+
+      if (!message || typeof message !== 'string' || message.trim().length === 0) {
+        return res.status(400).json({ error: "Message is required" });
+      }
+
+      // Get the conversation
+      const conversation = await storage.getConversationById(conversationId, dealershipId);
+      
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+
+      // Check if we have FWC contact ID
+      if (!conversation.ghlContactId) {
+        return res.status(400).json({ error: "No FWC contact linked to this conversation. Customer contact info may not be available." });
+      }
+
+      // Validate required contact info for the message type
+      if (type === 'sms' && !conversation.handoffPhone) {
+        return res.status(400).json({ error: "No phone number available for SMS" });
+      }
+      if (type === 'email' && !conversation.handoffEmail) {
+        return res.status(400).json({ error: "No email address available for Email" });
+      }
+
+      // Create or get GHL API service for this dealership
+      const { createGhlApiService } = await import("./ghl-api-service");
+      const ghlService = createGhlApiService(dealershipId);
+      
+      // Get or create conversation in FWC
+      const ghlConvResult = await ghlService.getOrCreateConversation(conversation.ghlContactId, 
+        type === 'sms' ? 'TYPE_SMS' : type === 'email' ? 'TYPE_EMAIL' : 'TYPE_FB'
+      );
+      
+      if (!ghlConvResult.success || !ghlConvResult.data) {
+        return res.status(500).json({ error: "Failed to create FWC conversation" });
+      }
+
+      // Map type to FWC message type
+      const messageType = type === 'sms' ? 'SMS' : type === 'email' ? 'Email' : 'FB';
+      
+      // Send the message
+      const sendResult = await ghlService.sendMessage(ghlConvResult.data.id, {
+        type: messageType as 'SMS' | 'Email' | 'FB',
+        message: message.trim(),
+        subject: type === 'email' ? (subject || `Follow-up from ${req.user?.name || 'Sales Team'}`) : undefined,
+      });
+
+      if (!sendResult.success) {
+        return res.status(500).json({ error: sendResult.error || "Failed to send message via FWC" });
+      }
+
+      // Log the follow-up
+      console.log(`[FWC Follow-up] Sent ${type} to contact ${conversation.ghlContactId} for conversation ${conversationId}`);
+
+      res.json({ 
+        success: true, 
+        messageId: sendResult.data?.id,
+        message: `${type.toUpperCase()} sent successfully via FWC`
+      });
+    } catch (error: any) {
+      console.error("Error sending FWC follow-up:", error);
+      res.status(500).json({ error: error.message || "Failed to send FWC message" });
+    }
+  });
+
   // Get messages for a specific conversation
   app.get("/api/messenger-conversations/:id/messages", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), async (req, res) => {
     try {
@@ -4670,9 +4746,12 @@ Format your response in clear sections with actionable recommendations.`;
           try {
             await storage.updateConversationHandoff(conversationId, dealershipId, {
               handoffRequested: true,
-              handoffPhone: phone || null,
+              handoffPhone: phone || undefined,
+              handoffEmail: email || undefined,
+              handoffName: name || undefined,
               handoffSent: true,
               handoffSentAt: new Date(),
+              ghlContactId: result.contactId || undefined,
             });
           } catch (updateError) {
             // Non-fatal - conversation may not exist yet

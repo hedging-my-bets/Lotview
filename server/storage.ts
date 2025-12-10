@@ -378,7 +378,7 @@ export interface IStorage {
   saveChatConversation(conversation: InsertChatConversation): Promise<ChatConversation>; // Must include dealershipId
   getAllConversations(dealershipId: number, category?: string, limit?: number, offset?: number): Promise<{ conversations: ChatConversation[]; total: number }>; // REQUIRED filtering
   getConversationById(id: number, dealershipId: number): Promise<ChatConversation | undefined>; // REQUIRED filtering
-  updateConversationHandoff(id: number, dealershipId: number, data: { handoffRequested?: boolean; handoffPhone?: string; handoffSent?: boolean; handoffSentAt?: Date }): Promise<ChatConversation | undefined>;
+  updateConversationHandoff(id: number, dealershipId: number, data: { handoffRequested?: boolean; handoffPhone?: string; handoffEmail?: string; handoffName?: string; handoffSent?: boolean; handoffSentAt?: Date; ghlContactId?: string }): Promise<ChatConversation | undefined>;
   
   // Messenger conversations (Multi-Tenant)
   getMessengerConversations(dealershipId: number, userId?: number, userRole?: string): Promise<(MessengerConversation & { ownerName?: string; assignedTo?: { id: number; name: string } })[]>;
@@ -1350,7 +1350,15 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  async updateConversationHandoff(id: number, dealershipId: number, data: { handoffRequested?: boolean; handoffPhone?: string; handoffSent?: boolean; handoffSentAt?: Date }): Promise<ChatConversation | undefined> {
+  async updateConversationHandoff(id: number, dealershipId: number, data: { 
+    handoffRequested?: boolean; 
+    handoffPhone?: string; 
+    handoffEmail?: string;
+    handoffName?: string;
+    handoffSent?: boolean; 
+    handoffSentAt?: Date;
+    ghlContactId?: string;
+  }): Promise<ChatConversation | undefined> {
     // REQUIRED: Only update conversations from this dealership
     const result = await db.update(chatConversations)
       .set(data)
