@@ -2787,83 +2787,71 @@ export default function Manager() {
             </CardContent>
           </Card>
 
-          {/* Metrics Cards */}
-          <div className="grid gap-4 grid-cols-2 lg:grid-cols-4 mb-6">
-            <Card data-testid="metric-total-leads">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Leads</CardTitle>
-                <MessageSquare className="h-4 w-4 text-muted-foreground" />
+          {/* Metrics Cards - Compact */}
+          <div className="grid gap-3 grid-cols-2 lg:grid-cols-4 mb-6">
+            <Card data-testid="metric-total-leads" className="py-2">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 px-3 pt-2">
+                <CardTitle className="text-xs font-medium">Total Leads</CardTitle>
+                <MessageSquare className="h-3 w-3 text-muted-foreground" />
               </CardHeader>
-              <CardContent>
+              <CardContent className="px-3 pb-2 pt-0">
                 {isLoadingMetrics ? (
-                  <div className="space-y-2">
-                    <div className="h-8 w-20 bg-muted rounded animate-pulse" />
-                    <div className="h-3 w-32 bg-muted rounded animate-pulse" />
-                  </div>
+                  <div className="h-6 w-12 bg-muted rounded animate-pulse" />
                 ) : (
                   <>
-                    <div className="text-2xl font-bold" data-testid="value-total-leads">{metrics.totalLeads}</div>
-                    <p className="text-xs text-muted-foreground">All chat conversations</p>
+                    <div className="text-xl font-bold" data-testid="value-total-leads">{metrics.totalLeads}</div>
+                    <p className="text-[10px] text-muted-foreground">All chat conversations</p>
                   </>
                 )}
               </CardContent>
             </Card>
 
-            <Card data-testid="metric-active-conversations">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Active Conversations</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
+            <Card data-testid="metric-active-conversations" className="py-2">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 px-3 pt-2">
+                <CardTitle className="text-xs font-medium">Active Conversations</CardTitle>
+                <Users className="h-3 w-3 text-muted-foreground" />
               </CardHeader>
-              <CardContent>
+              <CardContent className="px-3 pb-2 pt-0">
                 {isLoadingMetrics ? (
-                  <div className="space-y-2">
-                    <div className="h-8 w-20 bg-muted rounded animate-pulse" />
-                    <div className="h-3 w-32 bg-muted rounded animate-pulse" />
-                  </div>
+                  <div className="h-6 w-12 bg-muted rounded animate-pulse" />
                 ) : (
                   <>
-                    <div className="text-2xl font-bold" data-testid="value-active-conversations">{metrics.activeConversations}</div>
-                    <p className="text-xs text-muted-foreground">Last 7 days</p>
+                    <div className="text-xl font-bold" data-testid="value-active-conversations">{metrics.activeConversations}</div>
+                    <p className="text-[10px] text-muted-foreground">Last 7 days</p>
                   </>
                 )}
               </CardContent>
             </Card>
 
-            <Card data-testid="metric-appointments-booked">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Appointments Booked</CardTitle>
-                <CalendarCheck className="h-4 w-4 text-muted-foreground" />
+            <Card data-testid="metric-appointments-booked" className="py-2">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 px-3 pt-2">
+                <CardTitle className="text-xs font-medium">Appointments Booked</CardTitle>
+                <CalendarCheck className="h-3 w-3 text-muted-foreground" />
               </CardHeader>
-              <CardContent>
+              <CardContent className="px-3 pb-2 pt-0">
                 {isLoadingMetrics ? (
-                  <div className="space-y-2">
-                    <div className="h-8 w-20 bg-muted rounded animate-pulse" />
-                    <div className="h-3 w-32 bg-muted rounded animate-pulse" />
-                  </div>
+                  <div className="h-6 w-12 bg-muted rounded animate-pulse" />
                 ) : (
                   <>
-                    <div className="text-2xl font-bold" data-testid="value-appointments-booked">{metrics.appointmentsBooked}</div>
-                    <p className="text-xs text-muted-foreground">Coming soon</p>
+                    <div className="text-xl font-bold" data-testid="value-appointments-booked">{metrics.appointmentsBooked}</div>
+                    <p className="text-[10px] text-muted-foreground">Coming soon</p>
                   </>
                 )}
               </CardContent>
             </Card>
 
-            <Card data-testid="metric-scheduled-posts">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Scheduled Posts</CardTitle>
-                <Calendar className="h-4 w-4 text-muted-foreground" />
+            <Card data-testid="metric-scheduled-posts" className="py-2">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 px-3 pt-2">
+                <CardTitle className="text-xs font-medium">Scheduled Posts</CardTitle>
+                <Calendar className="h-3 w-3 text-muted-foreground" />
               </CardHeader>
-              <CardContent>
+              <CardContent className="px-3 pb-2 pt-0">
                 {isLoadingMetrics ? (
-                  <div className="space-y-2">
-                    <div className="h-8 w-20 bg-muted rounded animate-pulse" />
-                    <div className="h-3 w-32 bg-muted rounded animate-pulse" />
-                  </div>
+                  <div className="h-6 w-12 bg-muted rounded animate-pulse" />
                 ) : (
                   <>
-                    <div className="text-2xl font-bold" data-testid="value-scheduled-posts">{metrics.scheduledPosts}</div>
-                    <p className="text-xs text-muted-foreground">In queue</p>
+                    <div className="text-xl font-bold" data-testid="value-scheduled-posts">{metrics.scheduledPosts}</div>
+                    <p className="text-[10px] text-muted-foreground">In queue</p>
                   </>
                 )}
               </CardContent>

@@ -28,7 +28,10 @@ import {
   MessageCircle,
   Edit3,
   Lightbulb,
-  GraduationCap
+  GraduationCap,
+  Save,
+  CheckCircle,
+  AlertCircle
 } from "lucide-react";
 
 interface Message {
@@ -93,6 +96,12 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
   const [trainingFeedback, setTrainingFeedback] = useState<string | null>(null);
   const [isLoadingFeedback, setIsLoadingFeedback] = useState(false);
   const [currentPrompt, setCurrentPrompt] = useState<string | null>(null);
+  const [currentPromptId, setCurrentPromptId] = useState<number | null>(null);
+  const [currentScenario, setCurrentScenario] = useState<string>("general");
+  const [suggestedPrompt, setSuggestedPrompt] = useState<string | null>(null);
+  const [promptChanges, setPromptChanges] = useState<string[]>([]);
+  const [editablePrompt, setEditablePrompt] = useState<string>("");
+  const [isSavingPrompt, setIsSavingPrompt] = useState(false);
 
   useEffect(() => {
     loadConversations();
@@ -321,12 +330,35 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
       });
       if (response.ok) {
         const prompts = await response.json();
-        // Get the active prompt for the 'sales' or 'general' scenario
-        const activePrompt = prompts.find((p: any) => p.isActive && (p.scenario === 'sales' || p.scenario === 'general'));
+        
+        // Detect scenario from conversation category
+        let scenario = 'general';
+        if (selectedConversation?.category) {
+          const cat = selectedConversation.category.toLowerCase();
+          if (cat.includes('get-approved') || cat.includes('financing') || cat.includes('pre-approved')) {
+            scenario = 'get-approved';
+          } else if (cat.includes('test-drive') || cat.includes('testdrive')) {
+            scenario = 'test-drive';
+          } else if (cat.includes('reserve')) {
+            scenario = 'reserve';
+          } else if (cat.includes('trade') || cat.includes('value-trade')) {
+            scenario = 'value-trade';
+          }
+        }
+        setCurrentScenario(scenario);
+        
+        // Find matching prompt - first try exact scenario match, then fallback to general
+        let activePrompt = prompts.find((p: any) => p.isActive && p.scenario === scenario);
+        if (!activePrompt) {
+          activePrompt = prompts.find((p: any) => p.isActive && p.scenario === 'general');
+        }
+        if (!activePrompt && prompts.length > 0) {
+          activePrompt = prompts[0];
+        }
+        
         if (activePrompt) {
           setCurrentPrompt(activePrompt.systemPrompt);
-        } else if (prompts.length > 0) {
-          setCurrentPrompt(prompts[0].systemPrompt);
+          setCurrentPromptId(activePrompt.id);
         }
       }
     } catch (error) {
@@ -341,6 +373,9 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
     }
 
     setIsLoadingFeedback(true);
+    setSuggestedPrompt(null);
+    setPromptChanges([]);
+    
     try {
       const token = localStorage.getItem('auth_token');
       const response = await fetch('/api/chat/training-feedback', {
@@ -360,6 +395,13 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
       if (response.ok) {
         const data = await response.json();
         setTrainingFeedback(data.feedback);
+        
+        // Handle suggested prompt
+        if (data.suggestedPrompt && data.suggestedPrompt !== currentPrompt) {
+          setSuggestedPrompt(data.suggestedPrompt);
+          setEditablePrompt(data.suggestedPrompt);
+          setPromptChanges(data.changes || []);
+        }
       } else {
         toast({ title: "Error", description: "Failed to get training feedback", variant: "destructive" });
       }
@@ -370,12 +412,51 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
     }
   };
 
+  const saveUpdatedPrompt = async () => {
+    if (!editablePrompt || !currentPromptId) {
+      toast({ title: "Error", description: "No prompt to save", variant: "destructive" });
+      return;
+    }
+
+    setIsSavingPrompt(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/chat-prompts/${currentPromptId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          systemPrompt: editablePrompt
+        })
+      });
+      
+      if (response.ok) {
+        toast({ title: "Success", description: "Prompt updated for all users at this dealership" });
+        setCurrentPrompt(editablePrompt);
+        setSuggestedPrompt(null);
+      } else {
+        toast({ title: "Error", description: "Failed to save prompt", variant: "destructive" });
+      }
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to save prompt", variant: "destructive" });
+    } finally {
+      setIsSavingPrompt(false);
+    }
+  };
+
   const closeTrainingDialog = () => {
     setTrainingDialogOpen(false);
     setSelectedTrainingMessage(null);
     setEditedContent("");
     setTrainingFeedback(null);
     setCurrentPrompt(null);
+    setCurrentPromptId(null);
+    setCurrentScenario("general");
+    setSuggestedPrompt(null);
+    setPromptChanges([]);
+    setEditablePrompt("");
   };
 
   const getContactName = (conv: Conversation): string => {
@@ -947,86 +1028,168 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
         </ScrollArea>
       </div>
 
-      {/* Training Mode Dialog */}
+      {/* Training Mode Dialog - Full Width */}
       <Dialog open={trainingDialogOpen} onOpenChange={(open) => !open && closeTrainingDialog()}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <GraduationCap className="w-5 h-5 text-purple-600" />
+        <DialogContent className="max-w-5xl w-[95vw] h-[90vh] flex flex-col overflow-hidden">
+          <DialogHeader className="flex-shrink-0 pb-4 border-b">
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <GraduationCap className="w-6 h-6 text-purple-600" />
               AI Training Mode
+              {currentScenario !== 'general' && (
+                <Badge variant="secondary" className="ml-2">
+                  {currentScenario.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                </Badge>
+              )}
             </DialogTitle>
           </DialogHeader>
 
           {selectedTrainingMessage && (
-            <div className="space-y-4">
-              {/* Conversation Context Preview */}
-              <div>
-                <Label className="text-sm font-medium mb-2 block">Conversation Context</Label>
-                <div className="max-h-32 overflow-y-auto bg-muted/50 rounded-lg p-3 space-y-2">
-                  {selectedTrainingMessage.context.slice(-5).map((msg, idx) => (
-                    <div key={idx} className={`text-xs ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
-                      <span className={`inline-block px-2 py-1 rounded ${
-                        msg.role === 'user' ? 'bg-gray-200 dark:bg-gray-700' : 'bg-blue-100 dark:bg-blue-900'
-                      }`}>
-                        <span className="font-medium">{msg.role === 'user' ? 'Customer' : 'AI'}:</span>{' '}
-                        {msg.content.length > 100 ? msg.content.substring(0, 100) + '...' : msg.content}
-                      </span>
+            <div className="flex-1 overflow-y-auto space-y-6 py-4">
+              {/* Two Column Layout */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Left Column - Context & Response */}
+                <div className="space-y-4">
+                  {/* Conversation Context Preview */}
+                  <div>
+                    <Label className="text-sm font-medium mb-2 block">Conversation Context</Label>
+                    <div className="max-h-48 overflow-y-auto bg-muted/50 rounded-lg p-3 space-y-2">
+                      {selectedTrainingMessage.context.slice(-6).map((msg, idx) => (
+                        <div key={idx} className={`text-sm ${msg.role === 'user' ? 'text-left' : 'text-right'}`}>
+                          <span className={`inline-block px-3 py-2 rounded-lg max-w-[85%] ${
+                            msg.role === 'user' ? 'bg-gray-200 dark:bg-gray-700' : 'bg-blue-100 dark:bg-blue-900'
+                          }`}>
+                            <span className="font-medium">{msg.role === 'user' ? 'Customer' : 'AI'}:</span>{' '}
+                            {msg.content.length > 150 ? msg.content.substring(0, 150) + '...' : msg.content}
+                          </span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  </div>
+
+                  {/* Editable AI Response */}
+                  <div>
+                    <Label className="text-sm font-medium mb-2 flex items-center gap-2">
+                      <Edit3 className="w-4 h-4" />
+                      Edit AI Response
+                    </Label>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      Modify the response to show how the AI should have replied:
+                    </p>
+                    <Textarea
+                      value={editedContent}
+                      onChange={(e) => setEditedContent(e.target.value)}
+                      className="min-h-[150px] text-base"
+                      placeholder="Edit the AI response..."
+                      data-testid="training-edit-input"
+                    />
+                    {editedContent !== selectedTrainingMessage.originalContent && (
+                      <p className="text-xs text-green-600 mt-2 flex items-center gap-1">
+                        <Lightbulb className="w-3 h-3" />
+                        Response modified - click "Get Feedback" to analyze
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right Column - Prompts & Feedback */}
+                <div className="space-y-4">
+                  {/* Current System Prompt */}
+                  <div>
+                    <Label className="text-sm font-medium mb-2 flex items-center gap-2">
+                      <Bot className="w-4 h-4" />
+                      Current System Prompt 
+                      <Badge variant="outline" className="text-xs">
+                        {currentScenario}
+                      </Badge>
+                    </Label>
+                    <div className="bg-muted/50 rounded-lg p-3 max-h-40 overflow-y-auto border">
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap font-mono">
+                        {currentPrompt || 'Loading prompt...'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* AI Feedback Section */}
+                  {trainingFeedback && (
+                    <div className="bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
+                      <Label className="text-sm font-medium mb-2 flex items-center gap-2 text-purple-700 dark:text-purple-400">
+                        <Lightbulb className="w-4 h-4" />
+                        Analysis
+                      </Label>
+                      <p className="text-sm whitespace-pre-wrap">{trainingFeedback}</p>
+                      
+                      {/* Changes list */}
+                      {promptChanges.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-purple-200 dark:border-purple-700">
+                          <p className="text-xs font-medium text-purple-700 dark:text-purple-400 mb-2">Suggested Changes:</p>
+                          <ul className="text-xs space-y-1">
+                            {promptChanges.map((change, idx) => (
+                              <li key={idx} className="flex items-start gap-2">
+                                <CheckCircle className="w-3 h-3 text-green-600 mt-0.5 flex-shrink-0" />
+                                <span>{change}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Suggested Prompt - Editable with Green Highlight */}
+                  {suggestedPrompt && (
+                    <div className="bg-green-50 dark:bg-green-950/30 border-2 border-green-400 dark:border-green-600 rounded-lg p-4">
+                      <Label className="text-sm font-medium mb-2 flex items-center gap-2 text-green-700 dark:text-green-400">
+                        <Sparkles className="w-4 h-4" />
+                        Suggested Updated Prompt
+                      </Label>
+                      <p className="text-xs text-green-600 dark:text-green-500 mb-2">
+                        Review and edit the suggested prompt below, then save to apply to all AI conversations:
+                      </p>
+                      <Textarea
+                        value={editablePrompt}
+                        onChange={(e) => setEditablePrompt(e.target.value)}
+                        className="min-h-[200px] bg-white dark:bg-gray-900 border-green-300 dark:border-green-700 font-mono text-sm"
+                        placeholder="Suggested prompt..."
+                        data-testid="suggested-prompt-input"
+                      />
+                      <div className="flex justify-end gap-2 mt-3">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => {
+                            setSuggestedPrompt(null);
+                            setEditablePrompt("");
+                          }}
+                        >
+                          Discard
+                        </Button>
+                        <Button 
+                          onClick={saveUpdatedPrompt}
+                          disabled={isSavingPrompt || !editablePrompt}
+                          className="bg-green-600 hover:bg-green-700"
+                          size="sm"
+                        >
+                          {isSavingPrompt ? (
+                            <>
+                              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                              Saving...
+                            </>
+                          ) : (
+                            <>
+                              <Save className="w-4 h-4 mr-2" />
+                              Save Prompt
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
-
-              {/* Current System Prompt */}
-              <div>
-                <Label className="text-sm font-medium mb-2 flex items-center gap-2">
-                  <Bot className="w-4 h-4" />
-                  Current System Prompt
-                </Label>
-                <div className="bg-muted/50 rounded-lg p-3 max-h-24 overflow-y-auto">
-                  <p className="text-xs text-muted-foreground whitespace-pre-wrap">
-                    {currentPrompt || 'Loading prompt...'}
-                  </p>
-                </div>
-              </div>
-
-              {/* Editable AI Response */}
-              <div>
-                <Label className="text-sm font-medium mb-2 flex items-center gap-2">
-                  <Edit3 className="w-4 h-4" />
-                  Edit AI Response
-                </Label>
-                <p className="text-xs text-muted-foreground mb-2">
-                  Modify the response to show how the AI should have replied:
-                </p>
-                <Textarea
-                  value={editedContent}
-                  onChange={(e) => setEditedContent(e.target.value)}
-                  className="min-h-[100px]"
-                  placeholder="Edit the AI response..."
-                  data-testid="training-edit-input"
-                />
-                {editedContent !== selectedTrainingMessage.originalContent && (
-                  <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                    <Lightbulb className="w-3 h-3" />
-                    Response modified - click "Get Feedback" to analyze
-                  </p>
-                )}
-              </div>
-
-              {/* AI Feedback Section */}
-              {trainingFeedback && (
-                <div className="bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
-                  <Label className="text-sm font-medium mb-2 flex items-center gap-2 text-purple-700 dark:text-purple-400">
-                    <Lightbulb className="w-4 h-4" />
-                    AI Training Feedback
-                  </Label>
-                  <p className="text-sm whitespace-pre-wrap">{trainingFeedback}</p>
-                </div>
-              )}
             </div>
           )}
 
-          <DialogFooter className="flex gap-2 mt-4">
+          <DialogFooter className="flex-shrink-0 flex gap-2 pt-4 border-t">
             <Button variant="outline" onClick={closeTrainingDialog}>
               Close
             </Button>

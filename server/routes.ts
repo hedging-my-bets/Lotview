@@ -4053,6 +4053,34 @@ Provide a single, concise, friendly message that continues the conversation natu
     }
   });
 
+  // Update a specific prompt by ID (for training mode)
+  app.patch("/api/chat-prompts/:id", authMiddleware, requireRole("manager", "admin", "master", "super_admin"), requireDealership, async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const promptId = parseInt(req.params.id);
+      const { systemPrompt, greeting, isActive } = req.body;
+
+      if (!systemPrompt) {
+        return res.status(400).json({ error: "systemPrompt is required" });
+      }
+
+      const updates: any = { systemPrompt };
+      if (greeting !== undefined) updates.greeting = greeting;
+      if (isActive !== undefined) updates.isActive = isActive;
+
+      const prompt = await storage.updateChatPromptById(promptId, dealershipId, updates);
+      
+      if (!prompt) {
+        return res.status(404).json({ error: "Prompt not found" });
+      }
+      
+      res.json({ success: true, prompt });
+    } catch (error) {
+      console.error("Error updating chat prompt:", error);
+      res.status(500).json({ error: "Failed to update chat prompt" });
+    }
+  });
+
   // Training feedback endpoint - analyzes edited AI responses and suggests prompt improvements
   app.post("/api/chat/training-feedback", authMiddleware, requireRole("manager", "admin", "master", "super_admin"), requireDealership, async (req, res) => {
     try {
@@ -4072,7 +4100,7 @@ Provide a single, concise, friendly message that continues the conversation natu
       
       // Get dealership-specific API key or fallback to default
       const apiKeys = await storage.getDealershipApiKeys(dealershipId);
-      const openaiKey = apiKeys.find(k => k.serviceName === 'openai')?.apiKey || process.env.OPENAI_API_KEY;
+      const openaiKey = apiKeys?.openaiApiKey || process.env.OPENAI_API_KEY;
       
       if (!openaiKey) {
         return res.status(500).json({ error: "OpenAI API key not configured" });
@@ -4085,7 +4113,7 @@ Provide a single, concise, friendly message that continues the conversation natu
         `${msg.role === 'user' ? 'Customer' : 'AI'}: ${msg.content}`
       ).join('\n') || 'No context provided';
 
-      // Create training feedback prompt
+      // Create training feedback prompt - structured JSON output for UI
       const trainingPrompt = `You are an AI prompt engineering expert analyzing how a dealership AI assistant's response was corrected by a human manager.
 
 CURRENT SYSTEM PROMPT BEING USED:
@@ -4100,33 +4128,39 @@ ${originalResponse}
 HUMAN-CORRECTED RESPONSE:
 ${editedResponse}
 
-Analyze the difference between the original AI response and the human correction. Provide actionable feedback on:
+Analyze the difference and provide a JSON response with the following structure:
+{
+  "analysis": "Brief analysis of what was wrong with the original response and what the human preferred",
+  "suggestedPrompt": "The complete updated system prompt with your improvements incorporated. Start with the current prompt and add/modify instructions to produce responses more like the human correction.",
+  "changes": ["List of specific changes you made to the prompt", "Each change as a separate string"]
+}
 
-1. **What was wrong**: Identify specific issues with the original response (tone, accuracy, missing information, etc.)
-
-2. **What the human preferred**: Analyze what the human correction demonstrates about their expectations
-
-3. **Prompt Improvement Suggestions**: Provide 2-3 specific additions or modifications to the system prompt that would help the AI generate responses more like the human correction in similar situations
-
-4. **Example Prompt Addition**: Write a brief sentence or instruction that could be added to the system prompt to address this specific improvement area
-
-Format your response in a clear, actionable way that a dealership manager can understand and use to improve their AI assistant.`;
+IMPORTANT: The suggestedPrompt should be a complete, ready-to-use system prompt. Return ONLY valid JSON, no markdown or extra text.`;
 
       const response = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
-          { role: "system", content: "You are an expert in prompt engineering and AI training. Provide concise, actionable feedback." },
+          { role: "system", content: "You are an expert in prompt engineering and AI training. Return only valid JSON." },
           { role: "user", content: trainingPrompt }
         ],
         temperature: 0.7,
-        max_tokens: 800
+        max_tokens: 2000,
+        response_format: { type: "json_object" }
       });
 
-      const feedback = response.choices[0]?.message?.content || "Unable to generate feedback";
+      const rawContent = response.choices[0]?.message?.content || "{}";
+      let parsedFeedback;
+      try {
+        parsedFeedback = JSON.parse(rawContent);
+      } catch {
+        parsedFeedback = { analysis: rawContent, suggestedPrompt: currentPrompt, changes: [] };
+      }
 
       res.json({ 
         success: true, 
-        feedback,
+        feedback: parsedFeedback.analysis || "Analysis complete",
+        suggestedPrompt: parsedFeedback.suggestedPrompt || currentPrompt,
+        changes: parsedFeedback.changes || [],
         originalLength: originalResponse.length,
         editedLength: editedResponse.length
       });
