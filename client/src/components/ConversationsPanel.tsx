@@ -38,6 +38,9 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp?: string;
+  channel?: "sms" | "email" | "chat";
+  direction?: "inbound" | "outbound";
+  ghlMessageId?: string;
 }
 
 interface Conversation {
@@ -124,9 +127,26 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
         const data = await response.json();
         setConversations(data);
         
-        // Auto-select first conversation if none selected
-        // Normalize types before selection to ensure consistent handling
-        if (!selectedConversation) {
+        // If we have a selected conversation, refresh it with updated data
+        if (selectedConversation) {
+          const currentId = selectedConversation.id;
+          const currentType = selectedConversation.type;
+          
+          // Find the updated conversation
+          if (currentType === 'website_chat') {
+            const updated = data.websiteChats?.find((c: Conversation) => c.id === currentId);
+            if (updated) {
+              setSelectedConversation({ ...updated, type: 'website_chat' });
+            }
+          } else if (currentType === 'messenger') {
+            const updated = data.messengerConversations?.find((c: Conversation) => c.id === currentId);
+            if (updated) {
+              setSelectedConversation({ ...updated, type: 'messenger' });
+            }
+          }
+        } else {
+          // Auto-select first conversation if none selected
+          // Normalize types before selection to ensure consistent handling
           if (data.websiteChats?.length > 0) {
             selectConversation({ ...data.websiteChats[0], type: 'website_chat' });
           } else if (data.messengerConversations?.length > 0) {
@@ -347,6 +367,9 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
         });
         setFwcMessageText("");
         // Keep channel selected for easy follow-up
+        
+        // Refetch conversations to show the new message
+        await loadConversations();
       } else {
         toast({ title: "Error", description: data.error || "Failed to send message", variant: "destructive" });
       }
@@ -789,11 +812,27 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
                       onClick={() => handleAiMessageClick(msg, idx)}
                       className={`max-w-[70%] rounded-2xl px-4 py-2 ${
                         msg.role === 'user'
-                          ? 'bg-white dark:bg-gray-700 text-foreground border border-gray-200 dark:border-gray-600 rounded-bl-md'
+                          ? msg.channel === 'sms' 
+                            ? 'bg-green-50 dark:bg-green-950/50 text-foreground border border-green-200 dark:border-green-800 rounded-bl-md'
+                            : msg.channel === 'email'
+                            ? 'bg-blue-50 dark:bg-blue-950/50 text-foreground border border-blue-200 dark:border-blue-800 rounded-bl-md'
+                            : 'bg-white dark:bg-gray-700 text-foreground border border-gray-200 dark:border-gray-600 rounded-bl-md'
+                          : msg.channel === 'sms'
+                          ? `bg-green-600 text-white rounded-br-md ${trainingMode ? 'cursor-pointer hover:bg-green-700 ring-2 ring-transparent hover:ring-purple-400' : ''}`
+                          : msg.channel === 'email'
+                          ? `bg-blue-600 text-white rounded-br-md ${trainingMode ? 'cursor-pointer hover:bg-blue-700 ring-2 ring-transparent hover:ring-purple-400' : ''}`
                           : `bg-blue-500 text-white rounded-br-md ${trainingMode ? 'cursor-pointer hover:bg-blue-600 ring-2 ring-transparent hover:ring-purple-400' : ''}`
                       }`}
                       data-testid={`message-${msg.role}-${idx}`}
                     >
+                      {msg.channel && (
+                        <div className={`flex items-center gap-1 mb-1 text-xs ${msg.role === 'user' ? 'text-muted-foreground' : 'text-white/80'}`}>
+                          {msg.channel === 'sms' && <Phone className="w-3 h-3" />}
+                          {msg.channel === 'email' && <Mail className="w-3 h-3" />}
+                          {msg.channel === 'chat' && <MessageCircle className="w-3 h-3" />}
+                          <span className="uppercase">{msg.channel}</span>
+                        </div>
+                      )}
                       <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                       {trainingMode && msg.role === 'assistant' && (
                         <div className="flex items-center gap-1 mt-1 text-blue-200 text-xs">

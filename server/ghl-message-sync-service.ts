@@ -101,6 +101,57 @@ export class GhlMessageSyncService {
     }
   }
 
+  async syncToChatConversation(webhookData: {
+    contactId: string;
+    body: string;
+    messageId: string;
+    direction: 'inbound' | 'outbound';
+    dateAdded: string;
+    type: string;
+  }): Promise<{ success: boolean; synced: boolean; error?: string }> {
+    try {
+      // Find chat conversation by GHL contact ID
+      const chatConversation = await storage.getConversationByGhlContactId(
+        this.dealershipId,
+        webhookData.contactId
+      );
+
+      if (!chatConversation) {
+        // No matching chat conversation, this is normal for pure Messenger conversations
+        return { success: true, synced: false };
+      }
+
+      // Check if this message already exists (by ghlMessageId)
+      const existingMessages = JSON.parse(chatConversation.messages || '[]');
+      const messageExists = existingMessages.some((m: any) => m.ghlMessageId === webhookData.messageId);
+      if (messageExists) {
+        console.log(`[GHL Sync] Chat message ${webhookData.messageId} already exists, skipping`);
+        return { success: true, synced: false };
+      }
+
+      // Map GHL direction to role
+      const role = webhookData.direction === 'inbound' ? 'user' : 'assistant';
+      const channel = webhookData.type === 'SMS' || webhookData.type === 'TYPE_SMS' ? 'sms' : 
+                      webhookData.type === 'Email' || webhookData.type === 'TYPE_EMAIL' ? 'email' : 'sms';
+
+      // Append the message to the conversation
+      await storage.appendMessageToConversation(chatConversation.id, this.dealershipId, {
+        role,
+        content: webhookData.body,
+        timestamp: webhookData.dateAdded || new Date().toISOString(),
+        channel,
+        direction: webhookData.direction,
+        ghlMessageId: webhookData.messageId
+      });
+
+      console.log(`[GHL Sync] Synced ${webhookData.direction} message to chat conversation ${chatConversation.id}`);
+      return { success: true, synced: true };
+    } catch (error: any) {
+      console.error(`[GHL Sync] Error syncing to chat conversation:`, error);
+      return { success: false, synced: false, error: error.message };
+    }
+  }
+
   async handleInboundGhlMessage(webhookData: {
     conversationId: string;
     contactId: string;
@@ -118,14 +169,20 @@ export class GhlMessageSyncService {
         return { success: true };
       }
 
+      // First, try to sync to chat_conversations (website chats) if contactId matches
+      if (webhookData.contactId) {
+        await this.syncToChatConversation(webhookData);
+      }
+
       const conversation = await storage.getMessengerConversationByGhlId(
         this.dealershipId,
         webhookData.conversationId
       );
 
       if (!conversation) {
-        console.log(`[GHL Sync] No matching Lotview conversation for GHL conversation ${webhookData.conversationId}`);
-        return { success: false, error: 'No matching conversation' };
+        console.log(`[GHL Sync] No matching Messenger conversation for GHL conversation ${webhookData.conversationId}`);
+        // Return success since we may have synced to chat_conversations above
+        return { success: true };
       }
 
       const ghlService = createGhlApiService(this.dealershipId);

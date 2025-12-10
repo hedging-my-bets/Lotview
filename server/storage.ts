@@ -379,6 +379,8 @@ export interface IStorage {
   getAllConversations(dealershipId: number, category?: string, limit?: number, offset?: number): Promise<{ conversations: ChatConversation[]; total: number }>; // REQUIRED filtering
   getConversationById(id: number, dealershipId: number): Promise<ChatConversation | undefined>; // REQUIRED filtering
   updateConversationHandoff(id: number, dealershipId: number, data: { handoffRequested?: boolean; handoffPhone?: string; handoffEmail?: string; handoffName?: string; handoffSent?: boolean; handoffSentAt?: Date; ghlContactId?: string }): Promise<ChatConversation | undefined>;
+  getConversationByGhlContactId(dealershipId: number, ghlContactId: string): Promise<ChatConversation | undefined>;
+  appendMessageToConversation(id: number, dealershipId: number, message: { role: string; content: string; timestamp: string; channel?: string; direction?: string; ghlMessageId?: string }): Promise<ChatConversation | undefined>;
   
   // Messenger conversations (Multi-Tenant)
   getMessengerConversations(dealershipId: number, userId?: number, userRole?: string): Promise<(MessengerConversation & { ownerName?: string; assignedTo?: { id: number; name: string } })[]>;
@@ -1362,6 +1364,47 @@ export class DatabaseStorage implements IStorage {
     // REQUIRED: Only update conversations from this dealership
     const result = await db.update(chatConversations)
       .set(data)
+      .where(and(
+        eq(chatConversations.id, id),
+        eq(chatConversations.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+
+  async getConversationByGhlContactId(dealershipId: number, ghlContactId: string): Promise<ChatConversation | undefined> {
+    const result = await db.select().from(chatConversations)
+      .where(and(
+        eq(chatConversations.dealershipId, dealershipId),
+        eq(chatConversations.ghlContactId, ghlContactId)
+      ))
+      .orderBy(desc(chatConversations.createdAt))
+      .limit(1);
+    return result[0];
+  }
+
+  async appendMessageToConversation(id: number, dealershipId: number, message: { 
+    role: string; 
+    content: string; 
+    timestamp: string; 
+    channel?: string; 
+    direction?: string; 
+    ghlMessageId?: string 
+  }): Promise<ChatConversation | undefined> {
+    const conversation = await this.getConversationById(id, dealershipId);
+    if (!conversation) return undefined;
+
+    let messages: any[] = [];
+    try {
+      messages = JSON.parse(conversation.messages || '[]');
+    } catch (e) {
+      console.error('Failed to parse conversation messages, starting fresh:', e);
+      messages = [];
+    }
+    messages.push(message);
+
+    const result = await db.update(chatConversations)
+      .set({ messages: JSON.stringify(messages) })
       .where(and(
         eq(chatConversations.id, id),
         eq(chatConversations.dealershipId, dealershipId)

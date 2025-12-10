@@ -3826,6 +3826,16 @@ Provide a single, concise, friendly message that continues the conversation natu
         return res.status(500).json({ error: sendResult.error || "Failed to send message" });
       }
 
+      // Append the outbound message to the conversation's messages
+      await storage.appendMessageToConversation(conversationId, dealershipId, {
+        role: 'assistant',
+        content: message.trim(),
+        timestamp: new Date().toISOString(),
+        channel: channel,
+        direction: 'outbound',
+        ghlMessageId: sendResult.data?.id
+      });
+
       console.log(`[Send Message] Sent ${channel} to ${channel === 'sms' ? phone : email} for conversation ${conversationId}`);
 
       res.json({ 
