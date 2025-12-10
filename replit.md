@@ -66,6 +66,7 @@ Preferred communication style: Simple, everyday language.
 - **PBS Partner Hub API**: Integration with PBS DMS for session management, sales, service, and parts modules, caching, logging, and retry logic.
 - **FWC CRM Integration**: Framework Consulting Software integration for contacts, calendars, opportunities, and conversations APIs. Includes webhook handling, bidirectional sync with PBS DMS, and scheduled batch reconciliation.
 - **Facebook Messenger Conversations**: Integration for split-view inbox, role-based access, and FWC sync.
+- **Real-Time WebSocket Notifications**: Server broadcasts `new_message` and `conversation_update` events to connected clients via `/ws` endpoint with JWT authentication. ConversationsPanel auto-updates instantly when new messages arrive from GHL webhooks.
 - **Call Scoring & Coaching System**: Department-specific scoring templates (Sales, Service, Parts, General Inquiry) with weighted criteria, AI draft scores, speaker recognition, and speaking time analysis.
 
 ### FWC Call Recording Integration
