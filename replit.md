@@ -85,16 +85,23 @@ The system uses Role-Based Access Control (RBAC) with the following roles (highe
     - **API Logging**: All PBS API calls logged to `pbs_api_logs` for debugging and monitoring.
     - **Retry Logic**: Exponential backoff for rate limits (429), network errors, and session expiration (401).
     - **Multi-Tenant Isolation**: All operations scoped to dealershipId from JWT or tenant middleware.
-- **GoHighLevel CRM Integration**: Full OAuth 2.0 integration for CRM synchronization. Services in `server/ghl-api-service.ts`, `server/ghl-sync-service.ts`, `server/ghl-pbs-bridge.ts` provide:
+- **GoHighLevel CRM Integration**: Full OAuth 2.0 integration for CRM synchronization. Services in `server/ghl-api-service.ts`, `server/ghl-sync-service.ts`, `server/ghl-pbs-bridge.ts`, `server/ghl-message-sync-service.ts` provide:
     - **OAuth 2.0 Flow**: Each dealership connects their own GHL sub-account via OAuth. Token refresh with 5-minute buffer.
     - **Contacts API**: Create, update, search contacts. Bidirectional sync with PBS DMS contacts.
     - **Calendars API**: List calendars, create/update/delete calendar events. Map sales/service calendars for appointment sync.
     - **Opportunities API**: Create/update opportunities in pipelines. Auto-create opportunities for vehicle interests.
-    - **Webhooks**: Signature-verified webhook receiver at `/api/ghl/webhook`. Multi-tenant routing via locationId with active account validation.
+    - **Conversations API**: Get/create conversations, send messages. OAuth scopes: `conversations.readonly`, `conversations.write`.
+    - **Webhooks**: Signature-verified webhook receiver at `/api/ghl/webhook`. Multi-tenant routing via locationId with active account validation. Handles InboundMessage/OutboundMessage events for message sync.
     - **Outbound Sync**: Push Lotview leads and PBS contacts/appointments to GHL. Queue-based pending sync processing.
+    - **Bidirectional Message Sync**: Messages sent in Lotview messenger are automatically pushed to GHL. Inbound GHL messages sync back to Lotview via webhooks. Deduplication using `ghlConversationId`/`ghlMessageId` fields on `messenger_conversations` table.
     - **PBS Bridge**: Bidirectional sync between GHL and PBS DMS. Contact and appointment mapping with sync status tracking.
     - **Dashboard UI**: GhlIntegrationDialog in Super Admin for OAuth connection, sync settings, calendar/pipeline mappings.
     - **Scheduled Sync**: Daily batch reconciliation at 5 AM for all dealerships with bidirectional sync enabled.
+- **Facebook Messenger Conversations**: Full inbox management for Facebook Messenger. Features include:
+    - **Split-View Inbox**: Professional UI with conversation list and message panel in `client/src/pages/SalesConversations.tsx`.
+    - **Role-Based Access**: Managers and above can view/reply; salespeople can view only.
+    - **Real Facebook API Integration**: Uses Graph API for fetching conversations and Send API for replies.
+    - **GHL Sync**: Conversations linked via `ghlConversationId` and `ghlContactId` fields for bidirectional message sync.
 
 ## Legal Compliance Pages
 
