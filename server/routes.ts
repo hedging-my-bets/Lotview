@@ -3807,9 +3807,29 @@ Provide a single, concise, friendly message that continues the conversation natu
           if (createResult.success && createResult.data) {
             ghlContactId = createResult.data.id;
           } else {
-            return res.status(500).json({ 
-              error: `Failed to create FWC contact: ${createResult.error || 'Unknown error'}` 
-            });
+            // If contact already exists (400 error), try to extract contactId from error response
+            // GHL returns contactId in the error response when contact already exists
+            const errorStr = createResult.error || '';
+            let extractedContactId: string | null = null;
+            
+            try {
+              const errorJson = JSON.parse(errorStr);
+              // GHL may return contactId at different levels of the response
+              extractedContactId = errorJson?.meta?.contactId || errorJson?.contactId || null;
+            } catch {
+              // If JSON parse fails, try regex as fallback
+              const contactIdMatch = errorStr.match(/"contactId"\s*:\s*"([^"]+)"/);
+              extractedContactId = contactIdMatch?.[1] || null;
+            }
+            
+            if (extractedContactId) {
+              console.log(`[Send Message] Contact already exists, using existing contactId: ${extractedContactId}`);
+              ghlContactId = extractedContactId;
+            } else {
+              return res.status(500).json({ 
+                error: `Failed to create FWC contact: ${createResult.error || 'Unknown error'}` 
+              });
+            }
           }
         }
 

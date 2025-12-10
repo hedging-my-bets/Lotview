@@ -487,14 +487,17 @@ export class GhlApiService {
       return { success: false, error: "No account", errorCode: "NO_ACCOUNT" };
     }
 
-    const searchParams = new URLSearchParams();
-    searchParams.set("locationId", locationId);
-    if (params.query) searchParams.set("query", params.query);
-    if (params.email) searchParams.set("email", params.email);
-    if (params.phone) searchParams.set("phone", params.phone);
-    if (params.limit) searchParams.set("limit", params.limit.toString());
+    // GHL API v2 uses POST /contacts/search with JSON body
+    const searchBody: Record<string, any> = {
+      locationId,
+    };
+    
+    if (params.query) searchBody.query = params.query;
+    if (params.email) searchBody.email = params.email;
+    if (params.phone) searchBody.phone = params.phone;
+    if (params.limit) searchBody.limit = params.limit;
 
-    return this.apiRequest<{ contacts: GhlContact[] }>("GET", `/contacts/?${searchParams.toString()}`);
+    return this.apiRequest<{ contacts: GhlContact[] }>("POST", `/contacts/search`, searchBody);
   }
 
   async createContact(contact: Partial<GhlContact>): Promise<GhlApiResponse<GhlContact>> {
