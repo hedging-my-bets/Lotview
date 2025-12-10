@@ -14,6 +14,8 @@ import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
 import { 
   Phone, 
   PhoneIncoming, 
@@ -41,7 +43,12 @@ import {
   Plus,
   Trash2,
   Save,
-  Eye
+  Eye,
+  FileText,
+  Copy,
+  ChevronUp,
+  ChevronDown,
+  ClipboardList
 } from "lucide-react";
 
 interface CallRecording {
@@ -92,6 +99,58 @@ interface CallStats {
   inboundCalls: number;
   outboundCalls: number;
   avgDuration: number;
+}
+
+interface ScoringTemplate {
+  id: number;
+  dealershipId: number | null;
+  department: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  isDefault: boolean;
+  version: number;
+  criteria?: ScoringCriterion[];
+}
+
+interface ScoringCriterion {
+  id: number;
+  templateId: number;
+  category: string;
+  label: string;
+  description: string | null;
+  weight: number;
+  maxScore: number;
+  ratingType: string;
+  sortOrder: number;
+  aiInstruction: string | null;
+  isRequired: boolean;
+}
+
+interface ScoringSheet {
+  id: number;
+  callRecordingId: number;
+  templateId: number;
+  status: string;
+  aiTotalScore: number | null;
+  aiMaxScore: number | null;
+  reviewerTotalScore: number | null;
+  finalScore: number | null;
+  employeeName: string | null;
+  employeeDepartment: string | null;
+  reviewerNotes: string | null;
+  coachingNotes: string | null;
+}
+
+interface ScoringResponse {
+  id: number;
+  sheetId: number;
+  criterionId: number;
+  aiScore: number | null;
+  aiReasoning: string | null;
+  reviewerScore: number | null;
+  comment: string | null;
+  timestamp: string | null;
 }
 
 function formatDuration(seconds: number): string {
@@ -221,6 +280,10 @@ function CallDetailDialog({
               <BarChart3 className="w-4 h-4 mr-2" />
               Analysis
             </TabsTrigger>
+            <TabsTrigger value="scoring" data-testid="tab-scoring">
+              <ClipboardList className="w-4 h-4 mr-2" />
+              Scoring Sheet
+            </TabsTrigger>
             <TabsTrigger value="transcript" data-testid="tab-transcript">
               <MessageSquare className="w-4 h-4 mr-2" />
               Transcript
@@ -304,6 +367,13 @@ function CallDetailDialog({
                   </Button>
                 </div>
               )}
+            </TabsContent>
+            
+            <TabsContent value="scoring" className="m-0">
+              <CallScoringSheet 
+                callId={call.id} 
+                token={localStorage.getItem('auth_token')} 
+              />
             </TabsContent>
             
             <TabsContent value="transcript" className="m-0">
@@ -573,6 +643,859 @@ function CriteriaManagementDialog({
   );
 }
 
+const DEPARTMENTS = ['Sales', 'Service', 'Parts', 'Finance', 'General'];
+const SCORING_CATEGORIES = ['greeting', 'discovery', 'product_knowledge', 'closing', 'professionalism', 'follow_up'];
+const RATING_TYPES = ['numeric', 'yes_no', 'scale_5'];
+
+function ScoringTemplatesDialog({
+  open,
+  onOpenChange
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { toast } = useToast();
+  const token = localStorage.getItem('auth_token');
+  
+  const [templates, setTemplates] = useState<ScoringTemplate[]>([]);
+  const [selectedDepartment, setSelectedDepartment] = useState('Sales');
+  const [selectedTemplate, setSelectedTemplate] = useState<ScoringTemplate | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [editingCriterion, setEditingCriterion] = useState<Partial<ScoringCriterion> | null>(null);
+  
+  const fetchTemplates = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/call-scoring/templates', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setTemplates(data);
+      }
+    } catch (error) {
+      console.error('Error fetching templates:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const fetchTemplateDetails = async (templateId: number) => {
+    try {
+      const response = await fetch(`/api/call-scoring/templates/${templateId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setSelectedTemplate(data);
+      }
+    } catch (error) {
+      console.error('Error fetching template details:', error);
+    }
+  };
+  
+  useEffect(() => {
+    if (open) {
+      fetchTemplates();
+    }
+  }, [open]);
+  
+  const departmentTemplates = templates.filter(t => t.department === selectedDepartment);
+  const isSystemTemplate = selectedTemplate?.dealershipId === null;
+  
+  const handleCloneTemplate = async (templateId: number) => {
+    try {
+      const response = await fetch(`/api/call-scoring/templates/${templateId}/clone`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error('Failed to clone template');
+      const cloned = await response.json();
+      toast({ title: "Success", description: "Template cloned successfully" });
+      fetchTemplates();
+      fetchTemplateDetails(cloned.id);
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to clone template", variant: "destructive" });
+    }
+  };
+  
+  const handleUpdateTemplate = async (updates: Partial<ScoringTemplate>) => {
+    if (!selectedTemplate) return;
+    try {
+      const response = await fetch(`/api/call-scoring/templates/${selectedTemplate.id}`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+      });
+      if (!response.ok) throw new Error('Failed to update template');
+      toast({ title: "Success", description: "Template updated" });
+      fetchTemplateDetails(selectedTemplate.id);
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to update template", variant: "destructive" });
+    }
+  };
+  
+  const handleSaveCriterion = async (criterion: Partial<ScoringCriterion>) => {
+    if (!selectedTemplate) return;
+    try {
+      if (criterion.id) {
+        const response = await fetch(`/api/call-scoring/criteria/${criterion.id}`, {
+          method: 'PATCH',
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(criterion)
+        });
+        if (!response.ok) throw new Error('Failed to update criterion');
+      } else {
+        const response = await fetch(`/api/call-scoring/templates/${selectedTemplate.id}/criteria`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(criterion)
+        });
+        if (!response.ok) throw new Error('Failed to add criterion');
+      }
+      toast({ title: "Success", description: "Criterion saved" });
+      fetchTemplateDetails(selectedTemplate.id);
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to save criterion", variant: "destructive" });
+    }
+  };
+  
+  const handleDeleteCriterion = async (criterionId: number) => {
+    try {
+      const response = await fetch(`/api/call-scoring/criteria/${criterionId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error('Failed to delete criterion');
+      toast({ title: "Success", description: "Criterion deleted" });
+      if (selectedTemplate) fetchTemplateDetails(selectedTemplate.id);
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to delete criterion", variant: "destructive" });
+    }
+  };
+  
+  const handleReorderCriterion = async (criterionId: number, direction: 'up' | 'down') => {
+    if (!selectedTemplate?.criteria) return;
+    const currentIndex = selectedTemplate.criteria.findIndex(c => c.id === criterionId);
+    if (currentIndex === -1) return;
+    
+    const newOrder = selectedTemplate.criteria.map(c => c.id);
+    if (direction === 'up' && currentIndex > 0) {
+      [newOrder[currentIndex - 1], newOrder[currentIndex]] = [newOrder[currentIndex], newOrder[currentIndex - 1]];
+    } else if (direction === 'down' && currentIndex < newOrder.length - 1) {
+      [newOrder[currentIndex], newOrder[currentIndex + 1]] = [newOrder[currentIndex + 1], newOrder[currentIndex]];
+    } else {
+      return;
+    }
+    
+    try {
+      const response = await fetch(`/api/call-scoring/templates/${selectedTemplate.id}/criteria/reorder`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: newOrder })
+      });
+      if (!response.ok) throw new Error('Failed to reorder');
+      fetchTemplateDetails(selectedTemplate.id);
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to reorder criteria", variant: "destructive" });
+    }
+  };
+  
+  const groupedCriteria = selectedTemplate?.criteria?.reduce((acc, c) => {
+    if (!acc[c.category]) acc[c.category] = [];
+    acc[c.category].push(c);
+    return acc;
+  }, {} as Record<string, ScoringCriterion[]>) || {};
+  
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FileText className="w-5 h-5" />
+            Scoring Templates
+          </DialogTitle>
+          <DialogDescription>
+            Manage call scoring templates and criteria by department
+          </DialogDescription>
+        </DialogHeader>
+        
+        <Tabs value={selectedDepartment} onValueChange={setSelectedDepartment} className="flex-1 overflow-hidden">
+          <TabsList className="w-full justify-start">
+            {DEPARTMENTS.map(dept => (
+              <TabsTrigger key={dept} value={dept} data-testid={`tab-dept-${dept.toLowerCase()}`}>
+                {dept}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          
+          <div className="flex gap-4 mt-4 flex-1 overflow-hidden">
+            <div className="w-64 border-r pr-4">
+              <h4 className="text-sm font-medium mb-2">Templates</h4>
+              {isLoading ? (
+                <div className="text-sm text-muted-foreground">Loading...</div>
+              ) : departmentTemplates.length === 0 ? (
+                <div className="text-sm text-muted-foreground">No templates found</div>
+              ) : (
+                <div className="space-y-2">
+                  {departmentTemplates.map(template => (
+                    <div
+                      key={template.id}
+                      className={`p-2 rounded-lg cursor-pointer transition-colors ${
+                        selectedTemplate?.id === template.id ? 'bg-primary/10 border border-primary' : 'hover:bg-muted'
+                      }`}
+                      onClick={() => fetchTemplateDetails(template.id)}
+                      data-testid={`template-item-${template.id}`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{template.name}</span>
+                        {template.dealershipId === null && (
+                          <Badge variant="secondary" className="text-xs">System</Badge>
+                        )}
+                      </div>
+                      {template.isDefault && (
+                        <Badge variant="outline" className="text-xs mt-1">Default</Badge>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            <ScrollArea className="flex-1">
+              {selectedTemplate ? (
+                <div className="space-y-4 pr-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="font-medium">{selectedTemplate.name}</h3>
+                      <p className="text-sm text-muted-foreground">{selectedTemplate.description}</p>
+                      <div className="flex gap-2 mt-2">
+                        {selectedTemplate.isActive && <Badge>Active</Badge>}
+                        {selectedTemplate.isDefault && <Badge variant="secondary">Default</Badge>}
+                        <Badge variant="outline">v{selectedTemplate.version}</Badge>
+                      </div>
+                    </div>
+                    {isSystemTemplate ? (
+                      <Button
+                        onClick={() => handleCloneTemplate(selectedTemplate.id)}
+                        data-testid="btn-customize-template"
+                      >
+                        <Copy className="w-4 h-4 mr-2" />
+                        Customize
+                      </Button>
+                    ) : (
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleUpdateTemplate({ isDefault: !selectedTemplate.isDefault })}
+                          data-testid="btn-toggle-default"
+                        >
+                          {selectedTemplate.isDefault ? 'Unset Default' : 'Set as Default'}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <Separator />
+                  
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-sm font-medium">Criteria</h4>
+                      {!isSystemTemplate && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setEditingCriterion({
+                            templateId: selectedTemplate.id,
+                            category: 'greeting',
+                            label: '',
+                            description: '',
+                            weight: 10,
+                            maxScore: 10,
+                            ratingType: 'numeric',
+                            sortOrder: (selectedTemplate.criteria?.length || 0) + 1,
+                            isRequired: true
+                          })}
+                          data-testid="btn-add-scoring-criterion"
+                        >
+                          <Plus className="w-4 h-4 mr-1" />
+                          Add Criterion
+                        </Button>
+                      )}
+                    </div>
+                    
+                    {Object.entries(groupedCriteria).map(([category, criteria]) => (
+                      <div key={category} className="mb-4">
+                        <h5 className="text-xs font-medium text-muted-foreground uppercase mb-2">
+                          {category.replace(/_/g, ' ')}
+                        </h5>
+                        <div className="space-y-2">
+                          {criteria.sort((a, b) => a.sortOrder - b.sortOrder).map((criterion, idx) => (
+                            <Card key={criterion.id}>
+                              <CardContent className="p-3">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-medium text-sm">{criterion.label}</span>
+                                      <Badge variant="outline" className="text-xs">
+                                        {criterion.ratingType === 'numeric' ? `0-${criterion.maxScore}` : 
+                                         criterion.ratingType === 'yes_no' ? 'Yes/No' : '1-5 Stars'}
+                                      </Badge>
+                                      <span className="text-xs text-muted-foreground">
+                                        Weight: {criterion.weight}%
+                                      </span>
+                                    </div>
+                                    {criterion.description && (
+                                      <p className="text-xs text-muted-foreground mt-1">{criterion.description}</p>
+                                    )}
+                                  </div>
+                                  {!isSystemTemplate && (
+                                    <div className="flex items-center gap-1">
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => handleReorderCriterion(criterion.id, 'up')}
+                                        disabled={idx === 0}
+                                        data-testid={`btn-move-up-${criterion.id}`}
+                                      >
+                                        <ChevronUp className="w-4 h-4" />
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => handleReorderCriterion(criterion.id, 'down')}
+                                        disabled={idx === criteria.length - 1}
+                                        data-testid={`btn-move-down-${criterion.id}`}
+                                      >
+                                        <ChevronDown className="w-4 h-4" />
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => setEditingCriterion(criterion)}
+                                        data-testid={`btn-edit-scoring-criterion-${criterion.id}`}
+                                      >
+                                        <Eye className="w-4 h-4" />
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="text-red-600"
+                                        onClick={() => handleDeleteCriterion(criterion.id)}
+                                        data-testid={`btn-delete-scoring-criterion-${criterion.id}`}
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </Button>
+                                    </div>
+                                  )}
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    
+                    {Object.keys(groupedCriteria).length === 0 && (
+                      <div className="text-center py-8 text-muted-foreground">
+                        No criteria defined for this template
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                  <FileText className="w-8 h-8 mb-2" />
+                  <p>Select a template to view details</p>
+                </div>
+              )}
+            </ScrollArea>
+          </div>
+        </Tabs>
+        
+        {editingCriterion && (
+          <Dialog open={!!editingCriterion} onOpenChange={() => setEditingCriterion(null)}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{editingCriterion.id ? 'Edit' : 'Add'} Scoring Criterion</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label>Label</Label>
+                  <Input
+                    value={editingCriterion.label || ''}
+                    onChange={(e) => setEditingCriterion({ ...editingCriterion, label: e.target.value })}
+                    placeholder="e.g., Greeting Quality"
+                    data-testid="input-scoring-criterion-label"
+                  />
+                </div>
+                <div>
+                  <Label>Category</Label>
+                  <Select 
+                    value={editingCriterion.category || 'greeting'} 
+                    onValueChange={(v) => setEditingCriterion({ ...editingCriterion, category: v })}
+                  >
+                    <SelectTrigger data-testid="select-scoring-criterion-category">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SCORING_CATEGORIES.map((cat) => (
+                        <SelectItem key={cat} value={cat} className="capitalize">
+                          {cat.replace(/_/g, ' ')}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Description</Label>
+                  <Textarea
+                    value={editingCriterion.description || ''}
+                    onChange={(e) => setEditingCriterion({ ...editingCriterion, description: e.target.value })}
+                    placeholder="Describe what this criterion evaluates"
+                    data-testid="input-scoring-criterion-description"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Rating Type</Label>
+                    <Select 
+                      value={editingCriterion.ratingType || 'numeric'} 
+                      onValueChange={(v) => setEditingCriterion({ ...editingCriterion, ratingType: v })}
+                    >
+                      <SelectTrigger data-testid="select-scoring-criterion-rating-type">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="numeric">Numeric (0-Max)</SelectItem>
+                        <SelectItem value="yes_no">Yes/No</SelectItem>
+                        <SelectItem value="scale_5">1-5 Stars</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Max Score</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={editingCriterion.maxScore || 10}
+                      onChange={(e) => setEditingCriterion({ ...editingCriterion, maxScore: parseInt(e.target.value) || 10 })}
+                      data-testid="input-scoring-criterion-max-score"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label>Weight (%)</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={editingCriterion.weight || 10}
+                    onChange={(e) => setEditingCriterion({ ...editingCriterion, weight: parseInt(e.target.value) || 10 })}
+                    data-testid="input-scoring-criterion-weight"
+                  />
+                </div>
+                <div>
+                  <Label>AI Instructions (Optional)</Label>
+                  <Textarea
+                    value={editingCriterion.aiInstruction || ''}
+                    onChange={(e) => setEditingCriterion({ ...editingCriterion, aiInstruction: e.target.value })}
+                    placeholder="Custom instructions for the AI when scoring this criterion"
+                    className="min-h-[60px]"
+                    data-testid="input-scoring-criterion-ai-instruction"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={editingCriterion.isRequired ?? true}
+                    onCheckedChange={(checked) => setEditingCriterion({ ...editingCriterion, isRequired: checked })}
+                    data-testid="switch-scoring-criterion-required"
+                  />
+                  <Label>Required</Label>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setEditingCriterion(null)}>
+                    Cancel
+                  </Button>
+                  <Button 
+                    onClick={() => { handleSaveCriterion(editingCriterion); setEditingCriterion(null); }} 
+                    data-testid="btn-save-scoring-criterion"
+                  >
+                    <Save className="w-4 h-4 mr-2" />
+                    Save
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CallScoringSheet({
+  callId,
+  token
+}: {
+  callId: number;
+  token: string | null;
+}) {
+  const { toast } = useToast();
+  const [templates, setTemplates] = useState<ScoringTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
+  const [scoringSheet, setScoringSheet] = useState<ScoringSheet | null>(null);
+  const [responses, setResponses] = useState<ScoringResponse[]>([]);
+  const [criteria, setCriteria] = useState<ScoringCriterion[]>([]);
+  const [coachingNotes, setCoachingNotes] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [editedResponses, setEditedResponses] = useState<Record<number, { score: number | null; comment: string }>>({});
+  
+  useEffect(() => {
+    fetchTemplates();
+    fetchScoring();
+  }, [callId]);
+  
+  const fetchTemplates = async () => {
+    try {
+      const response = await fetch('/api/call-scoring/templates', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setTemplates(data);
+      }
+    } catch (error) {
+      console.error('Error fetching templates:', error);
+    }
+  };
+  
+  const fetchScoring = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/call-recordings/${callId}/scoring`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.sheet) {
+          setScoringSheet(data.sheet);
+          setResponses(data.responses || []);
+          setCriteria(data.criteria || []);
+          setSelectedTemplateId(data.sheet.templateId);
+          setCoachingNotes(data.sheet.coachingNotes || '');
+          const edited: Record<number, { score: number | null; comment: string }> = {};
+          (data.responses || []).forEach((r: ScoringResponse) => {
+            edited[r.criterionId] = { score: r.reviewerScore, comment: r.comment || '' };
+          });
+          setEditedResponses(edited);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching scoring:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const handleCreateScoring = async () => {
+    if (!selectedTemplateId) {
+      toast({ title: "Error", description: "Please select a template", variant: "destructive" });
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const response = await fetch(`/api/call-recordings/${callId}/scoring`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ templateId: selectedTemplateId })
+      });
+      if (!response.ok) throw new Error('Failed to create scoring sheet');
+      toast({ title: "Success", description: "Scoring sheet created" });
+      fetchScoring();
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to create scoring sheet", variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+  
+  const handleSaveResponses = async () => {
+    if (!scoringSheet) return;
+    setIsSaving(true);
+    try {
+      const responsesToSave = Object.entries(editedResponses).map(([criterionId, data]) => ({
+        criterionId: parseInt(criterionId),
+        reviewerScore: data.score,
+        comment: data.comment
+      }));
+      
+      const response = await fetch(`/api/call-recordings/${callId}/scoring/responses`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ responses: responsesToSave, coachingNotes })
+      });
+      if (!response.ok) throw new Error('Failed to save responses');
+      toast({ title: "Success", description: "Scores saved successfully" });
+      fetchScoring();
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to save scores", variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+  
+  const updateResponse = (criterionId: number, field: 'score' | 'comment', value: number | string | null) => {
+    setEditedResponses(prev => ({
+      ...prev,
+      [criterionId]: {
+        ...prev[criterionId] || { score: null, comment: '' },
+        [field]: value
+      }
+    }));
+  };
+  
+  const getResponseForCriterion = (criterionId: number) => {
+    return responses.find(r => r.criterionId === criterionId);
+  };
+  
+  const renderScoreInput = (criterion: ScoringCriterion, currentValue: number | null, onChange: (v: number | null) => void) => {
+    if (criterion.ratingType === 'yes_no') {
+      return (
+        <div className="flex items-center gap-2">
+          <Switch
+            checked={currentValue === criterion.maxScore}
+            onCheckedChange={(checked) => onChange(checked ? criterion.maxScore : 0)}
+            data-testid={`switch-score-${criterion.id}`}
+          />
+          <span className="text-sm">{currentValue === criterion.maxScore ? 'Yes' : 'No'}</span>
+        </div>
+      );
+    }
+    
+    if (criterion.ratingType === 'scale_5') {
+      return (
+        <div className="flex items-center gap-1">
+          {[1, 2, 3, 4, 5].map((star) => (
+            <button
+              key={star}
+              onClick={() => onChange(star)}
+              className={`p-1 ${(currentValue || 0) >= star ? 'text-yellow-500' : 'text-gray-300'}`}
+              data-testid={`star-${criterion.id}-${star}`}
+            >
+              <Star className="w-5 h-5 fill-current" />
+            </button>
+          ))}
+        </div>
+      );
+    }
+    
+    return (
+      <div className="flex items-center gap-3 w-full">
+        <Slider
+          value={[currentValue || 0]}
+          onValueChange={([v]) => onChange(v)}
+          max={criterion.maxScore}
+          min={0}
+          step={1}
+          className="flex-1"
+          data-testid={`slider-score-${criterion.id}`}
+        />
+        <span className="text-sm font-medium w-12 text-right">
+          {currentValue ?? 0}/{criterion.maxScore}
+        </span>
+      </div>
+    );
+  };
+  
+  const reviewerTotal = Object.entries(editedResponses).reduce((sum, [criterionId, data]) => {
+    return sum + (data.score || 0);
+  }, 0);
+  
+  const maxPossible = criteria.reduce((sum, c) => sum + c.maxScore, 0);
+  
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  
+  if (!scoringSheet) {
+    return (
+      <div className="space-y-4">
+        <div className="text-center py-8">
+          <ClipboardList className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+          <h3 className="font-medium mb-2">No Scoring Sheet</h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            Create a scoring sheet to evaluate this call
+          </p>
+        </div>
+        
+        <div className="max-w-md mx-auto space-y-4">
+          <div>
+            <Label>Select Template</Label>
+            <Select
+              value={selectedTemplateId?.toString() || ''}
+              onValueChange={(v) => setSelectedTemplateId(parseInt(v))}
+            >
+              <SelectTrigger data-testid="select-scoring-template">
+                <SelectValue placeholder="Choose a template..." />
+              </SelectTrigger>
+              <SelectContent>
+                {templates.map(t => (
+                  <SelectItem key={t.id} value={t.id.toString()}>
+                    {t.name} ({t.department})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <Button 
+            className="w-full"
+            onClick={handleCreateScoring}
+            disabled={!selectedTemplateId || isSaving}
+            data-testid="btn-create-scoring-sheet"
+          >
+            {isSaving ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
+            Create Scoring Sheet
+          </Button>
+        </div>
+      </div>
+    );
+  }
+  
+  const groupedCriteria = criteria.reduce((acc, c) => {
+    if (!acc[c.category]) acc[c.category] = [];
+    acc[c.category].push(c);
+    return acc;
+  }, {} as Record<string, ScoringCriterion[]>);
+  
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardContent className="p-4">
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div>
+              <div className="text-2xl font-bold text-blue-600">
+                {scoringSheet.aiTotalScore ?? '-'}/{scoringSheet.aiMaxScore ?? maxPossible}
+              </div>
+              <div className="text-xs text-muted-foreground">AI Score</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-green-600">
+                {reviewerTotal}/{maxPossible}
+              </div>
+              <div className="text-xs text-muted-foreground">Reviewer Score</div>
+            </div>
+            <div>
+              <div className={`text-2xl font-bold ${getScoreColor(scoringSheet.finalScore)}`}>
+                {scoringSheet.finalScore ?? '-'}%
+              </div>
+              <div className="text-xs text-muted-foreground">Final Score</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      
+      {Object.entries(groupedCriteria).map(([category, categoryCriteria]) => (
+        <div key={category}>
+          <h4 className="text-sm font-medium text-muted-foreground uppercase mb-3">
+            {category.replace(/_/g, ' ')}
+          </h4>
+          <div className="space-y-3">
+            {categoryCriteria.sort((a, b) => a.sortOrder - b.sortOrder).map(criterion => {
+              const response = getResponseForCriterion(criterion.id);
+              const edited = editedResponses[criterion.id] || { score: response?.reviewerScore ?? null, comment: response?.comment || '' };
+              
+              return (
+                <Card key={criterion.id}>
+                  <CardContent className="p-4">
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="font-medium text-sm">{criterion.label}</div>
+                          {criterion.description && (
+                            <p className="text-xs text-muted-foreground">{criterion.description}</p>
+                          )}
+                        </div>
+                        <Badge variant="outline" className="text-xs shrink-0">
+                          Weight: {criterion.weight}%
+                        </Badge>
+                      </div>
+                      
+                      {response?.aiScore !== null && response?.aiScore !== undefined && (
+                        <div className="p-2 bg-blue-50 rounded-lg">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-blue-600 font-medium">AI Score: {response.aiScore}/{criterion.maxScore}</span>
+                          </div>
+                          {response.aiReasoning && (
+                            <p className="text-xs text-blue-700 mt-1">{response.aiReasoning}</p>
+                          )}
+                        </div>
+                      )}
+                      
+                      <div>
+                        <Label className="text-xs">Reviewer Score</Label>
+                        {renderScoreInput(
+                          criterion,
+                          edited.score,
+                          (v) => updateResponse(criterion.id, 'score', v)
+                        )}
+                      </div>
+                      
+                      <div>
+                        <Label className="text-xs">Comment</Label>
+                        <Textarea
+                          value={edited.comment}
+                          onChange={(e) => updateResponse(criterion.id, 'comment', e.target.value)}
+                          placeholder="Add a comment..."
+                          className="min-h-[60px] text-sm"
+                          data-testid={`textarea-comment-${criterion.id}`}
+                        />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Coaching Notes</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Textarea
+            value={coachingNotes}
+            onChange={(e) => setCoachingNotes(e.target.value)}
+            placeholder="Add coaching notes for the employee..."
+            className="min-h-[100px]"
+            data-testid="textarea-coaching-notes"
+          />
+        </CardContent>
+      </Card>
+      
+      <Button 
+        className="w-full"
+        onClick={handleSaveResponses}
+        disabled={isSaving}
+        data-testid="btn-save-scoring"
+      >
+        {isSaving ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+        Save Scores
+      </Button>
+    </div>
+  );
+}
+
 export default function CallAnalysis() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -583,6 +1506,7 @@ export default function CallAnalysis() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedCall, setSelectedCall] = useState<CallRecording | null>(null);
   const [showCriteriaDialog, setShowCriteriaDialog] = useState(false);
+  const [showTemplatesDialog, setShowTemplatesDialog] = useState(false);
   
   const [filters, setFilters] = useState({
     salespersonId: '',
@@ -821,6 +1745,14 @@ export default function CallAnalysis() {
           </div>
           
           <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setShowTemplatesDialog(true)}
+              data-testid="btn-manage-templates"
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              Templates
+            </Button>
             <Button 
               variant="outline" 
               onClick={() => setShowCriteriaDialog(true)}
@@ -1069,6 +2001,11 @@ export default function CallAnalysis() {
         criteria={criteria}
         onSave={handleSaveCriterion}
         onDelete={handleDeleteCriterion}
+      />
+      
+      <ScoringTemplatesDialog
+        open={showTemplatesDialog}
+        onOpenChange={setShowTemplatesDialog}
       />
     </div>
   );
