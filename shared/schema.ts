@@ -2368,3 +2368,137 @@ export const insertCrmSavedViewSchema = createInsertSchema(crmSavedViews).omit({
 
 export type InsertCrmSavedView = z.infer<typeof insertCrmSavedViewSchema>;
 export type CrmSavedView = typeof crmSavedViews.$inferSelect;
+
+// ====== CALL SCORING SYSTEM ======
+
+// Call Scoring Templates - Define scoring criteria sets per department
+export const callScoringTemplates = pgTable("call_scoring_templates", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").references(() => dealerships.id, { onDelete: 'cascade' }), // NULL = system default
+  department: text("department").notNull(), // 'sales', 'service', 'parts', 'finance', 'general'
+  name: text("name").notNull(),
+  description: text("description"),
+  isActive: boolean("is_active").notNull().default(true),
+  isDefault: boolean("is_default").notNull().default(false), // Default template for this department
+  version: integer("version").notNull().default(1),
+  createdById: integer("created_by_id").references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertCallScoringTemplateSchema = createInsertSchema(callScoringTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertCallScoringTemplate = z.infer<typeof insertCallScoringTemplateSchema>;
+export type CallScoringTemplate = typeof callScoringTemplates.$inferSelect;
+
+// Call Scoring Criteria - Individual scoring items within a template
+export const callScoringCriteria = pgTable("call_scoring_criteria", {
+  id: serial("id").primaryKey(),
+  templateId: integer("template_id").notNull().references(() => callScoringTemplates.id, { onDelete: 'cascade' }),
+  category: text("category").notNull(), // 'greeting', 'discovery', 'product_knowledge', 'closing', 'professionalism', 'follow_up'
+  label: text("label").notNull(), // "Greeted customer with name and dealership"
+  description: text("description"), // Detailed guidance for scoring
+  weight: integer("weight").notNull().default(1), // Point value for this criterion
+  maxScore: integer("max_score").notNull().default(10), // Maximum possible score
+  ratingType: text("rating_type").notNull().default('numeric'), // 'numeric', 'yes_no', 'scale_5', 'text'
+  sortOrder: integer("sort_order").notNull().default(0),
+  aiInstruction: text("ai_instruction"), // Guidance for AI when auto-scoring
+  isRequired: boolean("is_required").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertCallScoringCriterionSchema = createInsertSchema(callScoringCriteria).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertCallScoringCriterion = z.infer<typeof insertCallScoringCriterionSchema>;
+export type CallScoringCriterion = typeof callScoringCriteria.$inferSelect;
+
+// Call Scoring Sheets - Individual call scores
+export const callScoringSheets = pgTable("call_scoring_sheets", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  callRecordingId: integer("call_recording_id").notNull().references(() => callRecordings.id, { onDelete: 'cascade' }),
+  templateId: integer("template_id").notNull().references(() => callScoringTemplates.id, { onDelete: 'cascade' }),
+  reviewerId: integer("reviewer_id").references(() => users.id, { onDelete: 'set null' }), // Manager who reviewed
+  // Scores
+  aiTotalScore: integer("ai_total_score"), // AI-calculated score (0-100)
+  aiMaxScore: integer("ai_max_score"), // Maximum possible AI score
+  reviewerTotalScore: integer("reviewer_total_score"), // Manager-adjusted score
+  finalScore: integer("final_score"), // Final approved score
+  // Status
+  status: text("status").notNull().default('pending'), // 'pending', 'ai_scored', 'reviewed', 'approved', 'disputed'
+  // Identified employee
+  employeeId: integer("employee_id").references(() => users.id, { onDelete: 'set null' }),
+  employeeName: text("employee_name"),
+  employeeDepartment: text("employee_department"), // 'sales', 'service', 'parts', 'finance', 'general'
+  // Notes
+  reviewerNotes: text("reviewer_notes"),
+  coachingNotes: text("coaching_notes"), // Specific feedback for training
+  // Timestamps
+  aiScoredAt: timestamp("ai_scored_at"),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertCallScoringSheetSchema = createInsertSchema(callScoringSheets).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertCallScoringSheet = z.infer<typeof insertCallScoringSheetSchema>;
+export type CallScoringSheet = typeof callScoringSheets.$inferSelect;
+
+// Call Scoring Responses - Individual criterion scores within a sheet
+export const callScoringResponses = pgTable("call_scoring_responses", {
+  id: serial("id").primaryKey(),
+  sheetId: integer("sheet_id").notNull().references(() => callScoringSheets.id, { onDelete: 'cascade' }),
+  criterionId: integer("criterion_id").notNull().references(() => callScoringCriteria.id, { onDelete: 'cascade' }),
+  // Scores
+  aiScore: integer("ai_score"), // AI-suggested score
+  aiReasoning: text("ai_reasoning"), // Why AI gave this score
+  reviewerScore: integer("reviewer_score"), // Manager-adjusted score
+  // Feedback
+  comment: text("comment"), // Reviewer's comment for this criterion
+  timestamp: text("timestamp"), // When in the call this was observed (e.g., "2:34")
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertCallScoringResponseSchema = createInsertSchema(callScoringResponses).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertCallScoringResponse = z.infer<typeof insertCallScoringResponseSchema>;
+export type CallScoringResponse = typeof callScoringResponses.$inferSelect;
+
+// Call Participants - Identified speakers in a call
+export const callParticipants = pgTable("call_participants", {
+  id: serial("id").primaryKey(),
+  callRecordingId: integer("call_recording_id").notNull().references(() => callRecordings.id, { onDelete: 'cascade' }),
+  speakerLabel: text("speaker_label").notNull(), // 'Speaker 1', 'Speaker 2' from transcription
+  speakerName: text("speaker_name"), // Identified name
+  speakerRole: text("speaker_role").notNull(), // 'customer', 'employee', 'unknown'
+  department: text("department"), // 'sales', 'service', 'parts', 'finance', 'general' if employee
+  userId: integer("user_id").references(() => users.id, { onDelete: 'set null' }), // Matched user if employee
+  confidenceScore: integer("confidence_score"), // 0-100 confidence in identification
+  speakingTimeSeconds: integer("speaking_time_seconds"), // Total time speaking
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertCallParticipantSchema = createInsertSchema(callParticipants).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertCallParticipant = z.infer<typeof insertCallParticipantSchema>;
+export type CallParticipant = typeof callParticipants.$inferSelect;
