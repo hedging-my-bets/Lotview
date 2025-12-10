@@ -9460,25 +9460,7 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
   
-  // Get call recording by ID
-  app.get("/api/call-recordings/:id", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req: AuthRequest, res) => {
-    try {
-      const dealershipId = req.user?.dealershipId || 1;
-      const id = parseInt(req.params.id);
-      
-      const recording = await storage.getCallRecordingById(id, dealershipId);
-      if (!recording) {
-        return res.status(404).json({ error: "Call recording not found" });
-      }
-      
-      res.json(recording);
-    } catch (error) {
-      console.error("Error fetching call recording:", error);
-      res.status(500).json({ error: "Failed to fetch call recording" });
-    }
-  });
-  
-  // Get call recording stats
+  // Get call recording stats (must be before :id route)
   app.get("/api/call-recordings/stats", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req: AuthRequest, res) => {
     try {
       const dealershipId = req.user?.dealershipId || 1;
@@ -9494,6 +9476,24 @@ Format your response in clear sections with actionable recommendations.`;
     } catch (error) {
       console.error("Error fetching call stats:", error);
       res.status(500).json({ error: "Failed to fetch call stats" });
+    }
+  });
+  
+  // Get call recording by ID
+  app.get("/api/call-recordings/:id", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.user?.dealershipId || 1;
+      const id = parseInt(req.params.id);
+      
+      const recording = await storage.getCallRecordingById(id, dealershipId);
+      if (!recording) {
+        return res.status(404).json({ error: "Call recording not found" });
+      }
+      
+      res.json(recording);
+    } catch (error) {
+      console.error("Error fetching call recording:", error);
+      res.status(500).json({ error: "Failed to fetch call recording" });
     }
   });
   

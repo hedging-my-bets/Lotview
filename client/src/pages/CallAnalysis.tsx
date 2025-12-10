@@ -1699,7 +1699,7 @@ function CallScoringSheet({
 }
 
 export default function CallAnalysis() {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { toast } = useToast();
   
   const [calls, setCalls] = useState<CallRecording[]>([]);
@@ -1709,6 +1709,18 @@ export default function CallAnalysis() {
   const [selectedCall, setSelectedCall] = useState<CallRecording | null>(null);
   const [showCriteriaDialog, setShowCriteriaDialog] = useState(false);
   const [showTemplatesDialog, setShowTemplatesDialog] = useState(false);
+  
+  // Handle URL query parameters for navigation from Quick Actions
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tab = urlParams.get('tab');
+    const department = urlParams.get('department');
+    
+    if (tab === 'templates') {
+      setShowTemplatesDialog(true);
+    }
+    // department param can be used for filtering in the future
+  }, [location]);
   
   const [filters, setFilters] = useState({
     salespersonId: '',

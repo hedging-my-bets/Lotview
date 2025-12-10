@@ -2757,50 +2757,7 @@ export default function Manager() {
                     </Card>
                   </div>
 
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base">Quick Actions</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <Button
-                        variant="outline"
-                        className="w-full justify-start"
-                        onClick={() => setLocation('/call-analysis?tab=templates')}
-                        data-testid="button-manage-templates"
-                      >
-                        <Settings className="w-4 h-4 mr-2" />
-                        Manage Scoring Templates
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="w-full justify-start"
-                        onClick={() => setLocation('/call-analysis?tab=recordings')}
-                        data-testid="button-view-recordings"
-                      >
-                        <ClipboardCheck className="w-4 h-4 mr-2" />
-                        View Call Recordings
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="w-full justify-start"
-                        onClick={() => setLocation('/call-analysis?tab=reports')}
-                        data-testid="button-view-reports"
-                      >
-                        <BarChart3 className="w-4 h-4 mr-2" />
-                        Performance Reports
-                      </Button>
-                    </CardContent>
-                  </Card>
-
-                  <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
-                    <h4 className="font-medium text-purple-800 dark:text-purple-200 mb-2">FWC Integration Active</h4>
-                    <p className="text-sm text-purple-700 dark:text-purple-300">
-                      Call recordings from Framework Consulting Software are automatically analyzed and scored using AI. 
-                      Set up department-specific templates to customize scoring criteria.
-                    </p>
-                  </div>
-
-                  <div className="mt-6">
+                  <div>
                     <h4 className="font-medium mb-4">Department Scoring</h4>
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                       <Card className="cursor-pointer hover:border-blue-500 transition-colors" onClick={() => setLocation('/call-analysis?department=sales')}>
@@ -2848,6 +2805,49 @@ export default function Manager() {
                         </CardContent>
                       </Card>
                     </div>
+                  </div>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Quick Actions</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start"
+                        onClick={() => setLocation('/call-analysis?tab=templates')}
+                        data-testid="button-manage-templates"
+                      >
+                        <Settings className="w-4 h-4 mr-2" />
+                        Manage Scoring Templates
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start"
+                        onClick={() => setLocation('/call-analysis')}
+                        data-testid="button-view-recordings"
+                      >
+                        <ClipboardCheck className="w-4 h-4 mr-2" />
+                        View Call Recordings
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start"
+                        onClick={() => setLocation('/call-analysis')}
+                        data-testid="button-view-reports"
+                      >
+                        <BarChart3 className="w-4 h-4 mr-2" />
+                        Performance Reports
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
+                    <h4 className="font-medium text-purple-800 dark:text-purple-200 mb-2">FWC Integration Active</h4>
+                    <p className="text-sm text-purple-700 dark:text-purple-300">
+                      Call recordings from Framework Consulting Software are automatically analyzed and scored using AI. 
+                      Set up department-specific templates to customize scoring criteria.
+                    </p>
                   </div>
                 </div>
               )}
