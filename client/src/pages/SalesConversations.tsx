@@ -51,6 +51,7 @@ import {
   Power,
   X,
   Sparkles,
+  Hand,
 } from "lucide-react";
 import { format, isToday, isYesterday } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -72,6 +73,7 @@ type Conversation = {
   };
   aiEnabled?: boolean;
   aiDisabledReason?: string | null;
+  aiWatchMode?: boolean;
 };
 
 type Message = {
@@ -431,6 +433,7 @@ function MessageThread({
   onSendMessage,
   onAssign,
   onToggleAI,
+  onToggleWatchMode,
   onCancelScheduled,
   onTrainMessage,
   salespeople,
@@ -438,6 +441,7 @@ function MessageThread({
   isLoadingMessages,
   isSending,
   isTogglingAI,
+  isTogglingWatchMode,
   cancellingScheduledId,
   trainingMessageId,
 }: {
@@ -447,6 +451,7 @@ function MessageThread({
   onSendMessage: (content: string) => void;
   onAssign: (salespersonId: number) => void;
   onToggleAI: () => void;
+  onToggleWatchMode: () => void;
   onCancelScheduled: (id: number) => void;
   onTrainMessage: (messageId: number, editedPrompt: string, reason: string) => void;
   salespeople: SalesPerson[];
@@ -454,6 +459,7 @@ function MessageThread({
   isLoadingMessages: boolean;
   isSending: boolean;
   isTogglingAI: boolean;
+  isTogglingWatchMode: boolean;
   cancellingScheduledId: number | null;
   trainingMessageId: number | null;
 }) {
@@ -510,7 +516,15 @@ function MessageThread({
           <div>
             <div className="flex items-center gap-2">
               <h3 className="font-semibold">{conversation.participantName}</h3>
-              {conversation.aiEnabled ? (
+              {conversation.aiWatchMode ? (
+                <Badge 
+                  className="bg-amber-100 text-amber-700 border-amber-200 text-xs"
+                  data-testid="badge-watch-mode"
+                >
+                  <Hand className="w-3 h-3 mr-1" />
+                  You're in Control
+                </Badge>
+              ) : conversation.aiEnabled ? (
                 <Badge 
                   className="bg-green-100 text-green-700 border-green-200 text-xs"
                   data-testid="badge-ai-active"
@@ -549,6 +563,23 @@ function MessageThread({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant={conversation.aiWatchMode ? "default" : "outline"}
+            size="sm"
+            onClick={onToggleWatchMode}
+            disabled={isTogglingWatchMode}
+            className={conversation.aiWatchMode 
+              ? "bg-amber-500 hover:bg-amber-600 text-white" 
+              : ""}
+            data-testid="button-take-over"
+          >
+            {isTogglingWatchMode ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Hand className="w-4 h-4 mr-2" />
+            )}
+            {conversation.aiWatchMode ? "Give Back to AI" : "Take Over"}
+          </Button>
           {isManager && (
             <>
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/50">
@@ -933,6 +964,35 @@ export default function SalesConversations() {
     },
   });
 
+  const toggleWatchModeMutation = useMutation({
+    mutationFn: async () => {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/messenger-conversations/${selectedConversationId}/toggle-watch-mode`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify({ enabled: !selectedConversation?.aiWatchMode }),
+      });
+      if (!response.ok) throw new Error('Failed to toggle watch mode');
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['messenger-conversations'] });
+      toast({ 
+        title: data.aiWatchMode ? "You're now in control" : "AI is back in control",
+        description: data.message
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Failed to toggle watch mode",
+        variant: "destructive",
+      });
+    },
+  });
+
   const cancelScheduledMutation = useMutation({
     mutationFn: async (scheduledId: number) => {
       setCancellingScheduledId(scheduledId);
@@ -1079,6 +1139,7 @@ export default function SalesConversations() {
               onSendMessage={(content) => sendMessageMutation.mutate(content)}
               onAssign={(id) => assignMutation.mutate(id)}
               onToggleAI={() => toggleAIMutation.mutate()}
+              onToggleWatchMode={() => toggleWatchModeMutation.mutate()}
               onCancelScheduled={(id) => cancelScheduledMutation.mutate(id)}
               onTrainMessage={(messageId, editedPrompt, reason) => 
                 trainMessageMutation.mutate({ messageId, editedPrompt, reason })
@@ -1088,6 +1149,7 @@ export default function SalesConversations() {
               isLoadingMessages={messagesLoading}
               isSending={sendMessageMutation.isPending}
               isTogglingAI={toggleAIMutation.isPending}
+              isTogglingWatchMode={toggleWatchModeMutation.isPending}
               cancellingScheduledId={cancellingScheduledId}
               trainingMessageId={trainingMessageId}
             />
