@@ -3965,6 +3965,89 @@ Provide a single, concise, friendly message that continues the conversation natu
     }
   });
 
+  // Training feedback endpoint - analyzes edited AI responses and suggests prompt improvements
+  app.post("/api/chat/training-feedback", authMiddleware, requireRole("manager", "admin", "master", "super_admin"), requireDealership, async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { originalResponse, editedResponse, conversationContext, currentPrompt } = req.body;
+
+      if (!originalResponse || !editedResponse) {
+        return res.status(400).json({ error: "originalResponse and editedResponse are required" });
+      }
+
+      if (originalResponse === editedResponse) {
+        return res.status(400).json({ error: "No changes detected between original and edited response" });
+      }
+
+      // Get OpenAI client
+      const OpenAI = (await import('openai')).default;
+      
+      // Get dealership-specific API key or fallback to default
+      const apiKeys = await storage.getDealershipApiKeys(dealershipId);
+      const openaiKey = apiKeys.find(k => k.serviceName === 'openai')?.apiKey || process.env.OPENAI_API_KEY;
+      
+      if (!openaiKey) {
+        return res.status(500).json({ error: "OpenAI API key not configured" });
+      }
+      
+      const openai = new OpenAI({ apiKey: openaiKey });
+
+      // Build context from conversation
+      const contextSummary = conversationContext?.slice(-5).map((msg: any) => 
+        `${msg.role === 'user' ? 'Customer' : 'AI'}: ${msg.content}`
+      ).join('\n') || 'No context provided';
+
+      // Create training feedback prompt
+      const trainingPrompt = `You are an AI prompt engineering expert analyzing how a dealership AI assistant's response was corrected by a human manager.
+
+CURRENT SYSTEM PROMPT BEING USED:
+${currentPrompt || 'No system prompt provided'}
+
+CONVERSATION CONTEXT:
+${contextSummary}
+
+ORIGINAL AI RESPONSE:
+${originalResponse}
+
+HUMAN-CORRECTED RESPONSE:
+${editedResponse}
+
+Analyze the difference between the original AI response and the human correction. Provide actionable feedback on:
+
+1. **What was wrong**: Identify specific issues with the original response (tone, accuracy, missing information, etc.)
+
+2. **What the human preferred**: Analyze what the human correction demonstrates about their expectations
+
+3. **Prompt Improvement Suggestions**: Provide 2-3 specific additions or modifications to the system prompt that would help the AI generate responses more like the human correction in similar situations
+
+4. **Example Prompt Addition**: Write a brief sentence or instruction that could be added to the system prompt to address this specific improvement area
+
+Format your response in a clear, actionable way that a dealership manager can understand and use to improve their AI assistant.`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: "You are an expert in prompt engineering and AI training. Provide concise, actionable feedback." },
+          { role: "user", content: trainingPrompt }
+        ],
+        temperature: 0.7,
+        max_tokens: 800
+      });
+
+      const feedback = response.choices[0]?.message?.content || "Unable to generate feedback";
+
+      res.json({ 
+        success: true, 
+        feedback,
+        originalLength: originalResponse.length,
+        editedLength: editedResponse.length
+      });
+    } catch (error: any) {
+      console.error("Error generating training feedback:", error);
+      res.status(500).json({ error: error.message || "Failed to generate training feedback" });
+    }
+  });
+
   // ===== ENHANCED PROMPT MANAGEMENT API FOR SUPER ADMIN =====
   
   // Get all prompts (including inactive) for admin
