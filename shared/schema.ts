@@ -697,6 +697,8 @@ export const messengerConversations = pgTable("messenger_conversations", {
   aiEnabled: boolean("ai_enabled").notNull().default(true), // Whether AI can respond
   aiDisabledReason: text("ai_disabled_reason"), // 'stop_request', 'rudeness', 'manual'
   aiDisabledAt: timestamp("ai_disabled_at"), // When AI was disabled
+  aiWatchMode: boolean("ai_watch_mode").notNull().default(false), // Manual takeover - AI watches but doesn't respond
+  aiWatchModeAt: timestamp("ai_watch_mode_at"), // When watch mode was enabled
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
