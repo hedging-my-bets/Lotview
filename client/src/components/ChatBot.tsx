@@ -75,8 +75,9 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
   const detectContactInfo = (text: string): { phone?: string; email?: string; name?: string } => {
     const contact: { phone?: string; email?: string; name?: string } = {};
     
-    // Phone regex - matches various formats like (555) 123-4567, 555-123-4567, 5551234567
-    const phoneRegex = /\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/;
+    // Phone regex - matches various formats including plain 10-digit numbers
+    // Examples: (604) 555-9898, 604-555-9898, 604.555.9898, 6045559898
+    const phoneRegex = /(?<!\d)\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}(?!\d)|(?<!\d)\d{10}(?!\d)/;
     const phoneMatch = text.match(phoneRegex);
     if (phoneMatch) {
       contact.phone = phoneMatch[0].replace(/[^\d]/g, ''); // Normalize to digits only
@@ -430,7 +431,7 @@ export function ChatBot({ vehicleName, action, vehicle }: ChatBotProps) {
         return;
       }
       
-      const phoneRegex = /\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/;
+      const phoneRegex = /(?<!\d)\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}(?!\d)|(?<!\d)\d{10}(?!\d)/;
       if (phoneRegex.test(inputValue.trim())) {
         setMessages(prev => [...prev, userMessage]);
         setInputValue("");

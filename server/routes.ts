@@ -3724,6 +3724,58 @@ Provide a single, concise, friendly message that continues the conversation natu
 
   // ===== ALL CONVERSATIONS UNIFIED ENDPOINT =====
   
+  // Helper function to extract contact info from messages
+  const extractContactFromMessages = (messages: { role: string; content: string }[]): { phone?: string; email?: string; name?: string } => {
+    const contact: { phone?: string; email?: string; name?: string } = {};
+    
+    // Phone regex - matches 10-digit numbers with or without formatting
+    // Uses lookbehind/lookahead to avoid partial matches without breaking on parentheses
+    const phoneRegex = /(?<!\d)\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}(?!\d)|(?<!\d)\d{10}(?!\d)/;
+    // Email regex
+    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+    // Name patterns
+    const namePatterns = [
+      /my name is\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)/i,
+      /i'm\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)/i,
+      /i am\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)/i,
+      /this is\s+([a-zA-Z]+)/i,
+      /call me\s+([a-zA-Z]+)/i,
+    ];
+    
+    for (const msg of messages) {
+      if (msg.role === 'user') {
+        // Extract phone
+        if (!contact.phone) {
+          const phoneMatch = msg.content.match(phoneRegex);
+          if (phoneMatch) {
+            contact.phone = phoneMatch[0].replace(/[^\d]/g, ''); // Normalize to digits only
+          }
+        }
+        // Extract email
+        if (!contact.email) {
+          const emailMatch = msg.content.match(emailRegex);
+          if (emailMatch) {
+            contact.email = emailMatch[0].toLowerCase();
+          }
+        }
+        // Extract name
+        if (!contact.name) {
+          for (const pattern of namePatterns) {
+            const match = msg.content.match(pattern);
+            if (match && match[1] && match[1].length > 1 && match[1].length < 30) {
+              const skipWords = ['yes', 'no', 'hi', 'hello', 'hey', 'sure', 'ok', 'okay', 'thanks', 'thank', 'good', 'great', 'fine'];
+              if (!skipWords.includes(match[1].toLowerCase())) {
+                contact.name = match[1];
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+    return contact;
+  };
+  
   // Get all conversations (both website chat and messenger) with role-based filtering
   // General Manager/Sales Manager see all, salespeople see only their connected pages' messenger
   app.get("/api/all-conversations", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), async (req, res) => {
@@ -3736,10 +3788,46 @@ Provide a single, concise, friendly message that continues the conversation natu
       let websiteChats: any[] = [];
       if (userRole === 'manager' || userRole === 'admin' || userRole === 'master' || userRole === 'super_admin') {
         const { conversations } = await storage.getAllConversations(dealershipId, undefined, 1000, 0);
-        websiteChats = conversations.map(conv => ({
-          ...conv,
-          type: 'website_chat',
-          messages: JSON.parse(conv.messages)
+        
+        // Process each conversation - extract missing contact info from messages
+        websiteChats = await Promise.all(conversations.map(async (conv) => {
+          const messages = JSON.parse(conv.messages);
+          const convData: any = {
+            ...conv,
+            type: 'website_chat',
+            messages
+          };
+          
+          // If missing contact info, extract from messages and update
+          if (!conv.handoffPhone || !conv.handoffEmail || !conv.handoffName) {
+            const extracted = extractContactFromMessages(messages);
+            
+            // Update if we found new info
+            const updates: any = {};
+            if (!conv.handoffPhone && extracted.phone) {
+              updates.handoffPhone = extracted.phone;
+              convData.handoffPhone = extracted.phone;
+            }
+            if (!conv.handoffEmail && extracted.email) {
+              updates.handoffEmail = extracted.email;
+              convData.handoffEmail = extracted.email;
+            }
+            if (!conv.handoffName && extracted.name) {
+              updates.handoffName = extracted.name;
+              convData.handoffName = extracted.name;
+            }
+            
+            // Persist the updates if any
+            if (Object.keys(updates).length > 0) {
+              try {
+                await storage.updateConversationHandoff(conv.id, dealershipId, updates);
+              } catch (err) {
+                console.warn(`[Conversations] Failed to update contact info for conv ${conv.id}:`, err);
+              }
+            }
+          }
+          
+          return convData;
         }));
       }
       
