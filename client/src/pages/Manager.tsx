@@ -349,7 +349,7 @@ export default function Manager() {
     defaultRadiusKm: 50
   });
   const [isSavingSettings, setIsSavingSettings] = useState(false);
-  const [activeManagerTab, setActiveManagerTab] = useState<'appraisal' | 'inventory' | 'my-inventory' | 'conversations' | 'prompts' | 'settings' | 'history' | 'followup'>('appraisal');
+  const [activeManagerTab, setActiveManagerTab] = useState<'appraisal' | 'inventory' | 'my-inventory' | 'conversations' | 'prompts' | 'settings' | 'history' | 'followup' | 'call-scoring'>('appraisal');
 
   // Conversations state
   const [allConversations, setAllConversations] = useState<{
@@ -1451,6 +1451,16 @@ export default function Manager() {
                 >
                   <Send className="w-4 h-4" />
                   Follow-up Sequences
+                </Button>
+                <Button
+                  variant={activeManagerTab === 'call-scoring' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setActiveManagerTab('call-scoring')}
+                  data-testid="tab-call-scoring"
+                  className="flex items-center gap-2 bg-purple-600/10 hover:bg-purple-600/20"
+                >
+                  <ClipboardCheck className="w-4 h-4 text-purple-600" />
+                  <span className="text-purple-600 font-medium">Call Scoring</span>
                 </Button>
               </div>
             </CardHeader>
@@ -2798,6 +2808,99 @@ export default function Manager() {
               {activeManagerTab === 'followup' && (
                 <div data-testid="tab-content-followup">
                   <FollowUpSequenceEditor dealershipId={user?.dealershipId || 1} />
+                </div>
+              )}
+
+              {activeManagerTab === 'call-scoring' && (
+                <div data-testid="tab-content-call-scoring" className="space-y-6">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div>
+                      <h3 className="text-lg font-semibold">Call Scoring & Training</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Review call recordings, AI-generated scores, and coaching recommendations
+                      </p>
+                    </div>
+                    <Button
+                      onClick={() => setLocation('/call-analysis')}
+                      data-testid="button-open-call-analysis"
+                    >
+                      <BarChart3 className="w-4 h-4 mr-2" />
+                      Open Full Dashboard
+                    </Button>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-medium">Pending Reviews</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold text-orange-600">--</div>
+                        <p className="text-xs text-muted-foreground">Calls awaiting manager review</p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-medium">Avg. Score This Week</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold text-blue-600">--</div>
+                        <p className="text-xs text-muted-foreground">Based on AI analysis</p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-medium">Calls Analyzed</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold text-green-600">--</div>
+                        <p className="text-xs text-muted-foreground">Total this month</p>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Quick Actions</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start"
+                        onClick={() => setLocation('/call-analysis?tab=templates')}
+                        data-testid="button-manage-templates"
+                      >
+                        <Settings className="w-4 h-4 mr-2" />
+                        Manage Scoring Templates
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start"
+                        onClick={() => setLocation('/call-analysis?tab=recordings')}
+                        data-testid="button-view-recordings"
+                      >
+                        <ClipboardCheck className="w-4 h-4 mr-2" />
+                        View Call Recordings
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start"
+                        onClick={() => setLocation('/call-analysis?tab=reports')}
+                        data-testid="button-view-reports"
+                      >
+                        <BarChart3 className="w-4 h-4 mr-2" />
+                        Performance Reports
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
+                    <h4 className="font-medium text-purple-800 dark:text-purple-200 mb-2">GHL Integration Active</h4>
+                    <p className="text-sm text-purple-700 dark:text-purple-300">
+                      Call recordings from GoHighLevel are automatically analyzed and scored using AI. 
+                      Set up department-specific templates to customize scoring criteria for sales, service, parts, and finance calls.
+                    </p>
+                  </div>
                 </div>
               )}
             </CardContent>
