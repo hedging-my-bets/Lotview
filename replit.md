@@ -67,3 +67,42 @@ Preferred communication style: Simple, everyday language.
 - **GoHighLevel CRM Integration**: OAuth 2.0 integration for contacts, calendars, opportunities, and conversations APIs. Includes webhook handling, bidirectional sync with PBS DMS, and scheduled batch reconciliation.
 - **Facebook Messenger Conversations**: Integration for split-view inbox, role-based access, and GHL sync.
 - **Call Scoring & Coaching System**: Department-specific scoring templates with weighted criteria, AI draft scores, speaker recognition, and speaking time analysis.
+
+### GHL Call Recording Integration
+
+**Webhook Endpoint**: `POST /api/ghl/webhook` or `POST /api/ghl/call-webhook`
+
+**GHL Workflow Setup**:
+1. Create a workflow triggered by "Call Completed" event
+2. Add a 60-second delay (to allow GHL transcription to complete)
+3. Add a webhook action with the following configuration:
+   - URL: `https://your-domain.com/api/ghl/webhook`
+   - Method: POST
+   - Content-Type: application/json
+   - Body (JSON):
+   ```json
+   {
+     "type": "CallCompleted",
+     "contactId": "{{contact.id}}",
+     "contactName": "{{contact.full_name}}",
+     "contactPhone": "{{contact.phone}}",
+     "contactEmail": "{{contact.email}}",
+     "callRecordingUrl": "{{call.recording_url}}",
+     "transcription": "{{call.transcription}}",
+     "duration": "{{call.duration}}",
+     "direction": "{{call.direction}}",
+     "callStatus": "{{call.status}}",
+     "timestamp": "{{current_time}}"
+   }
+   ```
+
+**Automatic Processing Flow**:
+1. Webhook receives call data with GHL-provided transcription
+2. Call recording is stored in `call_recordings` table
+3. AI analysis runs automatically using OpenAI GPT-4o
+4. Department is auto-detected from transcription keywords (sales, service, parts, finance)
+5. Appropriate scoring template is selected based on detected department
+6. AI-generated draft scores are created for each criterion
+7. Manager can review and finalize scores in the Call Scoring UI
+
+**Cost Savings**: Uses GHL's built-in transcription ($0.03/min) instead of in-app transcription.
