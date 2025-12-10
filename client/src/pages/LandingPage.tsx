@@ -15,10 +15,8 @@ import {
   Zap,
   Shield,
   BarChart3,
-  Clock,
   Globe,
   ChevronRight,
-  Star,
   Play,
   Sparkles,
   Mail,
@@ -67,7 +65,6 @@ export default function LandingPage() {
               <a href="#features" className="text-sm text-gray-600 hover:text-[#022d60] transition-colors" data-testid="link-features">Features</a>
               <a href="#how-it-works" className="text-sm text-gray-600 hover:text-[#022d60] transition-colors" data-testid="link-how-it-works">How It Works</a>
               <a href="#pricing" className="text-sm text-gray-600 hover:text-[#022d60] transition-colors" data-testid="link-pricing">Pricing</a>
-              <a href="#testimonials" className="text-sm text-gray-600 hover:text-[#022d60] transition-colors" data-testid="link-testimonials">Testimonials</a>
             </div>
             <div className="flex items-center gap-4">
               <Link href="/login">
@@ -97,8 +94,8 @@ export default function LandingPage() {
               className={`transition-all duration-1000 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}
             >
               <Badge className="mb-6 bg-gradient-to-r from-amber-400 to-amber-500 text-white border-amber-400 hover:from-amber-500 hover:to-amber-600 font-semibold shadow-lg shadow-amber-500/25">
-                <Clock className="w-3 h-3 mr-1" />
-                Live in 24 Hours
+                <Sparkles className="w-3 h-3 mr-1" />
+                Truly Autonomous
               </Badge>
               
               <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-[#022d60] tracking-tight leading-[1.1] mb-6">
@@ -200,28 +197,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Trusted By Section */}
-      <section className="py-16 border-y border-gray-100 bg-gray-50/50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <p className="text-center text-sm font-medium text-gray-500 mb-8">
-            TRUSTED BY LEADING CANADIAN DEALERSHIPS
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-x-12 gap-y-6 opacity-60">
-            <div className="flex items-center gap-2">
-              <Building2 className="w-6 h-6 text-[#022d60]" />
-              <span className="text-lg font-semibold text-gray-700">Olympic Hyundai Vancouver</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Building2 className="w-6 h-6 text-[#022d60]" />
-              <span className="text-lg font-semibold text-gray-700">Boundary Hyundai</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Building2 className="w-6 h-6 text-[#022d60]" />
-              <span className="text-lg font-semibold text-gray-700">Kia Vancouver</span>
-            </div>
-          </div>
-        </div>
-      </section>
 
       {/* Features Section */}
       <section id="features" className="py-24 lg:py-32">
@@ -304,7 +279,7 @@ export default function LandingPage() {
               How It Works
             </Badge>
             <h2 className="text-4xl lg:text-5xl font-bold text-[#022d60] mb-6">
-              Live in 24 Hours
+              Truly Autonomous
             </h2>
             <p className="text-lg text-gray-600">
               Getting started with Lotview is simple. We handle the heavy lifting so you can focus on selling cars.
@@ -386,67 +361,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Testimonials Section */}
-      <section id="testimonials" className="py-24 lg:py-32">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <Badge className="mb-4 bg-[#00aad2]/10 text-[#00aad2] border-[#00aad2]/20">
-              Testimonials
-            </Badge>
-            <h2 className="text-4xl lg:text-5xl font-bold text-[#022d60] mb-6">
-              Loved by Dealerships
-            </h2>
-            <p className="text-lg text-gray-600">
-              Don't just take our word for it—hear from the dealerships using Lotview every day.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {[
-              {
-                quote: "Lotview transformed how we manage our online presence. Our customers can browse, calculate payments, and book test drives without us lifting a finger.",
-                author: "Riley M.",
-                role: "Sales Manager",
-                dealership: "Olympic Hyundai Vancouver"
-              },
-              {
-                quote: "The AI chatbot has been a game-changer. We're capturing leads at 2 AM that we would have completely missed before.",
-                author: "Mike S.",
-                role: "General Manager",
-                dealership: "Boundary Hyundai"
-              },
-              {
-                quote: "Setting up was incredibly easy. We were live within a day, and the team has been fantastic with ongoing support.",
-                author: "Sarah K.",
-                role: "Marketing Director",
-                dealership: "Kia Vancouver"
-              }
-            ].map((testimonial, index) => (
-              <Card key={index} className="border-gray-100 hover:shadow-lg transition-shadow" data-testid={`testimonial-${index}`}>
-                <CardContent className="p-8">
-                  <div className="flex gap-1 mb-4">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <Star key={star} className="w-5 h-5 fill-yellow-400 text-yellow-400" />
-                    ))}
-                  </div>
-                  <blockquote className="text-gray-700 leading-relaxed mb-6">
-                    "{testimonial.quote}"
-                  </blockquote>
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#022d60] to-[#00aad2] flex items-center justify-center text-white font-semibold">
-                      {testimonial.author.split(' ').map(n => n[0]).join('')}
-                    </div>
-                    <div>
-                      <div className="font-semibold text-[#022d60]">{testimonial.author}</div>
-                      <div className="text-sm text-gray-500">{testimonial.role}, {testimonial.dealership}</div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
 
       {/* Pricing Section */}
       <section id="pricing" className="py-24 lg:py-32 bg-gradient-to-b from-gray-50 to-white">
@@ -463,52 +377,39 @@ export default function LandingPage() {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
             {[
               {
                 name: "The Independent",
-                price: "$199",
+                price: "$1,999",
                 period: "/month",
-                description: "For small lots ready to punch above their weight.",
+                description: "For dealerships ready to automate their sales.",
                 features: [
                   "1 dealership location",
                   "Zero-touch inventory sync",
                   "AI BDC chatbot",
                   "Payment calculator on every vehicle",
-                  "Email support"
+                  "Facebook Marketplace posting",
+                  "Priority support"
                 ],
                 cta: "Start Selling",
                 highlighted: false
               },
               {
                 name: "The Volume Dealer",
-                price: "$499",
+                price: "$3,999",
                 period: "/month",
-                description: "For dealerships that move serious metal.",
+                description: "For larger dealerships that want it all.",
                 features: [
-                  "Up to 5 locations",
                   "Everything in Independent",
+                  "DMS integration included",
+                  "Nurture old leads automatically",
+                  "Up to 5 locations",
                   "Advanced AI + CRM sync",
-                  "Dominate Facebook Marketplace",
-                  "Priority support"
+                  "Dedicated account manager"
                 ],
                 cta: "Start Selling",
                 highlighted: true
-              },
-              {
-                name: "Dealer Group",
-                price: "Custom",
-                period: "",
-                description: "For empires with custom requirements.",
-                features: [
-                  "Unlimited locations",
-                  "Everything in Volume Dealer",
-                  "Custom DMS integrations",
-                  "Dedicated account manager",
-                  "SLA & 24/7 support"
-                ],
-                cta: "Contact Sales",
-                highlighted: false
               }
             ].map((plan, index) => (
               <Card 
@@ -604,7 +505,6 @@ export default function LandingPage() {
               <h4 className="text-white font-semibold mb-4">Company</h4>
               <ul className="space-y-2 text-sm">
                 <li><a href="mailto:sales@lotview.ai" className="hover:text-white transition-colors">Contact</a></li>
-                <li><a href="#testimonials" className="hover:text-white transition-colors">Testimonials</a></li>
               </ul>
             </div>
             <div>
