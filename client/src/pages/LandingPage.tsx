@@ -102,15 +102,14 @@ export default function LandingPage() {
               </Badge>
               
               <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-[#022d60] tracking-tight leading-[1.1] mb-6">
-                Turn Your Inventory Into a
+                More Leads, More Sales,
                 <span className="block bg-gradient-to-r from-[#022d60] via-[#00aad2] to-[#022d60] bg-clip-text text-transparent">
-                  24/7 Sales Agent
+                  Done For You
                 </span>
               </h1>
               
               <p className="text-xl text-gray-600 max-w-2xl mx-auto mb-10 leading-relaxed">
-                LotView syncs your inventory, chats with leads, and books test drives automatically. 
-                We handle the busy work so your sales team can focus on closing.
+                Set it and forget it with our fully automated sales system that gets you more leads and books the appointments with AI.
               </p>
               
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
