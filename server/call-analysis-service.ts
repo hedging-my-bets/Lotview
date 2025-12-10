@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { storage } from "./storage";
-import type { CallRecording, CallAnalysisCriteria } from "@shared/schema";
+import type { CallRecording, CallAnalysisCriteria, CallScoringTemplate, CallScoringCriterion } from "@shared/schema";
 
 interface CallAnalysisResult {
   overallScore: number;
@@ -188,6 +188,9 @@ Respond ONLY with valid JSON, no additional text.`;
         analysisError: null
       });
 
+      // Auto-create scoring sheet with AI draft scores
+      await this.createAutoScoringSheet(recordingId, recording);
+
       return true;
 
     } catch (error) {
@@ -197,6 +200,191 @@ Respond ONLY with valid JSON, no additional text.`;
         analysisError: errorMessage
       });
       return false;
+    }
+  }
+
+  private async createAutoScoringSheet(callRecordingId: number, recording: CallRecording): Promise<void> {
+    try {
+      // Check if scoring sheet already exists
+      const existingSheet = await storage.getCallScoringSheet(callRecordingId);
+      if (existingSheet) {
+        console.log(`[CallAnalysis] Scoring sheet already exists for call ${callRecordingId}`);
+        return;
+      }
+
+      // Find appropriate template based on call content or use General template
+      const templates = await storage.getCallScoringTemplates(this.dealershipId);
+      
+      // Also get system templates (dealershipId = null)
+      const systemTemplates = await storage.getCallScoringTemplates(null);
+      const allTemplates = [...templates, ...systemTemplates];
+
+      if (allTemplates.length === 0) {
+        console.log(`[CallAnalysis] No scoring templates available for call ${callRecordingId}`);
+        return;
+      }
+
+      // Try to detect department from transcription or use General template
+      let selectedTemplate = allTemplates.find(t => t.department === 'general' && t.isActive);
+      
+      if (recording.transcription) {
+        const transcript = recording.transcription.toLowerCase();
+        
+        // Simple department detection based on keywords
+        if (transcript.includes('service') || transcript.includes('repair') || transcript.includes('maintenance') || transcript.includes('oil change')) {
+          const serviceTemplate = allTemplates.find(t => t.department === 'service' && t.isActive);
+          if (serviceTemplate) selectedTemplate = serviceTemplate;
+        } else if (transcript.includes('parts') || transcript.includes('order parts') || transcript.includes('part number')) {
+          const partsTemplate = allTemplates.find(t => t.department === 'parts' && t.isActive);
+          if (partsTemplate) selectedTemplate = partsTemplate;
+        } else if (transcript.includes('finance') || transcript.includes('loan') || transcript.includes('interest rate') || transcript.includes('monthly payment')) {
+          const financeTemplate = allTemplates.find(t => t.department === 'finance' && t.isActive);
+          if (financeTemplate) selectedTemplate = financeTemplate;
+        } else if (transcript.includes('buy') || transcript.includes('purchase') || transcript.includes('test drive') || transcript.includes('looking for') || transcript.includes('inventory')) {
+          const salesTemplate = allTemplates.find(t => t.department === 'sales' && t.isActive);
+          if (salesTemplate) selectedTemplate = salesTemplate;
+        }
+      }
+
+      if (!selectedTemplate) {
+        // Fallback to first available active template
+        selectedTemplate = allTemplates.find(t => t.isActive);
+      }
+
+      if (!selectedTemplate) {
+        console.log(`[CallAnalysis] No active scoring templates found for call ${callRecordingId}`);
+        return;
+      }
+
+      console.log(`[CallAnalysis] Creating scoring sheet for call ${callRecordingId} using template: ${selectedTemplate.name}`);
+
+      // Get criteria for this template
+      const criteria = await storage.getTemplateCriteria(selectedTemplate.id);
+      
+      if (criteria.length === 0) {
+        console.log(`[CallAnalysis] No criteria found for template ${selectedTemplate.id}`);
+        return;
+      }
+
+      // Generate AI scores for each criterion
+      const aiScores = await this.generateAIScores(recording, criteria);
+
+      // Calculate total AI score
+      const aiTotalScore = Object.values(aiScores).reduce((sum: number, s) => sum + s.score, 0);
+      const aiMaxScore = criteria.reduce((sum: number, c) => sum + c.maxScore, 0);
+
+      // Create scoring sheet
+      const sheet = await storage.createCallScoringSheet({
+        dealershipId: this.dealershipId,
+        callRecordingId,
+        templateId: selectedTemplate.id,
+        aiTotalScore,
+        aiMaxScore,
+        status: 'draft'
+      });
+
+      // Create AI-generated responses for each criterion
+      for (const criterion of criteria) {
+        const aiScore = aiScores[criterion.id];
+        if (aiScore) {
+          await storage.upsertCallScoringResponse({
+            sheetId: sheet.id,
+            criterionId: criterion.id,
+            aiScore: aiScore.score,
+            aiReasoning: aiScore.reasoning
+          });
+        }
+      }
+
+      console.log(`[CallAnalysis] Created scoring sheet ${sheet.id} with ${criteria.length} AI-scored criteria`);
+
+    } catch (error) {
+      console.error(`[CallAnalysis] Error creating auto scoring sheet for call ${callRecordingId}:`, error);
+    }
+  }
+
+  private async generateAIScores(recording: CallRecording, criteria: CallScoringCriterion[]): Promise<Record<number, { score: number; reasoning: string }>> {
+    const openai = await this.getOpenAIClient();
+    if (!openai || !recording.transcription) {
+      // Return default scores if no OpenAI available
+      const defaultScores: Record<number, { score: number; reasoning: string }> = {};
+      for (const c of criteria) {
+        defaultScores[c.id] = { score: Math.floor(c.maxScore / 2), reasoning: 'AI scoring unavailable' };
+      }
+      return defaultScores;
+    }
+
+    const criteriaList = criteria.map(c => ({
+      id: c.id,
+      name: c.name,
+      description: c.description,
+      ratingType: c.ratingType,
+      maxScore: c.maxScore,
+      aiPrompt: c.aiPrompt
+    }));
+
+    const prompt = `Analyze this phone call and score each criterion. 
+
+CALL TRANSCRIPTION:
+${recording.transcription}
+
+SCORING CRITERIA:
+${JSON.stringify(criteriaList, null, 2)}
+
+For each criterion, provide:
+- score: A number from 0 to the criterion's maxScore
+- reasoning: A brief 1-2 sentence explanation of the score
+
+Respond in JSON format:
+{
+  "scores": {
+    "<criterion_id>": { "score": <number>, "reasoning": "<explanation>" },
+    ...
+  }
+}`;
+
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: "You are an expert automotive call scoring analyst. Score each criterion based on the call transcription. Be fair but thorough. Respond only with valid JSON." },
+          { role: "user", content: prompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 2000,
+        response_format: { type: "json_object" }
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error("Empty response from OpenAI");
+      }
+
+      const result = JSON.parse(content);
+      const scores: Record<number, { score: number; reasoning: string }> = {};
+
+      for (const c of criteria) {
+        const aiResult = result.scores?.[c.id.toString()] || result.scores?.[c.id];
+        if (aiResult) {
+          scores[c.id] = {
+            score: Math.min(Math.max(0, aiResult.score || 0), c.maxScore),
+            reasoning: aiResult.reasoning || 'No reasoning provided'
+          };
+        } else {
+          scores[c.id] = { score: Math.floor(c.maxScore / 2), reasoning: 'Criterion not evaluated' };
+        }
+      }
+
+      return scores;
+
+    } catch (error) {
+      console.error('[CallAnalysis] Error generating AI scores:', error);
+      // Return default mid-range scores on error
+      const defaultScores: Record<number, { score: number; reasoning: string }> = {};
+      for (const c of criteria) {
+        defaultScores[c.id] = { score: Math.floor(c.maxScore / 2), reasoning: 'AI scoring error' };
+      }
+      return defaultScores;
     }
   }
 
