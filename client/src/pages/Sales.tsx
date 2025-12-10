@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { LogOut, Facebook, Plus, Trash2, Edit, FileText, ListOrdered, Calendar, Clock, GripVertical, Car, CalendarDays, Link, CheckCircle, AlertCircle, ExternalLink, PackageOpen } from "lucide-react";
+import { LogOut, Facebook, Plus, Trash2, Edit, FileText, ListOrdered, Calendar, Clock, GripVertical, Car, CalendarDays, Link, CheckCircle, AlertCircle, ExternalLink, PackageOpen, MessageCircle } from "lucide-react";
 import { PostingCalendar } from "@/components/PostingCalendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
@@ -668,6 +668,37 @@ export default function Sales() {
               <LogOut className="w-4 h-4 mr-2" />
               Logout
             </Button>
+          </div>
+
+          {/* Quick Action Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+            <a href="/sales/conversations" className="block">
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-[#00aad2]/30 bg-gradient-to-br from-[#00aad2]/5 to-white">
+                <CardContent className="p-4 flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-[#00aad2]/10 flex items-center justify-center">
+                    <MessageCircle className="w-6 h-6 text-[#00aad2]" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-foreground">Facebook Conversations</h3>
+                    <p className="text-sm text-muted-foreground">Message leads from Marketplace</p>
+                  </div>
+                  <Badge className="ml-auto bg-[#00aad2]">New</Badge>
+                </CardContent>
+              </Card>
+            </a>
+            <a href="/sales/auto-posting" className="block">
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-[#022d60]/30 bg-gradient-to-br from-[#022d60]/5 to-white">
+                <CardContent className="p-4 flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-[#022d60]/10 flex items-center justify-center">
+                    <CalendarDays className="w-6 h-6 text-[#022d60]" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-foreground">Auto-Posting Dashboard</h3>
+                    <p className="text-sm text-muted-foreground">Schedule Facebook posts</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </a>
           </div>
 
           <Tabs defaultValue="accounts" className="w-full">

@@ -3523,6 +3523,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get messages for a specific conversation
+  app.get("/api/messenger-conversations/:id/messages", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const conversationId = parseInt(req.params.id);
+
+      if (isNaN(conversationId)) {
+        return res.status(400).json({ error: "Invalid conversation ID" });
+      }
+
+      const messages = await storage.getMessengerMessages(dealershipId, conversationId);
+      
+      // Mark messages as read when fetched
+      await storage.markMessagesAsRead(dealershipId, conversationId);
+      
+      res.json(messages);
+    } catch (error) {
+      console.error("Error fetching messenger messages:", error);
+      res.status(500).json({ error: "Failed to fetch messages" });
+    }
+  });
+
+  // Assign a conversation to a salesperson - Manager and above only
+  app.post("/api/messenger-conversations/:id/assign", authMiddleware, requireRole("manager", "admin", "master", "super_admin"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const conversationId = parseInt(req.params.id);
+      const { assignedToUserId } = req.body;
+
+      if (isNaN(conversationId)) {
+        return res.status(400).json({ error: "Invalid conversation ID" });
+      }
+
+      if (!assignedToUserId || typeof assignedToUserId !== 'number') {
+        return res.status(400).json({ error: "assignedToUserId is required" });
+      }
+
+      const assignment = await storage.updateConversationAssignment(
+        dealershipId, 
+        conversationId, 
+        assignedToUserId,
+        req.user?.id
+      );
+
+      res.json({ success: true, assignment });
+    } catch (error) {
+      console.error("Error assigning conversation:", error);
+      res.status(500).json({ error: "Failed to assign conversation" });
+    }
+  });
+
+  // Get salespeople for assignment dropdown
+  app.get("/api/salespeople", authMiddleware, requireRole("manager", "admin", "master", "super_admin"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const users = await storage.getAllUsers(dealershipId);
+      
+      // Filter to only salespeople and managers
+      const salespeople = users
+        .filter(u => ['salesperson', 'manager', 'admin', 'master'].includes(u.role) && u.isActive)
+        .map(u => ({ id: u.id, name: u.name, role: u.role }));
+      
+      res.json(salespeople);
+    } catch (error) {
+      console.error("Error fetching salespeople:", error);
+      res.status(500).json({ error: "Failed to fetch salespeople" });
+    }
+  });
+
   // ===== ALL CONVERSATIONS UNIFIED ENDPOINT =====
   
   // Get all conversations (both website chat and messenger) with role-based filtering

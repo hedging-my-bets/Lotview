@@ -25,6 +25,8 @@ import {
   postingQueue,
   postingSchedule,
   messengerConversations,
+  messengerMessages,
+  conversationAssignments,
   remarketingVehicles,
   type Dealership,
   type InsertDealership,
@@ -74,6 +76,10 @@ import {
   type InsertPostingSchedule,
   type MessengerConversation,
   type InsertMessengerConversation,
+  type MessengerMessage,
+  type InsertMessengerMessage,
+  type ConversationAssignment,
+  type InsertConversationAssignment,
   type RemarketingVehicle,
   type InsertRemarketingVehicle,
   pbsConfig,
@@ -340,10 +346,20 @@ export interface IStorage {
   updateConversationHandoff(id: number, dealershipId: number, data: { handoffRequested?: boolean; handoffPhone?: string; handoffSent?: boolean; handoffSentAt?: Date }): Promise<ChatConversation | undefined>;
   
   // Messenger conversations (Multi-Tenant)
-  getMessengerConversations(dealershipId: number, userId?: number, userRole?: string): Promise<(MessengerConversation & { ownerName?: string })[]>;
+  getMessengerConversations(dealershipId: number, userId?: number, userRole?: string): Promise<(MessengerConversation & { ownerName?: string; assignedTo?: { id: number; name: string } })[]>;
   getMessengerConversationById(id: number, dealershipId: number): Promise<(MessengerConversation & { pageAccessToken: string }) | undefined>;
   createMessengerConversation(conversation: InsertMessengerConversation): Promise<MessengerConversation>;
   updateMessengerConversation(id: number, dealershipId: number, data: Partial<InsertMessengerConversation>): Promise<MessengerConversation | undefined>;
+  
+  // Messenger messages (Multi-Tenant)
+  getMessengerMessages(dealershipId: number, conversationId: number): Promise<MessengerMessage[]>;
+  createMessengerMessage(message: InsertMessengerMessage): Promise<MessengerMessage>;
+  markMessagesAsRead(dealershipId: number, conversationId: number): Promise<void>;
+  
+  // Conversation assignments (Multi-Tenant)
+  getConversationAssignment(dealershipId: number, conversationId: number): Promise<ConversationAssignment | undefined>;
+  assignConversation(assignment: InsertConversationAssignment): Promise<ConversationAssignment>;
+  updateConversationAssignment(dealershipId: number, conversationId: number, assignedToUserId: number, assignedByUserId?: number): Promise<ConversationAssignment | undefined>;
   
   // Chat prompts (Multi-Tenant)
   getChatPrompts(dealershipId: number): Promise<ChatPrompt[]>;
@@ -1344,6 +1360,91 @@ export class DatabaseStorage implements IStorage {
     }
     
     return result[0] as MessengerConversation & { pageAccessToken: string };
+  }
+
+  // Messenger messages (Multi-Tenant)
+  async getMessengerMessages(dealershipId: number, conversationId: number): Promise<MessengerMessage[]> {
+    return await db.select()
+      .from(messengerMessages)
+      .where(and(
+        eq(messengerMessages.dealershipId, dealershipId),
+        eq(messengerMessages.conversationId, conversationId)
+      ))
+      .orderBy(messengerMessages.sentAt);
+  }
+
+  async createMessengerMessage(message: InsertMessengerMessage): Promise<MessengerMessage> {
+    if (!message.dealershipId) {
+      throw new Error('dealershipId is required when creating messenger messages');
+    }
+    const result = await db.insert(messengerMessages).values(message).returning();
+    return result[0];
+  }
+
+  async markMessagesAsRead(dealershipId: number, conversationId: number): Promise<void> {
+    await db.update(messengerMessages)
+      .set({ isRead: true })
+      .where(and(
+        eq(messengerMessages.dealershipId, dealershipId),
+        eq(messengerMessages.conversationId, conversationId),
+        eq(messengerMessages.isRead, false)
+      ));
+    
+    // Reset unread count on conversation
+    await db.update(messengerConversations)
+      .set({ unreadCount: 0 })
+      .where(and(
+        eq(messengerConversations.id, conversationId),
+        eq(messengerConversations.dealershipId, dealershipId)
+      ));
+  }
+
+  // Conversation assignments (Multi-Tenant)
+  async getConversationAssignment(dealershipId: number, conversationId: number): Promise<ConversationAssignment | undefined> {
+    const result = await db.select()
+      .from(conversationAssignments)
+      .where(and(
+        eq(conversationAssignments.dealershipId, dealershipId),
+        eq(conversationAssignments.conversationId, conversationId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+
+  async assignConversation(assignment: InsertConversationAssignment): Promise<ConversationAssignment> {
+    if (!assignment.dealershipId) {
+      throw new Error('dealershipId is required when creating conversation assignments');
+    }
+    const result = await db.insert(conversationAssignments).values(assignment).returning();
+    return result[0];
+  }
+
+  async updateConversationAssignment(dealershipId: number, conversationId: number, assignedToUserId: number, assignedByUserId?: number): Promise<ConversationAssignment | undefined> {
+    // Try to update existing assignment
+    const existing = await this.getConversationAssignment(dealershipId, conversationId);
+    
+    if (existing) {
+      const result = await db.update(conversationAssignments)
+        .set({ 
+          assignedToUserId, 
+          assignedByUserId: assignedByUserId || null,
+          assignedAt: new Date()
+        })
+        .where(and(
+          eq(conversationAssignments.dealershipId, dealershipId),
+          eq(conversationAssignments.conversationId, conversationId)
+        ))
+        .returning();
+      return result[0];
+    } else {
+      // Create new assignment
+      return await this.assignConversation({
+        dealershipId,
+        conversationId,
+        assignedToUserId,
+        assignedByUserId
+      });
+    }
   }
 
   // Chat prompts (Multi-Tenant)
