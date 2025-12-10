@@ -85,6 +85,41 @@ interface GhlPipeline {
   }>;
 }
 
+// GHL Conversation type
+interface GhlConversation {
+  id: string;
+  locationId: string;
+  contactId: string;
+  type: string; // 'TYPE_PHONE', 'TYPE_EMAIL', 'TYPE_SMS', 'TYPE_FB_MESSENGER', 'TYPE_LIVE_CHAT', etc.
+  unreadCount: number;
+  lastMessageDate: string;
+  lastMessageBody: string;
+  lastMessageDirection: 'inbound' | 'outbound';
+  lastMessageType: string;
+  fullName?: string;
+  contactName?: string;
+  email?: string;
+  phone?: string;
+}
+
+// GHL Message type
+interface GhlMessage {
+  id: string;
+  conversationId: string;
+  locationId: string;
+  contactId: string;
+  type: number; // 1 = email, 2 = sms, 3 = phone, 4 = fb, etc.
+  direction: 'inbound' | 'outbound';
+  body: string;
+  status: string;
+  dateAdded: string;
+  attachments?: Array<{
+    url: string;
+    type: string;
+  }>;
+  userId?: string;
+}
+
 // OAuth token response
 interface GhlTokenResponse {
   access_token: string;
@@ -135,6 +170,10 @@ export class GhlApiService {
       "opportunities.write",
       "locations.readonly",
       "users.readonly",
+      "conversations.readonly",
+      "conversations.write",
+      "conversations/message.readonly",
+      "conversations/message.write",
     ].join(" ");
 
     const params = new URLSearchParams({
@@ -528,6 +567,86 @@ export class GhlApiService {
     return this.apiRequest<GhlLocationInfo>("GET", `/locations/${account.locationId}`);
   }
 
+  // ===== CONVERSATIONS API =====
+
+  async getConversations(params?: {
+    contactId?: string;
+    type?: string;
+    limit?: number;
+    lastMessageAfter?: string;
+  }): Promise<GhlApiResponse<{ conversations: GhlConversation[] }>> {
+    const account = await this.getAccount();
+    if (!account) {
+      return { success: false, error: "No account", errorCode: "NO_ACCOUNT" };
+    }
+
+    const searchParams = new URLSearchParams();
+    searchParams.set("locationId", account.locationId);
+    if (params?.contactId) searchParams.set("contactId", params.contactId);
+    if (params?.type) searchParams.set("type", params.type);
+    if (params?.limit) searchParams.set("limit", params.limit.toString());
+    if (params?.lastMessageAfter) searchParams.set("lastMessageAfter", params.lastMessageAfter);
+
+    return this.apiRequest<{ conversations: GhlConversation[] }>("GET", `/conversations/search?${searchParams.toString()}`);
+  }
+
+  async getConversation(conversationId: string): Promise<GhlApiResponse<GhlConversation>> {
+    return this.apiRequest<GhlConversation>("GET", `/conversations/${conversationId}`);
+  }
+
+  async getConversationMessages(conversationId: string, params?: {
+    limit?: number;
+    lastMessageId?: string;
+  }): Promise<GhlApiResponse<{ messages: GhlMessage[] }>> {
+    const searchParams = new URLSearchParams();
+    if (params?.limit) searchParams.set("limit", params.limit.toString());
+    if (params?.lastMessageId) searchParams.set("lastMessageId", params.lastMessageId);
+
+    const endpoint = searchParams.toString()
+      ? `/conversations/${conversationId}/messages?${searchParams.toString()}`
+      : `/conversations/${conversationId}/messages`;
+
+    return this.apiRequest<{ messages: GhlMessage[] }>("GET", endpoint);
+  }
+
+  async sendMessage(conversationId: string, message: {
+    type: 'SMS' | 'Email' | 'WhatsApp' | 'GMB' | 'IG' | 'FB' | 'Live_Chat';
+    message?: string;
+    html?: string;
+    subject?: string;
+    emailFrom?: string;
+    emailTo?: string;
+    emailCc?: string[];
+    emailBcc?: string[];
+    attachments?: string[];
+  }): Promise<GhlApiResponse<GhlMessage>> {
+    return this.apiRequest<GhlMessage>("POST", `/conversations/${conversationId}/messages`, message);
+  }
+
+  async createConversation(params: {
+    contactId: string;
+    type?: string;
+  }): Promise<GhlApiResponse<GhlConversation>> {
+    const account = await this.getAccount();
+    if (!account) {
+      return { success: false, error: "No account", errorCode: "NO_ACCOUNT" };
+    }
+
+    return this.apiRequest<GhlConversation>("POST", "/conversations/", {
+      locationId: account.locationId,
+      contactId: params.contactId,
+      type: params.type || "TYPE_SMS",
+    });
+  }
+
+  async getOrCreateConversation(contactId: string, type?: string): Promise<GhlApiResponse<GhlConversation>> {
+    const existingResult = await this.getConversations({ contactId, type, limit: 1 });
+    if (existingResult.success && existingResult.data?.conversations?.length) {
+      return { success: true, data: existingResult.data.conversations[0] };
+    }
+    return this.createConversation({ contactId, type });
+  }
+
   // ===== UTILITY METHODS =====
 
   async testConnection(): Promise<{ success: boolean; message: string; locationName?: string }> {
@@ -565,6 +684,8 @@ export type {
   GhlOpportunity,
   GhlCalendar,
   GhlPipeline,
+  GhlConversation,
+  GhlMessage,
   GhlTokenResponse,
   GhlApiResponse,
 };

@@ -690,6 +690,9 @@ export const messengerConversations = pgTable("messenger_conversations", {
   lastMessageAt: timestamp("last_message_at"), // When last message was sent
   unreadCount: integer("unread_count").notNull().default(0),
   status: text("status").notNull().default('active'), // 'active', 'archived', 'spam'
+  ghlConversationId: text("ghl_conversation_id"), // GoHighLevel conversation ID for sync
+  ghlContactId: text("ghl_contact_id"), // GoHighLevel contact ID for sync
+  lastGhlSyncAt: timestamp("last_ghl_sync_at"), // When last synced with GHL
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -717,6 +720,8 @@ export const messengerMessages = pgTable("messenger_messages", {
   attachmentUrl: text("attachment_url"), // URL of attachment if any
   isRead: boolean("is_read").notNull().default(false),
   sentAt: timestamp("sent_at").notNull(), // When the message was sent
+  ghlMessageId: text("ghl_message_id"), // GoHighLevel message ID for deduplication
+  syncSource: text("sync_source").default('facebook'), // 'facebook', 'ghl', 'lotview' - where message originated
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

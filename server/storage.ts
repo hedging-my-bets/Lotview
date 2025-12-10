@@ -355,6 +355,8 @@ export interface IStorage {
   getMessengerMessages(dealershipId: number, conversationId: number): Promise<MessengerMessage[]>;
   createMessengerMessage(message: InsertMessengerMessage): Promise<MessengerMessage>;
   markMessagesAsRead(dealershipId: number, conversationId: number): Promise<void>;
+  getMessengerMessageByGhlId(dealershipId: number, ghlMessageId: string): Promise<MessengerMessage | undefined>;
+  getMessengerConversationByGhlId(dealershipId: number, ghlConversationId: string): Promise<MessengerConversation | undefined>;
   
   // Conversation assignments (Multi-Tenant)
   getConversationAssignment(dealershipId: number, conversationId: number): Promise<ConversationAssignment | undefined>;
@@ -1397,6 +1399,28 @@ export class DatabaseStorage implements IStorage {
         eq(messengerConversations.id, conversationId),
         eq(messengerConversations.dealershipId, dealershipId)
       ));
+  }
+
+  async getMessengerMessageByGhlId(dealershipId: number, ghlMessageId: string): Promise<MessengerMessage | undefined> {
+    const result = await db.select()
+      .from(messengerMessages)
+      .where(and(
+        eq(messengerMessages.dealershipId, dealershipId),
+        eq(messengerMessages.ghlMessageId, ghlMessageId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+
+  async getMessengerConversationByGhlId(dealershipId: number, ghlConversationId: string): Promise<MessengerConversation | undefined> {
+    const result = await db.select()
+      .from(messengerConversations)
+      .where(and(
+        eq(messengerConversations.dealershipId, dealershipId),
+        eq(messengerConversations.ghlConversationId, ghlConversationId)
+      ))
+      .limit(1);
+    return result[0];
   }
 
   // Conversation assignments (Multi-Tenant)

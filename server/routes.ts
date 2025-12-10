@@ -32,6 +32,7 @@ import fs from "fs";
 import { decodeVIN } from "./vin-decoder";
 import { createPbsApiService } from "./pbs-api-service";
 import { ObjectStorageService } from "./objectStorage";
+import { createGhlMessageSyncService } from "./ghl-message-sync-service";
 
 // Configure multer for in-memory logo uploads (for object storage)
 const logoUpload = multer({
@@ -3510,6 +3511,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.updateMessengerConversation(conversationId, dealershipId, {
         lastMessage: `You: ${message.trim().substring(0, 200)}`,
         lastMessageAt: new Date()
+      });
+
+      // Sync message to GoHighLevel (background - don't block response)
+      const ghlSyncService = createGhlMessageSyncService(dealershipId);
+      ghlSyncService.syncMessageToGhl(
+        conversation as any,
+        message.trim(),
+        req.user?.name || 'Sales Team'
+      ).catch(err => {
+        console.error('[GHL Sync] Background sync failed:', err.message);
       });
 
       res.json({ 
@@ -8425,6 +8436,19 @@ Format your response in clear sections with actionable recommendations.`;
           } else if (type?.includes('opportunity')) {
             // Opportunity stage change
             await handleGhlOpportunityEvent(dealershipId, req.body, ghlService);
+          } else if (type?.toLowerCase().includes('message') || type?.includes('InboundMessage') || type?.includes('OutboundMessage')) {
+            // Message received or sent - sync to Lotview conversations
+            const ghlMessageSyncService = createGhlMessageSyncService(dealershipId);
+            await ghlMessageSyncService.handleInboundGhlMessage({
+              conversationId: req.body.conversationId || req.body.conversation?.id,
+              contactId: req.body.contactId || req.body.contact?.id,
+              locationId: locationId,
+              body: req.body.body || req.body.message || '',
+              messageId: req.body.messageId || req.body.id,
+              direction: req.body.direction || (type?.includes('Inbound') ? 'inbound' : 'outbound'),
+              dateAdded: req.body.dateAdded || req.body.createdAt || new Date().toISOString(),
+              type: req.body.type || 'SMS',
+            });
           }
           
           // Mark event as processed
