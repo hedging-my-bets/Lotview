@@ -3720,6 +3720,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Toggle Watch Mode (manual takeover - AI watches but doesn't respond)
+  app.post("/api/messenger-conversations/:id/toggle-watch-mode", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const conversationId = parseInt(req.params.id);
+      const { enabled } = req.body;
+      
+      const conversation = await storage.updateMessengerConversation(conversationId, dealershipId, {
+        aiWatchMode: enabled,
+        aiWatchModeAt: enabled ? new Date() : null,
+      });
+      
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+      
+      res.json({ 
+        success: true, 
+        aiWatchMode: conversation.aiWatchMode,
+        message: enabled ? "You are now in control. AI is watching and analyzing." : "AI is back in control."
+      });
+    } catch (error) {
+      console.error("Error toggling watch mode:", error);
+      res.status(500).json({ error: "Failed to toggle watch mode" });
+    }
+  });
+
   // ===== TRAINING MODE ROUTES =====
 
   // Update AI prompt for a message (Training Mode)

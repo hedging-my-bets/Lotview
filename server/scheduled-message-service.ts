@@ -310,6 +310,27 @@ export async function processScheduledMessages(): Promise<void> {
             continue;
           }
           
+          // Check if conversation is in watch mode (manual takeover)
+          // AI should watch but not send auto-responses
+          if (conversation.aiWatchMode) {
+            console.log(`[ScheduledMessage] Skipping message ${message.id} - conversation in watch mode (manual takeover)`);
+            await storage.updateScheduledMessage(message.id, message.dealershipId, {
+              status: 'skipped',
+              errorMessage: 'Manual takeover active - AI watching but not responding',
+            });
+            continue;
+          }
+          
+          // Check if AI is disabled for this conversation
+          if (!conversation.aiEnabled) {
+            console.log(`[ScheduledMessage] Skipping message ${message.id} - AI disabled: ${conversation.aiDisabledReason}`);
+            await storage.updateScheduledMessage(message.id, message.dealershipId, {
+              status: 'skipped',
+              errorMessage: `AI disabled: ${conversation.aiDisabledReason}`,
+            });
+            continue;
+          }
+          
           const ghlService = createGhlApiService(message.dealershipId);
           
           // Need to get or create a GHL conversation for this contact
