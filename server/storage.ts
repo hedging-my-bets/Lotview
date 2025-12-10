@@ -226,7 +226,22 @@ import {
   type InsertCrmTask,
   crmMessages,
   type CrmMessage,
-  type InsertCrmMessage
+  type InsertCrmMessage,
+  callScoringTemplates,
+  type CallScoringTemplate,
+  type InsertCallScoringTemplate,
+  callScoringCriteria,
+  type CallScoringCriterion,
+  type InsertCallScoringCriterion,
+  callScoringSheets,
+  type CallScoringSheet,
+  type InsertCallScoringSheet,
+  callScoringResponses,
+  type CallScoringResponse,
+  type InsertCallScoringResponse,
+  callParticipants,
+  type CallParticipant,
+  type InsertCallParticipant
 } from "@shared/schema";
 import { eq, desc, asc, sql, and, gte, lte, lt, gt, inArray, or, ilike } from "drizzle-orm";
 
@@ -822,6 +837,38 @@ export interface IStorage {
   
   // ====== MESSENGER HELPERS ======
   getMessengerConversationsByContactFacebookId(dealershipId: number, facebookId: string): Promise<any[]>;
+  
+  // ====== CALL SCORING SYSTEM ======
+  // Templates
+  getCallScoringTemplates(dealershipId: number | null): Promise<CallScoringTemplate[]>;
+  getCallScoringTemplate(id: number): Promise<CallScoringTemplate | undefined>;
+  createCallScoringTemplate(template: InsertCallScoringTemplate): Promise<CallScoringTemplate>;
+  updateCallScoringTemplate(id: number, template: Partial<InsertCallScoringTemplate>): Promise<CallScoringTemplate | undefined>;
+  deleteCallScoringTemplate(id: number): Promise<boolean>;
+  cloneTemplateForDealership(templateId: number, dealershipId: number, userId: number): Promise<CallScoringTemplate>;
+
+  // Criteria
+  getTemplateCriteria(templateId: number): Promise<CallScoringCriterion[]>;
+  createCriterion(criterion: InsertCallScoringCriterion): Promise<CallScoringCriterion>;
+  updateCriterion(id: number, criterion: Partial<InsertCallScoringCriterion>): Promise<CallScoringCriterion | undefined>;
+  deleteCriterion(id: number): Promise<boolean>;
+  reorderCriteria(templateId: number, criteriaIds: number[]): Promise<void>;
+
+  // Scoring Sheets
+  getCallScoringSheet(callRecordingId: number): Promise<CallScoringSheet | undefined>;
+  getCallScoringSheetWithResponses(callRecordingId: number): Promise<{ sheet: CallScoringSheet; responses: CallScoringResponse[] } | undefined>;
+  createCallScoringSheet(sheet: InsertCallScoringSheet): Promise<CallScoringSheet>;
+  updateCallScoringSheet(id: number, sheet: Partial<InsertCallScoringSheet>): Promise<CallScoringSheet | undefined>;
+
+  // Scoring Responses
+  getCallScoringResponses(sheetId: number): Promise<CallScoringResponse[]>;
+  upsertCallScoringResponse(response: InsertCallScoringResponse): Promise<CallScoringResponse>;
+  bulkUpsertCallScoringResponses(responses: InsertCallScoringResponse[]): Promise<CallScoringResponse[]>;
+
+  // Call Participants
+  getCallParticipants(callRecordingId: number): Promise<CallParticipant[]>;
+  createCallParticipant(participant: InsertCallParticipant): Promise<CallParticipant>;
+  updateCallParticipant(id: number, participant: Partial<InsertCallParticipant>): Promise<CallParticipant | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -5457,6 +5504,217 @@ export class DatabaseStorage implements IStorage {
         eq(messengerConversations.dealershipId, dealershipId),
         eq(messengerConversations.participantId, facebookId)
       ));
+  }
+  
+  // ====== CALL SCORING SYSTEM ======
+  
+  // Templates
+  async getCallScoringTemplates(dealershipId: number | null): Promise<CallScoringTemplate[]> {
+    if (dealershipId === null) {
+      return await db.select()
+        .from(callScoringTemplates)
+        .where(sql`${callScoringTemplates.dealershipId} IS NULL`)
+        .orderBy(callScoringTemplates.department, callScoringTemplates.name);
+    }
+    return await db.select()
+      .from(callScoringTemplates)
+      .where(or(
+        sql`${callScoringTemplates.dealershipId} IS NULL`,
+        eq(callScoringTemplates.dealershipId, dealershipId)
+      ))
+      .orderBy(callScoringTemplates.department, callScoringTemplates.name);
+  }
+  
+  async getCallScoringTemplate(id: number): Promise<CallScoringTemplate | undefined> {
+    const result = await db.select()
+      .from(callScoringTemplates)
+      .where(eq(callScoringTemplates.id, id))
+      .limit(1);
+    return result[0];
+  }
+  
+  async createCallScoringTemplate(template: InsertCallScoringTemplate): Promise<CallScoringTemplate> {
+    const result = await db.insert(callScoringTemplates).values(template).returning();
+    return result[0];
+  }
+  
+  async updateCallScoringTemplate(id: number, template: Partial<InsertCallScoringTemplate>): Promise<CallScoringTemplate | undefined> {
+    const result = await db.update(callScoringTemplates)
+      .set({ ...template, updatedAt: new Date() })
+      .where(eq(callScoringTemplates.id, id))
+      .returning();
+    return result[0];
+  }
+  
+  async deleteCallScoringTemplate(id: number): Promise<boolean> {
+    const result = await db.delete(callScoringTemplates)
+      .where(eq(callScoringTemplates.id, id))
+      .returning();
+    return result.length > 0;
+  }
+  
+  async cloneTemplateForDealership(templateId: number, dealershipId: number, userId: number): Promise<CallScoringTemplate> {
+    const originalTemplate = await this.getCallScoringTemplate(templateId);
+    if (!originalTemplate) {
+      throw new Error('Template not found');
+    }
+    
+    const newTemplate = await this.createCallScoringTemplate({
+      dealershipId,
+      department: originalTemplate.department,
+      name: `${originalTemplate.name} (Custom)`,
+      description: originalTemplate.description,
+      isActive: true,
+      isDefault: false,
+      version: 1,
+      createdById: userId,
+    });
+    
+    const criteria = await this.getTemplateCriteria(templateId);
+    for (const criterion of criteria) {
+      await this.createCriterion({
+        templateId: newTemplate.id,
+        category: criterion.category,
+        label: criterion.label,
+        description: criterion.description,
+        weight: criterion.weight,
+        maxScore: criterion.maxScore,
+        ratingType: criterion.ratingType,
+        sortOrder: criterion.sortOrder,
+        aiInstruction: criterion.aiInstruction,
+        isRequired: criterion.isRequired,
+      });
+    }
+    
+    return newTemplate;
+  }
+  
+  // Criteria
+  async getTemplateCriteria(templateId: number): Promise<CallScoringCriterion[]> {
+    return await db.select()
+      .from(callScoringCriteria)
+      .where(eq(callScoringCriteria.templateId, templateId))
+      .orderBy(callScoringCriteria.sortOrder, callScoringCriteria.id);
+  }
+  
+  async createCriterion(criterion: InsertCallScoringCriterion): Promise<CallScoringCriterion> {
+    const result = await db.insert(callScoringCriteria).values(criterion).returning();
+    return result[0];
+  }
+  
+  async updateCriterion(id: number, criterion: Partial<InsertCallScoringCriterion>): Promise<CallScoringCriterion | undefined> {
+    const result = await db.update(callScoringCriteria)
+      .set(criterion)
+      .where(eq(callScoringCriteria.id, id))
+      .returning();
+    return result[0];
+  }
+  
+  async deleteCriterion(id: number): Promise<boolean> {
+    const result = await db.delete(callScoringCriteria)
+      .where(eq(callScoringCriteria.id, id))
+      .returning();
+    return result.length > 0;
+  }
+  
+  async reorderCriteria(templateId: number, criteriaIds: number[]): Promise<void> {
+    for (let i = 0; i < criteriaIds.length; i++) {
+      await db.update(callScoringCriteria)
+        .set({ sortOrder: i })
+        .where(and(
+          eq(callScoringCriteria.id, criteriaIds[i]),
+          eq(callScoringCriteria.templateId, templateId)
+        ));
+    }
+  }
+  
+  // Scoring Sheets
+  async getCallScoringSheet(callRecordingId: number): Promise<CallScoringSheet | undefined> {
+    const result = await db.select()
+      .from(callScoringSheets)
+      .where(eq(callScoringSheets.callRecordingId, callRecordingId))
+      .limit(1);
+    return result[0];
+  }
+  
+  async getCallScoringSheetWithResponses(callRecordingId: number): Promise<{ sheet: CallScoringSheet; responses: CallScoringResponse[] } | undefined> {
+    const sheet = await this.getCallScoringSheet(callRecordingId);
+    if (!sheet) return undefined;
+    
+    const responses = await this.getCallScoringResponses(sheet.id);
+    return { sheet, responses };
+  }
+  
+  async createCallScoringSheet(sheet: InsertCallScoringSheet): Promise<CallScoringSheet> {
+    const result = await db.insert(callScoringSheets).values(sheet).returning();
+    return result[0];
+  }
+  
+  async updateCallScoringSheet(id: number, sheet: Partial<InsertCallScoringSheet>): Promise<CallScoringSheet | undefined> {
+    const result = await db.update(callScoringSheets)
+      .set({ ...sheet, updatedAt: new Date() })
+      .where(eq(callScoringSheets.id, id))
+      .returning();
+    return result[0];
+  }
+  
+  // Scoring Responses
+  async getCallScoringResponses(sheetId: number): Promise<CallScoringResponse[]> {
+    return await db.select()
+      .from(callScoringResponses)
+      .where(eq(callScoringResponses.sheetId, sheetId))
+      .orderBy(callScoringResponses.id);
+  }
+  
+  async upsertCallScoringResponse(response: InsertCallScoringResponse): Promise<CallScoringResponse> {
+    const existing = await db.select()
+      .from(callScoringResponses)
+      .where(and(
+        eq(callScoringResponses.sheetId, response.sheetId),
+        eq(callScoringResponses.criterionId, response.criterionId)
+      ))
+      .limit(1);
+    
+    if (existing.length > 0) {
+      const result = await db.update(callScoringResponses)
+        .set({ ...response, updatedAt: new Date() })
+        .where(eq(callScoringResponses.id, existing[0].id))
+        .returning();
+      return result[0];
+    }
+    
+    const result = await db.insert(callScoringResponses).values(response).returning();
+    return result[0];
+  }
+  
+  async bulkUpsertCallScoringResponses(responses: InsertCallScoringResponse[]): Promise<CallScoringResponse[]> {
+    const results: CallScoringResponse[] = [];
+    for (const response of responses) {
+      const result = await this.upsertCallScoringResponse(response);
+      results.push(result);
+    }
+    return results;
+  }
+  
+  // Call Participants
+  async getCallParticipants(callRecordingId: number): Promise<CallParticipant[]> {
+    return await db.select()
+      .from(callParticipants)
+      .where(eq(callParticipants.callRecordingId, callRecordingId))
+      .orderBy(callParticipants.speakerLabel);
+  }
+  
+  async createCallParticipant(participant: InsertCallParticipant): Promise<CallParticipant> {
+    const result = await db.insert(callParticipants).values(participant).returning();
+    return result[0];
+  }
+  
+  async updateCallParticipant(id: number, participant: Partial<InsertCallParticipant>): Promise<CallParticipant | undefined> {
+    const result = await db.update(callParticipants)
+      .set(participant)
+      .where(eq(callParticipants.id, id))
+      .returning();
+    return result[0];
   }
 }
 

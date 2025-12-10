@@ -17,7 +17,8 @@ import {
   insertCrmTaskSchema,
   ghlAccounts,
   ghlContactSync,
-  dealershipContacts
+  dealershipContacts,
+  callScoringResponses
 } from "@shared/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import { fromZodError } from "zod-validation-error";
@@ -9227,6 +9228,445 @@ Format your response in clear sections with actionable recommendations.`;
     } catch (error) {
       console.error("Error seeding default criteria:", error);
       res.status(500).json({ error: "Failed to seed defaults" });
+    }
+  });
+  
+  // ===== CALL SCORING TEMPLATES =====
+  
+  // Get all templates (system defaults + dealership specific)
+  app.get("/api/call-scoring/templates", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.dealershipId || req.user?.dealershipId || null;
+      const templates = await storage.getCallScoringTemplates(dealershipId);
+      res.json(templates);
+    } catch (error) {
+      console.error("Error fetching call scoring templates:", error);
+      res.status(500).json({ error: "Failed to fetch templates" });
+    }
+  });
+  
+  // Get single template with criteria
+  app.get("/api/call-scoring/templates/:id", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: "Invalid template ID" });
+      }
+      
+      const template = await storage.getCallScoringTemplate(id);
+      if (!template) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+      
+      const criteria = await storage.getTemplateCriteria(id);
+      res.json({ ...template, criteria });
+    } catch (error) {
+      console.error("Error fetching call scoring template:", error);
+      res.status(500).json({ error: "Failed to fetch template" });
+    }
+  });
+  
+  // Create dealership-specific template
+  app.post("/api/call-scoring/templates", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.dealershipId || req.user?.dealershipId;
+      if (!dealershipId) {
+        return res.status(400).json({ error: "Dealership ID is required" });
+      }
+      
+      const { department, name, description, isDefault } = req.body;
+      if (!department || !name) {
+        return res.status(400).json({ error: "Department and name are required" });
+      }
+      
+      const template = await storage.createCallScoringTemplate({
+        dealershipId,
+        department,
+        name,
+        description,
+        isActive: true,
+        isDefault: isDefault || false,
+        version: 1,
+        createdById: req.user?.id,
+      });
+      
+      res.status(201).json(template);
+    } catch (error) {
+      console.error("Error creating call scoring template:", error);
+      res.status(500).json({ error: "Failed to create template" });
+    }
+  });
+  
+  // Clone system template for dealership customization
+  app.post("/api/call-scoring/templates/:id/clone", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req: AuthRequest, res) => {
+    try {
+      const templateId = parseInt(req.params.id);
+      if (isNaN(templateId)) {
+        return res.status(400).json({ error: "Invalid template ID" });
+      }
+      
+      const dealershipId = req.dealershipId || req.user?.dealershipId;
+      if (!dealershipId) {
+        return res.status(400).json({ error: "Dealership ID is required" });
+      }
+      
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+      
+      const clonedTemplate = await storage.cloneTemplateForDealership(templateId, dealershipId, userId);
+      const criteria = await storage.getTemplateCriteria(clonedTemplate.id);
+      
+      res.status(201).json({ ...clonedTemplate, criteria });
+    } catch (error) {
+      console.error("Error cloning call scoring template:", error);
+      res.status(500).json({ error: "Failed to clone template" });
+    }
+  });
+  
+  // Update template
+  app.patch("/api/call-scoring/templates/:id", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req: AuthRequest, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: "Invalid template ID" });
+      }
+      
+      const template = await storage.getCallScoringTemplate(id);
+      if (!template) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+      
+      if (template.dealershipId === null) {
+        return res.status(403).json({ error: "Cannot modify system default templates" });
+      }
+      
+      const { name, description, isActive, isDefault, department } = req.body;
+      const updated = await storage.updateCallScoringTemplate(id, {
+        name,
+        description,
+        isActive,
+        isDefault,
+        department,
+      });
+      
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating call scoring template:", error);
+      res.status(500).json({ error: "Failed to update template" });
+    }
+  });
+  
+  // Delete template (only dealership-specific, not system defaults)
+  app.delete("/api/call-scoring/templates/:id", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req: AuthRequest, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: "Invalid template ID" });
+      }
+      
+      const template = await storage.getCallScoringTemplate(id);
+      if (!template) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+      
+      if (template.dealershipId === null) {
+        return res.status(403).json({ error: "Cannot delete system default templates" });
+      }
+      
+      await storage.deleteCallScoringTemplate(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting call scoring template:", error);
+      res.status(500).json({ error: "Failed to delete template" });
+    }
+  });
+  
+  // ===== TEMPLATE CRITERIA =====
+  
+  // Get criteria for a template
+  app.get("/api/call-scoring/templates/:templateId/criteria", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const templateId = parseInt(req.params.templateId);
+      if (isNaN(templateId)) {
+        return res.status(400).json({ error: "Invalid template ID" });
+      }
+      
+      const criteria = await storage.getTemplateCriteria(templateId);
+      res.json(criteria);
+    } catch (error) {
+      console.error("Error fetching template criteria:", error);
+      res.status(500).json({ error: "Failed to fetch criteria" });
+    }
+  });
+  
+  // Add criterion to template
+  app.post("/api/call-scoring/templates/:templateId/criteria", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req: AuthRequest, res) => {
+    try {
+      const templateId = parseInt(req.params.templateId);
+      if (isNaN(templateId)) {
+        return res.status(400).json({ error: "Invalid template ID" });
+      }
+      
+      const template = await storage.getCallScoringTemplate(templateId);
+      if (!template) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+      
+      if (template.dealershipId === null) {
+        return res.status(403).json({ error: "Cannot modify system default templates" });
+      }
+      
+      const { category, label, description, weight, maxScore, ratingType, sortOrder, aiInstruction, isRequired } = req.body;
+      if (!category || !label) {
+        return res.status(400).json({ error: "Category and label are required" });
+      }
+      
+      const criterion = await storage.createCriterion({
+        templateId,
+        category,
+        label,
+        description,
+        weight: weight || 1,
+        maxScore: maxScore || 10,
+        ratingType: ratingType || 'numeric',
+        sortOrder: sortOrder || 0,
+        aiInstruction,
+        isRequired: isRequired !== undefined ? isRequired : true,
+      });
+      
+      res.status(201).json(criterion);
+    } catch (error) {
+      console.error("Error creating criterion:", error);
+      res.status(500).json({ error: "Failed to create criterion" });
+    }
+  });
+  
+  // Update criterion
+  app.patch("/api/call-scoring/criteria/:id", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req: AuthRequest, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: "Invalid criterion ID" });
+      }
+      
+      const { category, label, description, weight, maxScore, ratingType, sortOrder, aiInstruction, isRequired } = req.body;
+      const updated = await storage.updateCriterion(id, {
+        category,
+        label,
+        description,
+        weight,
+        maxScore,
+        ratingType,
+        sortOrder,
+        aiInstruction,
+        isRequired,
+      });
+      
+      if (!updated) {
+        return res.status(404).json({ error: "Criterion not found" });
+      }
+      
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating criterion:", error);
+      res.status(500).json({ error: "Failed to update criterion" });
+    }
+  });
+  
+  // Delete criterion
+  app.delete("/api/call-scoring/criteria/:id", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req: AuthRequest, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: "Invalid criterion ID" });
+      }
+      
+      const deleted = await storage.deleteCriterion(id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Criterion not found" });
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting criterion:", error);
+      res.status(500).json({ error: "Failed to delete criterion" });
+    }
+  });
+  
+  // Reorder criteria
+  app.post("/api/call-scoring/templates/:templateId/criteria/reorder", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req: AuthRequest, res) => {
+    try {
+      const templateId = parseInt(req.params.templateId);
+      if (isNaN(templateId)) {
+        return res.status(400).json({ error: "Invalid template ID" });
+      }
+      
+      const { criteriaIds } = req.body;
+      if (!Array.isArray(criteriaIds)) {
+        return res.status(400).json({ error: "criteriaIds must be an array" });
+      }
+      
+      await storage.reorderCriteria(templateId, criteriaIds);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error reordering criteria:", error);
+      res.status(500).json({ error: "Failed to reorder criteria" });
+    }
+  });
+  
+  // ===== CALL SCORING SHEETS =====
+  
+  // Get scoring sheet for a call
+  app.get("/api/call-recordings/:callId/scoring", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const callId = parseInt(req.params.callId);
+      if (isNaN(callId)) {
+        return res.status(400).json({ error: "Invalid call ID" });
+      }
+      
+      const result = await storage.getCallScoringSheetWithResponses(callId);
+      if (!result) {
+        return res.status(404).json({ error: "Scoring sheet not found" });
+      }
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching scoring sheet:", error);
+      res.status(500).json({ error: "Failed to fetch scoring sheet" });
+    }
+  });
+  
+  // Create or update scoring sheet
+  app.post("/api/call-recordings/:callId/scoring", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req: AuthRequest, res) => {
+    try {
+      const callId = parseInt(req.params.callId);
+      if (isNaN(callId)) {
+        return res.status(400).json({ error: "Invalid call ID" });
+      }
+      
+      const dealershipId = req.dealershipId || req.user?.dealershipId;
+      if (!dealershipId) {
+        return res.status(400).json({ error: "Dealership ID is required" });
+      }
+      
+      const { templateId, status, employeeId, employeeName, employeeDepartment, reviewerNotes, coachingNotes, reviewerTotalScore, finalScore } = req.body;
+      
+      let sheet = await storage.getCallScoringSheet(callId);
+      
+      if (sheet) {
+        sheet = await storage.updateCallScoringSheet(sheet.id, {
+          status,
+          reviewerId: req.user?.id,
+          employeeId,
+          employeeName,
+          employeeDepartment,
+          reviewerNotes,
+          coachingNotes,
+          reviewerTotalScore,
+          finalScore,
+          reviewedAt: status === 'reviewed' || status === 'approved' ? new Date() : undefined,
+        }) || sheet;
+      } else {
+        if (!templateId) {
+          return res.status(400).json({ error: "Template ID is required for new scoring sheet" });
+        }
+        
+        sheet = await storage.createCallScoringSheet({
+          dealershipId,
+          callRecordingId: callId,
+          templateId,
+          reviewerId: req.user?.id,
+          status: status || 'pending',
+          employeeId,
+          employeeName,
+          employeeDepartment,
+          reviewerNotes,
+          coachingNotes,
+        });
+      }
+      
+      res.json(sheet);
+    } catch (error) {
+      console.error("Error creating/updating scoring sheet:", error);
+      res.status(500).json({ error: "Failed to save scoring sheet" });
+    }
+  });
+  
+  // Update individual response score
+  app.patch("/api/call-scoring/responses/:id", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req: AuthRequest, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: "Invalid response ID" });
+      }
+      
+      const { reviewerScore, comment, timestamp } = req.body;
+      
+      const responses = await db.select().from(callScoringResponses).where(eq(callScoringResponses.id, id)).limit(1);
+      if (responses.length === 0) {
+        return res.status(404).json({ error: "Response not found" });
+      }
+      
+      const updated = await db.update(callScoringResponses)
+        .set({ reviewerScore, comment, timestamp, updatedAt: new Date() })
+        .where(eq(callScoringResponses.id, id))
+        .returning();
+      
+      res.json(updated[0]);
+    } catch (error) {
+      console.error("Error updating response:", error);
+      res.status(500).json({ error: "Failed to update response" });
+    }
+  });
+  
+  // Bulk update responses (for batch saving)
+  app.post("/api/call-recordings/:callId/scoring/responses", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), async (req: AuthRequest, res) => {
+    try {
+      const callId = parseInt(req.params.callId);
+      if (isNaN(callId)) {
+        return res.status(400).json({ error: "Invalid call ID" });
+      }
+      
+      const { responses } = req.body;
+      if (!Array.isArray(responses)) {
+        return res.status(400).json({ error: "Responses must be an array" });
+      }
+      
+      const sheet = await storage.getCallScoringSheet(callId);
+      if (!sheet) {
+        return res.status(404).json({ error: "Scoring sheet not found" });
+      }
+      
+      const responsesWithSheetId = responses.map(r => ({
+        ...r,
+        sheetId: sheet.id,
+      }));
+      
+      const savedResponses = await storage.bulkUpsertCallScoringResponses(responsesWithSheetId);
+      res.json(savedResponses);
+    } catch (error) {
+      console.error("Error bulk updating responses:", error);
+      res.status(500).json({ error: "Failed to save responses" });
+    }
+  });
+  
+  // ===== CALL PARTICIPANTS =====
+  
+  // Get participants for a call
+  app.get("/api/call-recordings/:callId/participants", authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const callId = parseInt(req.params.callId);
+      if (isNaN(callId)) {
+        return res.status(400).json({ error: "Invalid call ID" });
+      }
+      
+      const participants = await storage.getCallParticipants(callId);
+      res.json(participants);
+    } catch (error) {
+      console.error("Error fetching call participants:", error);
+      res.status(500).json({ error: "Failed to fetch participants" });
     }
   });
   
