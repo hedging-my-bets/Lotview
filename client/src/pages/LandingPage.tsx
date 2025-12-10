@@ -97,15 +97,15 @@ export default function LandingPage() {
                 Truly Autonomous
               </Badge>
               
-              <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-[#022d60] tracking-tight leading-[1.1] mb-6">
-                More Leads, More Sales,
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-[#022d60] tracking-tight leading-[1.1] mb-6">
+                Your Inventory Is Burning Cash.
                 <span className="block bg-gradient-to-r from-[#022d60] via-[#00aad2] to-[#022d60] bg-clip-text text-transparent">
-                  Done For You
+                  Let AI Turn It Into Profit 24/7.
                 </span>
               </h1>
               
               <p className="text-xl text-gray-600 max-w-2xl mx-auto mb-10 leading-relaxed">
-                Set it and forget it with our fully automated sales system that gets you more leads and books the appointments with AI.
+                Stop letting leads die in your CRM. LotView engages every lead, answers every question, and books firm appointments while your BDC is asleep.
               </p>
               
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -144,45 +144,114 @@ export default function LandingPage() {
                         </div>
                       </div>
                     </div>
-                    <div className="aspect-[16/9] bg-gradient-to-br from-[#022d60] to-[#00aad2]/80 flex items-center justify-center">
-                      <div className="grid grid-cols-3 gap-4 p-8 w-full max-w-3xl">
+                    <div className="bg-gray-100 p-4 sm:p-6">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                         {previewVehicles.length > 0 ? (
-                          previewVehicles.map((vehicle, i) => (
-                            <div key={vehicle.id || i} className="bg-white/10 backdrop-blur rounded-lg p-4 space-y-3">
-                              <div className="aspect-[4/3] bg-gradient-to-br from-white/10 to-white/5 rounded-md overflow-hidden relative">
-                                <div className="absolute inset-0 flex items-center justify-center z-0">
-                                  <Car className="w-10 h-10 text-white/30" />
+                          previewVehicles.map((vehicle, i) => {
+                            const monthlyPayment = vehicle.price ? Math.round(vehicle.price / 72) : 0;
+                            const badges = [];
+                            if (vehicle.odometer && vehicle.odometer < 50000) badges.push("Low Kilometers");
+                            if (i === 1) badges.push("No Accidents");
+                            if (i === 0) badges.push("One Owner");
+                            
+                            return (
+                              <div key={vehicle.id || i} className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200">
+                                {/* Image with watermark and badges */}
+                                <div className="relative aspect-[4/3]">
+                                  <div className="absolute top-2 left-2 z-20">
+                                    <div className="bg-[#022d60]/90 text-white text-[8px] px-1.5 py-0.5 rounded font-bold">
+                                      LOTVIEW
+                                    </div>
+                                  </div>
+                                  {badges.length > 0 && (
+                                    <div className="absolute top-2 right-2 z-20 flex flex-col gap-1">
+                                      {badges.slice(0, 2).map((badge, idx) => (
+                                        <span key={idx} className={`text-[7px] px-1.5 py-0.5 rounded-full font-medium ${
+                                          badge === "No Accidents" ? "bg-green-500 text-white" : 
+                                          badge === "One Owner" ? "bg-orange-500 text-white" :
+                                          "bg-[#00aad2] text-white"
+                                        }`}>
+                                          {badge}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  <div className="absolute inset-0 bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
+                                    <Car className="w-8 h-8 text-gray-400" />
+                                  </div>
+                                  {vehicle.images && vehicle.images[0] && (
+                                    <img 
+                                      src={vehicle.images[0]} 
+                                      alt={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}
+                                      className="absolute inset-0 w-full h-full object-cover"
+                                      loading="lazy"
+                                      referrerPolicy="no-referrer"
+                                      onError={(e) => {
+                                        const target = e.target as HTMLImageElement;
+                                        target.style.display = 'none';
+                                      }}
+                                    />
+                                  )}
+                                  {/* Payment overlay */}
+                                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2">
+                                    <div className="flex items-end justify-between">
+                                      <div>
+                                        <div className="text-white font-bold text-lg">${monthlyPayment}<span className="text-xs font-normal">/mo</span></div>
+                                        <div className="text-white/70 text-[8px]">@ 7.99%</div>
+                                      </div>
+                                      <div className="text-right">
+                                        <div className="text-white/60 text-[8px]">Cash Price</div>
+                                        <div className="text-white font-semibold text-sm">${vehicle.price?.toLocaleString()}</div>
+                                      </div>
+                                    </div>
+                                  </div>
                                 </div>
-                                {vehicle.images && vehicle.images[0] && (
-                                  <img 
-                                    src={vehicle.images[0]} 
-                                    alt={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}
-                                    className="w-full h-full object-cover relative z-10"
-                                    loading="lazy"
-                                    referrerPolicy="no-referrer"
-                                    onError={(e) => {
-                                      const target = e.target as HTMLImageElement;
-                                      target.style.display = 'none';
-                                    }}
-                                  />
-                                )}
+                                
+                                {/* Term selector */}
+                                <div className="flex border-b border-gray-100">
+                                  {["24", "36", "48", "60", "72", "84"].map((term, idx) => (
+                                    <div key={term} className={`flex-1 text-center py-1 text-[7px] font-medium ${
+                                      term === "72" ? "bg-[#00aad2] text-white" : "text-gray-400 hover:bg-gray-50"
+                                    }`}>
+                                      {term}mo
+                                    </div>
+                                  ))}
+                                </div>
+                                
+                                {/* Vehicle info */}
+                                <div className="p-2">
+                                  <div className="font-semibold text-[#022d60] text-xs truncate">
+                                    {vehicle.year} {vehicle.make} {vehicle.model}
+                                  </div>
+                                  <div className="text-gray-500 text-[8px] truncate">{vehicle.trim || "Premium"}</div>
+                                  <div className="flex items-center justify-between mt-1 text-[8px] text-gray-400">
+                                    <span>{vehicle.odometer?.toLocaleString() || "15,000"} km</span>
+                                    <span className="text-[#00aad2]">{12 + i * 5} views (24h)</span>
+                                  </div>
+                                </div>
+                                
+                                {/* CTAs */}
+                                <div className="flex gap-1 p-2 pt-0">
+                                  <button className="flex-1 bg-[#00aad2] text-white text-[8px] py-1.5 rounded font-medium hover:bg-[#0099c0]">
+                                    Book Test Drive
+                                  </button>
+                                  <button className="flex-1 border border-[#022d60] text-[#022d60] text-[8px] py-1.5 rounded font-medium hover:bg-gray-50">
+                                    Reserve Vehicle
+                                  </button>
+                                </div>
                               </div>
-                              <div className="text-white/90 text-sm font-medium truncate">
-                                {vehicle.year} {vehicle.make} {vehicle.model}
-                              </div>
-                              <div className="text-[#00aad2] text-sm font-bold">
-                                ${vehicle.price?.toLocaleString()}
-                              </div>
-                            </div>
-                          ))
+                            );
+                          })
                         ) : (
                           [1, 2, 3].map((i) => (
-                            <div key={i} className="bg-white/10 backdrop-blur rounded-lg p-4 space-y-3 animate-pulse">
-                              <div className="aspect-[4/3] bg-white/20 rounded-md flex items-center justify-center">
-                                <Car className="w-8 h-8 text-white/60" />
+                            <div key={i} className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200 animate-pulse">
+                              <div className="aspect-[4/3] bg-gray-200 flex items-center justify-center">
+                                <Car className="w-8 h-8 text-gray-300" />
                               </div>
-                              <div className="h-2 bg-white/30 rounded w-3/4" />
-                              <div className="h-2 bg-white/20 rounded w-1/2" />
+                              <div className="p-3 space-y-2">
+                                <div className="h-3 bg-gray-200 rounded w-3/4" />
+                                <div className="h-2 bg-gray-100 rounded w-1/2" />
+                              </div>
                             </div>
                           ))
                         )}
@@ -223,38 +292,38 @@ export default function LandingPage() {
             {[
               {
                 icon: Car,
-                title: "Zero-Touch Inventory Sync",
-                description: "Your inventory updates automatically from CarGurus, AutoTrader, and your DMS. No manual uploads. No stale listings. Ever.",
+                title: "We Sync With Your DMS. You Do Nothing.",
+                description: "Direct integration with PBS, CDK, vAuto, and more. No manual uploads. No stale listings. If it's on your lot, it's online.",
                 color: "from-blue-500 to-blue-600"
               },
               {
                 icon: MessageSquare,
-                title: "AI Trained on Messages & Calls",
-                description: "Our AI analyzes every customer message and call to understand intent, qualify leads, and respond intelligently—24/7.",
+                title: "The BDC Rep That Never Sleeps, Calls in Sick, or Quits.",
+                description: "Our AI handles every message and call—qualifying leads, answering questions, and booking appointments at 3 AM while your team rests.",
                 color: "from-purple-500 to-purple-600"
               },
               {
                 icon: Calculator,
-                title: "Vehicle Appraisal Tool",
-                description: "Get instant trade-in valuations using real market data. Give customers accurate appraisals that build trust and close deals.",
+                title: "Instant Trade-In Appraisals That Close Deals.",
+                description: "Give customers accurate valuations using real market data. Build trust, eliminate back-and-forth, and get them in the door faster.",
                 color: "from-green-500 to-green-600"
               },
               {
                 icon: BarChart3,
-                title: "Market Analysis Tool",
-                description: "See how your inventory stacks up against the competition. Price smarter with real-time market intelligence.",
+                title: "Know Exactly How to Price Every Car.",
+                description: "See how your inventory stacks up against every competitor in your market. Price smarter. Sell faster. Stop guessing.",
                 color: "from-orange-500 to-orange-600"
               },
               {
                 icon: Facebook,
-                title: "Dominate Facebook Marketplace",
-                description: "Post vehicles to Facebook with one click. Sync your entire catalog for paid automotive ads. Win the marketplace.",
+                title: "Hijack Facebook Traffic Automatically.",
+                description: "We post your entire inventory to Marketplace daily. When a car sells, we pull it down. Zero admin work. Maximum exposure.",
                 color: "from-sky-500 to-sky-600"
               },
               {
                 icon: Building2,
-                title: "Built for Dealer Groups",
-                description: "Each location gets its own branded site. Manage everything from one dashboard with role-based access.",
+                title: "One Dashboard. Every Location.",
+                description: "Each store gets its own branded site. Manage inventory, leads, and staff from one place with role-based access control.",
                 color: "from-rose-500 to-rose-600"
               }
             ].map((feature, index) => (
