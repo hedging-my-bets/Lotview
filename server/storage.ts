@@ -206,7 +206,21 @@ import {
   type InsertSequenceAnalytics,
   vehicleAppraisals,
   type VehicleAppraisal,
-  type InsertVehicleAppraisal
+  type InsertVehicleAppraisal,
+  crmContacts,
+  type CrmContact,
+  type InsertCrmContact,
+  crmTags,
+  type CrmTag,
+  type InsertCrmTag,
+  crmContactTags,
+  type CrmContactTag,
+  crmActivities,
+  type CrmActivity,
+  type InsertCrmActivity,
+  crmTasks,
+  type CrmTask,
+  type InsertCrmTask
 } from "@shared/schema";
 import { eq, desc, sql, and, gte, lte, lt, gt, inArray, or, ilike } from "drizzle-orm";
 
@@ -743,6 +757,46 @@ export interface IStorage {
   createVehicleAppraisal(appraisal: InsertVehicleAppraisal): Promise<VehicleAppraisal>;
   updateVehicleAppraisal(id: number, dealershipId: number, appraisal: Partial<InsertVehicleAppraisal>): Promise<VehicleAppraisal | undefined>;
   deleteVehicleAppraisal(id: number, dealershipId: number): Promise<boolean>;
+  
+  // ====== CRM CONTACTS ======
+  getCrmContacts(dealershipId: number, filters?: { 
+    ownerId?: number;
+    status?: string;
+    leadSource?: string;
+    search?: string;
+    tagIds?: number[];
+  }, pagination?: { limit?: number; offset?: number }, sorting?: { field?: string; direction?: 'asc' | 'desc' }): Promise<{ contacts: CrmContact[]; total: number }>;
+  getCrmContactById(id: number, dealershipId: number): Promise<CrmContact | undefined>;
+  createCrmContact(contact: InsertCrmContact): Promise<CrmContact>;
+  updateCrmContact(id: number, dealershipId: number, contact: Partial<InsertCrmContact>): Promise<CrmContact | undefined>;
+  deleteCrmContact(id: number, dealershipId: number): Promise<boolean>;
+  
+  // ====== CRM TAGS ======
+  getCrmTags(dealershipId: number): Promise<CrmTag[]>;
+  createCrmTag(tag: InsertCrmTag): Promise<CrmTag>;
+  updateCrmTag(id: number, dealershipId: number, tag: Partial<InsertCrmTag>): Promise<CrmTag | undefined>;
+  deleteCrmTag(id: number, dealershipId: number): Promise<boolean>;
+  addTagToContact(contactId: number, tagId: number, addedById?: number): Promise<CrmContactTag>;
+  removeTagFromContact(contactId: number, tagId: number): Promise<boolean>;
+  getContactTags(contactId: number): Promise<CrmTag[]>;
+  
+  // ====== CRM ACTIVITIES ======
+  getCrmActivities(contactId: number, dealershipId: number, limit?: number): Promise<CrmActivity[]>;
+  createCrmActivity(activity: InsertCrmActivity): Promise<CrmActivity>;
+  
+  // ====== CRM TASKS ======
+  getCrmTasks(dealershipId: number, filters?: {
+    assignedToId?: number;
+    contactId?: number;
+    status?: string;
+    priority?: string;
+    dueAfter?: Date;
+    dueBefore?: Date;
+  }, limit?: number): Promise<CrmTask[]>;
+  getCrmTaskById(id: number, dealershipId: number): Promise<CrmTask | undefined>;
+  createCrmTask(task: InsertCrmTask): Promise<CrmTask>;
+  updateCrmTask(id: number, dealershipId: number, task: Partial<InsertCrmTask>): Promise<CrmTask | undefined>;
+  deleteCrmTask(id: number, dealershipId: number): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4987,6 +5041,253 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(vehicleAppraisals.id, id),
         eq(vehicleAppraisals.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result.length > 0;
+  }
+  
+  // ====== CRM CONTACTS ======
+  async getCrmContacts(
+    dealershipId: number, 
+    filters?: { 
+      ownerId?: number;
+      status?: string;
+      leadSource?: string;
+      search?: string;
+      tagIds?: number[];
+    }, 
+    pagination?: { limit?: number; offset?: number }, 
+    sorting?: { field?: string; direction?: 'asc' | 'desc' }
+  ): Promise<{ contacts: CrmContact[]; total: number }> {
+    const conditions: any[] = [eq(crmContacts.dealershipId, dealershipId)];
+    
+    if (filters?.ownerId) {
+      conditions.push(eq(crmContacts.ownerId, filters.ownerId));
+    }
+    if (filters?.status) {
+      conditions.push(eq(crmContacts.status, filters.status));
+    }
+    if (filters?.leadSource) {
+      conditions.push(eq(crmContacts.leadSource, filters.leadSource));
+    }
+    if (filters?.search) {
+      const searchTerm = `%${filters.search}%`;
+      conditions.push(
+        or(
+          ilike(crmContacts.firstName, searchTerm),
+          ilike(crmContacts.lastName, searchTerm),
+          ilike(crmContacts.email, searchTerm),
+          ilike(crmContacts.phone, searchTerm)
+        )
+      );
+    }
+    
+    const countResult = await db.select({ count: sql<number>`count(*)` })
+      .from(crmContacts)
+      .where(and(...conditions));
+    
+    const limit = pagination?.limit || 50;
+    const offset = pagination?.offset || 0;
+    
+    let query = db.select()
+      .from(crmContacts)
+      .where(and(...conditions))
+      .limit(limit)
+      .offset(offset);
+    
+    const contacts = await query.orderBy(desc(crmContacts.createdAt));
+    
+    return { contacts, total: Number(countResult[0]?.count || 0) };
+  }
+  
+  async getCrmContactById(id: number, dealershipId: number): Promise<CrmContact | undefined> {
+    const result = await db.select()
+      .from(crmContacts)
+      .where(and(
+        eq(crmContacts.id, id),
+        eq(crmContacts.dealershipId, dealershipId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+  
+  async createCrmContact(contact: InsertCrmContact): Promise<CrmContact> {
+    const result = await db.insert(crmContacts).values(contact).returning();
+    return result[0];
+  }
+  
+  async updateCrmContact(id: number, dealershipId: number, contact: Partial<InsertCrmContact>): Promise<CrmContact | undefined> {
+    const result = await db.update(crmContacts)
+      .set({ ...contact, updatedAt: new Date() })
+      .where(and(
+        eq(crmContacts.id, id),
+        eq(crmContacts.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+  
+  async deleteCrmContact(id: number, dealershipId: number): Promise<boolean> {
+    const result = await db.delete(crmContacts)
+      .where(and(
+        eq(crmContacts.id, id),
+        eq(crmContacts.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result.length > 0;
+  }
+  
+  // ====== CRM TAGS ======
+  async getCrmTags(dealershipId: number): Promise<CrmTag[]> {
+    return await db.select()
+      .from(crmTags)
+      .where(eq(crmTags.dealershipId, dealershipId))
+      .orderBy(crmTags.name);
+  }
+  
+  async createCrmTag(tag: InsertCrmTag): Promise<CrmTag> {
+    const result = await db.insert(crmTags).values(tag).returning();
+    return result[0];
+  }
+  
+  async updateCrmTag(id: number, dealershipId: number, tag: Partial<InsertCrmTag>): Promise<CrmTag | undefined> {
+    const result = await db.update(crmTags)
+      .set(tag)
+      .where(and(
+        eq(crmTags.id, id),
+        eq(crmTags.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+  
+  async deleteCrmTag(id: number, dealershipId: number): Promise<boolean> {
+    const result = await db.delete(crmTags)
+      .where(and(
+        eq(crmTags.id, id),
+        eq(crmTags.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result.length > 0;
+  }
+  
+  async addTagToContact(contactId: number, tagId: number, addedById?: number): Promise<CrmContactTag> {
+    const result = await db.insert(crmContactTags).values({
+      contactId,
+      tagId,
+      addedById
+    }).returning();
+    return result[0];
+  }
+  
+  async removeTagFromContact(contactId: number, tagId: number): Promise<boolean> {
+    const result = await db.delete(crmContactTags)
+      .where(and(
+        eq(crmContactTags.contactId, contactId),
+        eq(crmContactTags.tagId, tagId)
+      ))
+      .returning();
+    return result.length > 0;
+  }
+  
+  async getContactTags(contactId: number): Promise<CrmTag[]> {
+    const result = await db.select({ tag: crmTags })
+      .from(crmContactTags)
+      .innerJoin(crmTags, eq(crmContactTags.tagId, crmTags.id))
+      .where(eq(crmContactTags.contactId, contactId));
+    return result.map(r => r.tag);
+  }
+  
+  // ====== CRM ACTIVITIES ======
+  async getCrmActivities(contactId: number, dealershipId: number, limit: number = 50): Promise<CrmActivity[]> {
+    return await db.select()
+      .from(crmActivities)
+      .where(and(
+        eq(crmActivities.contactId, contactId),
+        eq(crmActivities.dealershipId, dealershipId)
+      ))
+      .orderBy(desc(crmActivities.createdAt))
+      .limit(limit);
+  }
+  
+  async createCrmActivity(activity: InsertCrmActivity): Promise<CrmActivity> {
+    const result = await db.insert(crmActivities).values(activity).returning();
+    return result[0];
+  }
+  
+  // ====== CRM TASKS ======
+  async getCrmTasks(
+    dealershipId: number, 
+    filters?: {
+      assignedToId?: number;
+      contactId?: number;
+      status?: string;
+      priority?: string;
+      dueAfter?: Date;
+      dueBefore?: Date;
+    }, 
+    limit: number = 100
+  ): Promise<CrmTask[]> {
+    const conditions: any[] = [eq(crmTasks.dealershipId, dealershipId)];
+    
+    if (filters?.assignedToId) {
+      conditions.push(eq(crmTasks.assignedToId, filters.assignedToId));
+    }
+    if (filters?.contactId) {
+      conditions.push(eq(crmTasks.contactId, filters.contactId));
+    }
+    if (filters?.status) {
+      conditions.push(eq(crmTasks.status, filters.status));
+    }
+    if (filters?.priority) {
+      conditions.push(eq(crmTasks.priority, filters.priority));
+    }
+    if (filters?.dueAfter) {
+      conditions.push(gte(crmTasks.dueAt, filters.dueAfter));
+    }
+    if (filters?.dueBefore) {
+      conditions.push(lte(crmTasks.dueAt, filters.dueBefore));
+    }
+    
+    return await db.select()
+      .from(crmTasks)
+      .where(and(...conditions))
+      .orderBy(crmTasks.dueAt)
+      .limit(limit);
+  }
+  
+  async getCrmTaskById(id: number, dealershipId: number): Promise<CrmTask | undefined> {
+    const result = await db.select()
+      .from(crmTasks)
+      .where(and(
+        eq(crmTasks.id, id),
+        eq(crmTasks.dealershipId, dealershipId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+  
+  async createCrmTask(task: InsertCrmTask): Promise<CrmTask> {
+    const result = await db.insert(crmTasks).values(task).returning();
+    return result[0];
+  }
+  
+  async updateCrmTask(id: number, dealershipId: number, task: Partial<InsertCrmTask>): Promise<CrmTask | undefined> {
+    const result = await db.update(crmTasks)
+      .set({ ...task, updatedAt: new Date() })
+      .where(and(
+        eq(crmTasks.id, id),
+        eq(crmTasks.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+  
+  async deleteCrmTask(id: number, dealershipId: number): Promise<boolean> {
+    const result = await db.delete(crmTasks)
+      .where(and(
+        eq(crmTasks.id, id),
+        eq(crmTasks.dealershipId, dealershipId)
       ))
       .returning();
     return result.length > 0;

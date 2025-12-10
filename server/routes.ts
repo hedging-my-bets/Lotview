@@ -11,6 +11,10 @@ import {
   insertPostingQueueSchema,
   insertPostingScheduleSchema,
   insertVehicleAppraisalSchema,
+  insertCrmContactSchema,
+  insertCrmTagSchema,
+  insertCrmActivitySchema,
+  insertCrmTaskSchema,
   ghlAccounts,
   ghlContactSync,
   dealershipContacts
@@ -9911,6 +9915,453 @@ Format your response in clear sections with actionable recommendations.`;
     } catch (error) {
       console.error("Error recording conversion:", error);
       res.status(500).json({ error: "Failed to record conversion" });
+    }
+  });
+
+  // ===== CRM CONTACTS =====
+  
+  // Get all CRM contacts (with RBAC - salespeople see own, managers see all)
+  app.get("/api/crm/contacts", authMiddleware, requireRole('salesperson', 'manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const userId = req.user?.id;
+      const userRole = req.user?.role;
+      
+      // Build filters from query params
+      const filters: any = {};
+      
+      // Salespeople can only see their own contacts
+      if (userRole === 'salesperson') {
+        filters.ownerId = userId;
+      } else if (req.query.ownerId) {
+        filters.ownerId = parseInt(req.query.ownerId as string);
+      }
+      
+      if (req.query.status) filters.status = req.query.status as string;
+      if (req.query.leadSource) filters.leadSource = req.query.leadSource as string;
+      if (req.query.search) filters.search = req.query.search as string;
+      
+      const pagination = {
+        limit: req.query.limit ? parseInt(req.query.limit as string) : 50,
+        offset: req.query.offset ? parseInt(req.query.offset as string) : 0
+      };
+      
+      const sorting = {
+        field: req.query.sortField as string,
+        direction: req.query.sortDirection as 'asc' | 'desc'
+      };
+      
+      const result = await storage.getCrmContacts(dealershipId, filters, pagination, sorting);
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching CRM contacts:", error);
+      res.status(500).json({ error: "Failed to fetch contacts" });
+    }
+  });
+  
+  // Create a new CRM contact
+  app.post("/api/crm/contacts", authMiddleware, requireRole('salesperson', 'manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const userId = req.user?.id;
+      
+      const parseResult = insertCrmContactSchema.safeParse({
+        ...req.body,
+        dealershipId,
+        createdById: userId,
+        ownerId: req.body.ownerId || userId
+      });
+      
+      if (!parseResult.success) {
+        return res.status(400).json({ error: fromZodError(parseResult.error).message });
+      }
+      
+      const contact = await storage.createCrmContact(parseResult.data);
+      
+      // Log creation activity
+      await storage.createCrmActivity({
+        contactId: contact.id,
+        dealershipId,
+        type: 'contact_created',
+        description: 'Contact was created',
+        performedById: userId
+      });
+      
+      res.status(201).json(contact);
+    } catch (error) {
+      console.error("Error creating CRM contact:", error);
+      res.status(500).json({ error: "Failed to create contact" });
+    }
+  });
+  
+  // Get a single CRM contact by ID
+  app.get("/api/crm/contacts/:id", authMiddleware, requireRole('salesperson', 'manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const id = parseInt(req.params.id);
+      const userId = req.user?.id;
+      const userRole = req.user?.role;
+      
+      const contact = await storage.getCrmContactById(id, dealershipId);
+      
+      if (!contact) {
+        return res.status(404).json({ error: "Contact not found" });
+      }
+      
+      // Salespeople can only access their own contacts
+      if (userRole === 'salesperson' && contact.ownerId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      
+      res.json(contact);
+    } catch (error) {
+      console.error("Error fetching CRM contact:", error);
+      res.status(500).json({ error: "Failed to fetch contact" });
+    }
+  });
+  
+  // Update a CRM contact
+  app.patch("/api/crm/contacts/:id", authMiddleware, requireRole('salesperson', 'manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const id = parseInt(req.params.id);
+      const userId = req.user?.id;
+      const userRole = req.user?.role;
+      
+      // Check contact exists and access rights
+      const existing = await storage.getCrmContactById(id, dealershipId);
+      if (!existing) {
+        return res.status(404).json({ error: "Contact not found" });
+      }
+      
+      // Salespeople can only update their own contacts
+      if (userRole === 'salesperson' && existing.ownerId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      
+      const contact = await storage.updateCrmContact(id, dealershipId, req.body);
+      
+      // Log update activity
+      await storage.createCrmActivity({
+        contactId: id,
+        dealershipId,
+        type: 'contact_updated',
+        description: 'Contact information was updated',
+        performedById: userId
+      });
+      
+      res.json(contact);
+    } catch (error) {
+      console.error("Error updating CRM contact:", error);
+      res.status(500).json({ error: "Failed to update contact" });
+    }
+  });
+  
+  // Delete a CRM contact
+  app.delete("/api/crm/contacts/:id", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const id = parseInt(req.params.id);
+      
+      const deleted = await storage.deleteCrmContact(id, dealershipId);
+      
+      if (!deleted) {
+        return res.status(404).json({ error: "Contact not found" });
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting CRM contact:", error);
+      res.status(500).json({ error: "Failed to delete contact" });
+    }
+  });
+  
+  // ===== CRM TAGS =====
+  
+  // Get all CRM tags for dealership
+  app.get("/api/crm/tags", authMiddleware, requireRole('salesperson', 'manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const tags = await storage.getCrmTags(dealershipId);
+      res.json(tags);
+    } catch (error) {
+      console.error("Error fetching CRM tags:", error);
+      res.status(500).json({ error: "Failed to fetch tags" });
+    }
+  });
+  
+  // Create a new CRM tag
+  app.post("/api/crm/tags", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const userId = req.user?.id;
+      
+      const parseResult = insertCrmTagSchema.safeParse({
+        ...req.body,
+        dealershipId,
+        createdById: userId
+      });
+      
+      if (!parseResult.success) {
+        return res.status(400).json({ error: fromZodError(parseResult.error).message });
+      }
+      
+      const tag = await storage.createCrmTag(parseResult.data);
+      res.status(201).json(tag);
+    } catch (error) {
+      console.error("Error creating CRM tag:", error);
+      res.status(500).json({ error: "Failed to create tag" });
+    }
+  });
+  
+  // Update a CRM tag
+  app.patch("/api/crm/tags/:id", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const id = parseInt(req.params.id);
+      
+      const tag = await storage.updateCrmTag(id, dealershipId, req.body);
+      
+      if (!tag) {
+        return res.status(404).json({ error: "Tag not found" });
+      }
+      
+      res.json(tag);
+    } catch (error) {
+      console.error("Error updating CRM tag:", error);
+      res.status(500).json({ error: "Failed to update tag" });
+    }
+  });
+  
+  // Delete a CRM tag
+  app.delete("/api/crm/tags/:id", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const id = parseInt(req.params.id);
+      
+      const deleted = await storage.deleteCrmTag(id, dealershipId);
+      
+      if (!deleted) {
+        return res.status(404).json({ error: "Tag not found" });
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting CRM tag:", error);
+      res.status(500).json({ error: "Failed to delete tag" });
+    }
+  });
+  
+  // Add tag to contact
+  app.post("/api/crm/contacts/:id/tags/:tagId", authMiddleware, requireRole('salesperson', 'manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const contactId = parseInt(req.params.id);
+      const tagId = parseInt(req.params.tagId);
+      const userId = req.user?.id;
+      
+      const contactTag = await storage.addTagToContact(contactId, tagId, userId);
+      res.status(201).json(contactTag);
+    } catch (error) {
+      console.error("Error adding tag to contact:", error);
+      res.status(500).json({ error: "Failed to add tag" });
+    }
+  });
+  
+  // Remove tag from contact
+  app.delete("/api/crm/contacts/:id/tags/:tagId", authMiddleware, requireRole('salesperson', 'manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const contactId = parseInt(req.params.id);
+      const tagId = parseInt(req.params.tagId);
+      
+      const removed = await storage.removeTagFromContact(contactId, tagId);
+      
+      if (!removed) {
+        return res.status(404).json({ error: "Tag not found on contact" });
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error removing tag from contact:", error);
+      res.status(500).json({ error: "Failed to remove tag" });
+    }
+  });
+  
+  // Get tags for a contact
+  app.get("/api/crm/contacts/:id/tags", authMiddleware, requireRole('salesperson', 'manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const contactId = parseInt(req.params.id);
+      const tags = await storage.getContactTags(contactId);
+      res.json(tags);
+    } catch (error) {
+      console.error("Error fetching contact tags:", error);
+      res.status(500).json({ error: "Failed to fetch tags" });
+    }
+  });
+  
+  // ===== CRM ACTIVITIES =====
+  
+  // Get activity timeline for a contact
+  app.get("/api/crm/contacts/:id/activities", authMiddleware, requireRole('salesperson', 'manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const contactId = parseInt(req.params.id);
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      
+      const activities = await storage.getCrmActivities(contactId, dealershipId, limit);
+      res.json(activities);
+    } catch (error) {
+      console.error("Error fetching CRM activities:", error);
+      res.status(500).json({ error: "Failed to fetch activities" });
+    }
+  });
+  
+  // Log a new activity for a contact
+  app.post("/api/crm/contacts/:id/activities", authMiddleware, requireRole('salesperson', 'manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const contactId = parseInt(req.params.id);
+      const userId = req.user?.id;
+      
+      const parseResult = insertCrmActivitySchema.safeParse({
+        ...req.body,
+        contactId,
+        dealershipId,
+        performedById: userId
+      });
+      
+      if (!parseResult.success) {
+        return res.status(400).json({ error: fromZodError(parseResult.error).message });
+      }
+      
+      const activity = await storage.createCrmActivity(parseResult.data);
+      res.status(201).json(activity);
+    } catch (error) {
+      console.error("Error creating CRM activity:", error);
+      res.status(500).json({ error: "Failed to create activity" });
+    }
+  });
+  
+  // ===== CRM TASKS =====
+  
+  // Get CRM tasks
+  app.get("/api/crm/tasks", authMiddleware, requireRole('salesperson', 'manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const userId = req.user?.id;
+      const userRole = req.user?.role;
+      
+      const filters: any = {};
+      
+      // Salespeople see only their assigned tasks
+      if (userRole === 'salesperson') {
+        filters.assignedToId = userId;
+      } else if (req.query.assignedToId) {
+        filters.assignedToId = parseInt(req.query.assignedToId as string);
+      }
+      
+      if (req.query.contactId) filters.contactId = parseInt(req.query.contactId as string);
+      if (req.query.status) filters.status = req.query.status as string;
+      if (req.query.priority) filters.priority = req.query.priority as string;
+      if (req.query.dueAfter) filters.dueAfter = new Date(req.query.dueAfter as string);
+      if (req.query.dueBefore) filters.dueBefore = new Date(req.query.dueBefore as string);
+      
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
+      
+      const tasks = await storage.getCrmTasks(dealershipId, filters, limit);
+      res.json(tasks);
+    } catch (error) {
+      console.error("Error fetching CRM tasks:", error);
+      res.status(500).json({ error: "Failed to fetch tasks" });
+    }
+  });
+  
+  // Get a single CRM task by ID
+  app.get("/api/crm/tasks/:id", authMiddleware, requireRole('salesperson', 'manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const id = parseInt(req.params.id);
+      
+      const task = await storage.getCrmTaskById(id, dealershipId);
+      
+      if (!task) {
+        return res.status(404).json({ error: "Task not found" });
+      }
+      
+      res.json(task);
+    } catch (error) {
+      console.error("Error fetching CRM task:", error);
+      res.status(500).json({ error: "Failed to fetch task" });
+    }
+  });
+  
+  // Create a new CRM task
+  app.post("/api/crm/tasks", authMiddleware, requireRole('salesperson', 'manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const userId = req.user?.id;
+      
+      const parseResult = insertCrmTaskSchema.safeParse({
+        ...req.body,
+        dealershipId,
+        createdById: userId,
+        assignedToId: req.body.assignedToId || userId
+      });
+      
+      if (!parseResult.success) {
+        return res.status(400).json({ error: fromZodError(parseResult.error).message });
+      }
+      
+      const task = await storage.createCrmTask(parseResult.data);
+      res.status(201).json(task);
+    } catch (error) {
+      console.error("Error creating CRM task:", error);
+      res.status(500).json({ error: "Failed to create task" });
+    }
+  });
+  
+  // Update a CRM task
+  app.patch("/api/crm/tasks/:id", authMiddleware, requireRole('salesperson', 'manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const id = parseInt(req.params.id);
+      const userId = req.user?.id;
+      const userRole = req.user?.role;
+      
+      // Check task exists
+      const existing = await storage.getCrmTaskById(id, dealershipId);
+      if (!existing) {
+        return res.status(404).json({ error: "Task not found" });
+      }
+      
+      // Salespeople can only update their own tasks
+      if (userRole === 'salesperson' && existing.assignedToId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      
+      const task = await storage.updateCrmTask(id, dealershipId, req.body);
+      res.json(task);
+    } catch (error) {
+      console.error("Error updating CRM task:", error);
+      res.status(500).json({ error: "Failed to update task" });
+    }
+  });
+  
+  // Delete a CRM task
+  app.delete("/api/crm/tasks/:id", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const id = parseInt(req.params.id);
+      
+      const deleted = await storage.deleteCrmTask(id, dealershipId);
+      
+      if (!deleted) {
+        return res.status(404).json({ error: "Task not found" });
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting CRM task:", error);
+      res.status(500).json({ error: "Failed to delete task" });
     }
   });
   

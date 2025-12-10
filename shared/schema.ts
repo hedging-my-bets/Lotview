@@ -2046,3 +2046,273 @@ export const insertVehicleAppraisalSchema = createInsertSchema(vehicleAppraisals
 
 export type InsertVehicleAppraisal = z.infer<typeof insertVehicleAppraisalSchema>;
 export type VehicleAppraisal = typeof vehicleAppraisals.$inferSelect;
+
+// ====== CRM CONTACT DATABASE ======
+// Unified customer contact database for omnichannel messaging and relationship management
+
+export const crmContacts = pgTable("crm_contacts", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  // Ownership & assignment
+  ownerId: integer("owner_id").references(() => users.id, { onDelete: 'set null' }), // Assigned salesperson
+  createdById: integer("created_by_id").references(() => users.id, { onDelete: 'set null' }), // Who created the contact
+  // Core identity
+  firstName: text("first_name").notNull(),
+  lastName: text("last_name"),
+  email: text("email"),
+  phone: text("phone"),
+  secondaryPhone: text("secondary_phone"),
+  // Social/messaging identifiers
+  facebookId: text("facebook_id"), // Facebook Messenger ID
+  facebookName: text("facebook_name"),
+  // Address
+  address: text("address"),
+  city: text("city"),
+  province: text("province"),
+  postalCode: text("postal_code"),
+  country: text("country").default('Canada'),
+  // Lead/Customer status
+  status: text("status").notNull().default('lead'), // 'lead', 'prospect', 'customer', 'lost', 'inactive'
+  leadSource: text("lead_source"), // 'website', 'facebook', 'walk-in', 'referral', 'phone', 'trade-in', etc.
+  leadScore: integer("lead_score").default(0), // AI-calculated lead score (0-100)
+  // Vehicle interests
+  interestedVehicleIds: text("interested_vehicle_ids"), // JSON array of vehicle IDs
+  preferredMake: text("preferred_make"),
+  preferredModel: text("preferred_model"),
+  preferredPriceMin: integer("preferred_price_min"),
+  preferredPriceMax: integer("preferred_price_max"),
+  tradeInVehicle: text("trade_in_vehicle"), // Description of trade-in
+  tradeInValue: integer("trade_in_value"), // Estimated trade-in value (cents)
+  // Engagement tracking
+  lastContactedAt: timestamp("last_contacted_at"), // When we last reached out
+  lastRespondedAt: timestamp("last_responded_at"), // When they last responded
+  totalMessagesReceived: integer("total_messages_received").default(0),
+  totalMessagesSent: integer("total_messages_sent").default(0),
+  // Preferences
+  preferredContactMethod: text("preferred_contact_method").default('phone'), // 'phone', 'email', 'sms', 'facebook'
+  optInEmail: boolean("opt_in_email").default(true),
+  optInSms: boolean("opt_in_sms").default(true),
+  optInFacebook: boolean("opt_in_facebook").default(true),
+  timezone: text("timezone"),
+  // External CRM links
+  ghlContactId: text("ghl_contact_id"), // GoHighLevel contact ID
+  pbsContactId: text("pbs_contact_id"), // PBS DMS contact ID
+  // Notes and custom data
+  notes: text("notes"),
+  customFields: text("custom_fields"), // JSON for extensibility
+  // Timestamps
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertCrmContactSchema = createInsertSchema(crmContacts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertCrmContact = z.infer<typeof insertCrmContactSchema>;
+export type CrmContact = typeof crmContacts.$inferSelect;
+
+// CRM Contact Tags - Categorize contacts with tags
+export const crmTags = pgTable("crm_tags", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  name: text("name").notNull(),
+  color: text("color").default('#3B82F6'), // Hex color for display
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertCrmTagSchema = createInsertSchema(crmTags).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertCrmTag = z.infer<typeof insertCrmTagSchema>;
+export type CrmTag = typeof crmTags.$inferSelect;
+
+// CRM Contact-Tag Links - Many-to-many relationship
+export const crmContactTags = pgTable("crm_contact_tags", {
+  id: serial("id").primaryKey(),
+  contactId: integer("contact_id").notNull().references(() => crmContacts.id, { onDelete: 'cascade' }),
+  tagId: integer("tag_id").notNull().references(() => crmTags.id, { onDelete: 'cascade' }),
+  addedAt: timestamp("added_at").defaultNow().notNull(),
+  addedById: integer("added_by_id").references(() => users.id, { onDelete: 'set null' }),
+});
+
+export type CrmContactTag = typeof crmContactTags.$inferSelect;
+
+// CRM Contact Activities - Timeline of all interactions
+export const crmActivities = pgTable("crm_activities", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  contactId: integer("contact_id").notNull().references(() => crmContacts.id, { onDelete: 'cascade' }),
+  userId: integer("user_id").references(() => users.id, { onDelete: 'set null' }), // Who performed the activity
+  // Activity type and details
+  activityType: text("activity_type").notNull(), // 'call', 'email', 'sms', 'facebook', 'note', 'meeting', 'task', 'status_change', 'vehicle_view', 'test_drive'
+  direction: text("direction"), // 'inbound', 'outbound' for messages/calls
+  subject: text("subject"), // Email subject or activity title
+  content: text("content"), // Message content or activity description
+  // Delivery/status tracking
+  status: text("status").default('completed'), // 'pending', 'completed', 'failed', 'scheduled'
+  deliveryStatus: text("delivery_status"), // 'sent', 'delivered', 'read', 'failed', 'bounced'
+  // Related entities
+  vehicleId: integer("vehicle_id").references(() => vehicles.id, { onDelete: 'set null' }),
+  messageId: text("message_id"), // External message ID (email provider, SMS, etc.)
+  conversationId: integer("conversation_id").references(() => messengerConversations.id, { onDelete: 'set null' }),
+  // Metadata
+  metadata: text("metadata"), // JSON for additional data
+  // Timestamps
+  scheduledAt: timestamp("scheduled_at"), // For scheduled activities
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertCrmActivitySchema = createInsertSchema(crmActivities).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertCrmActivity = z.infer<typeof insertCrmActivitySchema>;
+export type CrmActivity = typeof crmActivities.$inferSelect;
+
+// CRM Messages - Outbound message queue and history
+export const crmMessages = pgTable("crm_messages", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  contactId: integer("contact_id").notNull().references(() => crmContacts.id, { onDelete: 'cascade' }),
+  sentById: integer("sent_by_id").references(() => users.id, { onDelete: 'set null' }),
+  // Message content
+  channel: text("channel").notNull(), // 'email', 'sms', 'facebook'
+  subject: text("subject"), // For email
+  content: text("content").notNull(),
+  templateId: integer("template_id"), // If using a template
+  // Recipient info (snapshot at send time)
+  recipientEmail: text("recipient_email"),
+  recipientPhone: text("recipient_phone"),
+  recipientFacebookId: text("recipient_facebook_id"),
+  // Delivery tracking
+  status: text("status").notNull().default('pending'), // 'pending', 'sent', 'delivered', 'read', 'failed', 'bounced'
+  externalMessageId: text("external_message_id"), // Provider's message ID
+  errorMessage: text("error_message"), // If failed
+  // Engagement tracking
+  openedAt: timestamp("opened_at"),
+  clickedAt: timestamp("clicked_at"),
+  repliedAt: timestamp("replied_at"),
+  // AI features
+  aiGenerated: boolean("ai_generated").default(false),
+  aiPromptUsed: text("ai_prompt_used"), // The prompt that generated this message
+  // Timestamps
+  scheduledAt: timestamp("scheduled_at"), // For scheduled sends
+  sentAt: timestamp("sent_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertCrmMessageSchema = createInsertSchema(crmMessages).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertCrmMessage = z.infer<typeof insertCrmMessageSchema>;
+export type CrmMessage = typeof crmMessages.$inferSelect;
+
+// CRM Message Templates - Reusable message templates with AI enhancement
+export const crmMessageTemplates = pgTable("crm_message_templates", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  createdById: integer("created_by_id").references(() => users.id, { onDelete: 'set null' }),
+  // Template details
+  name: text("name").notNull(),
+  channel: text("channel").notNull(), // 'email', 'sms', 'facebook'
+  category: text("category"), // 'follow-up', 'appointment', 'thank-you', 'promotion', 'custom'
+  subject: text("subject"), // For email
+  content: text("content").notNull(), // Supports {{placeholders}}
+  // Personalization fields available
+  availableFields: text("available_fields"), // JSON array of merge fields like ['firstName', 'vehicleName', 'dealershipName']
+  // Usage stats
+  timesUsed: integer("times_used").default(0),
+  // AI enhancement
+  aiEnhanced: boolean("ai_enhanced").default(false),
+  originalContent: text("original_content"), // Original before AI enhancement
+  // Status
+  isActive: boolean("is_active").default(true),
+  isDefault: boolean("is_default").default(false), // Default template for category
+  // Timestamps
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertCrmMessageTemplateSchema = createInsertSchema(crmMessageTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertCrmMessageTemplate = z.infer<typeof insertCrmMessageTemplateSchema>;
+export type CrmMessageTemplate = typeof crmMessageTemplates.$inferSelect;
+
+// CRM Tasks - Follow-up tasks for contacts
+export const crmTasks = pgTable("crm_tasks", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  contactId: integer("contact_id").references(() => crmContacts.id, { onDelete: 'cascade' }),
+  assignedToId: integer("assigned_to_id").references(() => users.id, { onDelete: 'set null' }),
+  createdById: integer("created_by_id").references(() => users.id, { onDelete: 'set null' }),
+  // Task details
+  title: text("title").notNull(),
+  description: text("description"),
+  taskType: text("task_type").notNull().default('follow-up'), // 'call', 'email', 'sms', 'meeting', 'follow-up', 'custom'
+  priority: text("priority").default('medium'), // 'low', 'medium', 'high', 'urgent'
+  // Status and timing
+  status: text("status").notNull().default('pending'), // 'pending', 'in_progress', 'completed', 'cancelled'
+  dueAt: timestamp("due_at"),
+  completedAt: timestamp("completed_at"),
+  reminderAt: timestamp("reminder_at"),
+  // AI-generated
+  aiGenerated: boolean("ai_generated").default(false),
+  aiReason: text("ai_reason"), // Why AI suggested this task
+  // Related entities
+  vehicleId: integer("vehicle_id").references(() => vehicles.id, { onDelete: 'set null' }),
+  // Timestamps
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertCrmTaskSchema = createInsertSchema(crmTasks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertCrmTask = z.infer<typeof insertCrmTaskSchema>;
+export type CrmTask = typeof crmTasks.$inferSelect;
+
+// CRM Saved Views - Custom list views for contacts
+export const crmSavedViews = pgTable("crm_saved_views", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  createdById: integer("created_by_id").references(() => users.id, { onDelete: 'cascade' }),
+  // View configuration
+  name: text("name").notNull(),
+  description: text("description"),
+  filters: text("filters").notNull(), // JSON object with filter criteria
+  sortField: text("sort_field").default('createdAt'),
+  sortDirection: text("sort_direction").default('desc'), // 'asc' or 'desc'
+  visibleColumns: text("visible_columns"), // JSON array of column IDs
+  // Sharing
+  isPublic: boolean("is_public").default(false), // Visible to all team members
+  isDefault: boolean("is_default").default(false), // User's default view
+  // Timestamps
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertCrmSavedViewSchema = createInsertSchema(crmSavedViews).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertCrmSavedView = z.infer<typeof insertCrmSavedViewSchema>;
+export type CrmSavedView = typeof crmSavedViews.$inferSelect;
