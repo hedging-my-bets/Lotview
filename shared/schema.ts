@@ -611,6 +611,41 @@ export const insertPostingScheduleSchema = createInsertSchema(postingSchedule).o
 export type InsertPostingSchedule = z.infer<typeof insertPostingScheduleSchema>;
 export type PostingSchedule = typeof postingSchedule.$inferSelect;
 
+// Facebook Page Settings - Per-page auto-posting configuration
+export const facebookPageSettings = pgTable("facebook_page_settings", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  userId: integer("user_id").notNull().references(() => users.id), // Salesperson who owns this page
+  facebookAccountId: integer("facebook_account_id").notNull().references(() => facebookAccounts.id, { onDelete: 'cascade' }),
+  pageId: text("page_id").notNull(), // Facebook Page ID
+  pageName: text("page_name").notNull(), // Display name
+  pageColor: text("page_color").notNull().default('#00aad2'), // Color for calendar display
+  // Posting settings
+  frequencyPreset: text("frequency_preset").notNull().default('balanced'), // 'aggressive', 'balanced', 'lightweight'
+  postsPerDay: integer("posts_per_day").notNull().default(3), // Max posts per day
+  startTime: text("start_time").notNull().default('09:00'), // HH:MM format
+  endTime: text("end_time").notNull().default('21:00'), // Quiet hours after this
+  intervalMinutes: integer("interval_minutes").notNull().default(120), // Time between posts
+  activeDays: text("active_days").array().notNull(), // Days to post (Mon, Tue, Wed, Thu, Fri, Sat, Sun)
+  // Template settings
+  defaultTemplateId: integer("default_template_id").references(() => adTemplates.id),
+  // Auto-posting control
+  isAutoPostingEnabled: boolean("is_auto_posting_enabled").notNull().default(false),
+  lastPostedAt: timestamp("last_posted_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertFacebookPageSettingsSchema = createInsertSchema(facebookPageSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastPostedAt: true,
+});
+
+export type InsertFacebookPageSettings = z.infer<typeof insertFacebookPageSettingsSchema>;
+export type FacebookPageSettings = typeof facebookPageSettings.$inferSelect;
+
 // Facebook Catalog configuration (for Automotive Inventory Ads)
 export const facebookCatalogConfig = pgTable("facebook_catalog_config", {
   id: serial("id").primaryKey(),
