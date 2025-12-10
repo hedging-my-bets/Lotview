@@ -26,6 +26,7 @@ import {
   postingSchedule,
   messengerConversations,
   messengerMessages,
+  scheduledMessages,
   conversationAssignments,
   remarketingVehicles,
   type Dealership,
@@ -78,6 +79,8 @@ import {
   type InsertMessengerConversation,
   type MessengerMessage,
   type InsertMessengerMessage,
+  type ScheduledMessage,
+  type InsertScheduledMessage,
   type ConversationAssignment,
   type InsertConversationAssignment,
   type RemarketingVehicle,
@@ -225,7 +228,7 @@ import {
   type CrmMessage,
   type InsertCrmMessage
 } from "@shared/schema";
-import { eq, desc, sql, and, gte, lte, lt, gt, inArray, or, ilike } from "drizzle-orm";
+import { eq, desc, asc, sql, and, gte, lte, lt, gt, inArray, or, ilike } from "drizzle-orm";
 
 export interface IStorage {
   // ====== SUPER ADMIN - GLOBAL SETTINGS ======
@@ -374,6 +377,16 @@ export interface IStorage {
   markMessagesAsRead(dealershipId: number, conversationId: number): Promise<void>;
   getMessengerMessageByGhlId(dealershipId: number, ghlMessageId: string): Promise<MessengerMessage | undefined>;
   getMessengerConversationByGhlId(dealershipId: number, ghlConversationId: string): Promise<MessengerConversation | undefined>;
+  updateMessengerMessage(id: number, dealershipId: number, data: Partial<InsertMessengerMessage>): Promise<MessengerMessage | undefined>;
+  
+  // Scheduled messages (Multi-Tenant)
+  getScheduledMessages(dealershipId: number, status?: string): Promise<ScheduledMessage[]>;
+  getScheduledMessagesByConversation(dealershipId: number, conversationId: number): Promise<ScheduledMessage[]>;
+  getPendingScheduledMessages(dealershipId: number): Promise<ScheduledMessage[]>;
+  getDueScheduledMessages(): Promise<ScheduledMessage[]>;
+  createScheduledMessage(message: InsertScheduledMessage): Promise<ScheduledMessage>;
+  updateScheduledMessage(id: number, dealershipId: number, data: Partial<InsertScheduledMessage>): Promise<ScheduledMessage | undefined>;
+  cancelScheduledMessage(id: number, dealershipId: number): Promise<boolean>;
   
   // Conversation assignments (Multi-Tenant)
   getConversationAssignment(dealershipId: number, conversationId: number): Promise<ConversationAssignment | undefined>;
@@ -1487,6 +1500,97 @@ export class DatabaseStorage implements IStorage {
       ))
       .limit(1);
     return result[0];
+  }
+
+  async updateMessengerMessage(id: number, dealershipId: number, data: Partial<InsertMessengerMessage>): Promise<MessengerMessage | undefined> {
+    const result = await db.update(messengerMessages)
+      .set(data)
+      .where(and(
+        eq(messengerMessages.id, id),
+        eq(messengerMessages.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+
+  // Scheduled messages (Multi-Tenant)
+  async getScheduledMessages(dealershipId: number, status?: string): Promise<ScheduledMessage[]> {
+    if (status) {
+      return await db.select()
+        .from(scheduledMessages)
+        .where(and(
+          eq(scheduledMessages.dealershipId, dealershipId),
+          eq(scheduledMessages.status, status)
+        ))
+        .orderBy(asc(scheduledMessages.scheduledAt));
+    }
+    return await db.select()
+      .from(scheduledMessages)
+      .where(eq(scheduledMessages.dealershipId, dealershipId))
+      .orderBy(asc(scheduledMessages.scheduledAt));
+  }
+
+  async getScheduledMessagesByConversation(dealershipId: number, conversationId: number): Promise<ScheduledMessage[]> {
+    return await db.select()
+      .from(scheduledMessages)
+      .where(and(
+        eq(scheduledMessages.dealershipId, dealershipId),
+        eq(scheduledMessages.conversationId, conversationId),
+        eq(scheduledMessages.status, 'pending')
+      ))
+      .orderBy(asc(scheduledMessages.scheduledAt));
+  }
+
+  async getPendingScheduledMessages(dealershipId: number): Promise<ScheduledMessage[]> {
+    return await db.select()
+      .from(scheduledMessages)
+      .where(and(
+        eq(scheduledMessages.dealershipId, dealershipId),
+        eq(scheduledMessages.status, 'pending')
+      ))
+      .orderBy(asc(scheduledMessages.scheduledAt));
+  }
+
+  async getDueScheduledMessages(): Promise<ScheduledMessage[]> {
+    const now = new Date();
+    return await db.select()
+      .from(scheduledMessages)
+      .where(and(
+        eq(scheduledMessages.status, 'pending'),
+        lte(scheduledMessages.scheduledAt, now)
+      ))
+      .orderBy(asc(scheduledMessages.scheduledAt));
+  }
+
+  async createScheduledMessage(message: InsertScheduledMessage): Promise<ScheduledMessage> {
+    if (!message.dealershipId) {
+      throw new Error('dealershipId is required when creating scheduled messages');
+    }
+    const result = await db.insert(scheduledMessages).values(message).returning();
+    return result[0];
+  }
+
+  async updateScheduledMessage(id: number, dealershipId: number, data: Partial<InsertScheduledMessage>): Promise<ScheduledMessage | undefined> {
+    const result = await db.update(scheduledMessages)
+      .set(data)
+      .where(and(
+        eq(scheduledMessages.id, id),
+        eq(scheduledMessages.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+
+  async cancelScheduledMessage(id: number, dealershipId: number): Promise<boolean> {
+    const result = await db.update(scheduledMessages)
+      .set({ status: 'cancelled' })
+      .where(and(
+        eq(scheduledMessages.id, id),
+        eq(scheduledMessages.dealershipId, dealershipId),
+        eq(scheduledMessages.status, 'pending')
+      ))
+      .returning();
+    return result.length > 0;
   }
 
   // Conversation assignments (Multi-Tenant)

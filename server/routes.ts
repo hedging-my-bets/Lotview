@@ -3647,6 +3647,110 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== SCHEDULED MESSAGES ROUTES =====
+
+  // Get scheduled messages for a conversation
+  app.get("/api/messenger-conversations/:id/scheduled", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const conversationId = parseInt(req.params.id);
+      
+      const scheduledMessages = await storage.getScheduledMessagesByConversation(dealershipId, conversationId);
+      res.json(scheduledMessages);
+    } catch (error) {
+      console.error("Error fetching scheduled messages:", error);
+      res.status(500).json({ error: "Failed to fetch scheduled messages" });
+    }
+  });
+
+  // Get all pending scheduled messages for dealership
+  app.get("/api/scheduled-messages", authMiddleware, requireRole("manager", "admin", "master", "super_admin"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const status = req.query.status as string | undefined;
+      
+      const scheduledMessages = await storage.getScheduledMessages(dealershipId, status);
+      res.json(scheduledMessages);
+    } catch (error) {
+      console.error("Error fetching scheduled messages:", error);
+      res.status(500).json({ error: "Failed to fetch scheduled messages" });
+    }
+  });
+
+  // Cancel a scheduled message
+  app.post("/api/scheduled-messages/:id/cancel", authMiddleware, requireRole("manager", "admin", "master", "super_admin"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const messageId = parseInt(req.params.id);
+      
+      const cancelled = await storage.cancelScheduledMessage(messageId, dealershipId);
+      
+      if (cancelled) {
+        res.json({ success: true });
+      } else {
+        res.status(404).json({ error: "Scheduled message not found or already sent" });
+      }
+    } catch (error) {
+      console.error("Error cancelling scheduled message:", error);
+      res.status(500).json({ error: "Failed to cancel scheduled message" });
+    }
+  });
+
+  // Toggle AI for a conversation
+  app.post("/api/messenger-conversations/:id/toggle-ai", authMiddleware, requireRole("manager", "admin", "master", "super_admin"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const conversationId = parseInt(req.params.id);
+      const { enabled, reason } = req.body;
+      
+      const conversation = await storage.updateMessengerConversation(conversationId, dealershipId, {
+        aiEnabled: enabled,
+        aiDisabledReason: enabled ? null : (reason || 'manual'),
+        aiDisabledAt: enabled ? null : new Date(),
+      });
+      
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+      
+      res.json({ success: true, aiEnabled: conversation.aiEnabled });
+    } catch (error) {
+      console.error("Error toggling AI:", error);
+      res.status(500).json({ error: "Failed to toggle AI" });
+    }
+  });
+
+  // ===== TRAINING MODE ROUTES =====
+
+  // Update AI prompt for a message (Training Mode)
+  app.patch("/api/messenger-messages/:id/training", authMiddleware, requireRole("manager", "admin", "master", "super_admin"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const messageId = parseInt(req.params.id);
+      const { editedPrompt, editReason } = req.body;
+      
+      if (!editedPrompt) {
+        return res.status(400).json({ error: "editedPrompt is required" });
+      }
+      
+      const updatedMessage = await storage.updateMessengerMessage(messageId, dealershipId, {
+        aiPromptEdited: editedPrompt,
+        aiPromptEditReason: editReason || null,
+        aiPromptEditedById: req.user?.id || null,
+        aiPromptEditedAt: new Date(),
+      });
+      
+      if (!updatedMessage) {
+        return res.status(404).json({ error: "Message not found" });
+      }
+      
+      res.json({ success: true, message: updatedMessage });
+    } catch (error) {
+      console.error("Error updating message training:", error);
+      res.status(500).json({ error: "Failed to update message training" });
+    }
+  });
+
   // ===== CHAT PROMPT ROUTES =====
 
   // Get all chat prompts - Manager and above

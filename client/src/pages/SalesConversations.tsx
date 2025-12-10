@@ -6,6 +6,17 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -34,6 +45,12 @@ import {
   Inbox,
   Users,
   Loader2,
+  Bot,
+  Brain,
+  CalendarClock,
+  Power,
+  X,
+  Sparkles,
 } from "lucide-react";
 import { format, isToday, isYesterday } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -53,6 +70,8 @@ type Conversation = {
     id: number;
     name: string;
   };
+  aiEnabled?: boolean;
+  aiDisabledReason?: string | null;
 };
 
 type Message = {
@@ -64,6 +83,17 @@ type Message = {
   isRead: boolean;
   attachmentType?: string;
   attachmentUrl?: string;
+  aiGenerated?: boolean;
+  aiPromptUsed?: string | null;
+  aiPromptEdited?: string | null;
+};
+
+type ScheduledMessage = {
+  id: number;
+  content: string;
+  scheduledFor: string;
+  status: string;
+  createdAt: string;
 };
 
 type SalesPerson = {
@@ -215,6 +245,12 @@ function ConversationList({
                       {conversation.lastMessage || "No messages yet"}
                     </p>
                     <div className="flex items-center gap-2 mt-2">
+                      {conversation.aiEnabled && (
+                        <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                          <Bot className="w-3 h-3 mr-1" />
+                          AI
+                        </Badge>
+                      )}
                       {conversation.assignedTo && (
                         <Badge variant="outline" className="text-xs">
                           <Users className="w-3 h-3 mr-1" />
@@ -238,31 +274,196 @@ function ConversationList({
   );
 }
 
+function TrainingDialog({
+  message,
+  isOpen,
+  onClose,
+  onSave,
+  isSaving,
+}: {
+  message: Message | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onSave: (editedPrompt: string, reason: string) => void;
+  isSaving: boolean;
+}) {
+  const [editedPrompt, setEditedPrompt] = useState("");
+  const [reason, setReason] = useState("");
+
+  useEffect(() => {
+    if (message?.aiPromptUsed) {
+      setEditedPrompt(message.aiPromptUsed);
+    }
+    setReason("");
+  }, [message]);
+
+  const handleSave = () => {
+    if (editedPrompt.trim() && reason.trim()) {
+      onSave(editedPrompt.trim(), reason.trim());
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[600px]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Brain className="w-5 h-5 text-purple-500" />
+            AI Training Feedback
+          </DialogTitle>
+          <DialogDescription>
+            Help improve AI responses by providing feedback on this AI-generated message.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">AI Generated Message</Label>
+            <div className="p-3 rounded-md bg-muted text-sm">
+              {message?.content}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="prompt" className="text-sm font-medium">
+              Original AI Prompt
+            </Label>
+            <Textarea
+              id="prompt"
+              value={editedPrompt}
+              onChange={(e) => setEditedPrompt(e.target.value)}
+              placeholder="Edit the prompt to improve future AI responses..."
+              className="min-h-[120px]"
+              data-testid="textarea-edit-prompt"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="reason" className="text-sm font-medium">
+              Reason for Edit
+            </Label>
+            <Textarea
+              id="reason"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Explain why you made these changes..."
+              className="min-h-[80px]"
+              data-testid="textarea-edit-reason"
+            />
+          </div>
+          {message?.aiPromptEdited && (
+            <div className="flex items-center gap-2 p-2 rounded-md bg-amber-50 text-amber-700 text-sm">
+              <Sparkles className="w-4 h-4" />
+              This message has already been trained
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} data-testid="button-cancel-training">
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleSave} 
+            disabled={!editedPrompt.trim() || !reason.trim() || isSaving}
+            className="bg-purple-600 hover:bg-purple-700"
+            data-testid="button-save-training"
+          >
+            {isSaving ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Brain className="w-4 h-4 mr-2" />
+            )}
+            Save Training Data
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ScheduledMessageItem({
+  scheduledMessage,
+  onCancel,
+  isCancelling,
+}: {
+  scheduledMessage: ScheduledMessage;
+  onCancel: () => void;
+  isCancelling: boolean;
+}) {
+  return (
+    <div 
+      className="flex justify-end"
+      data-testid={`scheduled-message-${scheduledMessage.id}`}
+    >
+      <div className="max-w-[75%] rounded-2xl px-4 py-2 border-2 border-dashed border-amber-400 bg-amber-50 rounded-tr-sm">
+        <div className="flex items-center gap-2 mb-1">
+          <CalendarClock className="w-4 h-4 text-amber-600" />
+          <span className="text-xs font-medium text-amber-700">Scheduled</span>
+        </div>
+        <p className="text-sm whitespace-pre-wrap text-amber-900">{scheduledMessage.content}</p>
+        <div className="flex items-center justify-between mt-2">
+          <div className="flex items-center gap-1 text-xs text-amber-600">
+            <Clock className="w-3 h-3" />
+            <span>{format(new Date(scheduledMessage.scheduledFor), "MMM d, h:mm a")}</span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onCancel}
+            disabled={isCancelling}
+            className="text-red-600 hover:text-red-700 hover:bg-red-50 h-7 px-2"
+            data-testid={`button-cancel-scheduled-${scheduledMessage.id}`}
+          >
+            {isCancelling ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <X className="w-3 h-3" />
+            )}
+            <span className="ml-1 text-xs">Cancel</span>
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MessageThread({
   conversation,
   messages,
+  scheduledMessages,
   onSendMessage,
   onAssign,
+  onToggleAI,
+  onCancelScheduled,
+  onTrainMessage,
   salespeople,
   isManager,
   isLoadingMessages,
   isSending,
+  isTogglingAI,
+  cancellingScheduledId,
+  trainingMessageId,
 }: {
   conversation: Conversation;
   messages: Message[];
+  scheduledMessages: ScheduledMessage[];
   onSendMessage: (content: string) => void;
   onAssign: (salespersonId: number) => void;
+  onToggleAI: () => void;
+  onCancelScheduled: (id: number) => void;
+  onTrainMessage: (messageId: number, editedPrompt: string, reason: string) => void;
   salespeople: SalesPerson[];
   isManager: boolean;
   isLoadingMessages: boolean;
   isSending: boolean;
+  isTogglingAI: boolean;
+  cancellingScheduledId: number | null;
+  trainingMessageId: number | null;
 }) {
   const [newMessage, setNewMessage] = useState("");
+  const [trainingMessage, setTrainingMessage] = useState<Message | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, scheduledMessages]);
 
   const handleSend = () => {
     if (newMessage.trim() && !isSending) {
@@ -278,6 +479,21 @@ function MessageThread({
     }
   };
 
+  const handleMessageClick = (message: Message) => {
+    if (message.aiGenerated && message.aiPromptUsed) {
+      setTrainingMessage(message);
+    }
+  };
+
+  const handleSaveTraining = (editedPrompt: string, reason: string) => {
+    if (trainingMessage) {
+      onTrainMessage(trainingMessage.id, editedPrompt, reason);
+      setTrainingMessage(null);
+    }
+  };
+
+  const pendingScheduled = scheduledMessages.filter(s => s.status === 'pending');
+
   return (
     <div className="flex flex-col h-full">
       <div className="p-4 border-b border-border bg-card flex items-center justify-between">
@@ -292,7 +508,27 @@ function MessageThread({
             </AvatarFallback>
           </Avatar>
           <div>
-            <h3 className="font-semibold">{conversation.participantName}</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold">{conversation.participantName}</h3>
+              {conversation.aiEnabled ? (
+                <Badge 
+                  className="bg-green-100 text-green-700 border-green-200 text-xs"
+                  data-testid="badge-ai-active"
+                >
+                  <Bot className="w-3 h-3 mr-1" />
+                  AI Active
+                </Badge>
+              ) : (
+                <Badge 
+                  variant="outline" 
+                  className="text-muted-foreground text-xs"
+                  data-testid="badge-ai-disabled"
+                >
+                  <Power className="w-3 h-3 mr-1" />
+                  AI Disabled
+                </Badge>
+              )}
+            </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Facebook className="w-3 h-3" />
               <span>{conversation.pageName}</span>
@@ -303,33 +539,53 @@ function MessageThread({
                   <span>{conversation.assignedTo.name}</span>
                 </>
               )}
+              {conversation.aiDisabledReason && (
+                <>
+                  <span>•</span>
+                  <span className="text-amber-600">{conversation.aiDisabledReason}</span>
+                </>
+              )}
             </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
           {isManager && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" data-testid="button-assign">
-                  <UserPlus className="w-4 h-4 mr-2" />
-                  Assign
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {salespeople.map((sp) => (
-                  <DropdownMenuItem
-                    key={sp.id}
-                    onClick={() => onAssign(sp.id)}
-                    data-testid={`assign-to-${sp.id}`}
-                  >
-                    {sp.name}
-                    {conversation.assignedTo?.id === sp.id && (
-                      <CheckCheck className="w-4 h-4 ml-2 text-green-500" />
-                    )}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <>
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/50">
+                <Label htmlFor="ai-toggle" className="text-xs font-medium cursor-pointer">
+                  AI
+                </Label>
+                <Switch
+                  id="ai-toggle"
+                  checked={conversation.aiEnabled ?? false}
+                  onCheckedChange={onToggleAI}
+                  disabled={isTogglingAI}
+                  data-testid="switch-ai-toggle"
+                />
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" data-testid="button-assign">
+                    <UserPlus className="w-4 h-4 mr-2" />
+                    Assign
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {salespeople.map((sp) => (
+                    <DropdownMenuItem
+                      key={sp.id}
+                      onClick={() => onAssign(sp.id)}
+                      data-testid={`assign-to-${sp.id}`}
+                    >
+                      {sp.name}
+                      {conversation.assignedTo?.id === sp.id && (
+                        <CheckCheck className="w-4 h-4 ml-2 text-green-500" />
+                      )}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -352,7 +608,7 @@ function MessageThread({
           <div className="flex items-center justify-center h-full">
             <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
           </div>
-        ) : messages.length === 0 ? (
+        ) : messages.length === 0 && pendingScheduled.length === 0 ? (
           <div className="text-center text-muted-foreground p-8">
             <MessageCircle className="w-12 h-12 mx-auto mb-3 opacity-30" />
             <p>No messages in this conversation yet</p>
@@ -365,12 +621,43 @@ function MessageThread({
                 className={`flex ${message.isFromCustomer ? "justify-start" : "justify-end"}`}
               >
                 <div
+                  onClick={() => handleMessageClick(message)}
                   className={`max-w-[75%] rounded-2xl px-4 py-2 ${
                     message.isFromCustomer
                       ? "bg-card border border-border rounded-tl-sm"
                       : "bg-[#022d60] text-white rounded-tr-sm"
-                  }`}
+                  } ${message.aiGenerated && message.aiPromptUsed ? "cursor-pointer hover:opacity-90 transition-opacity" : ""}`}
+                  data-testid={`message-${message.id}`}
                 >
+                  {message.aiGenerated && (
+                    <div className="flex items-center gap-1 mb-1">
+                      <Badge 
+                        variant="secondary" 
+                        className={`text-xs py-0 px-1.5 ${
+                          message.isFromCustomer 
+                            ? "bg-purple-100 text-purple-700" 
+                            : "bg-white/20 text-white"
+                        }`}
+                        data-testid={`badge-ai-generated-${message.id}`}
+                      >
+                        <Bot className="w-3 h-3 mr-1" />
+                        AI
+                      </Badge>
+                      {message.aiPromptEdited && (
+                        <Badge 
+                          variant="secondary" 
+                          className={`text-xs py-0 px-1.5 ${
+                            message.isFromCustomer 
+                              ? "bg-amber-100 text-amber-700" 
+                              : "bg-amber-500/30 text-white"
+                          }`}
+                          data-testid={`badge-trained-${message.id}`}
+                        >
+                          <Sparkles className="w-3 h-3" />
+                        </Badge>
+                      )}
+                    </div>
+                  )}
                   <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                   <div
                     className={`flex items-center gap-1 mt-1 text-xs ${
@@ -386,6 +673,16 @@ function MessageThread({
                 </div>
               </div>
             ))}
+            
+            {pendingScheduled.map((scheduled) => (
+              <ScheduledMessageItem
+                key={scheduled.id}
+                scheduledMessage={scheduled}
+                onCancel={() => onCancelScheduled(scheduled.id)}
+                isCancelling={cancellingScheduledId === scheduled.id}
+              />
+            ))}
+            
             <div ref={messagesEndRef} />
           </div>
         )}
@@ -416,6 +713,14 @@ function MessageThread({
           </Button>
         </div>
       </div>
+
+      <TrainingDialog
+        message={trainingMessage}
+        isOpen={!!trainingMessage}
+        onClose={() => setTrainingMessage(null)}
+        onSave={handleSaveTraining}
+        isSaving={trainingMessageId === trainingMessage?.id}
+      />
     </div>
   );
 }
@@ -442,6 +747,8 @@ export default function SalesConversations() {
   const [selectedConversationId, setSelectedConversationId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState("all");
+  const [cancellingScheduledId, setCancellingScheduledId] = useState<number | null>(null);
+  const [trainingMessageId, setTrainingMessageId] = useState<number | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -526,6 +833,20 @@ export default function SalesConversations() {
     enabled: !!user && !!selectedConversationId,
   });
 
+  const { data: scheduledMessages = [] } = useQuery<ScheduledMessage[]>({
+    queryKey: ['scheduled-messages', selectedConversationId],
+    queryFn: async () => {
+      if (!selectedConversationId) return [];
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/messenger-conversations/${selectedConversationId}/scheduled`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!user && !!selectedConversationId,
+  });
+
   const sendMessageMutation = useMutation({
     mutationFn: async (message: string) => {
       const token = localStorage.getItem('auth_token');
@@ -579,6 +900,98 @@ export default function SalesConversations() {
         title: "Failed to assign conversation",
         variant: "destructive",
       });
+    },
+  });
+
+  const toggleAIMutation = useMutation({
+    mutationFn: async () => {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/messenger-conversations/${selectedConversationId}/toggle-ai`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+      });
+      if (!response.ok) throw new Error('Failed to toggle AI');
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['messenger-conversations'] });
+      toast({ 
+        title: data.aiEnabled ? "AI enabled" : "AI disabled",
+        description: data.aiEnabled 
+          ? "AI will now respond to this conversation" 
+          : "AI responses disabled for this conversation"
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Failed to toggle AI",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const cancelScheduledMutation = useMutation({
+    mutationFn: async (scheduledId: number) => {
+      setCancellingScheduledId(scheduledId);
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/scheduled-messages/${scheduledId}/cancel`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+      });
+      if (!response.ok) throw new Error('Failed to cancel scheduled message');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scheduled-messages', selectedConversationId] });
+      toast({ title: "Scheduled message cancelled" });
+    },
+    onError: () => {
+      toast({
+        title: "Failed to cancel scheduled message",
+        variant: "destructive",
+      });
+    },
+    onSettled: () => {
+      setCancellingScheduledId(null);
+    },
+  });
+
+  const trainMessageMutation = useMutation({
+    mutationFn: async ({ messageId, editedPrompt, reason }: { messageId: number; editedPrompt: string; reason: string }) => {
+      setTrainingMessageId(messageId);
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/messenger-messages/${messageId}/training`, {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify({ editedPrompt, reason }),
+      });
+      if (!response.ok) throw new Error('Failed to save training data');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['messenger-messages', selectedConversationId] });
+      toast({ 
+        title: "Training data saved",
+        description: "Your feedback will help improve AI responses"
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Failed to save training data",
+        variant: "destructive",
+      });
+    },
+    onSettled: () => {
+      setTrainingMessageId(null);
     },
   });
 
@@ -662,12 +1075,21 @@ export default function SalesConversations() {
             <MessageThread
               conversation={selectedConversation}
               messages={messages}
+              scheduledMessages={scheduledMessages}
               onSendMessage={(content) => sendMessageMutation.mutate(content)}
               onAssign={(id) => assignMutation.mutate(id)}
+              onToggleAI={() => toggleAIMutation.mutate()}
+              onCancelScheduled={(id) => cancelScheduledMutation.mutate(id)}
+              onTrainMessage={(messageId, editedPrompt, reason) => 
+                trainMessageMutation.mutate({ messageId, editedPrompt, reason })
+              }
               salespeople={salespeople}
               isManager={isManager}
               isLoadingMessages={messagesLoading}
               isSending={sendMessageMutation.isPending}
+              isTogglingAI={toggleAIMutation.isPending}
+              cancellingScheduledId={cancellingScheduledId}
+              trainingMessageId={trainingMessageId}
             />
           ) : (
             <EmptyState />

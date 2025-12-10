@@ -3,10 +3,12 @@ import { scrapeAllDealerships, scrapeAllDealershipsIncremental } from './scraper
 import { storage } from './storage';
 import { facebookService } from './facebook-service';
 import { facebookCatalogService } from './facebook-catalog-service';
+import { processScheduledMessages } from './scheduled-message-service';
 
 let schedulerInitialized = false;
 let marketAnalysisSchedulerInitialized = false;
 let facebookCatalogSchedulerInitialized = false;
+let scheduledMessageSchedulerInitialized = false;
 
 export function startInventoryScheduler() {
   if (schedulerInitialized) {
@@ -593,4 +595,29 @@ function getNextRunDate(frequency: string): Date {
     default:
       return new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
   }
+}
+
+// ===== SCHEDULED MESSAGE SCHEDULER =====
+
+/**
+ * Start the scheduled message scheduler.
+ * Runs every minute to check for due messages and send them.
+ */
+export function startScheduledMessageScheduler() {
+  if (scheduledMessageSchedulerInitialized) {
+    console.log('Scheduled message scheduler already running');
+    return;
+  }
+
+  // Check for due messages every minute
+  cron.schedule('* * * * *', async () => {
+    try {
+      await processScheduledMessages();
+    } catch (error) {
+      console.error('✗ Scheduled message processing failed:', error);
+    }
+  });
+
+  scheduledMessageSchedulerInitialized = true;
+  console.log('✓ Scheduled message scheduler started (runs every minute)');
 }
