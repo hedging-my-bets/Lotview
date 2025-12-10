@@ -646,14 +646,14 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
                 {selectedConversation.messages?.map((msg, idx) => (
                   <div
                     key={idx}
-                    className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                    className={`flex ${msg.role === 'assistant' ? 'justify-end' : 'justify-start'}`}
                   >
                     <div
                       onClick={() => handleAiMessageClick(msg, idx)}
                       className={`max-w-[70%] rounded-2xl px-4 py-2 ${
                         msg.role === 'user'
-                          ? 'bg-white dark:bg-gray-700 text-foreground border border-gray-200 dark:border-gray-600 rounded-br-md'
-                          : `bg-blue-500 text-white rounded-bl-md ${trainingMode ? 'cursor-pointer hover:bg-blue-600 ring-2 ring-transparent hover:ring-purple-400' : ''}`
+                          ? 'bg-white dark:bg-gray-700 text-foreground border border-gray-200 dark:border-gray-600 rounded-bl-md'
+                          : `bg-blue-500 text-white rounded-br-md ${trainingMode ? 'cursor-pointer hover:bg-blue-600 ring-2 ring-transparent hover:ring-purple-400' : ''}`
                       }`}
                       data-testid={`message-${msg.role}-${idx}`}
                     >
