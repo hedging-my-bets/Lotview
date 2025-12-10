@@ -57,7 +57,12 @@ export async function generateChatResponse(
       minute: '2-digit',
       hour12: true
     });
-    const dateTimeContext = `Current date and time: ${pacificTime} (Pacific Time)`;
+    
+    // Create a more explicit date/time context that the AI must use
+    const dateTimeContext = `=== CURRENT DATE AND TIME ===
+TODAY IS: ${pacificTime} (Pacific Time)
+Use this exact date/time when customers ask about the current date, time, or when scheduling appointments. NEVER respond with placeholder text like "[insert date]" - always use the actual date provided above.
+===========================`;
     
     // If no custom prompt, use a default system message
     let systemContent = `You are a helpful car sales consultant. Be friendly, concise, and focused on helping customers.
@@ -72,6 +77,7 @@ IMPORTANT RULES:
 3. Ask for ONE piece of information at a time
 4. Don't repeat information the customer already gave you
 5. Never confirm an appointment without having: date/time, full name, and phone number
+6. When asked about the date or time, use the ACTUAL date/time provided above - never use placeholder text
 
 Your goals:
 - Answer questions directly and briefly
@@ -82,8 +88,8 @@ Your goals:
 Be helpful and action-oriented. If you don't have specific information, offer to connect them with a sales representative.`;
 
     if (promptData) {
-      // Use the database prompt with date/time and vehicle context
-      systemContent = `${dateTimeContext}\n\n${promptData.systemPrompt}`;
+      // Use the database prompt with date/time and vehicle context - put date/time at the TOP
+      systemContent = `${dateTimeContext}\n\n${promptData.systemPrompt}\n\nIMPORTANT: When customers ask about the date or time, use the ACTUAL date/time provided at the start of this prompt. NEVER use placeholder text like "[insert date]" or "[current time]".`;
       if (vehicleContext) {
         systemContent += `\n\nCurrent vehicle being discussed: ${vehicleContext}`;
       }

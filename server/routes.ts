@@ -3426,10 +3426,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json({ suggestion: null });
       }
 
-      // Build a prompt for generating a suggested reply
-      const conversationHistory = messages.map((m: any) => 
-        `${m.role === 'user' ? 'Customer' : 'Dealership'}: ${m.content}`
-      ).join('\n');
+      // Build a prompt for generating a suggested reply (with timestamps)
+      const conversationHistory = messages.map((m: any) => {
+        const timestamp = m.timestamp ? new Date(m.timestamp).toLocaleString('en-US', {
+          timeZone: 'America/Vancouver',
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit'
+        }) : '';
+        const prefix = m.role === 'user' ? 'Customer' : 'Dealership';
+        return timestamp ? `[${timestamp}] ${prefix}: ${m.content}` : `${prefix}: ${m.content}`;
+      }).join('\n');
 
       const systemPrompt = `You are an AI assistant for a car dealership. Based on the following conversation, suggest a helpful, professional reply that the dealership staff could send to the customer.
 
@@ -3466,12 +3474,24 @@ Provide a single, concise, friendly message that continues the conversation natu
       // Dealership ID from request context
       const dealershipId = req.dealershipId!;
 
+      // Add timestamps to messages if not already present
+      const messagesWithTimestamps = messages.map((msg: any, index: number) => {
+        if (msg.timestamp) return msg;
+        // Calculate approximate timestamp based on message order
+        // Most recent message is now, previous messages are older
+        const offsetMs = (messages.length - 1 - index) * 30000; // ~30 seconds between messages
+        return {
+          ...msg,
+          timestamp: new Date(Date.now() - offsetMs).toISOString()
+        };
+      });
+
       const conversation = await storage.saveChatConversation({
         dealershipId,
         category,
         vehicleId: vehicleId || null,
         vehicleName: vehicleName || null,
-        messages: JSON.stringify(messages),
+        messages: JSON.stringify(messagesWithTimestamps),
         sessionId
       });
 
@@ -3801,17 +3821,22 @@ Provide a single, concise, friendly message that continues the conversation natu
 
       // Get or create conversation in FWC for the appropriate channel
       const conversationType = channel === 'sms' ? 'TYPE_SMS' : 'TYPE_EMAIL';
+      console.log(`[Send Message] Getting/creating FWC conversation for contact ${ghlContactId}, type: ${conversationType}`);
       const ghlConvResult = await ghlService.getOrCreateConversation(ghlContactId, conversationType);
       
       if (!ghlConvResult.success || !ghlConvResult.data) {
-        return res.status(500).json({ error: "Failed to create FWC conversation" });
+        console.log(`[Send Message] Failed to create FWC conversation:`, ghlConvResult.error);
+        return res.status(500).json({ error: ghlConvResult.error || "Failed to create FWC conversation" });
       }
+      
+      console.log(`[Send Message] Got FWC conversation: ${ghlConvResult.data.id}`);
 
-      // Send the message
+      // Send the message - GHL API requires 'contactId' for conversations
       const messageType = channel === 'sms' ? 'SMS' : 'Email';
       const sendPayload: any = {
         type: messageType,
         message: message.trim(),
+        contactId: ghlContactId, // Required by GHL API
       };
       
       if (channel === 'email') {
@@ -3820,6 +3845,7 @@ Provide a single, concise, friendly message that continues the conversation natu
         sendPayload.html = `<p>${message.trim().replace(/\n/g, '<br>')}</p>`;
       }
 
+      console.log(`[Send Message] Sending message to conversation ${ghlConvResult.data.id}:`, sendPayload);
       const sendResult = await ghlService.sendMessage(ghlConvResult.data.id, sendPayload);
 
       if (!sendResult.success) {

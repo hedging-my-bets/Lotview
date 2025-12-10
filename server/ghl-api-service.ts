@@ -680,8 +680,41 @@ export class GhlApiService {
     emailCc?: string[];
     emailBcc?: string[];
     attachments?: string[];
+    contactId?: string;
   }): Promise<GhlApiResponse<GhlMessage>> {
-    return this.apiRequest<GhlMessage>("POST", `/conversations/${conversationId}/messages`, message);
+    // GHL API requires specific payload structure for SMS vs Email
+    const payload: Record<string, any> = {
+      type: message.type,
+    };
+    
+    // contactId is required by GHL API for sending messages
+    if (message.contactId) {
+      payload.contactId = message.contactId;
+    }
+    
+    if (message.type === 'SMS') {
+      // For SMS, need type, message, and contactId
+      payload.message = message.message;
+    } else if (message.type === 'Email') {
+      // For Email, need more fields
+      payload.message = message.message;
+      payload.html = message.html;
+      payload.subject = message.subject;
+      if (message.emailTo) payload.emailTo = message.emailTo;
+      if (message.emailFrom) payload.emailFrom = message.emailFrom;
+      if (message.emailCc) payload.emailCc = message.emailCc;
+      if (message.emailBcc) payload.emailBcc = message.emailBcc;
+    } else {
+      // For other channels
+      payload.message = message.message;
+    }
+    
+    if (message.attachments?.length) {
+      payload.attachments = message.attachments;
+    }
+    
+    console.log(`[GHL] Sending ${message.type} to conversation ${conversationId}:`, payload);
+    return this.apiRequest<GhlMessage>("POST", `/conversations/${conversationId}/messages`, payload);
   }
 
   async createConversation(params: {
