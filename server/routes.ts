@@ -8573,18 +8573,28 @@ Format your response in clear sections with actionable recommendations.`;
             // Opportunity stage change
             await handleGhlOpportunityEvent(dealershipId, req.body, ghlService);
           } else if (type?.toLowerCase().includes('message') || type?.includes('InboundMessage') || type?.includes('OutboundMessage')) {
-            // Message received or sent - sync to Lotview conversations
-            const ghlMessageSyncService = createGhlMessageSyncService(dealershipId);
-            await ghlMessageSyncService.handleInboundGhlMessage({
-              conversationId: req.body.conversationId || req.body.conversation?.id,
-              contactId: req.body.contactId || req.body.contact?.id,
-              locationId: locationId,
-              body: req.body.body || req.body.message || '',
-              messageId: req.body.messageId || req.body.id,
-              direction: req.body.direction || (type?.includes('Inbound') ? 'inbound' : 'outbound'),
-              dateAdded: req.body.dateAdded || req.body.createdAt || new Date().toISOString(),
-              type: req.body.type || 'SMS',
-            });
+            // Check if this is a call message (messageType = 'CALL')
+            const messageType = req.body.messageType || req.body.type;
+            if (messageType === 'CALL' || messageType === 'TYPE_CALL') {
+              // Handle call recording from GHL
+              await handleGhlCallEvent(dealershipId, req.body, storage);
+            } else {
+              // Message received or sent - sync to Lotview conversations
+              const ghlMessageSyncService = createGhlMessageSyncService(dealershipId);
+              await ghlMessageSyncService.handleInboundGhlMessage({
+                conversationId: req.body.conversationId || req.body.conversation?.id,
+                contactId: req.body.contactId || req.body.contact?.id,
+                locationId: locationId,
+                body: req.body.body || req.body.message || '',
+                messageId: req.body.messageId || req.body.id,
+                direction: req.body.direction || (type?.includes('Inbound') ? 'inbound' : 'outbound'),
+                dateAdded: req.body.dateAdded || req.body.createdAt || new Date().toISOString(),
+                type: req.body.type || 'SMS',
+              });
+            }
+          } else if (type?.toLowerCase().includes('call')) {
+            // Direct call event
+            await handleGhlCallEvent(dealershipId, req.body, storage);
           }
           
           // Mark event as processed
@@ -8961,6 +8971,78 @@ Format your response in clear sections with actionable recommendations.`;
   async function handleGhlOpportunityEvent(dealershipId: number, payload: any, _ghlService: any) {
     // Log opportunity events for now - full sync implementation to come
     console.log(`GHL opportunity event for dealership ${dealershipId}:`, payload?.opportunity?.id);
+  }
+  
+  async function handleGhlCallEvent(dealershipId: number, payload: any, storageInstance: IStorage) {
+    console.log(`[GHL Call] Processing call event for dealership ${dealershipId}`);
+    
+    // Extract call data from various GHL webhook formats
+    const ghlCallId = payload.messageId || payload.id || payload.call?.id || `ghl-call-${Date.now()}`;
+    const ghlContactId = payload.contactId || payload.contact?.id || null;
+    
+    // Recording URL is often in attachments array for call messages
+    const recordingUrl = payload.attachments?.[0] || payload.recordingUrl || payload.call?.recordingUrl || null;
+    const transcription = payload.transcript || payload.call?.transcript || payload.transcription || null;
+    
+    // Call details
+    const direction = payload.direction || 'inbound';
+    const duration = payload.callDuration || payload.duration || payload.call?.duration || 0;
+    const callStatus = payload.callStatus || payload.status || payload.call?.status || 'completed';
+    
+    // Phone numbers - GHL uses 'from' and 'to' or may have them in the message
+    const callerPhone = payload.from || payload.call?.from || payload.phone || 'unknown';
+    const dealershipPhone = payload.to || payload.call?.to || 'unknown';
+    
+    // Contact name
+    const callerName = payload.contactName || payload.contact?.name || payload.contact?.firstName || null;
+    
+    // User/salesperson who handled the call
+    const userId = payload.userId || payload.assignedTo || null;
+    
+    // Timestamps
+    const dateAdded = payload.dateAdded || payload.createdAt || new Date().toISOString();
+    
+    // Check for duplicate
+    const existingCall = await storageInstance.getCallRecordingByGhlCallId(ghlCallId, dealershipId);
+    if (existingCall) {
+      console.log(`[GHL Call] Duplicate call ${ghlCallId} - skipping`);
+      return;
+    }
+    
+    // Create call recording
+    const callRecording = await storageInstance.createCallRecording({
+      dealershipId,
+      ghlCallId,
+      ghlContactId,
+      callerPhone,
+      dealershipPhone,
+      direction,
+      duration,
+      callStatus,
+      recordingUrl,
+      transcription,
+      callerName,
+      salespersonName: userId ? `User ${userId}` : null,
+      callStartedAt: new Date(dateAdded),
+      callEndedAt: duration ? new Date(new Date(dateAdded).getTime() + duration * 1000) : null,
+      analysisStatus: transcription ? 'pending' : (recordingUrl ? 'pending' : 'skipped')
+    });
+    
+    console.log(`[GHL Call] Created call recording ${callRecording.id} for dealership ${dealershipId}`);
+    
+    // If we have transcription, queue for AI analysis
+    if (transcription || recordingUrl) {
+      try {
+        const { getCallAnalysisService } = await import('./call-analysis-service');
+        const analysisService = getCallAnalysisService(dealershipId);
+        // Process asynchronously
+        analysisService.processCallRecording(callRecording.id).catch(err => {
+          console.error(`[GHL Call] Error analyzing call ${callRecording.id}:`, err);
+        });
+      } catch (importError) {
+        console.error(`[GHL Call] Error importing analysis service:`, importError);
+      }
+    }
   }
   
   // ====== CALL ANALYSIS SYSTEM ======
