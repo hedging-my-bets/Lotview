@@ -703,6 +703,50 @@ export const insertMessengerConversationSchema = createInsertSchema(messengerCon
 export type InsertMessengerConversation = z.infer<typeof insertMessengerConversationSchema>;
 export type MessengerConversation = typeof messengerConversations.$inferSelect;
 
+// Messenger messages - Individual messages within a conversation
+export const messengerMessages = pgTable("messenger_messages", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  conversationId: integer("conversation_id").notNull().references(() => messengerConversations.id, { onDelete: 'cascade' }),
+  facebookMessageId: text("facebook_message_id").notNull().unique(), // Facebook message ID
+  senderId: text("sender_id").notNull(), // Facebook ID of sender
+  senderName: text("sender_name").notNull(), // Display name of sender
+  isFromCustomer: boolean("is_from_customer").notNull(), // true = customer message, false = dealership response
+  content: text("content").notNull(), // Message text content
+  attachmentType: text("attachment_type"), // 'image', 'video', 'file', null if text only
+  attachmentUrl: text("attachment_url"), // URL of attachment if any
+  isRead: boolean("is_read").notNull().default(false),
+  sentAt: timestamp("sent_at").notNull(), // When the message was sent
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertMessengerMessageSchema = createInsertSchema(messengerMessages).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertMessengerMessage = z.infer<typeof insertMessengerMessageSchema>;
+export type MessengerMessage = typeof messengerMessages.$inferSelect;
+
+// Conversation assignments - Assign conversations to salespeople
+export const conversationAssignments = pgTable("conversation_assignments", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  conversationId: integer("conversation_id").notNull().references(() => messengerConversations.id, { onDelete: 'cascade' }).unique(),
+  assignedToUserId: integer("assigned_to_user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  assignedByUserId: integer("assigned_by_user_id").references(() => users.id, { onDelete: 'set null' }), // Manager who assigned
+  assignedAt: timestamp("assigned_at").defaultNow().notNull(),
+  notes: text("notes"), // Assignment notes from manager
+});
+
+export const insertConversationAssignmentSchema = createInsertSchema(conversationAssignments).omit({
+  id: true,
+  assignedAt: true,
+});
+
+export type InsertConversationAssignment = z.infer<typeof insertConversationAssignmentSchema>;
+export type ConversationAssignment = typeof conversationAssignments.$inferSelect;
+
 // Remarketing vehicles - Master user selects up to 20 vehicles for remarketing campaigns
 export const remarketingVehicles = pgTable("remarketing_vehicles", {
   id: serial("id").primaryKey(),
