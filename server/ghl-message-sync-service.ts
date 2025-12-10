@@ -222,6 +222,24 @@ export class GhlMessageSyncService {
 
       console.log(`[GHL Sync] Created message from GHL webhook for conversation ${conversation.id}`);
 
+      // Broadcast real-time update via WebSocket
+      const broadcastNotification = (global as any).broadcastNotification;
+      if (broadcastNotification) {
+        broadcastNotification(this.dealershipId, {
+          type: 'new_message',
+          title: webhookData.direction === 'inbound' ? 'New Message' : 'Message Sent',
+          message: webhookData.body.substring(0, 100),
+          data: {
+            conversationId: conversation.id,
+            conversationType: 'messenger',
+            direction: webhookData.direction,
+            senderName: senderName,
+            messagePreview: webhookData.body.substring(0, 100),
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
+
       return { success: true };
     } catch (error: any) {
       console.error(`[GHL Sync] Error handling inbound GHL message:`, error);

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -106,17 +106,16 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
   const [editablePrompt, setEditablePrompt] = useState<string>("");
   const [isSavingPrompt, setIsSavingPrompt] = useState(false);
 
-  useEffect(() => {
-    loadConversations();
-  }, []);
+  // Refs to avoid stale closures in WebSocket handler
+  const selectedConversationRef = useRef<Conversation | null>(null);
+  const loadConversationsRef = useRef<(() => Promise<void>) | null>(null);
 
+  // Keep refs in sync with state
   useEffect(() => {
-    if (selectedConversation) {
-      generateAiSuggestion();
-    }
+    selectedConversationRef.current = selectedConversation;
   }, [selectedConversation]);
 
-  const loadConversations = async () => {
+  const loadConversations = useCallback(async (preserveSelection = true) => {
     setIsLoading(true);
     try {
       const token = localStorage.getItem('auth_token');
@@ -127,10 +126,13 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
         const data = await response.json();
         setConversations(data);
         
+        // Use ref to get current selection (avoids stale closure)
+        const currentSelection = selectedConversationRef.current;
+        
         // If we have a selected conversation, refresh it with updated data
-        if (selectedConversation) {
-          const currentId = selectedConversation.id;
-          const currentType = selectedConversation.type;
+        if (currentSelection && preserveSelection) {
+          const currentId = currentSelection.id;
+          const currentType = currentSelection.type;
           
           // Find the updated conversation
           if (currentType === 'website_chat') {
@@ -144,7 +146,7 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
               setSelectedConversation({ ...updated, type: 'messenger' });
             }
           }
-        } else {
+        } else if (!currentSelection) {
           // Auto-select first conversation if none selected
           // Normalize types before selection to ensure consistent handling
           if (data.websiteChats?.length > 0) {
@@ -164,7 +166,7 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [toast]);
 
   // Select a conversation and load messages if needed (for messenger)
   const selectConversation = async (conv: Conversation) => {
@@ -195,6 +197,89 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
       setSelectedConversation(conv);
     }
   };
+
+  // Store loadConversations in ref for WebSocket handler
+  useEffect(() => {
+    loadConversationsRef.current = loadConversations;
+  }, [loadConversations]);
+
+  // Initial load
+  useEffect(() => {
+    loadConversations();
+  }, [loadConversations]);
+
+  // WebSocket connection for real-time updates
+  useEffect(() => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
+
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProtocol}//${window.location.host}/ws?token=${token}`;
+    
+    let ws: WebSocket | null = null;
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    const connect = () => {
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        console.log('[Conversations] WebSocket connected');
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const notification = JSON.parse(event.data);
+          
+          // Handle new message notifications
+          if (notification.type === 'new_message' || notification.type === 'conversation_update') {
+            console.log('[Conversations] Real-time update received:', notification);
+            
+            // Use ref to call latest loadConversations
+            if (loadConversationsRef.current) {
+              loadConversationsRef.current();
+            }
+            
+            // Show toast for new inbound messages
+            if (notification.data?.direction === 'inbound') {
+              toast({
+                title: notification.title || 'New Message',
+                description: `${notification.data?.senderName || 'Customer'}: ${notification.data?.messagePreview || ''}`,
+              });
+            }
+          }
+        } catch (error) {
+          console.error('[Conversations] Error parsing WebSocket message:', error);
+        }
+      };
+
+      ws.onclose = () => {
+        console.log('[Conversations] WebSocket disconnected, reconnecting in 5s...');
+        reconnectTimeout = setTimeout(connect, 5000);
+      };
+
+      ws.onerror = (error) => {
+        console.error('[Conversations] WebSocket error:', error);
+      };
+    };
+
+    connect();
+
+    return () => {
+      if (ws) {
+        ws.close();
+      }
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+    };
+  }, [toast]);
+
+  // Regenerate AI suggestions when conversation changes
+  useEffect(() => {
+    if (selectedConversation) {
+      generateAiSuggestion();
+    }
+  }, [selectedConversation]);
 
   const generateAiSuggestion = async () => {
     if (!selectedConversation?.messages?.length) {
@@ -655,7 +740,7 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
         <div className="p-4 border-b space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold text-lg">Messages</h2>
-            <Button variant="ghost" size="sm" onClick={loadConversations} disabled={isLoading}>
+            <Button variant="ghost" size="sm" onClick={() => loadConversations()} disabled={isLoading}>
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             </Button>
           </div>

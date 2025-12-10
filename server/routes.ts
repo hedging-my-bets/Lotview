@@ -10656,13 +10656,13 @@ Format your response in clear sections with actionable recommendations.`;
   // Notification payload schema for validation
   const NotificationSchema = {
     validate: (data: any): data is {
-      type: 'new_lead' | 'chat_message' | 'post_status' | 'inventory_sync' | 'system';
+      type: 'new_lead' | 'chat_message' | 'post_status' | 'inventory_sync' | 'system' | 'new_message' | 'conversation_update';
       title: string;
       message: string;
       data?: any;
       timestamp: string;
     } => {
-      const validTypes = ['new_lead', 'chat_message', 'post_status', 'inventory_sync', 'system'];
+      const validTypes = ['new_lead', 'chat_message', 'post_status', 'inventory_sync', 'system', 'new_message', 'conversation_update'];
       return (
         typeof data === 'object' &&
         data !== null &&
@@ -10676,7 +10676,7 @@ Format your response in clear sections with actionable recommendations.`;
   
   // Broadcast notification to all authenticated clients for a dealership
   const broadcastNotification = (dealershipId: number, notification: {
-    type: 'new_lead' | 'chat_message' | 'post_status' | 'inventory_sync' | 'system';
+    type: 'new_lead' | 'chat_message' | 'post_status' | 'inventory_sync' | 'system' | 'new_message' | 'conversation_update';
     title: string;
     message: string;
     data?: any;
