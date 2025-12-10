@@ -729,18 +729,29 @@ export class GhlApiService {
       return { success: false, error: "No account", errorCode: "NO_ACCOUNT" };
     }
 
-    return this.apiRequest<GhlConversation>("POST", "/conversations/", {
+    const result = await this.apiRequest<any>("POST", "/conversations/", {
       locationId,
       contactId: params.contactId,
       type: params.type || "TYPE_SMS",
     });
+    
+    if (result.success && result.data) {
+      // GHL API may return { conversation: {...} } or direct conversation object
+      const conversation = result.data.conversation || result.data;
+      console.log(`[GHL] Created conversation:`, JSON.stringify(conversation));
+      return { success: true, data: conversation };
+    }
+    
+    return result;
   }
 
   async getOrCreateConversation(contactId: string, type?: string): Promise<GhlApiResponse<GhlConversation>> {
     const existingResult = await this.getConversations({ contactId, type, limit: 1 });
     if (existingResult.success && existingResult.data?.conversations?.length) {
+      console.log(`[GHL] Found existing conversation: ${existingResult.data.conversations[0].id}`);
       return { success: true, data: existingResult.data.conversations[0] };
     }
+    console.log(`[GHL] No existing conversation found, creating new one for contact ${contactId}`);
     return this.createConversation({ contactId, type });
   }
 
