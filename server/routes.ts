@@ -9210,39 +9210,72 @@ Format your response in clear sections with actionable recommendations.`;
           const { createGhlApiService } = await import('./ghl-api-service');
           const ghlService = createGhlApiService(dealershipId);
           
-          // Route to appropriate handler based on event type
-          const type = eventType || req.body?.type;
+          // Helper to normalize "null" strings to actual null
+          const normalizeNull = (val: any) => (val === 'null' || val === 'undefined' || val === '') ? null : val;
           
-          if (type?.includes('contact')) {
+          // Route to appropriate handler based on event type
+          // Convert type to string to handle numeric types from FWC workflows
+          const rawType = eventType || req.body?.type;
+          const type = typeof rawType === 'number' ? String(rawType) : rawType;
+          const typeStr = type ? String(type).toLowerCase() : '';
+          
+          // Check if this is a message event - either by string type or numeric type
+          // FWC numeric types: 1=Email, 2=SMS, 3=Call, etc.
+          const isMessageEvent = typeStr.includes('message') || 
+                                 typeStr.includes('inbound') || 
+                                 typeStr.includes('outbound') ||
+                                 type === '2' || type === '1' || // SMS or Email
+                                 (req.body?.body && req.body?.contactId); // Has message body and contact
+          
+          if (typeStr.includes('contact') && !isMessageEvent) {
             // Contact created/updated - sync to local DB and optionally to PBS
             await handleGhlContactEvent(dealershipId, req.body, ghlService);
-          } else if (type?.includes('appointment') || type?.includes('calendar')) {
+          } else if (typeStr.includes('appointment') || typeStr.includes('calendar')) {
             // Appointment created/updated/cancelled
             await handleGhlAppointmentEvent(dealershipId, req.body, ghlService);
-          } else if (type?.includes('opportunity')) {
+          } else if (typeStr.includes('opportunity')) {
             // Opportunity stage change
             await handleGhlOpportunityEvent(dealershipId, req.body, ghlService);
-          } else if (type?.toLowerCase().includes('message') || type?.includes('InboundMessage') || type?.includes('OutboundMessage')) {
+          } else if (isMessageEvent) {
             // Check if this is a call message (messageType = 'CALL')
             const messageType = req.body.messageType || req.body.type;
-            if (messageType === 'CALL' || messageType === 'TYPE_CALL') {
+            if (messageType === 'CALL' || messageType === 'TYPE_CALL' || messageType === 3 || messageType === '3') {
               // Handle call recording from GHL
               await handleGhlCallEvent(dealershipId, req.body, storage);
             } else {
               // Message received or sent - sync to Lotview conversations
               const ghlMessageSyncService = createGhlMessageSyncService(dealershipId);
+              
+              // Determine direction - FWC workflow may send "null" strings
+              let direction = normalizeNull(req.body.direction);
+              if (!direction) {
+                // Infer from type string or default to inbound (customer reply)
+                direction = typeStr.includes('outbound') ? 'outbound' : 'inbound';
+              }
+              
+              // Map numeric types to string types for downstream handlers
+              const numericType = String(req.body.type);
+              let messageTypeStr = 'SMS'; // Default to SMS
+              if (numericType === '1' || type === '1') {
+                messageTypeStr = 'Email';
+              } else if (numericType === '2' || type === '2' || numericType.toLowerCase().includes('sms')) {
+                messageTypeStr = 'SMS';
+              } else if (typeof req.body.type === 'string' && !['1', '2', '3'].includes(req.body.type)) {
+                messageTypeStr = req.body.type; // Use original string type if it's not numeric
+              }
+              
               await ghlMessageSyncService.handleInboundGhlMessage({
-                conversationId: req.body.conversationId || req.body.conversation?.id,
-                contactId: req.body.contactId || req.body.contact?.id,
+                conversationId: normalizeNull(req.body.conversationId) || normalizeNull(req.body.conversation?.id),
+                contactId: normalizeNull(req.body.contactId) || normalizeNull(req.body.contact?.id),
                 locationId: locationId,
                 body: req.body.body || req.body.message || '',
-                messageId: req.body.messageId || req.body.id,
-                direction: req.body.direction || (type?.includes('Inbound') ? 'inbound' : 'outbound'),
-                dateAdded: req.body.dateAdded || req.body.createdAt || new Date().toISOString(),
-                type: req.body.type || 'SMS',
+                messageId: normalizeNull(req.body.messageId) || req.body.id || `fwc-${Date.now()}`,
+                direction: direction,
+                dateAdded: normalizeNull(req.body.dateAdded) || normalizeNull(req.body.createdAt) || new Date().toISOString(),
+                type: messageTypeStr,
               });
             }
-          } else if (type?.toLowerCase().includes('call')) {
+          } else if (typeStr.includes('call') || type === '3') {
             // Direct call event
             await handleGhlCallEvent(dealershipId, req.body, storage);
           }
