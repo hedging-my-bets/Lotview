@@ -3976,7 +3976,7 @@ Provide a single, concise, friendly message that continues the conversation natu
     const phoneRegex = /(?<!\d)\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}(?!\d)|(?<!\d)\d{10}(?!\d)/;
     // Email regex
     const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
-    // Name patterns
+    // Name patterns - standard phrases
     const namePatterns = [
       /my name is\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)/i,
       /i'm\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)/i,
@@ -3984,6 +3984,13 @@ Provide a single, concise, friendly message that continues the conversation natu
       /this is\s+([a-zA-Z]+)/i,
       /call me\s+([a-zA-Z]+)/i,
     ];
+    // Pattern for "Name and Phone" format (e.g., "Riley and 6048334967", "John 604-555-1234")
+    const nameWithPhonePatterns = [
+      /^([a-zA-Z]+(?:\s+[a-zA-Z]+)?)\s+(?:and\s+)?(?:\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\d{10})/i,
+      /^([a-zA-Z]+(?:\s+[a-zA-Z]+)?)\s*[-,]\s*(?:\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\d{10})/i,
+    ];
+    
+    const skipWords = ['yes', 'no', 'hi', 'hello', 'hey', 'sure', 'ok', 'okay', 'thanks', 'thank', 'good', 'great', 'fine', 'it', 'is', 'the', 'a', 'an'];
     
     for (const msg of messages) {
       if (msg.role === 'user') {
@@ -4001,15 +4008,29 @@ Provide a single, concise, friendly message that continues the conversation natu
             contact.email = emailMatch[0].toLowerCase();
           }
         }
-        // Extract name
+        // Extract name - first try "Name and Phone" patterns (higher priority when phone is in same message)
         if (!contact.name) {
-          for (const pattern of namePatterns) {
-            const match = msg.content.match(pattern);
-            if (match && match[1] && match[1].length > 1 && match[1].length < 30) {
-              const skipWords = ['yes', 'no', 'hi', 'hello', 'hey', 'sure', 'ok', 'okay', 'thanks', 'thank', 'good', 'great', 'fine'];
-              if (!skipWords.includes(match[1].toLowerCase())) {
-                contact.name = match[1];
-                break;
+          // Check if this message contains a phone number - likely contains name too
+          if (phoneRegex.test(msg.content)) {
+            for (const pattern of nameWithPhonePatterns) {
+              const match = msg.content.trim().match(pattern);
+              if (match && match[1] && match[1].length > 1 && match[1].length < 30) {
+                if (!skipWords.includes(match[1].toLowerCase())) {
+                  contact.name = match[1].trim();
+                  break;
+                }
+              }
+            }
+          }
+          // If still no name, try standard patterns
+          if (!contact.name) {
+            for (const pattern of namePatterns) {
+              const match = msg.content.match(pattern);
+              if (match && match[1] && match[1].length > 1 && match[1].length < 30) {
+                if (!skipWords.includes(match[1].toLowerCase())) {
+                  contact.name = match[1];
+                  break;
+                }
               }
             }
           }
