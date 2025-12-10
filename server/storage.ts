@@ -220,7 +220,10 @@ import {
   type InsertCrmActivity,
   crmTasks,
   type CrmTask,
-  type InsertCrmTask
+  type InsertCrmTask,
+  crmMessages,
+  type CrmMessage,
+  type InsertCrmMessage
 } from "@shared/schema";
 import { eq, desc, sql, and, gte, lte, lt, gt, inArray, or, ilike } from "drizzle-orm";
 
@@ -797,6 +800,14 @@ export interface IStorage {
   createCrmTask(task: InsertCrmTask): Promise<CrmTask>;
   updateCrmTask(id: number, dealershipId: number, task: Partial<InsertCrmTask>): Promise<CrmTask | undefined>;
   deleteCrmTask(id: number, dealershipId: number): Promise<boolean>;
+  
+  // ====== CRM MESSAGES ======
+  createCrmMessage(message: InsertCrmMessage): Promise<CrmMessage>;
+  updateCrmMessage(id: number, dealershipId: number, message: Partial<InsertCrmMessage>): Promise<CrmMessage | undefined>;
+  getCrmMessages(contactId: number, dealershipId: number, limit?: number): Promise<CrmMessage[]>;
+  
+  // ====== MESSENGER HELPERS ======
+  getMessengerConversationsByContactFacebookId(dealershipId: number, facebookId: string): Promise<any[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -5291,6 +5302,44 @@ export class DatabaseStorage implements IStorage {
       ))
       .returning();
     return result.length > 0;
+  }
+  
+  // ====== CRM MESSAGES ======
+  async createCrmMessage(message: InsertCrmMessage): Promise<CrmMessage> {
+    const result = await db.insert(crmMessages).values(message).returning();
+    return result[0];
+  }
+  
+  async updateCrmMessage(id: number, dealershipId: number, message: Partial<InsertCrmMessage>): Promise<CrmMessage | undefined> {
+    const result = await db.update(crmMessages)
+      .set(message)
+      .where(and(
+        eq(crmMessages.id, id),
+        eq(crmMessages.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+  
+  async getCrmMessages(contactId: number, dealershipId: number, limit: number = 50): Promise<CrmMessage[]> {
+    return await db.select()
+      .from(crmMessages)
+      .where(and(
+        eq(crmMessages.contactId, contactId),
+        eq(crmMessages.dealershipId, dealershipId)
+      ))
+      .orderBy(desc(crmMessages.createdAt))
+      .limit(limit);
+  }
+  
+  // ====== MESSENGER HELPERS ======
+  async getMessengerConversationsByContactFacebookId(dealershipId: number, facebookId: string): Promise<MessengerConversation[]> {
+    return await db.select()
+      .from(messengerConversations)
+      .where(and(
+        eq(messengerConversations.dealershipId, dealershipId),
+        eq(messengerConversations.participantId, facebookId)
+      ));
   }
 }
 

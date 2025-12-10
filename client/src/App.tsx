@@ -26,6 +26,7 @@ import CallAnalysis from "@/pages/CallAnalysis";
 import SequenceAnalytics from "@/pages/SequenceAnalytics";
 import SalesAutoPosting from "@/pages/SalesAutoPosting";
 import SalesConversations from "@/pages/SalesConversations";
+import ContactsPage from "@/pages/ContactsPage";
 import { ImpersonationBanner } from "@/components/ImpersonationBanner";
 
 function MarketingRouter() {
@@ -39,6 +40,7 @@ function MarketingRouter() {
       <Route path="/sales" component={Sales} />
       <Route path="/sales/auto-posting" component={SalesAutoPosting} />
       <Route path="/sales/conversations" component={SalesConversations} />
+      <Route path="/contacts" component={ContactsPage} />
       <Route path="/admin" component={Admin} />
       <Route path="/super-admin" component={SuperAdminDashboard} />
       <Route path="/call-analysis" component={CallAnalysis} />
@@ -63,6 +65,7 @@ function DealershipRouter() {
       <Route path="/sales" component={Sales} />
       <Route path="/sales/auto-posting" component={SalesAutoPosting} />
       <Route path="/sales/conversations" component={SalesConversations} />
+      <Route path="/contacts" component={ContactsPage} />
       <Route path="/admin" component={Admin} />
       <Route path="/super-admin" component={SuperAdminDashboard} />
       <Route path="/call-analysis" component={CallAnalysis} />

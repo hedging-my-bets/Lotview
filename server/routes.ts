@@ -10365,5 +10365,95 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
   
+  // ===== CRM MESSAGING =====
+  
+  // Send a message to a contact (email, sms, or facebook)
+  app.post("/api/crm/contacts/:id/message", authMiddleware, requireRole('salesperson', 'manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const contactId = parseInt(req.params.id);
+      const userId = req.user?.id;
+      
+      const { channel, content, subject } = req.body;
+      
+      if (!channel || !['email', 'sms', 'facebook'].includes(channel)) {
+        return res.status(400).json({ error: "Invalid channel. Must be 'email', 'sms', or 'facebook'" });
+      }
+      
+      if (!content || typeof content !== 'string' || content.trim().length === 0) {
+        return res.status(400).json({ error: "Message content is required" });
+      }
+      
+      const { createContactMessagingService } = await import('./contact-messaging-service');
+      const messagingService = createContactMessagingService(dealershipId);
+      
+      const result = await messagingService.sendMessage({
+        dealershipId,
+        contactId,
+        channel,
+        content: content.trim(),
+        subject,
+        sentById: userId,
+      });
+      
+      if (result.success) {
+        res.json({ success: true, messageId: result.messageId, externalMessageId: result.externalMessageId });
+      } else {
+        res.status(400).json({ error: result.error });
+      }
+    } catch (error: any) {
+      console.error("Error sending CRM message:", error);
+      res.status(500).json({ error: error.message || "Failed to send message" });
+    }
+  });
+  
+  // Get AI-suggested message for a contact
+  app.post("/api/crm/contacts/:id/suggest-message", authMiddleware, requireRole('salesperson', 'manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const contactId = parseInt(req.params.id);
+      
+      const { channel, context } = req.body;
+      
+      if (!channel || !['email', 'sms', 'facebook'].includes(channel)) {
+        return res.status(400).json({ error: "Invalid channel. Must be 'email', 'sms', or 'facebook'" });
+      }
+      
+      const { createContactMessagingService } = await import('./contact-messaging-service');
+      const messagingService = createContactMessagingService(dealershipId);
+      
+      const result = await messagingService.generateAiMessageSuggestion({
+        dealershipId,
+        contactId,
+        channel,
+        context,
+      });
+      
+      if (result.success) {
+        res.json({ success: true, suggestion: result.suggestion });
+      } else {
+        res.status(400).json({ error: result.error });
+      }
+    } catch (error: any) {
+      console.error("Error generating AI message suggestion:", error);
+      res.status(500).json({ error: error.message || "Failed to generate suggestion" });
+    }
+  });
+  
+  // Get message history for a contact
+  app.get("/api/crm/contacts/:id/messages", authMiddleware, requireRole('salesperson', 'manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const contactId = parseInt(req.params.id);
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      
+      const messages = await storage.getCrmMessages(contactId, dealershipId, limit);
+      res.json(messages);
+    } catch (error) {
+      console.error("Error fetching CRM messages:", error);
+      res.status(500).json({ error: "Failed to fetch messages" });
+    }
+  });
+  
   return httpServer;
 }
