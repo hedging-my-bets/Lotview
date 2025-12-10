@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MessageSquare, Settings, Sparkles, Users, LogOut, DollarSign, Plus, Edit2, Trash2, Target, Webhook, Star, X, Code, ExternalLink, Car, Upload, ImageIcon, Loader2, RefreshCw } from "lucide-react";
 import { ConversationViewer } from "@/components/ConversationViewer";
+import { ConversationsPanel } from "@/components/ConversationsPanel";
 import { useToast } from "@/hooks/use-toast";
 import { InventoryManagement } from "@/components/InventoryManagement";
 import {
@@ -1364,7 +1365,7 @@ export default function Dashboard() {
               </TabsTrigger>
               <TabsTrigger value="conversations" className="flex items-center gap-1 text-xs sm:text-sm px-2 sm:px-3 py-2 flex-1 sm:flex-none" data-testid="tab-conversations">
                 <MessageSquare className="w-4 h-4" />
-                <span className="hidden sm:inline">Chat</span>
+                <span className="hidden sm:inline">Conversations</span>
               </TabsTrigger>
               <TabsTrigger value="insights" className="flex items-center gap-1 text-xs sm:text-sm px-2 sm:px-3 py-2 flex-1 sm:flex-none" data-testid="tab-insights">
                 <Sparkles className="w-4 h-4" />
@@ -2371,31 +2372,20 @@ export default function Dashboard() {
               </div>
             </TabsContent>
 
-            <TabsContent value="conversations">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <MessageSquare className="h-5 w-5 text-indigo-600" />
-                    Live Conversations
-                  </CardTitle>
-                  <CardDescription>
-                    Monitor chatbot conversations in real-time and view conversation history
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {user?.dealershipId ? (
-                    <ConversationViewer 
-                      dealershipId={user.dealershipId} 
-                      dealershipName={user.dealershipName || "Your Dealership"} 
-                    />
-                  ) : (
-                    <div className="py-12 text-center text-muted-foreground">
-                      <MessageSquare className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                      <p>Unable to load conversations. Please contact support.</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+            <TabsContent value="conversations" className="mt-0">
+              {user?.dealershipId ? (
+                <ConversationsPanel 
+                  dealershipId={user.dealershipId}
+                  onSwitchToTraining={() => {}}
+                />
+              ) : (
+                <Card>
+                  <CardContent className="py-12 text-center text-muted-foreground">
+                    <MessageSquare className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                    <p>Unable to load conversations. Please contact support.</p>
+                  </CardContent>
+                </Card>
+              )}
             </TabsContent>
 
             <TabsContent value="insights">
