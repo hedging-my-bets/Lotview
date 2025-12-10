@@ -685,9 +685,15 @@ export class GhlApiService {
     attachments?: string[];
     contactId?: string;
   }): Promise<GhlApiResponse<GhlMessage>> {
-    // GHL API requires specific payload structure for SMS vs Email
+    // GHL API v2 uses POST /conversations/messages with contactId and locationId in body
+    const locationId = await this.getLocationId();
+    if (!locationId) {
+      return { success: false, error: "No account", errorCode: "NO_ACCOUNT" };
+    }
+
     const payload: Record<string, any> = {
       type: message.type,
+      locationId,
     };
     
     // contactId is required by GHL API for sending messages
@@ -696,7 +702,7 @@ export class GhlApiService {
     }
     
     if (message.type === 'SMS') {
-      // For SMS, need type, message, and contactId
+      // For SMS, need type, message, contactId, and locationId
       payload.message = message.message;
     } else if (message.type === 'Email') {
       // For Email, need more fields
@@ -716,8 +722,9 @@ export class GhlApiService {
       payload.attachments = message.attachments;
     }
     
-    console.log(`[GHL] Sending ${message.type} to conversation ${conversationId}:`, payload);
-    return this.apiRequest<GhlMessage>("POST", `/conversations/${conversationId}/messages`, payload);
+    console.log(`[GHL] Sending ${message.type} via /conversations/messages:`, payload);
+    // GHL API v2 uses /conversations/messages endpoint (not /conversations/{id}/messages)
+    return this.apiRequest<GhlMessage>("POST", `/conversations/messages`, payload);
   }
 
   async createConversation(params: {
