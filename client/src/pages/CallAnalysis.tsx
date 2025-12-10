@@ -48,7 +48,9 @@ import {
   Copy,
   ChevronUp,
   ChevronDown,
-  ClipboardList
+  ClipboardList,
+  Users,
+  Mic
 } from "lucide-react";
 
 interface CallRecording {
@@ -151,6 +153,18 @@ interface ScoringResponse {
   reviewerScore: number | null;
   comment: string | null;
   timestamp: string | null;
+}
+
+interface CallParticipant {
+  id: number;
+  callRecordingId: number;
+  speakerLabel: string;
+  speakerName: string | null;
+  speakerRole: string;
+  department: string | null;
+  userId: number | null;
+  confidenceScore: number | null;
+  speakingTimeSeconds: number | null;
 }
 
 function formatDuration(seconds: number): string {
@@ -291,6 +305,10 @@ function CallDetailDialog({
             <TabsTrigger value="coaching" data-testid="tab-coaching">
               <Star className="w-4 h-4 mr-2" />
               Coaching
+            </TabsTrigger>
+            <TabsTrigger value="participants" data-testid="tab-participants">
+              <Users className="w-4 h-4 mr-2" />
+              Speakers
             </TabsTrigger>
           </TabsList>
           
@@ -460,10 +478,194 @@ function CallDetailDialog({
                 </Card>
               </div>
             </TabsContent>
+            
+            <TabsContent value="participants" className="m-0">
+              <CallParticipantsPanel 
+                callId={call.id} 
+                token={localStorage.getItem('auth_token')} 
+              />
+            </TabsContent>
           </ScrollArea>
         </Tabs>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function CallParticipantsPanel({ callId, token }: { callId: number; token: string | null }) {
+  const [participants, setParticipants] = useState<CallParticipant[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!token) return;
+    
+    const fetchParticipants = async () => {
+      try {
+        const response = await fetch(`/api/call-recordings/${callId}/participants`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setParticipants(data);
+        }
+      } catch (error) {
+        console.error('Error fetching participants:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchParticipants();
+  }, [callId, token]);
+
+  const getRoleColor = (role: string) => {
+    switch (role) {
+      case 'employee': return 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300';
+      case 'customer': return 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300';
+      default: return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
+    }
+  };
+
+  const getDepartmentLabel = (dept: string | null) => {
+    if (!dept) return null;
+    const labels: Record<string, string> = {
+      sales: 'Sales',
+      service: 'Service',
+      parts: 'Parts',
+      finance: 'Finance',
+      general: 'General'
+    };
+    return labels[dept] || dept;
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (participants.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <Users className="w-8 h-8 text-muted-foreground mb-4" />
+        <p className="text-muted-foreground">No speaker data available</p>
+        <p className="text-sm text-muted-foreground mt-1">Speaker identification requires call transcription with diarization</p>
+      </div>
+    );
+  }
+
+  const totalSpeakingTime = participants.reduce((sum, p) => sum + (p.speakingTimeSeconds || 0), 0);
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Users className="w-4 h-4" />
+            Identified Speakers ({participants.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {participants.map((participant) => (
+            <div 
+              key={participant.id} 
+              className="p-3 border rounded-lg"
+              data-testid={`participant-${participant.id}`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-full ${getRoleColor(participant.speakerRole)}`}>
+                    {participant.speakerRole === 'employee' ? (
+                      <User className="w-4 h-4" />
+                    ) : participant.speakerRole === 'customer' ? (
+                      <Phone className="w-4 h-4" />
+                    ) : (
+                      <Mic className="w-4 h-4" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="font-medium">
+                      {participant.speakerName || participant.speakerLabel}
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Badge variant="outline" className="text-xs capitalize">
+                        {participant.speakerRole}
+                      </Badge>
+                      {participant.department && (
+                        <Badge variant="secondary" className="text-xs">
+                          {getDepartmentLabel(participant.department)}
+                        </Badge>
+                      )}
+                      {participant.confidenceScore !== null && (
+                        <span className="text-xs text-muted-foreground">
+                          {participant.confidenceScore}% confidence
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                
+                {participant.speakingTimeSeconds !== null && totalSpeakingTime > 0 && (
+                  <div className="text-right">
+                    <div className="text-sm font-medium">
+                      {formatDuration(participant.speakingTimeSeconds)}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {Math.round((participant.speakingTimeSeconds / totalSpeakingTime) * 100)}% of call
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {participant.speakingTimeSeconds !== null && totalSpeakingTime > 0 && (
+                <Progress 
+                  value={(participant.speakingTimeSeconds / totalSpeakingTime) * 100} 
+                  className="h-1 mt-3"
+                />
+              )}
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+      
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Speaking Time Distribution</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-2">
+            {participants.map((p, i) => {
+              const percentage = totalSpeakingTime > 0 
+                ? (p.speakingTimeSeconds || 0) / totalSpeakingTime * 100 
+                : 0;
+              return (
+                <div
+                  key={p.id}
+                  className={`h-6 rounded ${
+                    p.speakerRole === 'employee' ? 'bg-blue-500' : 
+                    p.speakerRole === 'customer' ? 'bg-green-500' : 'bg-gray-400'
+                  }`}
+                  style={{ width: `${percentage}%` }}
+                  title={`${p.speakerName || p.speakerLabel}: ${Math.round(percentage)}%`}
+                />
+              );
+            })}
+          </div>
+          <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded bg-blue-500" />
+              <span>Employee</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded bg-green-500" />
+              <span>Customer</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
