@@ -3713,6 +3713,133 @@ Provide a single, concise, friendly message that continues the conversation natu
     }
   });
 
+  // Send SMS or Email from conversation (auto-creates FWC contact if needed)
+  app.post("/api/conversations/:id/send-message", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), requireDealership, async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const conversationId = parseInt(req.params.id);
+      const { channel, message, phone, email, subject } = req.body;
+
+      if (!channel || !['sms', 'email'].includes(channel)) {
+        return res.status(400).json({ error: "Invalid channel. Must be 'sms' or 'email'" });
+      }
+
+      if (!message || typeof message !== 'string' || message.trim().length === 0) {
+        return res.status(400).json({ error: "Message is required" });
+      }
+
+      if (channel === 'sms' && !phone) {
+        return res.status(400).json({ error: "Phone number is required for SMS" });
+      }
+      if (channel === 'email' && !email) {
+        return res.status(400).json({ error: "Email address is required for Email" });
+      }
+
+      // Get the conversation to extract customer info
+      const conversation = await storage.getConversationById(conversationId, dealershipId);
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+
+      // Get contact name from conversation
+      const customerName = conversation.handoffName || "Customer";
+      const firstName = customerName.split(' ')[0] || "Customer";
+      const lastName = customerName.split(' ').slice(1).join(' ') || undefined;
+
+      // Create or get GHL API service
+      const { createGhlApiService } = await import("./ghl-api-service");
+      const ghlService = createGhlApiService(dealershipId);
+
+      let ghlContactId = conversation.ghlContactId;
+
+      // If no GHL contact linked, try to find or create one
+      if (!ghlContactId) {
+        // Try to find existing contact by email or phone
+        let foundContact = null;
+        
+        if (email) {
+          const searchResult = await ghlService.searchContacts({ email });
+          if (searchResult.success && searchResult.data?.contacts?.length) {
+            foundContact = searchResult.data.contacts[0];
+          }
+        }
+        
+        if (!foundContact && phone) {
+          const searchResult = await ghlService.searchContacts({ phone });
+          if (searchResult.success && searchResult.data?.contacts?.length) {
+            foundContact = searchResult.data.contacts[0];
+          }
+        }
+
+        if (foundContact) {
+          ghlContactId = foundContact.id;
+        } else {
+          // Create new contact in FWC
+          const createResult = await ghlService.createContact({
+            firstName,
+            lastName,
+            email: email || undefined,
+            phone: phone || undefined,
+            source: 'Website Chat',
+            tags: ['Website Lead'],
+          });
+          
+          if (createResult.success && createResult.data) {
+            ghlContactId = createResult.data.id;
+          } else {
+            return res.status(500).json({ 
+              error: `Failed to create FWC contact: ${createResult.error || 'Unknown error'}` 
+            });
+          }
+        }
+
+        // Update conversation with the GHL contact ID
+        await storage.updateConversationHandoff(conversationId, dealershipId, { 
+          ghlContactId 
+        });
+      }
+
+      // Get or create conversation in FWC for the appropriate channel
+      const conversationType = channel === 'sms' ? 'TYPE_SMS' : 'TYPE_EMAIL';
+      const ghlConvResult = await ghlService.getOrCreateConversation(ghlContactId, conversationType);
+      
+      if (!ghlConvResult.success || !ghlConvResult.data) {
+        return res.status(500).json({ error: "Failed to create FWC conversation" });
+      }
+
+      // Send the message
+      const messageType = channel === 'sms' ? 'SMS' : 'Email';
+      const sendPayload: any = {
+        type: messageType,
+        message: message.trim(),
+      };
+      
+      if (channel === 'email') {
+        sendPayload.subject = subject || `Follow-up from ${req.user?.name || 'Sales Team'}`;
+        sendPayload.emailTo = email;
+        sendPayload.html = `<p>${message.trim().replace(/\n/g, '<br>')}</p>`;
+      }
+
+      const sendResult = await ghlService.sendMessage(ghlConvResult.data.id, sendPayload);
+
+      if (!sendResult.success) {
+        return res.status(500).json({ error: sendResult.error || "Failed to send message" });
+      }
+
+      console.log(`[Send Message] Sent ${channel} to ${channel === 'sms' ? phone : email} for conversation ${conversationId}`);
+
+      res.json({ 
+        success: true, 
+        messageId: sendResult.data?.id,
+        message: `${channel.toUpperCase()} sent successfully`,
+        ghlContactId
+      });
+    } catch (error: any) {
+      console.error("Error sending message:", error);
+      res.status(500).json({ error: error.message || "Failed to send message" });
+    }
+  });
+
   // Get messages for a specific conversation
   app.get("/api/messenger-conversations/:id/messages", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), async (req, res) => {
     try {

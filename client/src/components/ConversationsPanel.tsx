@@ -301,6 +301,62 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
     }
   };
 
+  // Handle sending channel message (SMS/Email) from the main input area
+  const handleSendChannelMessage = async () => {
+    if (!selectedConversation || !fwcMessageType || !fwcMessageText.trim()) {
+      toast({ title: "Error", description: "Please select a channel and enter a message", variant: "destructive" });
+      return;
+    }
+
+    const phone = selectedConversation.handoffPhone;
+    const email = selectedConversation.handoffEmail;
+
+    // Validate channel availability
+    if (fwcMessageType === 'sms' && !phone) {
+      toast({ title: "Error", description: "No phone number available for SMS", variant: "destructive" });
+      return;
+    }
+    if (fwcMessageType === 'email' && !email) {
+      toast({ title: "Error", description: "No email address available", variant: "destructive" });
+      return;
+    }
+
+    setIsSendingFwc(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/conversations/${selectedConversation.id}/send-message`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ 
+          channel: fwcMessageType,
+          message: fwcMessageText.trim(),
+          phone,
+          email
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        toast({ 
+          title: "Sent", 
+          description: data.message || `${fwcMessageType.toUpperCase()} sent successfully to ${fwcMessageType === 'sms' ? phone : email}` 
+        });
+        setFwcMessageText("");
+        // Keep channel selected for easy follow-up
+      } else {
+        toast({ title: "Error", description: data.error || "Failed to send message", variant: "destructive" });
+      }
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to send message", variant: "destructive" });
+    } finally {
+      setIsSendingFwc(false);
+    }
+  };
+
   // Training mode functions
   const handleAiMessageClick = (msg: Message, index: number) => {
     if (!trainingMode || msg.role !== 'assistant' || !selectedConversation?.messages) return;
@@ -754,28 +810,101 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
             {/* Message Input */}
             <div className="p-4 border-t bg-background">
               {selectedConversation.type === 'website_chat' && (
-                <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
-                  <p className="text-sm text-amber-700 dark:text-amber-400">
-                    Website chats are read-only. Use the customer's phone or email to follow up.
-                  </p>
-                </div>
+                <>
+                  {/* Channel selector for website chats */}
+                  {(selectedConversation.handoffPhone || selectedConversation.handoffEmail) ? (
+                    <div className="mb-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs text-muted-foreground">Reply via:</span>
+                        <div className="flex gap-1">
+                          {selectedConversation.handoffPhone && (
+                            <Button
+                              size="sm"
+                              variant={fwcMessageType === 'sms' ? 'default' : 'outline'}
+                              onClick={() => setFwcMessageType(fwcMessageType === 'sms' ? null : 'sms')}
+                              className={`h-7 text-xs gap-1 ${fwcMessageType === 'sms' ? 'bg-green-600 hover:bg-green-700' : ''}`}
+                              data-testid="channel-sms"
+                            >
+                              <Phone className="w-3 h-3" />
+                              SMS
+                            </Button>
+                          )}
+                          {selectedConversation.handoffEmail && (
+                            <Button
+                              size="sm"
+                              variant={fwcMessageType === 'email' ? 'default' : 'outline'}
+                              onClick={() => setFwcMessageType(fwcMessageType === 'email' ? null : 'email')}
+                              className={`h-7 text-xs gap-1 ${fwcMessageType === 'email' ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
+                              data-testid="channel-email"
+                            >
+                              <Mail className="w-3 h-3" />
+                              Email
+                            </Button>
+                          )}
+                        </div>
+                        {selectedConversation.handoffPhone && (
+                          <span className="text-xs text-muted-foreground ml-auto">{selectedConversation.handoffPhone}</span>
+                        )}
+                      </div>
+                      {!fwcMessageType && (
+                        <p className="text-xs text-muted-foreground">Select a channel above to send a message</p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
+                      <p className="text-sm text-amber-700 dark:text-amber-400">
+                        No contact info available. Customer needs to provide phone or email during chat.
+                      </p>
+                    </div>
+                  )}
+                </>
               )}
               <div className="flex items-center gap-2">
-                <Input
-                  placeholder={selectedConversation.type === 'messenger' ? "Type a message..." : "Replies not available for website chats"}
-                  value={replyText}
-                  disabled={selectedConversation.type === 'website_chat'}
-                  onChange={(e) => setReplyText(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendReply()}
-                  className="flex-1"
-                  data-testid="message-input"
-                />
-                <Button 
-                  onClick={sendReply} 
-                  disabled={isSending || !replyText.trim() || selectedConversation.type === 'website_chat'}
-                >
-                  <Send className="w-4 h-4" />
-                </Button>
+                {selectedConversation.type === 'messenger' ? (
+                  <>
+                    <Input
+                      placeholder="Type a message..."
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendReply()}
+                      className="flex-1"
+                      data-testid="message-input"
+                    />
+                    <Button 
+                      onClick={sendReply} 
+                      disabled={isSending || !replyText.trim()}
+                    >
+                      <Send className="w-4 h-4" />
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Input
+                      placeholder={fwcMessageType ? `Type your ${fwcMessageType.toUpperCase()} message...` : "Select a channel above to reply"}
+                      value={fwcMessageText}
+                      disabled={!fwcMessageType}
+                      onChange={(e) => setFwcMessageText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey && fwcMessageType && fwcMessageText.trim()) {
+                          handleSendChannelMessage();
+                        }
+                      }}
+                      className="flex-1"
+                      data-testid="message-input"
+                    />
+                    <Button 
+                      onClick={handleSendChannelMessage} 
+                      disabled={isSendingFwc || !fwcMessageText.trim() || !fwcMessageType}
+                      className={fwcMessageType === 'sms' ? 'bg-green-600 hover:bg-green-700' : fwcMessageType === 'email' ? 'bg-blue-600 hover:bg-blue-700' : ''}
+                    >
+                      {isSendingFwc ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Send className="w-4 h-4" />
+                      )}
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           </>
