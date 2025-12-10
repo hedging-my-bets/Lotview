@@ -11107,6 +11107,111 @@ Format your response in clear sections with actionable recommendations.`;
       res.status(500).json({ error: "Failed to fetch messages" });
     }
   });
+
+  // =====================
+  // Email API Routes
+  // =====================
+  
+  // Send a test email
+  app.post("/api/email/test", authMiddleware, requireRole('admin', 'master', 'super_admin'), async (req: AuthRequest, res) => {
+    try {
+      const { to, subject, message } = req.body;
+      
+      if (!to || !subject || !message) {
+        return res.status(400).json({ error: "Missing required fields: to, subject, message" });
+      }
+      
+      const { sendEmail } = await import('./email-service');
+      
+      const result = await sendEmail({
+        to,
+        subject,
+        html: `<div style="font-family: sans-serif; padding: 20px;">${message.replace(/\n/g, '<br>')}</div>`,
+        text: message
+      });
+      
+      if (result.success) {
+        res.json({ success: true, id: result.id });
+      } else {
+        res.status(400).json({ success: false, error: result.error });
+      }
+    } catch (error: any) {
+      console.error("Error sending test email:", error);
+      res.status(500).json({ error: error.message || "Failed to send email" });
+    }
+  });
+
+  // Send call scoring alert email
+  app.post("/api/email/call-scoring-alert", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const { managerEmail, managerName, salespersonName, callDate, overallScore, maxScore, department, callId, needsReview } = req.body;
+      
+      if (!managerEmail || !managerName || !salespersonName || !callId) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+      
+      const { sendCallScoringAlert, getDashboardUrl } = await import('./email-service');
+      
+      const dashboardUrl = getDashboardUrl();
+      
+      const result = await sendCallScoringAlert({
+        managerEmail,
+        managerName,
+        salespersonName,
+        callDate: new Date(callDate),
+        overallScore: overallScore || 0,
+        maxScore: maxScore || 100,
+        department: department || 'General',
+        callId,
+        needsReview: needsReview || false,
+        dashboardUrl
+      });
+      
+      if (result.success) {
+        res.json({ success: true });
+      } else {
+        res.status(400).json({ success: false, error: result.error });
+      }
+    } catch (error: any) {
+      console.error("Error sending call scoring alert:", error);
+      res.status(500).json({ error: error.message || "Failed to send alert" });
+    }
+  });
+
+  // Send lead notification email
+  app.post("/api/email/lead-notification", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const { salesEmail, salesName, customerName, customerPhone, customerEmail, vehicleInterest, source } = req.body;
+      
+      if (!salesEmail || !salesName || !customerName) {
+        return res.status(400).json({ error: "Missing required fields: salesEmail, salesName, customerName" });
+      }
+      
+      const { sendLeadNotification, getDashboardUrl } = await import('./email-service');
+      
+      const dashboardUrl = getDashboardUrl();
+      
+      const result = await sendLeadNotification({
+        salesEmail,
+        salesName,
+        customerName,
+        customerPhone,
+        customerEmail,
+        vehicleInterest,
+        source: source || 'Website',
+        dashboardUrl
+      });
+      
+      if (result.success) {
+        res.json({ success: true });
+      } else {
+        res.status(400).json({ success: false, error: result.error });
+      }
+    } catch (error: any) {
+      console.error("Error sending lead notification:", error);
+      res.status(500).json({ error: error.message || "Failed to send notification" });
+    }
+  });
   
   return httpServer;
 }
