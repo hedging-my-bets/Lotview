@@ -3356,6 +3356,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // AI suggest reply for conversations (manager dashboard)
+  app.post("/api/ai/suggest-reply", authMiddleware, requireRole("manager", "admin", "master", "super_admin"), requireDealership, async (req, res) => {
+    try {
+      const { messages, context } = req.body;
+      const dealershipId = req.dealershipId!;
+
+      if (!Array.isArray(messages) || messages.length === 0) {
+        return res.json({ suggestion: null });
+      }
+
+      // Build a prompt for generating a suggested reply
+      const conversationHistory = messages.map((m: any) => 
+        `${m.role === 'user' ? 'Customer' : 'Dealership'}: ${m.content}`
+      ).join('\n');
+
+      const systemPrompt = `You are an AI assistant for a car dealership. Based on the following conversation, suggest a helpful, professional reply that the dealership staff could send to the customer.
+
+${context?.vehicleName ? `The customer is interested in: ${context.vehicleName}` : ''}
+${context?.customerName ? `Customer name: ${context.customerName}` : ''}
+
+Conversation:
+${conversationHistory}
+
+Provide a single, concise, friendly message that continues the conversation naturally. Focus on being helpful, addressing any questions, and moving toward a sale or appointment. Do not include any preamble or explanation - just provide the suggested message text.`;
+
+      const response = await generateChatResponse(
+        [{ role: "user", content: systemPrompt }],
+        dealershipId,
+        'general'
+      );
+
+      res.json({ suggestion: response });
+    } catch (error) {
+      console.error("Error generating AI suggestion:", error);
+      res.status(500).json({ error: "Failed to generate suggestion", suggestion: null });
+    }
+  });
+
   // Save conversation (public - conversations are saved automatically)
   app.post("/api/conversations", async (req, res) => {
     try {
