@@ -108,6 +108,7 @@ interface Template {
   titleTemplate: string;
   descriptionTemplate: string;
   isDefault?: boolean;
+  isShared?: boolean;
   userId?: number;
 }
 
@@ -119,6 +120,8 @@ interface DbTemplate {
   titleTemplate: string;
   descriptionTemplate: string;
   isDefault: boolean;
+  isShared: boolean;
+  parentTemplateId: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -679,17 +682,31 @@ export default function MarketplaceBlast() {
     }
   });
 
-  // Merge database templates with defaults (DB templates come first)
+  // Merge database templates with defaults (shared first, then personal, then built-in)
   const allTemplates: Template[] = useMemo(() => {
-    const customTemplates: Template[] = dbTemplates.map(t => ({
-      id: `db-${t.id}`,
-      name: t.templateName,
-      titleTemplate: t.titleTemplate,
-      descriptionTemplate: t.descriptionTemplate,
-      isDefault: false,
-      userId: t.userId,
-    }));
-    return [...customTemplates, ...DEFAULT_TEMPLATES];
+    const sharedTemplates: Template[] = dbTemplates
+      .filter(t => t.isShared)
+      .map(t => ({
+        id: `db-${t.id}`,
+        name: `📋 ${t.templateName}`,
+        titleTemplate: t.titleTemplate,
+        descriptionTemplate: t.descriptionTemplate,
+        isDefault: false,
+        isShared: true,
+        userId: t.userId,
+      }));
+    const personalTemplates: Template[] = dbTemplates
+      .filter(t => !t.isShared)
+      .map(t => ({
+        id: `db-${t.id}`,
+        name: `👤 ${t.templateName}`,
+        titleTemplate: t.titleTemplate,
+        descriptionTemplate: t.descriptionTemplate,
+        isDefault: false,
+        isShared: false,
+        userId: t.userId,
+      }));
+    return [...sharedTemplates, ...personalTemplates, ...DEFAULT_TEMPLATES];
   }, [dbTemplates]);
 
   // Generate content mutation

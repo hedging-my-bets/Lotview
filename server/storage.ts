@@ -502,10 +502,17 @@ export interface IStorage {
   // Ad Templates (Multi-Tenant - Defense-in-Depth)
   getAdTemplatesByUser(userId: number, dealershipId: number): Promise<AdTemplate[]>;
   getAdTemplatesByDealership(dealershipId: number): Promise<AdTemplate[]>;
+  getSharedAdTemplates(dealershipId: number): Promise<AdTemplate[]>;
+  getUserPersonalAdTemplates(userId: number, dealershipId: number): Promise<AdTemplate[]>;
+  getAdTemplatesForUser(userId: number, dealershipId: number): Promise<AdTemplate[]>; // Shared + personal combined
   getAdTemplateById(id: number, userId: number, dealershipId: number): Promise<AdTemplate | undefined>;
+  getSharedAdTemplateById(id: number, dealershipId: number): Promise<AdTemplate | undefined>;
   createAdTemplate(template: InsertAdTemplate): Promise<AdTemplate>;
   updateAdTemplate(id: number, userId: number, dealershipId: number, template: Partial<InsertAdTemplate>): Promise<AdTemplate | undefined>;
+  updateSharedAdTemplate(id: number, dealershipId: number, template: Partial<InsertAdTemplate>): Promise<AdTemplate | undefined>;
   deleteAdTemplate(id: number, userId: number, dealershipId: number): Promise<boolean>;
+  deleteSharedAdTemplate(id: number, dealershipId: number): Promise<boolean>;
+  forkAdTemplate(templateId: number, userId: number, dealershipId: number): Promise<AdTemplate>;
   
   // Posting Queue (Multi-Tenant - Defense-in-Depth)
   getPostingQueueByUser(userId: number, dealershipId: number): Promise<PostingQueue[]>;
@@ -2445,6 +2452,89 @@ export class DatabaseStorage implements IStorage {
       eq(adTemplates.dealershipId, dealershipId)
     )).returning();
     return result.length > 0;
+  }
+
+  async getSharedAdTemplates(dealershipId: number): Promise<AdTemplate[]> {
+    // Get all shared templates for a dealership (manager-created, visible to all)
+    return await db.select().from(adTemplates).where(and(
+      eq(adTemplates.dealershipId, dealershipId),
+      eq(adTemplates.isShared, true)
+    ));
+  }
+
+  async getUserPersonalAdTemplates(userId: number, dealershipId: number): Promise<AdTemplate[]> {
+    // Get personal templates for a user (not shared)
+    return await db.select().from(adTemplates).where(and(
+      eq(adTemplates.dealershipId, dealershipId),
+      eq(adTemplates.userId, userId),
+      eq(adTemplates.isShared, false)
+    ));
+  }
+
+  async getAdTemplatesForUser(userId: number, dealershipId: number): Promise<AdTemplate[]> {
+    // Get combined list: shared templates + user's personal templates
+    const shared = await this.getSharedAdTemplates(dealershipId);
+    const personal = await this.getUserPersonalAdTemplates(userId, dealershipId);
+    return [...shared, ...personal];
+  }
+
+  async getSharedAdTemplateById(id: number, dealershipId: number): Promise<AdTemplate | undefined> {
+    // Get a shared template by ID (no userId check - visible to all)
+    const result = await db.select().from(adTemplates).where(and(
+      eq(adTemplates.id, id),
+      eq(adTemplates.dealershipId, dealershipId),
+      eq(adTemplates.isShared, true)
+    )).limit(1);
+    return result[0];
+  }
+
+  async updateSharedAdTemplate(id: number, dealershipId: number, template: Partial<InsertAdTemplate>): Promise<AdTemplate | undefined> {
+    // Update a shared template (manager-only operation, no userId check)
+    const result = await db.update(adTemplates)
+      .set({ ...template, updatedAt: new Date() })
+      .where(and(
+        eq(adTemplates.id, id),
+        eq(adTemplates.dealershipId, dealershipId),
+        eq(adTemplates.isShared, true)
+      ))
+      .returning();
+    return result[0];
+  }
+
+  async deleteSharedAdTemplate(id: number, dealershipId: number): Promise<boolean> {
+    // Delete a shared template (manager-only operation)
+    const result = await db.delete(adTemplates).where(and(
+      eq(adTemplates.id, id),
+      eq(adTemplates.dealershipId, dealershipId),
+      eq(adTemplates.isShared, true)
+    )).returning();
+    return result.length > 0;
+  }
+
+  async forkAdTemplate(templateId: number, userId: number, dealershipId: number): Promise<AdTemplate> {
+    // Create a personal copy of a shared template
+    const original = await db.select().from(adTemplates).where(and(
+      eq(adTemplates.id, templateId),
+      eq(adTemplates.dealershipId, dealershipId),
+      eq(adTemplates.isShared, true)
+    )).limit(1);
+    
+    if (!original[0]) {
+      throw new Error('Shared template not found');
+    }
+
+    // Create the fork
+    const result = await db.insert(adTemplates).values({
+      dealershipId,
+      userId,
+      templateName: `${original[0].templateName} (My Copy)`,
+      titleTemplate: original[0].titleTemplate,
+      descriptionTemplate: original[0].descriptionTemplate,
+      isDefault: false,
+      isShared: false,
+      parentTemplateId: templateId
+    }).returning();
+    return result[0];
   }
 
   // ====== POSTING QUEUE (Multi-Tenant - Defense-in-Depth) ======

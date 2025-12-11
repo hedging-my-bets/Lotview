@@ -5,7 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck, ClipboardCheck, BarChart3, Bot, Clock, Sparkles, Pencil, Save, TrendingDown, Minus, ArrowUp, ArrowDown, PackageOpen, ExternalLink, Eye, User, Send } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck, ClipboardCheck, BarChart3, Bot, Clock, Sparkles, Pencil, Save, TrendingDown, Minus, ArrowUp, ArrowDown, PackageOpen, ExternalLink, Eye, User, Send, Plus, Trash2, Copy } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CompetitorAlertsWidget } from "@/components/CompetitorAlertsWidget";
@@ -332,6 +333,424 @@ function InventoryAnalysisTab() {
   );
 }
 
+// Marketplace Templates Tab Component
+function MarketplaceTemplatesTab() {
+  const { toast } = useToast();
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [editingTemplate, setEditingTemplate] = useState<any | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [newTemplate, setNewTemplate] = useState({
+    templateName: '',
+    titleTemplate: '{year} {make} {model} - ${price}',
+    descriptionTemplate: ''
+  });
+
+  const fetchTemplates = async () => {
+    setIsLoading(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('/api/ad-templates/shared', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setTemplates(data);
+      } else {
+        throw new Error('Failed to fetch templates');
+      }
+    } catch (error) {
+      console.error('Error fetching templates:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load templates",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTemplates();
+  }, []);
+
+  const handleCreateTemplate = async () => {
+    if (!newTemplate.templateName.trim() || !newTemplate.titleTemplate.trim() || !newTemplate.descriptionTemplate.trim()) {
+      toast({
+        title: "Missing Information",
+        description: "Please fill in all template fields",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('/api/ad-templates/shared', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(newTemplate)
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Template Created",
+          description: "The shared template is now available to all staff"
+        });
+        setIsCreating(false);
+        setNewTemplate({
+          templateName: '',
+          titleTemplate: '{year} {make} {model} - ${price}',
+          descriptionTemplate: ''
+        });
+        fetchTemplates();
+      } else {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create template');
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create template",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdateTemplate = async () => {
+    if (!editingTemplate) return;
+
+    setIsSaving(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/ad-templates/shared/${editingTemplate.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          templateName: editingTemplate.templateName,
+          titleTemplate: editingTemplate.titleTemplate,
+          descriptionTemplate: editingTemplate.descriptionTemplate
+        })
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Template Updated",
+          description: "Changes saved successfully"
+        });
+        setEditingTemplate(null);
+        fetchTemplates();
+      } else {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to update template');
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update template",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteTemplate = async (templateId: number) => {
+    if (!confirm('Are you sure you want to delete this template? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`/api/ad-templates/shared/${templateId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Template Deleted",
+          description: "The template has been removed"
+        });
+        fetchTemplates();
+      } else {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to delete template');
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete template",
+        variant: "destructive"
+      });
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6" data-testid="tab-content-templates">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h3 className="text-lg font-semibold">Marketplace Templates</h3>
+          <p className="text-sm text-muted-foreground">
+            Create and manage shared templates for Facebook Marketplace posts. 
+            Staff can use these templates or create personal copies.
+          </p>
+        </div>
+        <Button
+          onClick={() => setIsCreating(true)}
+          disabled={isCreating}
+          data-testid="button-create-template"
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          New Template
+        </Button>
+      </div>
+
+      {/* Variable Reference */}
+      <div className="bg-muted/50 rounded-lg p-4">
+        <h4 className="font-medium mb-2">Available Variables</h4>
+        <div className="flex flex-wrap gap-2 text-sm">
+          <Badge variant="secondary">{'{year}'}</Badge>
+          <Badge variant="secondary">{'{make}'}</Badge>
+          <Badge variant="secondary">{'{model}'}</Badge>
+          <Badge variant="secondary">{'{trim}'}</Badge>
+          <Badge variant="secondary">{'{price}'}</Badge>
+          <Badge variant="secondary">{'{mileage}'}</Badge>
+          <Badge variant="secondary">{'{color}'}</Badge>
+          <Badge variant="secondary">{'{stock}'}</Badge>
+        </div>
+        <p className="text-xs text-muted-foreground mt-2">
+          These variables will be replaced with actual vehicle data when generating posts.
+        </p>
+      </div>
+
+      {/* Create New Template Form */}
+      {isCreating && (
+        <Card className="border-blue-500">
+          <CardHeader>
+            <CardTitle className="text-base">Create New Shared Template</CardTitle>
+            <CardDescription>
+              This template will be available to all staff members
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <Label htmlFor="new-template-name">Template Name</Label>
+              <Input
+                id="new-template-name"
+                placeholder="e.g., Standard Listing, Premium Vehicle, Quick Sale"
+                value={newTemplate.templateName}
+                onChange={(e) => setNewTemplate({ ...newTemplate, templateName: e.target.value })}
+                data-testid="input-new-template-name"
+              />
+            </div>
+            <div>
+              <Label htmlFor="new-title-template">Title Template</Label>
+              <Input
+                id="new-title-template"
+                placeholder="e.g., {year} {make} {model} - ${price}"
+                value={newTemplate.titleTemplate}
+                onChange={(e) => setNewTemplate({ ...newTemplate, titleTemplate: e.target.value })}
+                data-testid="input-new-title-template"
+              />
+            </div>
+            <div>
+              <Label htmlFor="new-description-template">Description Template</Label>
+              <Textarea
+                id="new-description-template"
+                placeholder="Enter the full description template with variables..."
+                value={newTemplate.descriptionTemplate}
+                onChange={(e) => setNewTemplate({ ...newTemplate, descriptionTemplate: e.target.value })}
+                rows={6}
+                data-testid="textarea-new-description-template"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsCreating(false);
+                  setNewTemplate({
+                    templateName: '',
+                    titleTemplate: '{year} {make} {model} - ${price}',
+                    descriptionTemplate: ''
+                  });
+                }}
+                data-testid="button-cancel-create"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleCreateTemplate}
+                disabled={isSaving}
+                data-testid="button-save-new-template"
+              >
+                {isSaving ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4 mr-2" />
+                    Create Template
+                  </>
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Template List */}
+      {templates.length > 0 ? (
+        <div className="space-y-4">
+          {templates.map((template) => (
+            <Card key={template.id} data-testid={`template-card-${template.id}`}>
+              <CardHeader className="pb-2">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      {template.templateName}
+                      {template.isDefault && (
+                        <Badge variant="secondary" className="text-xs">Default</Badge>
+                      )}
+                    </CardTitle>
+                    <CardDescription className="text-xs mt-1">
+                      Created {new Date(template.createdAt).toLocaleDateString()}
+                    </CardDescription>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setEditingTemplate(template)}
+                      data-testid={`button-edit-template-${template.id}`}
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDeleteTemplate(template.id)}
+                      className="text-destructive hover:text-destructive"
+                      data-testid={`button-delete-template-${template.id}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {editingTemplate?.id === template.id ? (
+                  <div className="space-y-4">
+                    <div>
+                      <Label>Template Name</Label>
+                      <Input
+                        value={editingTemplate.templateName}
+                        onChange={(e) => setEditingTemplate({ ...editingTemplate, templateName: e.target.value })}
+                        data-testid={`input-edit-name-${template.id}`}
+                      />
+                    </div>
+                    <div>
+                      <Label>Title Template</Label>
+                      <Input
+                        value={editingTemplate.titleTemplate}
+                        onChange={(e) => setEditingTemplate({ ...editingTemplate, titleTemplate: e.target.value })}
+                        data-testid={`input-edit-title-${template.id}`}
+                      />
+                    </div>
+                    <div>
+                      <Label>Description Template</Label>
+                      <Textarea
+                        value={editingTemplate.descriptionTemplate}
+                        onChange={(e) => setEditingTemplate({ ...editingTemplate, descriptionTemplate: e.target.value })}
+                        rows={6}
+                        data-testid={`textarea-edit-description-${template.id}`}
+                      />
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setEditingTemplate(null)}
+                        data-testid={`button-cancel-edit-${template.id}`}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={handleUpdateTemplate}
+                        disabled={isSaving}
+                        data-testid={`button-save-edit-${template.id}`}
+                      >
+                        {isSaving ? 'Saving...' : 'Save Changes'}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div>
+                      <span className="text-xs text-muted-foreground">Title:</span>
+                      <p className="text-sm font-mono bg-muted px-2 py-1 rounded">{template.titleTemplate}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground">Description:</span>
+                      <p className="text-sm font-mono bg-muted px-2 py-1 rounded whitespace-pre-wrap max-h-32 overflow-y-auto">
+                        {template.descriptionTemplate}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-12 text-muted-foreground">
+          <Sparkles className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+          <h3 className="text-lg font-medium mb-2">No Templates Yet</h3>
+          <p className="text-sm mb-4">
+            Create your first shared template to help staff post vehicles quickly.
+          </p>
+          <Button onClick={() => setIsCreating(true)} data-testid="button-create-first-template">
+            <Plus className="w-4 h-4 mr-2" />
+            Create First Template
+          </Button>
+        </div>
+      )}
+
+      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+        <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-2">Template Hierarchy</h4>
+        <p className="text-sm text-blue-700 dark:text-blue-300">
+          Templates you create here are <strong>shared</strong> and visible to all staff. 
+          Salespeople can fork these templates to create personal copies without affecting the originals.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function Manager() {
   const [, setLocation] = useLocation();
   const [user, setUser] = useState<any>(null);
@@ -350,7 +769,7 @@ export default function Manager() {
     defaultRadiusKm: 50
   });
   const [isSavingSettings, setIsSavingSettings] = useState(false);
-  const [activeManagerTab, setActiveManagerTab] = useState<'appraisal' | 'inventory' | 'my-inventory' | 'conversations' | 'prompts' | 'settings' | 'history' | 'followup' | 'call-scoring'>('appraisal');
+  const [activeManagerTab, setActiveManagerTab] = useState<'appraisal' | 'inventory' | 'my-inventory' | 'conversations' | 'prompts' | 'settings' | 'history' | 'followup' | 'call-scoring' | 'templates'>('appraisal');
 
   // Conversations state
   const [allConversations, setAllConversations] = useState<{
@@ -1529,6 +1948,16 @@ export default function Manager() {
                 >
                   <ClipboardCheck className="w-4 h-4 text-purple-600" />
                   <span className="text-purple-600 font-medium">Call Scoring</span>
+                </Button>
+                <Button
+                  variant={activeManagerTab === 'templates' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setActiveManagerTab('templates')}
+                  data-testid="tab-marketplace-templates"
+                  className="flex items-center gap-2 bg-blue-600/10 hover:bg-blue-600/20"
+                >
+                  <Sparkles className="w-4 h-4 text-blue-600" />
+                  <span className="text-blue-600 font-medium">Marketplace Templates</span>
                 </Button>
               </div>
             </CardHeader>
@@ -2850,6 +3279,11 @@ export default function Manager() {
                     </p>
                   </div>
                 </div>
+              )}
+
+              {/* Marketplace Templates Tab */}
+              {activeManagerTab === 'templates' && (
+                <MarketplaceTemplatesTab />
               )}
             </CardContent>
           </Card>

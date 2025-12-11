@@ -607,11 +607,13 @@ export type FacebookAccount = typeof facebookAccounts.$inferSelect;
 export const adTemplates = pgTable("ad_templates", {
   id: serial("id").primaryKey(),
   dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
-  userId: integer("user_id").notNull().references(() => users.id), // Salesperson who created this
+  userId: integer("user_id").notNull().references(() => users.id), // User who created this
   templateName: text("template_name").notNull(), // e.g., "Classic", "Premium", "Budget"
   titleTemplate: text("title_template").notNull(), // e.g., "{year} {make} {model} - ${price}"
   descriptionTemplate: text("description_template").notNull(), // Full description with variables
   isDefault: boolean("is_default").notNull().default(false), // If this is the default template
+  isShared: boolean("is_shared").notNull().default(false), // If true, visible to all staff (manager-created)
+  parentTemplateId: integer("parent_template_id"), // If copied from a shared template, reference to original
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

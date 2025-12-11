@@ -11939,12 +11939,13 @@ Format your response in clear sections with actionable recommendations.`;
 
   // ==================== AD TEMPLATES FOR MARKETPLACE BLAST ====================
   
-  // Get all dealership templates (managers can create templates visible to all salespeople)
+  // Get templates for user (shared + personal combined)
   app.get("/api/ad-templates", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
     try {
+      const userId = req.user!.id;
       const dealershipId = req.dealershipId!;
-      // Return all templates for the dealership (all staff can see manager-created templates)
-      const templates = await storage.getAdTemplatesByDealership(dealershipId);
+      // Return shared templates + user's personal templates
+      const templates = await storage.getAdTemplatesForUser(userId, dealershipId);
       res.json(templates);
     } catch (error: any) {
       console.error("Error fetching ad templates:", error);
@@ -11952,7 +11953,19 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
 
-  // Create a new ad template
+  // Get shared templates only (manager dashboard)
+  app.get("/api/ad-templates/shared", authMiddleware, requireRole("manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const templates = await storage.getSharedAdTemplates(dealershipId);
+      res.json(templates);
+    } catch (error: any) {
+      console.error("Error fetching shared templates:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch shared templates" });
+    }
+  });
+
+  // Create a personal template (salesperson)
   app.post("/api/ad-templates", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
     try {
       const userId = req.user!.id;
@@ -11963,13 +11976,15 @@ Format your response in clear sections with actionable recommendations.`;
         return res.status(400).json({ error: "Template name, title, and description are required" });
       }
       
+      // Salespeople can only create personal (non-shared) templates
       const template = await storage.createAdTemplate({
         dealershipId,
         userId,
         templateName,
         titleTemplate,
         descriptionTemplate,
-        isDefault: isDefault || false
+        isDefault: isDefault || false,
+        isShared: false
       });
       
       res.json(template);
@@ -11979,7 +11994,51 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
 
-  // Update an ad template
+  // Create a shared template (manager-only)
+  app.post("/api/ad-templates/shared", authMiddleware, requireRole("manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const dealershipId = req.dealershipId!;
+      const { templateName, titleTemplate, descriptionTemplate, isDefault } = req.body;
+      
+      if (!templateName || !titleTemplate || !descriptionTemplate) {
+        return res.status(400).json({ error: "Template name, title, and description are required" });
+      }
+      
+      // Managers create shared templates visible to all
+      const template = await storage.createAdTemplate({
+        dealershipId,
+        userId,
+        templateName,
+        titleTemplate,
+        descriptionTemplate,
+        isDefault: isDefault || false,
+        isShared: true
+      });
+      
+      res.json(template);
+    } catch (error: any) {
+      console.error("Error creating shared template:", error);
+      res.status(500).json({ error: error.message || "Failed to create shared template" });
+    }
+  });
+
+  // Fork a shared template (create personal copy)
+  app.post("/api/ad-templates/:id/fork", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const dealershipId = req.dealershipId!;
+      const templateId = parseInt(req.params.id);
+      
+      const template = await storage.forkAdTemplate(templateId, userId, dealershipId);
+      res.json(template);
+    } catch (error: any) {
+      console.error("Error forking template:", error);
+      res.status(500).json({ error: error.message || "Failed to fork template" });
+    }
+  });
+
+  // Update a personal template (owner only)
   app.patch("/api/ad-templates/:id", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
     try {
       const userId = req.user!.id;
@@ -11995,7 +12054,7 @@ Format your response in clear sections with actionable recommendations.`;
       });
       
       if (!template) {
-        return res.status(404).json({ error: "Template not found" });
+        return res.status(404).json({ error: "Template not found or you don't have permission to edit it" });
       }
       
       res.json(template);
@@ -12005,7 +12064,32 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
 
-  // Delete an ad template
+  // Update a shared template (manager-only)
+  app.patch("/api/ad-templates/shared/:id", authMiddleware, requireRole("manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const templateId = parseInt(req.params.id);
+      const { templateName, titleTemplate, descriptionTemplate, isDefault } = req.body;
+      
+      const template = await storage.updateSharedAdTemplate(templateId, dealershipId, {
+        templateName,
+        titleTemplate,
+        descriptionTemplate,
+        isDefault
+      });
+      
+      if (!template) {
+        return res.status(404).json({ error: "Shared template not found" });
+      }
+      
+      res.json(template);
+    } catch (error: any) {
+      console.error("Error updating shared template:", error);
+      res.status(500).json({ error: error.message || "Failed to update shared template" });
+    }
+  });
+
+  // Delete a personal template (owner only)
   app.delete("/api/ad-templates/:id", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
     try {
       const userId = req.user!.id;
@@ -12017,6 +12101,20 @@ Format your response in clear sections with actionable recommendations.`;
     } catch (error: any) {
       console.error("Error deleting ad template:", error);
       res.status(500).json({ error: error.message || "Failed to delete template" });
+    }
+  });
+
+  // Delete a shared template (manager-only)
+  app.delete("/api/ad-templates/shared/:id", authMiddleware, requireRole("manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const templateId = parseInt(req.params.id);
+      
+      await storage.deleteSharedAdTemplate(templateId, dealershipId);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error deleting shared template:", error);
+      res.status(500).json({ error: error.message || "Failed to delete shared template" });
     }
   });
 
