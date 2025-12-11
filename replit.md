@@ -69,6 +69,12 @@ Preferred communication style: Simple, everyday language.
   - **Methods tracked**: `puppeteer`, `browserless`, `apify`, `cache_preserve`
   - **API Keys**: `browserlessApiKey` and `scrapingbeeApiKey` in `dealership_api_keys` table
   - **Architectural Note**: Apify AutoTrader.ca actor searches by make/model, not by dealer URL, so it cannot fully substitute for Puppeteer dealer website scraping - Browserless IS the true backup
+  - **Checkpoint System** (Dec 2025): Resume-capable scraping with crash recovery
+    - `scrape_queue` table tracks VDP URLs with status (pending/processing/completed/failed)
+    - Extracts all VDP URLs from listing page first, saves to queue
+    - Processes vehicles in batches of 5, checkpointing each completed vehicle
+    - On restart, resumes from incomplete queue entries (no data loss on browser crashes)
+    - Storage methods: `createScrapeQueueBatch()`, `updateScrapeQueueStatus()`, `getIncompleteScrapeQueue()`
 - **AI/LLM**: OpenAI GPT-5 via Replit AI Integrations or per-dealership OpenAI API keys.
 - **Carfax Integration**: Automated scraping of Carfax URLs.
 - **Facebook Integration**: OAuth 2.0, Graph API for page connections, page posting, and Facebook Catalog API.
