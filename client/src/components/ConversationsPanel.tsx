@@ -31,8 +31,13 @@ import {
   GraduationCap,
   Save,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Users,
+  Car,
+  Filter,
+  X
 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface Message {
   role: "user" | "assistant";
@@ -62,6 +67,24 @@ interface Conversation {
   pageName?: string;
 }
 
+interface CrmContact {
+  id: number;
+  firstName: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  status: string;
+  leadSource?: string;
+  leadScore?: number;
+  preferredMake?: string;
+  preferredModel?: string;
+  interestedVehicleIds?: string;
+  lastContactedAt?: string;
+  lastRespondedAt?: string;
+  ghlContactId?: string;
+  createdAt?: string;
+}
+
 interface ConversationsPanelProps {
   dealershipId: number;
   onSwitchToTraining?: () => void;
@@ -87,6 +110,18 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
   const [fwcMessageType, setFwcMessageType] = useState<'sms' | 'email' | 'facebook' | null>(null);
   const [fwcMessageText, setFwcMessageText] = useState("");
   const [isSendingFwc, setIsSendingFwc] = useState(false);
+  
+  // Tab state: 'chats' or 'contacts'
+  const [activeTab, setActiveTab] = useState<'chats' | 'contacts'>('chats');
+  
+  // Contacts state
+  const [contacts, setContacts] = useState<CrmContact[]>([]);
+  const [isLoadingContacts, setIsLoadingContacts] = useState(false);
+  const [contactsTotal, setContactsTotal] = useState(0);
+  const [selectedContact, setSelectedContact] = useState<CrmContact | null>(null);
+  const [contactSearchQuery, setContactSearchQuery] = useState("");
+  const [contactStatusFilter, setContactStatusFilter] = useState<string>("all");
+  const [contactSourceFilter, setContactSourceFilter] = useState<string>("all");
   
   // Training mode state
   const [trainingDialogOpen, setTrainingDialogOpen] = useState(false);
@@ -197,6 +232,44 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
       setSelectedConversation(conv);
     }
   };
+
+  // Load CRM contacts with filters
+  const loadContacts = useCallback(async () => {
+    setIsLoadingContacts(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const params = new URLSearchParams();
+      if (contactSearchQuery) params.append('search', contactSearchQuery);
+      if (contactStatusFilter !== 'all') params.append('status', contactStatusFilter);
+      if (contactSourceFilter !== 'all') params.append('leadSource', contactSourceFilter);
+      params.append('limit', '100');
+      
+      const response = await fetch(`/api/crm/contacts?${params.toString()}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setContacts(data.contacts || []);
+        setContactsTotal(data.total || data.contacts?.length || 0);
+      }
+    } catch (error) {
+      console.error('Error loading contacts:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load contacts",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoadingContacts(false);
+    }
+  }, [contactSearchQuery, contactStatusFilter, contactSourceFilter, toast]);
+
+  // Load contacts when tab switches or filters change
+  useEffect(() => {
+    if (activeTab === 'contacts') {
+      loadContacts();
+    }
+  }, [activeTab, loadContacts]);
 
   // Store loadConversations in ref for WebSocket handler
   useEffect(() => {
@@ -734,107 +807,320 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
 
   return (
     <div className="h-[calc(100vh-200px)] flex bg-background rounded-lg border overflow-hidden" data-testid="conversations-panel">
-      {/* Left Panel - Contacts List (iPhone Messages style) */}
+      {/* Left Panel - Tabbed interface for Chats/Contacts */}
       <div className="w-80 border-r flex flex-col bg-muted/30">
-        {/* Header with search and training toggle */}
-        <div className="p-4 border-b space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-lg">Messages</h2>
-            <Button variant="ghost" size="sm" onClick={() => loadConversations()} disabled={isLoading}>
-              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-            </Button>
-          </div>
-          
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Search conversations..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 bg-background"
-              data-testid="search-conversations"
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <Label htmlFor="training-mode" className="text-sm flex items-center gap-2 cursor-pointer">
-              <ClipboardCheck className="w-4 h-4" />
-              Training Mode
-            </Label>
-            <Switch
-              id="training-mode"
-              checked={trainingMode}
-              onCheckedChange={setTrainingMode}
-              data-testid="toggle-training-mode"
-            />
+        {/* Tab buttons */}
+        <div className="border-b">
+          <div className="flex">
+            <button
+              className={`flex-1 px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                activeTab === 'chats'
+                  ? 'border-b-2 border-primary text-primary bg-background'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+              }`}
+              onClick={() => {
+                setActiveTab('chats');
+                setSelectedContact(null);
+              }}
+              data-testid="tab-chats"
+            >
+              <MessageSquare className="w-4 h-4" />
+              Chats
+            </button>
+            <button
+              className={`flex-1 px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                activeTab === 'contacts'
+                  ? 'border-b-2 border-primary text-primary bg-background'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+              }`}
+              onClick={() => {
+                setActiveTab('contacts');
+                setSelectedConversation(null);
+              }}
+              data-testid="tab-contacts"
+            >
+              <Users className="w-4 h-4" />
+              Contacts
+            </button>
           </div>
         </div>
 
-        {/* Contacts List */}
-        <ScrollArea className="flex-1">
-          {isLoading ? (
-            <div className="p-4 space-y-3">
-              {[1, 2, 3, 4].map(i => (
-                <div key={i} className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-muted animate-pulse" />
-                  <div className="flex-1 space-y-2">
-                    <div className="h-4 w-24 bg-muted rounded animate-pulse" />
-                    <div className="h-3 w-36 bg-muted rounded animate-pulse" />
-                  </div>
-                </div>
-              ))}
+        {/* Chats Tab Content */}
+        {activeTab === 'chats' && (
+          <>
+            {/* Header with search and training toggle */}
+            <div className="p-4 border-b space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold text-lg">Messages</h2>
+                <Button variant="ghost" size="sm" onClick={() => loadConversations()} disabled={isLoading}>
+                  <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                </Button>
+              </div>
+              
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search conversations..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 bg-background"
+                  data-testid="search-conversations"
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <Label htmlFor="training-mode" className="text-sm flex items-center gap-2 cursor-pointer">
+                  <ClipboardCheck className="w-4 h-4" />
+                  Training Mode
+                </Label>
+                <Switch
+                  id="training-mode"
+                  checked={trainingMode}
+                  onCheckedChange={setTrainingMode}
+                  data-testid="toggle-training-mode"
+                />
+              </div>
             </div>
-          ) : filteredConversations.length > 0 ? (
-            <div>
-              {filteredConversations.map((conv) => (
-                <div
-                  key={`${conv.type}-${conv.id}`}
-                  className={`flex items-center gap-3 p-4 cursor-pointer hover:bg-muted/50 transition-colors border-b ${
-                    selectedConversation?.id === conv.id && selectedConversation?.type === conv.type
-                      ? 'bg-primary/10'
-                      : ''
-                  }`}
-                  onClick={() => selectConversation(conv)}
-                  data-testid={`conversation-${conv.type}-${conv.id}`}
-                >
-                  {/* Avatar */}
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold text-sm ${
-                    conv.type === 'messenger' ? 'bg-blue-500' : 'bg-green-500'
-                  }`}>
-                    {getContactInitials(conv)}
-                  </div>
-                  
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium truncate">{getContactName(conv)}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {formatTime(conv.lastMessageAt || conv.createdAt)}
-                      </span>
+
+            {/* Conversations List */}
+            <ScrollArea className="flex-1">
+              {isLoading ? (
+                <div className="p-4 space-y-3">
+                  {[1, 2, 3, 4].map(i => (
+                    <div key={i} className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full bg-muted animate-pulse" />
+                      <div className="flex-1 space-y-2">
+                        <div className="h-4 w-24 bg-muted rounded animate-pulse" />
+                        <div className="h-3 w-36 bg-muted rounded animate-pulse" />
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm text-muted-foreground truncate">
-                        {getLastMessage(conv)}
-                      </p>
-                      {conv.unreadCount && conv.unreadCount > 0 && (
-                        <Badge className="bg-blue-500 text-white text-xs px-1.5 py-0.5 rounded-full">
-                          {conv.unreadCount}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                  ))}
                 </div>
-              ))}
+              ) : filteredConversations.length > 0 ? (
+                <div>
+                  {filteredConversations.map((conv) => (
+                    <div
+                      key={`${conv.type}-${conv.id}`}
+                      className={`flex items-center gap-3 p-4 cursor-pointer hover:bg-muted/50 transition-colors border-b ${
+                        selectedConversation?.id === conv.id && selectedConversation?.type === conv.type
+                          ? 'bg-primary/10'
+                          : ''
+                      }`}
+                      onClick={() => selectConversation(conv)}
+                      data-testid={`conversation-${conv.type}-${conv.id}`}
+                    >
+                      {/* Avatar */}
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold text-sm ${
+                        conv.type === 'messenger' ? 'bg-blue-500' : 'bg-green-500'
+                      }`}>
+                        {getContactInitials(conv)}
+                      </div>
+                      
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium truncate">{getContactName(conv)}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {formatTime(conv.lastMessageAt || conv.createdAt)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm text-muted-foreground truncate">
+                            {getLastMessage(conv)}
+                          </p>
+                          {conv.unreadCount && conv.unreadCount > 0 && (
+                            <Badge className="bg-blue-500 text-white text-xs px-1.5 py-0.5 rounded-full">
+                              {conv.unreadCount}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-8 text-center text-muted-foreground">
+                  <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p className="text-sm">No conversations found</p>
+                </div>
+              )}
+            </ScrollArea>
+          </>
+        )}
+
+        {/* Contacts Tab Content */}
+        {activeTab === 'contacts' && (
+          <>
+            {/* Header with filters */}
+            <div className="p-4 border-b space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="font-semibold text-lg">Contacts</h2>
+                  <span className="text-xs text-muted-foreground">
+                    {isLoadingContacts ? (
+                      <span className="inline-block w-16 h-3 bg-muted rounded animate-pulse" />
+                    ) : (
+                      `${contactsTotal} total ${contactsTotal === 1 ? 'contact' : 'contacts'}`
+                    )}
+                  </span>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => loadContacts()} disabled={isLoadingContacts}>
+                  <RefreshCw className={`w-4 h-4 ${isLoadingContacts ? 'animate-spin' : ''}`} />
+                </Button>
+              </div>
+              
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search contacts..."
+                  value={contactSearchQuery}
+                  onChange={(e) => setContactSearchQuery(e.target.value)}
+                  className="pl-9 bg-background"
+                  data-testid="search-contacts"
+                />
+              </div>
+
+              {/* Filter dropdowns */}
+              <div className="grid grid-cols-2 gap-2">
+                <Select value={contactStatusFilter} onValueChange={setContactStatusFilter}>
+                  <SelectTrigger className="h-8 text-xs" data-testid="filter-status">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="lead">Lead</SelectItem>
+                    <SelectItem value="prospect">Prospect</SelectItem>
+                    <SelectItem value="customer">Customer</SelectItem>
+                    <SelectItem value="lost">Lost</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select value={contactSourceFilter} onValueChange={setContactSourceFilter}>
+                  <SelectTrigger className="h-8 text-xs" data-testid="filter-source">
+                    <SelectValue placeholder="Source" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Sources</SelectItem>
+                    <SelectItem value="website">Website</SelectItem>
+                    <SelectItem value="facebook">Facebook</SelectItem>
+                    <SelectItem value="phone">Phone</SelectItem>
+                    <SelectItem value="walk-in">Walk-in</SelectItem>
+                    <SelectItem value="referral">Referral</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Active filters summary */}
+              {(contactStatusFilter !== 'all' || contactSourceFilter !== 'all' || contactSearchQuery) && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-muted-foreground">Filters:</span>
+                  {contactSearchQuery && (
+                    <Badge variant="secondary" className="text-xs">
+                      "{contactSearchQuery}"
+                      <X className="w-3 h-3 ml-1 cursor-pointer" onClick={() => setContactSearchQuery('')} />
+                    </Badge>
+                  )}
+                  {contactStatusFilter !== 'all' && (
+                    <Badge variant="secondary" className="text-xs capitalize">
+                      {contactStatusFilter}
+                      <X className="w-3 h-3 ml-1 cursor-pointer" onClick={() => setContactStatusFilter('all')} />
+                    </Badge>
+                  )}
+                  {contactSourceFilter !== 'all' && (
+                    <Badge variant="secondary" className="text-xs capitalize">
+                      {contactSourceFilter}
+                      <X className="w-3 h-3 ml-1 cursor-pointer" onClick={() => setContactSourceFilter('all')} />
+                    </Badge>
+                  )}
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="p-8 text-center text-muted-foreground">
-              <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
-              <p className="text-sm">No conversations found</p>
-            </div>
-          )}
-        </ScrollArea>
+
+            {/* Contacts List */}
+            <ScrollArea className="flex-1">
+              {isLoadingContacts ? (
+                <div className="p-4 space-y-3">
+                  {[1, 2, 3, 4].map(i => (
+                    <div key={i} className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full bg-muted animate-pulse" />
+                      <div className="flex-1 space-y-2">
+                        <div className="h-4 w-24 bg-muted rounded animate-pulse" />
+                        <div className="h-3 w-36 bg-muted rounded animate-pulse" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : contacts.length > 0 ? (
+                <div>
+                  {contacts.map((contact) => (
+                    <div
+                      key={contact.id}
+                      className={`flex items-center gap-3 p-4 cursor-pointer hover:bg-muted/50 transition-colors border-b ${
+                        selectedContact?.id === contact.id ? 'bg-primary/10' : ''
+                      }`}
+                      onClick={() => setSelectedContact(contact)}
+                      data-testid={`contact-${contact.id}`}
+                    >
+                      {/* Avatar */}
+                      <div className="w-12 h-12 rounded-full bg-purple-500 flex items-center justify-center text-white font-semibold text-sm">
+                        {(contact.firstName?.[0] || '?') + (contact.lastName?.[0] || '')}
+                      </div>
+                      
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium truncate">
+                            {contact.firstName} {contact.lastName || ''}
+                          </span>
+                          <Badge 
+                            variant={
+                              contact.status === 'customer' ? 'default' :
+                              contact.status === 'prospect' ? 'secondary' :
+                              contact.status === 'lead' ? 'outline' : 'destructive'
+                            }
+                            className="text-xs capitalize"
+                          >
+                            {contact.status}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                          {contact.phone && (
+                            <span className="flex items-center gap-1">
+                              <Phone className="w-3 h-3" />
+                              {contact.phone}
+                            </span>
+                          )}
+                          {contact.preferredMake && (
+                            <span className="flex items-center gap-1">
+                              <Car className="w-3 h-3" />
+                              {contact.preferredMake} {contact.preferredModel || ''}
+                            </span>
+                          )}
+                        </div>
+                        {contact.leadSource && (
+                          <div className="text-xs text-muted-foreground mt-1 capitalize">
+                            Source: {contact.leadSource}
+                          </div>
+                        )}
+                      </div>
+                      
+                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-8 text-center text-muted-foreground">
+                  <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p className="text-sm">No contacts found</p>
+                  <p className="text-xs mt-1">Try adjusting your filters</p>
+                </div>
+              )}
+            </ScrollArea>
+          </>
+        )}
       </div>
 
       {/* Middle Panel - Chat View */}
@@ -1032,94 +1318,331 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
               </div>
             </div>
           </>
+        ) : activeTab === 'contacts' && selectedContact ? (
+          /* Contact Detail View */
+          <div className="flex-1 flex flex-col">
+            {/* Contact Header */}
+            <div className="p-6 border-b bg-background">
+              <div className="flex items-start gap-4">
+                <div className="w-16 h-16 rounded-full bg-purple-500 flex items-center justify-center text-white font-bold text-xl">
+                  {(selectedContact.firstName?.[0] || '?') + (selectedContact.lastName?.[0] || '')}
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-xl font-bold">
+                    {selectedContact.firstName} {selectedContact.lastName || ''}
+                  </h2>
+                  <div className="flex items-center gap-3 mt-2">
+                    <Badge 
+                      variant={
+                        selectedContact.status === 'customer' ? 'default' :
+                        selectedContact.status === 'prospect' ? 'secondary' :
+                        selectedContact.status === 'lead' ? 'outline' : 'destructive'
+                      }
+                      className="capitalize"
+                    >
+                      {selectedContact.status}
+                    </Badge>
+                    {selectedContact.leadScore !== undefined && selectedContact.leadScore > 0 && (
+                      <Badge variant="outline" className="text-xs">
+                        Score: {selectedContact.leadScore}
+                      </Badge>
+                    )}
+                    {selectedContact.leadSource && (
+                      <span className="text-sm text-muted-foreground capitalize">
+                        via {selectedContact.leadSource}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Contact Info & Quick Actions */}
+            <div className="p-6 space-y-6">
+              {/* Quick Actions */}
+              <div>
+                <h3 className="text-sm font-semibold text-muted-foreground mb-3">Quick Actions</h3>
+                <div className="flex gap-2 flex-wrap">
+                  {selectedContact.phone && (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setFwcMessageType('sms');
+                          setFwcMessageText('');
+                        }}
+                        data-testid="action-sms"
+                      >
+                        <Phone className="w-4 h-4 mr-2" />
+                        Send SMS
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => window.open(`tel:${selectedContact.phone}`, '_self')}
+                        data-testid="action-call"
+                      >
+                        <Phone className="w-4 h-4 mr-2" />
+                        Call
+                      </Button>
+                    </>
+                  )}
+                  {selectedContact.email && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setFwcMessageType('email');
+                        setFwcMessageText('');
+                      }}
+                      data-testid="action-email"
+                    >
+                      <Mail className="w-4 h-4 mr-2" />
+                      Send Email
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Contact Details */}
+              <div className="grid grid-cols-2 gap-4">
+                {selectedContact.phone && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">Phone</span>
+                    <p className="text-sm font-medium">{selectedContact.phone}</p>
+                  </div>
+                )}
+                {selectedContact.email && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">Email</span>
+                    <p className="text-sm font-medium">{selectedContact.email}</p>
+                  </div>
+                )}
+                {selectedContact.preferredMake && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">Interested Vehicle</span>
+                    <p className="text-sm font-medium flex items-center gap-1">
+                      <Car className="w-3 h-3" />
+                      {selectedContact.preferredMake} {selectedContact.preferredModel || ''}
+                    </p>
+                  </div>
+                )}
+                {selectedContact.lastContactedAt && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">Last Contacted</span>
+                    <p className="text-sm font-medium">
+                      {formatTime(selectedContact.lastContactedAt)}
+                    </p>
+                  </div>
+                )}
+                {selectedContact.lastRespondedAt && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">Last Response</span>
+                    <p className="text-sm font-medium">
+                      {formatTime(selectedContact.lastRespondedAt)}
+                    </p>
+                  </div>
+                )}
+                {selectedContact.createdAt && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">Added</span>
+                    <p className="text-sm font-medium">
+                      {formatTime(selectedContact.createdAt)}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* GHL Link */}
+              {selectedContact.ghlContactId && (
+                <>
+                  <Separator />
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <CheckCircle className="w-3 h-3 text-green-500" />
+                    Synced with GoHighLevel
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         ) : (
           <div className="flex-1 flex items-center justify-center text-muted-foreground">
             <div className="text-center">
-              <MessageSquare className="w-16 h-16 mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-medium">Select a conversation</p>
-              <p className="text-sm">Choose a conversation from the left to start messaging</p>
+              {activeTab === 'contacts' ? (
+                <>
+                  <Users className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                  <p className="text-lg font-medium">Select a contact</p>
+                  <p className="text-sm">Choose a contact from the left to view details</p>
+                </>
+              ) : (
+                <>
+                  <MessageSquare className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                  <p className="text-lg font-medium">Select a conversation</p>
+                  <p className="text-sm">Choose a conversation from the left to start messaging</p>
+                </>
+              )}
             </div>
           </div>
         )}
       </div>
 
-      {/* Right Panel - AI Assistant */}
+      {/* Right Panel - AI Assistant / Contact Actions */}
       <div className="w-80 border-l flex flex-col bg-muted/30">
         <div className="p-4 border-b">
           <h3 className="font-semibold flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-purple-500" />
-            AI Assistant
+            {activeTab === 'contacts' ? (
+              <>
+                <Users className="w-5 h-5 text-purple-500" />
+                Contact Actions
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-5 h-5 text-purple-500" />
+                AI Assistant
+              </>
+            )}
           </h3>
         </div>
 
         <ScrollArea className="flex-1">
           <div className="p-4 space-y-4">
-            {/* AI Draft Message */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Bot className="w-4 h-4" />
-                  Suggested Reply
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {isLoadingAi ? (
-                  <div className="space-y-2">
-                    <div className="h-4 bg-muted rounded animate-pulse" />
-                    <div className="h-4 bg-muted rounded animate-pulse w-3/4" />
-                    <div className="h-4 bg-muted rounded animate-pulse w-1/2" />
-                  </div>
-                ) : aiSuggestion ? (
-                  <div className="space-y-3">
-                    <p className="text-sm text-muted-foreground">{aiSuggestion}</p>
-                    <Button size="sm" onClick={useAiSuggestion} className="w-full">
-                      Use This Reply
+            {/* Contact Mode - Show contact-specific actions */}
+            {activeTab === 'contacts' && selectedContact ? (
+              <>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <MessageCircle className="w-4 h-4" />
+                      Send Message
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <Select value={fwcMessageType} onValueChange={(v: any) => setFwcMessageType(v)}>
+                      <SelectTrigger className="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="sms" disabled={!selectedContact.phone}>
+                          <div className="flex items-center gap-2">
+                            <Phone className="w-3 h-3" />
+                            SMS
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="email" disabled={!selectedContact.email}>
+                          <div className="flex items-center gap-2">
+                            <Mail className="w-3 h-3" />
+                            Email
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Textarea
+                      placeholder={`Type your ${fwcMessageType.toUpperCase()} message...`}
+                      className="min-h-[80px] text-sm"
+                      value={fwcMessageText}
+                      onChange={(e) => setFwcMessageText(e.target.value)}
+                    />
+                    <Button size="sm" className="w-full" disabled={!fwcMessageText.trim()}>
+                      <Send className="w-3 h-3 mr-2" />
+                      Send {fwcMessageType.toUpperCase()}
                     </Button>
-                  </div>
-                ) : selectedConversation ? (
-                  <div className="text-sm text-muted-foreground text-center py-4">
-                    <Bot className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                    <p>Analyzing conversation...</p>
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    Select a conversation to see AI suggestions
-                  </p>
-                )}
-              </CardContent>
-            </Card>
+                  </CardContent>
+                </Card>
 
-            {/* Scheduled Messages */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Calendar className="w-4 h-4" />
-                  Scheduled Messages
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {scheduledMessages.length > 0 ? (
-                  <div className="space-y-2">
-                    {scheduledMessages.map((msg, idx) => (
-                      <div key={idx} className="text-sm p-2 bg-muted rounded">
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-                          <Clock className="w-3 h-3" />
-                          {msg.scheduledFor}
-                        </div>
-                        <p className="line-clamp-2">{msg.content}</p>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Calendar className="w-4 h-4" />
+                      Activity Log
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      No recent activity
+                    </p>
+                  </CardContent>
+                </Card>
+              </>
+            ) : activeTab === 'contacts' ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p className="text-sm">Select a contact to see actions</p>
+              </div>
+            ) : (
+              <>
+                {/* Chat Mode - Show AI suggestions */}
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Bot className="w-4 h-4" />
+                      Suggested Reply
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {isLoadingAi ? (
+                      <div className="space-y-2">
+                        <div className="h-4 bg-muted rounded animate-pulse" />
+                        <div className="h-4 bg-muted rounded animate-pulse w-3/4" />
+                        <div className="h-4 bg-muted rounded animate-pulse w-1/2" />
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    No scheduled messages
-                  </p>
-                )}
-              </CardContent>
-            </Card>
+                    ) : aiSuggestion ? (
+                      <div className="space-y-3">
+                        <p className="text-sm text-muted-foreground">{aiSuggestion}</p>
+                        <Button size="sm" onClick={useAiSuggestion} className="w-full">
+                          Use This Reply
+                        </Button>
+                      </div>
+                    ) : selectedConversation ? (
+                      <div className="text-sm text-muted-foreground text-center py-4">
+                        <Bot className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                        <p>Analyzing conversation...</p>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        Select a conversation to see AI suggestions
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              </>
+            )}
 
-            {/* Conversation Analysis */}
-            {selectedConversation && (
+            {/* Scheduled Messages - only show in chats mode */}
+            {activeTab === 'chats' && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Calendar className="w-4 h-4" />
+                    Scheduled Messages
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {scheduledMessages.length > 0 ? (
+                    <div className="space-y-2">
+                      {scheduledMessages.map((msg, idx) => (
+                        <div key={idx} className="text-sm p-2 bg-muted rounded">
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                            <Clock className="w-3 h-3" />
+                            {msg.scheduledFor}
+                          </div>
+                          <p className="line-clamp-2">{msg.content}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      No scheduled messages
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Conversation Analysis - only show in chats mode */}
+            {activeTab === 'chats' && selectedConversation && (
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm flex items-center gap-2">
@@ -1165,8 +1688,8 @@ export function ConversationsPanel({ dealershipId, onSwitchToTraining }: Convers
               </Card>
             )}
 
-            {/* FWC Follow-up Actions */}
-            {selectedConversation && (
+            {/* FWC Follow-up Actions - only show in chats mode */}
+            {activeTab === 'chats' && selectedConversation && (
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm flex items-center gap-2">
