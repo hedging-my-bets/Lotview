@@ -11939,12 +11939,12 @@ Format your response in clear sections with actionable recommendations.`;
 
   // ==================== AD TEMPLATES FOR MARKETPLACE BLAST ====================
   
-  // Get user's ad templates
+  // Get all dealership templates (managers can create templates visible to all salespeople)
   app.get("/api/ad-templates", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user!.id;
       const dealershipId = req.dealershipId!;
-      const templates = await storage.getAdTemplatesByUser(userId, dealershipId);
+      // Return all templates for the dealership (all staff can see manager-created templates)
+      const templates = await storage.getAdTemplatesByDealership(dealershipId);
       res.json(templates);
     } catch (error: any) {
       console.error("Error fetching ad templates:", error);

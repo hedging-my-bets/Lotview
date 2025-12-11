@@ -95,32 +95,50 @@ interface Template {
   name: string;
   titleTemplate: string;
   descriptionTemplate: string;
+  isDefault?: boolean;
+  userId?: number;
 }
 
-const TEMPLATES: Template[] = [
+interface DbTemplate {
+  id: number;
+  dealershipId: number;
+  userId: number;
+  templateName: string;
+  titleTemplate: string;
+  descriptionTemplate: string;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const DEFAULT_TEMPLATES: Template[] = [
   {
     id: "standard",
     name: "Standard Listing",
     titleTemplate: "{year} {make} {model} - ${price}",
     descriptionTemplate: "Check out this {year} {make} {model}! Only {mileage} km. Contact us today!",
+    isDefault: true,
   },
   {
     id: "urgent",
     name: "Urgent Sale",
     titleTemplate: "🔥 HOT DEAL: {year} {make} {model}",
     descriptionTemplate: "⚡ LIMITED TIME! This {year} {make} {model} won't last at ${price}. Call now!",
+    isDefault: true,
   },
   {
     id: "premium",
     name: "Premium Showcase",
     titleTemplate: "✨ Luxury {year} {make} {model} Available",
     descriptionTemplate: "Experience luxury with this stunning {year} {make} {model}. Premium features, exceptional value at ${price}.",
+    isDefault: true,
   },
   {
     id: "ai",
     name: "AI Generated",
     titleTemplate: "",
     descriptionTemplate: "",
+    isDefault: true,
   },
 ];
 
@@ -278,7 +296,7 @@ function VehicleImage({ src, alt, className }: { src: string; alt: string; class
   if (error || !src) {
     return (
       <div className={`bg-gray-100 flex items-center justify-center ${className}`}>
-        <Car className="w-8 h-8 text-gray-400" />
+        <Car className="w-6 h-6 text-gray-400" />
       </div>
     );
   }
@@ -296,6 +314,8 @@ function VehicleImage({ src, alt, className }: { src: string; alt: string; class
         className={`w-full h-full object-cover ${loading ? 'opacity-0' : 'opacity-100'} transition-opacity`}
         onError={() => setError(true)}
         onLoad={() => setLoading(false)}
+        referrerPolicy="no-referrer"
+        crossOrigin="anonymous"
       />
     </div>
   );
@@ -326,11 +346,13 @@ function applyTemplate(template: Template, vehicle: BlastVehicle): { title: stri
 
 function VehicleAccordionItem({
   vehicle,
+  templates,
   onGenerateContent,
   onMarkPosted,
   isGenerating,
 }: {
   vehicle: BlastVehicle;
+  templates: Template[];
   onGenerateContent: (vehicleId: number) => void;
   onMarkPosted: (vehicleId: number) => void;
   isGenerating: boolean;
@@ -338,7 +360,7 @@ function VehicleAccordionItem({
   const { toast } = useToast();
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>(vehicle.socialTemplates ? "ai" : "standard");
 
-  const selectedTemplate = TEMPLATES.find(t => t.id === selectedTemplateId);
+  const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
   
   const { title, description } = useMemo(() => {
     if (selectedTemplateId === "ai" && vehicle.socialTemplates) {
@@ -489,7 +511,7 @@ function VehicleAccordionItem({
                       <SelectValue placeholder="Select template" />
                     </SelectTrigger>
                     <SelectContent>
-                      {TEMPLATES.map(t => (
+                      {templates.map(t => (
                         <SelectItem 
                           key={t.id} 
                           value={t.id}
@@ -626,6 +648,32 @@ export default function MarketplaceBlast() {
       return res.json();
     }
   });
+
+  // Fetch templates from database (manager-created + merge with defaults)
+  const { data: dbTemplates = [] } = useQuery<DbTemplate[]>({
+    queryKey: ['ad-templates'],
+    queryFn: async () => {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch('/api/ad-templates', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) return [];
+      return res.json();
+    }
+  });
+
+  // Merge database templates with defaults (DB templates come first)
+  const allTemplates: Template[] = useMemo(() => {
+    const customTemplates: Template[] = dbTemplates.map(t => ({
+      id: `db-${t.id}`,
+      name: t.templateName,
+      titleTemplate: t.titleTemplate,
+      descriptionTemplate: t.descriptionTemplate,
+      isDefault: false,
+      userId: t.userId,
+    }));
+    return [...customTemplates, ...DEFAULT_TEMPLATES];
+  }, [dbTemplates]);
 
   // Generate content mutation
   const generateMutation = useMutation({
@@ -825,6 +873,7 @@ export default function MarketplaceBlast() {
                         <VehicleAccordionItem
                           key={vehicle.id}
                           vehicle={vehicle}
+                          templates={allTemplates}
                           onGenerateContent={(id) => generateMutation.mutate(id)}
                           onMarkPosted={(id) => markPostedMutation.mutate(id)}
                           isGenerating={generateMutation.isPending}

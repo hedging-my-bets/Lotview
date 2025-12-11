@@ -501,6 +501,7 @@ export interface IStorage {
   
   // Ad Templates (Multi-Tenant - Defense-in-Depth)
   getAdTemplatesByUser(userId: number, dealershipId: number): Promise<AdTemplate[]>;
+  getAdTemplatesByDealership(dealershipId: number): Promise<AdTemplate[]>;
   getAdTemplateById(id: number, userId: number, dealershipId: number): Promise<AdTemplate | undefined>;
   createAdTemplate(template: InsertAdTemplate): Promise<AdTemplate>;
   updateAdTemplate(id: number, userId: number, dealershipId: number, template: Partial<InsertAdTemplate>): Promise<AdTemplate | undefined>;
@@ -2393,6 +2394,13 @@ export class DatabaseStorage implements IStorage {
       eq(adTemplates.userId, userId),
       eq(adTemplates.dealershipId, dealershipId)
     ));
+  }
+
+  async getAdTemplatesByDealership(dealershipId: number): Promise<AdTemplate[]> {
+    // Get all templates for a dealership (for salespeople to use manager-created templates)
+    return await db.select().from(adTemplates).where(
+      eq(adTemplates.dealershipId, dealershipId)
+    );
   }
 
   async getAdTemplateById(id: number, userId: number, dealershipId: number): Promise<AdTemplate | undefined> {
