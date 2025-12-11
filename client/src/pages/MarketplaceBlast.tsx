@@ -1,31 +1,20 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import {
   Select,
   SelectContent,
@@ -49,23 +38,12 @@ import {
   CheckCircle2,
   Facebook,
   Zap,
-  AlertCircle,
-  Settings2,
-  FileText,
   TrendingUp,
   CalendarDays,
-  Activity,
-  Plus,
-  Trash2,
-  Edit3,
-  Eye,
-  ThumbsUp,
-  MessageCircle,
-  Share2,
-  ChevronLeft,
-  ChevronRight,
-  Image as ImageIcon,
-  User
+  Download,
+  ImageIcon,
+  FileText,
+  ChevronDown
 } from "lucide-react";
 
 interface SocialTemplates {
@@ -112,19 +90,46 @@ interface FacebookAccount {
   totalPosts?: number;
 }
 
-interface AdTemplate {
-  id: number;
-  templateName: string;
+interface Template {
+  id: string;
+  name: string;
   titleTemplate: string;
   descriptionTemplate: string;
-  isDefault: boolean;
 }
 
-function CopyButton({ text, label = "Copy", size = "sm" }: { text: string; label?: string; size?: "sm" | "default" }) {
+const TEMPLATES: Template[] = [
+  {
+    id: "standard",
+    name: "Standard Listing",
+    titleTemplate: "{year} {make} {model} - ${price}",
+    descriptionTemplate: "Check out this {year} {make} {model}! Only {mileage} km. Contact us today!",
+  },
+  {
+    id: "urgent",
+    name: "Urgent Sale",
+    titleTemplate: "🔥 HOT DEAL: {year} {make} {model}",
+    descriptionTemplate: "⚡ LIMITED TIME! This {year} {make} {model} won't last at ${price}. Call now!",
+  },
+  {
+    id: "premium",
+    name: "Premium Showcase",
+    titleTemplate: "✨ Luxury {year} {make} {model} Available",
+    descriptionTemplate: "Experience luxury with this stunning {year} {make} {model}. Premium features, exceptional value at ${price}.",
+  },
+  {
+    id: "ai",
+    name: "AI Generated",
+    titleTemplate: "",
+    descriptionTemplate: "",
+  },
+];
+
+function CopyButton({ text, label = "Copy", size = "sm", variant = "outline" }: { text: string; label?: string; size?: "sm" | "default"; variant?: "outline" | "default" }) {
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
 
-  const handleCopy = async () => {
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
     try {
       if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(text);
@@ -149,7 +154,7 @@ function CopyButton({ text, label = "Copy", size = "sm" }: { text: string; label
   return (
     <Button
       type="button"
-      variant={copied ? "default" : "outline"}
+      variant={copied ? "default" : variant}
       size={size}
       onClick={handleCopy}
       className="gap-2"
@@ -266,458 +271,335 @@ function AccountListItem({
   );
 }
 
-function PostPreview({ 
-  vehicle, 
-  template,
-  onOpenMarketplace 
-}: { 
-  vehicle: BlastVehicle | null;
-  template: AdTemplate | null;
-  onOpenMarketplace: () => void;
-}) {
-  if (!vehicle) {
+function VehicleImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
+  const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  if (error || !src) {
     return (
-      <Card className="h-full flex items-center justify-center bg-white/80">
-        <div className="text-center p-8">
-          <Car className="w-16 h-16 mx-auto mb-4 text-muted-foreground opacity-50" />
-          <h3 className="text-lg font-medium mb-2">No Vehicle Selected</h3>
-          <p className="text-muted-foreground text-sm max-w-sm">
-            Select a vehicle from the queue to preview your Marketplace listing
-          </p>
-        </div>
-      </Card>
+      <div className={`bg-gray-100 flex items-center justify-center ${className}`}>
+        <Car className="w-8 h-8 text-gray-400" />
+      </div>
     );
   }
 
-  const title = vehicle.socialTemplates?.marketplace?.title || 
-    `${vehicle.year} ${vehicle.make} ${vehicle.model} - $${vehicle.price.toLocaleString()}`;
-  const description = vehicle.socialTemplates?.marketplace?.description || 
-    `Check out this ${vehicle.year} ${vehicle.make} ${vehicle.model}! ${vehicle.odometer.toLocaleString()} km. Contact us today!`;
-
   return (
-    <Card className="h-full bg-white/80 overflow-hidden">
-      <CardHeader className="pb-3 border-b bg-gradient-to-r from-[#1877f2]/5 to-transparent">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Eye className="w-5 h-5 text-[#1877f2]" />
-            Post Preview
-          </CardTitle>
-          <Button
-            onClick={onOpenMarketplace}
-            className="bg-[#1877f2] hover:bg-[#1877f2]/90"
-            data-testid="open-marketplace-preview"
-          >
-            <Facebook className="w-4 h-4 mr-2" />
-            Open Marketplace
-            <ExternalLink className="w-4 h-4 ml-2" />
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="p-0">
-        <div className="max-w-md mx-auto my-4">
-          <div className="bg-white rounded-lg shadow-lg border overflow-hidden">
-            <div className="flex items-center gap-3 p-3 border-b">
-              <Avatar className="w-10 h-10">
-                <AvatarFallback className="bg-[#1877f2] text-white">
-                  <User className="w-5 h-5" />
-                </AvatarFallback>
-              </Avatar>
-              <div>
-                <p className="font-semibold text-sm">Your Name</p>
-                <p className="text-xs text-muted-foreground">Just now · <Facebook className="w-3 h-3 inline" /></p>
-              </div>
-            </div>
-            
-            <div className="aspect-video bg-gray-100 relative">
-              {vehicle.images?.[0] ? (
-                <img
-                  src={vehicle.images[0]}
-                  alt={title}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <Car className="w-16 h-16 text-muted-foreground" />
-                </div>
-              )}
-              <div className="absolute bottom-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-sm font-bold">
-                ${vehicle.price.toLocaleString()}
-              </div>
-            </div>
-            
-            <div className="p-3">
-              <h3 className="font-bold text-base mb-1 line-clamp-2">{title}</h3>
-              <p className="text-sm text-gray-600 line-clamp-3">{description}</p>
-            </div>
-            
-            <div className="flex items-center justify-around py-2 border-t text-gray-500">
-              <button className="flex items-center gap-1 hover:text-[#1877f2] transition-colors">
-                <ThumbsUp className="w-5 h-5" />
-                <span className="text-sm">Like</span>
-              </button>
-              <button className="flex items-center gap-1 hover:text-[#1877f2] transition-colors">
-                <MessageCircle className="w-5 h-5" />
-                <span className="text-sm">Comment</span>
-              </button>
-              <button className="flex items-center gap-1 hover:text-[#1877f2] transition-colors">
-                <Share2 className="w-5 h-5" />
-                <span className="text-sm">Share</span>
-              </button>
-            </div>
-          </div>
-        </div>
-        
-        <Separator />
-        
-        <div className="p-4 space-y-4">
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <Label className="text-sm font-semibold text-muted-foreground uppercase">Title</Label>
-              <CopyButton text={title} label="Copy" />
-            </div>
-            <div className="p-3 bg-gray-50 rounded-lg border text-sm">{title}</div>
-          </div>
-          
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <Label className="text-sm font-semibold text-muted-foreground uppercase">Description</Label>
-              <CopyButton text={description} label="Copy" />
-            </div>
-            <div className="p-3 bg-gray-50 rounded-lg border text-sm whitespace-pre-wrap max-h-32 overflow-auto">
-              {description}
-            </div>
-          </div>
-          
-          <div className="flex justify-center pt-2">
-            <CopyButton text={`${title}\n\n${description}`} label="Copy All" size="default" />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function VehicleQueue({
-  vehicles,
-  selectedVehicle,
-  onSelectVehicle,
-  onGenerateContent,
-  onMarkPosted,
-  isGenerating,
-}: {
-  vehicles: BlastVehicle[];
-  selectedVehicle: BlastVehicle | null;
-  onSelectVehicle: (vehicle: BlastVehicle) => void;
-  onGenerateContent: (vehicleId: number) => void;
-  onMarkPosted: (vehicleId: number) => void;
-  isGenerating: boolean;
-}) {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [currentPage, setCurrentPage] = useState(0);
-  const itemsPerPage = 6;
-
-  const filteredVehicles = useMemo(() => {
-    if (!searchQuery) return vehicles;
-    const search = searchQuery.toLowerCase();
-    return vehicles.filter(v => 
-      v.make.toLowerCase().includes(search) ||
-      v.model.toLowerCase().includes(search) ||
-      v.year.toString().includes(search)
-    );
-  }, [vehicles, searchQuery]);
-
-  const totalPages = Math.ceil(filteredVehicles.length / itemsPerPage);
-  const paginatedVehicles = filteredVehicles.slice(
-    currentPage * itemsPerPage,
-    (currentPage + 1) * itemsPerPage
-  );
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Vehicle Queue ({filteredVehicles.length})</h3>
-        <Input
-          placeholder="Search..."
-          value={searchQuery}
-          onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(0); }}
-          className="w-48"
-          data-testid="search-queue"
-        />
-      </div>
-      
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        {paginatedVehicles.map(vehicle => (
-          <Card
-            key={vehicle.id}
-            onClick={() => onSelectVehicle(vehicle)}
-            className={`cursor-pointer transition-all hover:shadow-lg overflow-hidden ${
-              selectedVehicle?.id === vehicle.id 
-                ? 'ring-2 ring-[#1877f2] shadow-lg' 
-                : 'hover:ring-1 hover:ring-gray-200'
-            }`}
-            data-testid={`queue-vehicle-${vehicle.id}`}
-          >
-            <div className="aspect-video bg-gray-100 relative">
-              {vehicle.images?.[0] ? (
-                <img
-                  src={vehicle.images[0]}
-                  alt={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <Car className="w-8 h-8 text-muted-foreground" />
-                </div>
-              )}
-              <Badge 
-                className="absolute top-2 right-2 bg-orange-500/90"
-              >
-                {vehicle.daysInStock}d
-              </Badge>
-              {vehicle.socialTemplates && (
-                <Badge 
-                  className="absolute top-2 left-2 bg-emerald-500/90"
-                >
-                  <Sparkles className="w-3 h-3 mr-1" />
-                  Ready
-                </Badge>
-              )}
-            </div>
-            <CardContent className="p-3">
-              <h4 className="font-semibold text-sm truncate">
-                {vehicle.year} {vehicle.make} {vehicle.model}
-              </h4>
-              <p className="text-xs text-muted-foreground truncate">{vehicle.trim}</p>
-              <div className="flex items-center justify-between mt-2">
-                <span className="font-bold text-[#1877f2]">
-                  ${vehicle.price.toLocaleString()}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {vehicle.odometer.toLocaleString()} km
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-      
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 pt-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
-            disabled={currentPage === 0}
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </Button>
-          <span className="text-sm text-muted-foreground">
-            Page {currentPage + 1} of {totalPages}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
-            disabled={currentPage >= totalPages - 1}
-          >
-            <ChevronRight className="w-4 h-4" />
-          </Button>
+    <div className={`relative ${className}`}>
+      {loading && (
+        <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
+          <RefreshCw className="w-6 h-6 text-gray-400 animate-spin" />
         </div>
       )}
-      
-      {selectedVehicle && (
-        <Card className="bg-gradient-to-r from-[#1877f2]/5 to-[#00aad2]/5 border-[#1877f2]/20">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="font-semibold">
-                  {selectedVehicle.year} {selectedVehicle.make} {selectedVehicle.model}
-                </h4>
-                <p className="text-sm text-muted-foreground">{selectedVehicle.trim}</p>
-              </div>
-              <div className="flex gap-2">
-                {!selectedVehicle.socialTemplates ? (
-                  <Button
-                    onClick={() => onGenerateContent(selectedVehicle.id)}
-                    disabled={isGenerating}
-                    className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
-                    data-testid="generate-content"
-                  >
-                    {isGenerating ? (
-                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                    ) : (
-                      <Sparkles className="w-4 h-4 mr-2" />
-                    )}
-                    Generate AI Content
-                  </Button>
-                ) : (
-                  <>
-                    <Button
-                      variant="outline"
-                      onClick={() => onGenerateContent(selectedVehicle.id)}
-                      disabled={isGenerating}
-                      data-testid="regenerate-content"
-                    >
-                      <RefreshCw className={`w-4 h-4 mr-2 ${isGenerating ? 'animate-spin' : ''}`} />
-                      Regenerate
-                    </Button>
-                    <Button
-                      onClick={() => onMarkPosted(selectedVehicle.id)}
-                      className="bg-emerald-600 hover:bg-emerald-700"
-                      data-testid="mark-posted"
-                    >
-                      <CheckCircle className="w-4 h-4 mr-2" />
-                      Mark as Posted
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <img
+        src={src}
+        alt={alt}
+        className={`w-full h-full object-cover ${loading ? 'opacity-0' : 'opacity-100'} transition-opacity`}
+        onError={() => setError(true)}
+        onLoad={() => setLoading(false)}
+      />
     </div>
   );
 }
 
-function TemplateEditor({
-  templates,
-  selectedTemplate,
-  onSelectTemplate,
-  onSaveTemplate,
-  onDeleteTemplate,
-}: {
-  templates: AdTemplate[];
-  selectedTemplate: AdTemplate | null;
-  onSelectTemplate: (template: AdTemplate) => void;
-  onSaveTemplate: (template: Partial<AdTemplate>) => void;
-  onDeleteTemplate: (id: number) => void;
-}) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editForm, setEditForm] = useState({
-    templateName: "",
-    titleTemplate: "",
-    descriptionTemplate: "",
-  });
+function applyTemplate(template: Template, vehicle: BlastVehicle): { title: string; description: string } {
+  const replacements: Record<string, string> = {
+    '{year}': vehicle.year.toString(),
+    '{make}': vehicle.make,
+    '{model}': vehicle.model,
+    '{trim}': vehicle.trim || '',
+    '{price}': vehicle.price.toLocaleString(),
+    '${price}': `$${vehicle.price.toLocaleString()}`,
+    '{mileage}': vehicle.odometer.toLocaleString(),
+    '{location}': vehicle.location || '',
+  };
 
-  const startEdit = (template?: AdTemplate) => {
-    if (template) {
-      setEditForm({
-        templateName: template.templateName,
-        titleTemplate: template.titleTemplate,
-        descriptionTemplate: template.descriptionTemplate,
-      });
-    } else {
-      setEditForm({
-        templateName: "New Template",
-        titleTemplate: "{year} {make} {model} - ${price}",
-        descriptionTemplate: "Check out this {year} {make} {model}! Only {mileage} km. Contact us today!",
-      });
+  let title = template.titleTemplate;
+  let description = template.descriptionTemplate;
+
+  for (const [key, value] of Object.entries(replacements)) {
+    title = title.replace(new RegExp(key.replace(/[{}$]/g, '\\$&'), 'g'), value);
+    description = description.replace(new RegExp(key.replace(/[{}$]/g, '\\$&'), 'g'), value);
+  }
+
+  return { title, description };
+}
+
+function VehicleAccordionItem({
+  vehicle,
+  onGenerateContent,
+  onMarkPosted,
+  isGenerating,
+}: {
+  vehicle: BlastVehicle;
+  onGenerateContent: (vehicleId: number) => void;
+  onMarkPosted: (vehicleId: number) => void;
+  isGenerating: boolean;
+}) {
+  const { toast } = useToast();
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(vehicle.socialTemplates ? "ai" : "standard");
+
+  const selectedTemplate = TEMPLATES.find(t => t.id === selectedTemplateId);
+  
+  const { title, description } = useMemo(() => {
+    if (selectedTemplateId === "ai" && vehicle.socialTemplates) {
+      return {
+        title: vehicle.socialTemplates.marketplace.title,
+        description: vehicle.socialTemplates.marketplace.description,
+      };
     }
-    setIsEditing(true);
+    if (selectedTemplate && selectedTemplateId !== "ai") {
+      return applyTemplate(selectedTemplate, vehicle);
+    }
+    return {
+      title: `${vehicle.year} ${vehicle.make} ${vehicle.model} - $${vehicle.price.toLocaleString()}`,
+      description: `Check out this ${vehicle.year} ${vehicle.make} ${vehicle.model}! Only ${vehicle.odometer.toLocaleString()} km. Contact us today!`,
+    };
+  }, [selectedTemplateId, selectedTemplate, vehicle]);
+
+  const downloadAllPhotos = async () => {
+    if (!vehicle.images || vehicle.images.length === 0) {
+      toast({ title: "No photos", description: "This vehicle has no photos to download", variant: "destructive" });
+      return;
+    }
+    
+    vehicle.images.slice(0, 10).forEach((url, index) => {
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      window.open(url, `_blank_${index}`);
+    });
+    
+    toast({ 
+      title: "Photos opened!", 
+      description: `Opened ${Math.min(vehicle.images.length, 10)} photos in new tabs. Right-click to save each one.` 
+    });
+  };
+
+  const openMarketplace = () => {
+    window.open('https://www.facebook.com/marketplace/create/vehicle', '_blank');
   };
 
   return (
-    <Card className="bg-white/80">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <FileText className="w-5 h-5 text-[#1877f2]" />
-            Templates
-          </CardTitle>
-          <Button variant="outline" size="sm" onClick={() => startEdit()}>
-            <Plus className="w-4 h-4 mr-1" />
-            New
-          </Button>
+    <AccordionItem value={`vehicle-${vehicle.id}`} className="border rounded-lg mb-3 bg-white shadow-sm hover:shadow-md transition-shadow">
+      <AccordionTrigger className="px-4 py-3 hover:no-underline [&[data-state=open]>div>.chevron]:rotate-180">
+        <div className="flex items-center gap-4 w-full">
+          <div className="w-16 h-12 rounded-lg overflow-hidden flex-shrink-0">
+            <VehicleImage 
+              src={vehicle.images?.[0] || ''} 
+              alt={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}
+              className="w-full h-full"
+            />
+          </div>
+          
+          <div className="flex-1 text-left">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-gray-900">
+                {vehicle.year} {vehicle.make} {vehicle.model}
+              </span>
+              {vehicle.trim && (
+                <span className="text-sm text-gray-500">{vehicle.trim}</span>
+              )}
+            </div>
+            <div className="flex items-center gap-3 mt-1 text-sm">
+              <span className="font-bold text-[#1877f2]">${vehicle.price.toLocaleString()}</span>
+              <span className="text-gray-500">{vehicle.odometer.toLocaleString()} km</span>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="bg-orange-50 text-orange-600 border-orange-200">
+              <Clock className="w-3 h-3 mr-1" />
+              {vehicle.daysInStock}d
+            </Badge>
+            {vehicle.socialTemplates && (
+              <Badge className="bg-emerald-500">
+                <Sparkles className="w-3 h-3 mr-1" />
+                AI Ready
+              </Badge>
+            )}
+            {vehicle.marketplacePostedAt && (
+              <Badge variant="outline" className="bg-blue-50 text-blue-600 border-blue-200">
+                <CheckCircle className="w-3 h-3 mr-1" />
+                Posted
+              </Badge>
+            )}
+          </div>
+          
+          <ChevronDown className="chevron w-5 h-5 text-gray-400 transition-transform duration-200" />
         </div>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-2">
-          {templates.map(template => (
-            <div
-              key={template.id}
-              className={`p-3 rounded-lg border cursor-pointer transition-all flex items-center justify-between ${
-                selectedTemplate?.id === template.id
-                  ? 'border-[#1877f2] bg-[#1877f2]/5'
-                  : 'hover:border-gray-300'
-              }`}
-              onClick={() => onSelectTemplate(template)}
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#1877f2] to-[#00aad2] flex items-center justify-center">
-                  <FileText className="w-4 h-4 text-white" />
-                </div>
-                <div>
-                  <p className="font-medium text-sm">{template.templateName}</p>
-                  {template.isDefault && (
-                    <Badge variant="secondary" className="text-xs mt-1">Default</Badge>
+      </AccordionTrigger>
+      
+      <AccordionContent className="px-4 pb-4">
+        <div className="pt-4 border-t">
+          <div className="grid grid-cols-12 gap-6">
+            {/* Photos Section */}
+            <div className="col-span-4">
+              <div className="flex items-center justify-between mb-3">
+                <Label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4" />
+                  Photos ({vehicle.images?.length || 0})
+                </Label>
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  onClick={downloadAllPhotos}
+                  className="gap-2"
+                  data-testid={`download-photos-${vehicle.id}`}
+                >
+                  <Download className="w-4 h-4" />
+                  Open All Photos
+                </Button>
+              </div>
+              
+              <div className="grid grid-cols-4 gap-2">
+                {vehicle.images?.slice(0, 8).map((img, idx) => (
+                  <a
+                    key={idx}
+                    href={img}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="aspect-square rounded-lg overflow-hidden hover:ring-2 ring-[#1877f2] transition-all"
+                  >
+                    <VehicleImage 
+                      src={img} 
+                      alt={`Photo ${idx + 1}`}
+                      className="w-full h-full"
+                    />
+                  </a>
+                ))}
+              </div>
+              {vehicle.images && vehicle.images.length > 8 && (
+                <p className="text-xs text-gray-500 mt-2 text-center">
+                  +{vehicle.images.length - 8} more photos
+                </p>
+              )}
+            </div>
+            
+            {/* Content Section */}
+            <div className="col-span-8">
+              <div className="flex items-center justify-between mb-3">
+                <Label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <FileText className="w-4 h-4" />
+                  Listing Content
+                </Label>
+                <div className="flex items-center gap-3">
+                  <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
+                    <SelectTrigger className="w-48" data-testid={`template-select-${vehicle.id}`}>
+                      <SelectValue placeholder="Select template" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TEMPLATES.map(t => (
+                        <SelectItem 
+                          key={t.id} 
+                          value={t.id}
+                          disabled={t.id === "ai" && !vehicle.socialTemplates}
+                        >
+                          {t.name}
+                          {t.id === "ai" && !vehicle.socialTemplates && " (Generate first)"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  
+                  {!vehicle.socialTemplates ? (
+                    <Button
+                      size="sm"
+                      onClick={(e) => { e.stopPropagation(); onGenerateContent(vehicle.id); }}
+                      disabled={isGenerating}
+                      className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                      data-testid={`generate-${vehicle.id}`}
+                    >
+                      {isGenerating ? (
+                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Sparkles className="w-4 h-4 mr-2" />
+                      )}
+                      Generate AI
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={(e) => { e.stopPropagation(); onGenerateContent(vehicle.id); }}
+                      disabled={isGenerating}
+                      data-testid={`regenerate-${vehicle.id}`}
+                    >
+                      <RefreshCw className={`w-4 h-4 mr-2 ${isGenerating ? 'animate-spin' : ''}`} />
+                      Regenerate
+                    </Button>
                   )}
                 </div>
               </div>
-              <div className="flex gap-1">
-                <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); startEdit(template); }}>
-                  <Edit3 className="w-4 h-4" />
-                </Button>
-                {!template.isDefault && (
-                  <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onDeleteTemplate(template.id); }}>
-                    <Trash2 className="w-4 h-4 text-red-500" />
-                  </Button>
-                )}
+              
+              <div className="space-y-4">
+                {/* Title */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <Label className="text-xs font-medium text-gray-500 uppercase">Title</Label>
+                    <CopyButton text={title} label="Copy" />
+                  </div>
+                  <div className="p-3 bg-gray-50 rounded-lg border text-sm font-medium">
+                    {title}
+                  </div>
+                </div>
+                
+                {/* Description */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <Label className="text-xs font-medium text-gray-500 uppercase">Description</Label>
+                    <CopyButton text={description} label="Copy" />
+                  </div>
+                  <div className="p-3 bg-gray-50 rounded-lg border text-sm max-h-32 overflow-auto whitespace-pre-wrap">
+                    {description}
+                  </div>
+                </div>
+                
+                {/* Actions */}
+                <div className="flex items-center justify-between pt-2">
+                  <CopyButton 
+                    text={`${title}\n\n${description}`} 
+                    label="Copy All" 
+                    size="default"
+                    variant="default"
+                  />
+                  
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={openMarketplace}
+                      className="gap-2"
+                      data-testid={`open-marketplace-${vehicle.id}`}
+                    >
+                      <Facebook className="w-4 h-4" />
+                      Open Marketplace
+                      <ExternalLink className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      onClick={(e) => { e.stopPropagation(); onMarkPosted(vehicle.id); }}
+                      className="bg-emerald-600 hover:bg-emerald-700 gap-2"
+                      data-testid={`mark-posted-${vehicle.id}`}
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      Mark as Posted
+                    </Button>
+                  </div>
+                </div>
               </div>
             </div>
-          ))}
+          </div>
         </div>
-        
-        <Dialog open={isEditing} onOpenChange={setIsEditing}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Edit Template</DialogTitle>
-              <DialogDescription>
-                Use variables like {"{year}"}, {"{make}"}, {"{model}"}, {"{price}"}, {"{mileage}"} in your templates.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label>Template Name</Label>
-                <Input
-                  value={editForm.templateName}
-                  onChange={(e) => setEditForm(f => ({ ...f, templateName: e.target.value }))}
-                />
-              </div>
-              <div>
-                <Label>Title Template</Label>
-                <Input
-                  value={editForm.titleTemplate}
-                  onChange={(e) => setEditForm(f => ({ ...f, titleTemplate: e.target.value }))}
-                />
-              </div>
-              <div>
-                <Label>Description Template</Label>
-                <Textarea
-                  value={editForm.descriptionTemplate}
-                  onChange={(e) => setEditForm(f => ({ ...f, descriptionTemplate: e.target.value }))}
-                  rows={4}
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsEditing(false)}>Cancel</Button>
-              <Button onClick={() => { onSaveTemplate(editForm); setIsEditing(false); }}>Save Template</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </CardContent>
-    </Card>
+      </AccordionContent>
+    </AccordionItem>
   );
 }
 
 export default function MarketplaceBlast() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [selectedVehicle, setSelectedVehicle] = useState<BlastVehicle | null>(null);
   const [selectedAccount, setSelectedAccount] = useState<FacebookAccount | null>(null);
-  const [selectedTemplate, setSelectedTemplate] = useState<AdTemplate | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [expandedVehicles, setExpandedVehicles] = useState<string[]>([]);
 
   // Fetch queue
   const { data: queueData, isLoading: queueLoading } = useQuery<{ vehicles: BlastVehicle[]; total: number }>({
@@ -745,19 +627,6 @@ export default function MarketplaceBlast() {
     }
   });
 
-  // Fetch user's templates
-  const { data: templates = [] } = useQuery<AdTemplate[]>({
-    queryKey: ['ad-templates'],
-    queryFn: async () => {
-      const token = localStorage.getItem('auth_token');
-      const res = await fetch('/api/ad-templates', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!res.ok) return [];
-      return res.json();
-    }
-  });
-
   // Generate content mutation
   const generateMutation = useMutation({
     mutationFn: async (vehicleId: number) => {
@@ -769,11 +638,8 @@ export default function MarketplaceBlast() {
       if (!res.ok) throw new Error('Failed to generate content');
       return res.json();
     },
-    onSuccess: (data, vehicleId) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['marketplace-blast-queue'] });
-      if (selectedVehicle?.id === vehicleId) {
-        setSelectedVehicle(prev => prev ? { ...prev, socialTemplates: data.templates } : null);
-      }
       toast({ title: "Content generated!", description: "AI has created your Marketplace listing" });
     },
     onError: () => {
@@ -794,17 +660,24 @@ export default function MarketplaceBlast() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['marketplace-blast-queue'] });
-      setSelectedVehicle(null);
       toast({ title: "Marked as posted!", description: "Vehicle removed from queue" });
     }
   });
 
-  const openMarketplace = () => {
-    window.open('https://www.facebook.com/marketplace/create/vehicle', '_blank');
-  };
+  // Filter vehicles by search
+  const vehicles = queueData?.vehicles || [];
+  const filteredVehicles = useMemo(() => {
+    if (!searchQuery) return vehicles;
+    const search = searchQuery.toLowerCase();
+    return vehicles.filter(v => 
+      v.make.toLowerCase().includes(search) ||
+      v.model.toLowerCase().includes(search) ||
+      v.year.toString().includes(search) ||
+      v.stockNumber?.toLowerCase().includes(search)
+    );
+  }, [vehicles, searchQuery]);
 
   // Calculate KPI stats
-  const vehicles = queueData?.vehicles || [];
   const readyCount = vehicles.filter(v => v.socialTemplates).length;
   const pendingCount = vehicles.length - readyCount;
   const postedTodayCount = vehicles.filter(v => {
@@ -813,12 +686,6 @@ export default function MarketplaceBlast() {
     const today = new Date();
     return posted.toDateString() === today.toDateString();
   }).length;
-
-  // Mock templates if none exist
-  const displayTemplates: AdTemplate[] = templates.length > 0 ? templates : [
-    { id: 1, templateName: "Standard Listing", titleTemplate: "{year} {make} {model} - ${price}", descriptionTemplate: "Check out this {year} {make} {model}! Only {mileage} km. Contact us today!", isDefault: true },
-    { id: 2, templateName: "Urgent Sale", titleTemplate: "🔥 HOT DEAL: {year} {make} {model}", descriptionTemplate: "⚡ LIMITED TIME! This {year} {make} {model} won't last at ${price}. Call now!", isDefault: false },
-  ];
 
   // Mock accounts if none exist
   const displayAccounts: FacebookAccount[] = accounts.length > 0 ? accounts : [
@@ -882,17 +749,14 @@ export default function MarketplaceBlast() {
 
         {/* Main Content */}
         <div className="grid grid-cols-12 gap-6">
-          {/* Left Sidebar - Connected Accounts & Templates */}
-          <div className="col-span-12 lg:col-span-3 space-y-6">
-            {/* Connected Accounts */}
+          {/* Left Sidebar - Connected Accounts */}
+          <div className="col-span-12 lg:col-span-3">
             <Card className="bg-white/80">
               <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Facebook className="w-5 h-5 text-[#1877f2]" />
-                    Connected Accounts
-                  </CardTitle>
-                </div>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Facebook className="w-5 h-5 text-[#1877f2]" />
+                  Connected Accounts
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
@@ -905,61 +769,72 @@ export default function MarketplaceBlast() {
                     />
                   ))}
                 </div>
-                
-                {selectedAccount && (
-                  <div className="mt-4 pt-4 border-t">
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" className="flex-1">
-                        <Settings2 className="w-4 h-4 mr-1" />
-                        Settings
-                      </Button>
-                      <Button variant="outline" size="sm" className="flex-1">
-                        <FileText className="w-4 h-4 mr-1" />
-                        Templates
-                      </Button>
-                    </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Main Content - Vehicle List */}
+          <div className="col-span-12 lg:col-span-9">
+            <Card className="bg-white/80">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Car className="w-5 h-5 text-[#1877f2]" />
+                    Vehicle Queue ({filteredVehicles.length})
+                  </CardTitle>
+                  <div className="flex items-center gap-3">
+                    <Input
+                      placeholder="Search vehicles..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-64"
+                      data-testid="search-vehicles"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => queryClient.invalidateQueries({ queryKey: ['marketplace-blast-queue'] })}
+                    >
+                      <RefreshCw className={`w-4 h-4 ${queueLoading ? 'animate-spin' : ''}`} />
+                    </Button>
                   </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {queueLoading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3, 4].map(i => (
+                      <div key={i} className="h-20 bg-gray-100 rounded-lg animate-pulse" />
+                    ))}
+                  </div>
+                ) : filteredVehicles.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Car className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                    <h3 className="text-lg font-medium text-gray-600">No vehicles in queue</h3>
+                    <p className="text-sm text-gray-400 mt-1">All vehicles have been posted or are on cooldown</p>
+                  </div>
+                ) : (
+                  <ScrollArea className="h-[calc(100vh-380px)]">
+                    <Accordion 
+                      type="multiple" 
+                      value={expandedVehicles}
+                      onValueChange={setExpandedVehicles}
+                      className="space-y-2"
+                    >
+                      {filteredVehicles.map(vehicle => (
+                        <VehicleAccordionItem
+                          key={vehicle.id}
+                          vehicle={vehicle}
+                          onGenerateContent={(id) => generateMutation.mutate(id)}
+                          onMarkPosted={(id) => markPostedMutation.mutate(id)}
+                          isGenerating={generateMutation.isPending}
+                        />
+                      ))}
+                    </Accordion>
+                  </ScrollArea>
                 )}
               </CardContent>
             </Card>
-
-            {/* Templates */}
-            <TemplateEditor
-              templates={displayTemplates}
-              selectedTemplate={selectedTemplate}
-              onSelectTemplate={setSelectedTemplate}
-              onSaveTemplate={(data) => {
-                toast({ title: "Template saved!", description: "Your template has been updated" });
-              }}
-              onDeleteTemplate={(id) => {
-                toast({ title: "Template deleted", description: "Template has been removed" });
-              }}
-            />
-          </div>
-
-          {/* Center - Vehicle Queue */}
-          <div className="col-span-12 lg:col-span-5">
-            <Card className="bg-white/80 h-full">
-              <CardContent className="p-6">
-                <VehicleQueue
-                  vehicles={vehicles}
-                  selectedVehicle={selectedVehicle}
-                  onSelectVehicle={setSelectedVehicle}
-                  onGenerateContent={(id) => generateMutation.mutate(id)}
-                  onMarkPosted={(id) => markPostedMutation.mutate(id)}
-                  isGenerating={generateMutation.isPending}
-                />
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Right - Post Preview */}
-          <div className="col-span-12 lg:col-span-4">
-            <PostPreview
-              vehicle={selectedVehicle}
-              template={selectedTemplate}
-              onOpenMarketplace={openMarketplace}
-            />
           </div>
         </div>
       </div>
