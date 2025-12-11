@@ -148,14 +148,31 @@ async function refreshSingleAccount(
   }
 }
 
-// Manual trigger function for testing - uses INCREMENTAL save to prevent data loss
+// Manual trigger function - uses ROBUST SCRAPER with fallback chain
 export async function triggerManualSync() {
-  console.log('🔄 Manual inventory sync triggered (INCREMENTAL MODE)...');
+  console.log('🔄 Manual inventory sync triggered (ROBUST MODE with retry + fallback)...');
   try {
-    // Use incremental scraper - saves each vehicle immediately to prevent data loss
-    const count = await scrapeAllDealershipsIncremental();
-    console.log(`✓ Manual sync complete: ${count} vehicles saved`);
-    return { success: true, count };
+    // Use robust scraper - primary Puppeteer with retry, then Browserless cloud fallback, 
+    // then Apify market data refresh, then cache preserve
+    const result = await runRobustScrape('manual');
+    
+    if (result.success) {
+      console.log(`✓ Manual sync complete: ${result.vehiclesFound} vehicles (method: ${result.method}, retries: ${result.retryCount})`);
+      return { 
+        success: true, 
+        count: result.vehiclesFound,
+        method: result.method,
+        retryCount: result.retryCount
+      };
+    } else {
+      console.error(`✗ Manual sync failed after ${result.retryCount} retries: ${result.error}`);
+      return { 
+        success: false, 
+        error: result.error,
+        method: result.method,
+        retryCount: result.retryCount
+      };
+    }
   } catch (error) {
     console.error('✗ Manual sync failed:', error);
     return { success: false, error: String(error) };

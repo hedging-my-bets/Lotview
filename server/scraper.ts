@@ -1349,67 +1349,97 @@ export async function scrapeAllDealershipsIncremental(): Promise<number> {
       console.log(`Checking dealerships: ${dealershipIdsArray.join(', ')}`);
       console.log(`Scrape start time: ${scrapeStartTime.toISOString()}`);
       
-      // Find vehicles whose lastScrapedAt is before the scrape start time
-      // ONLY for dealerships that were successfully scraped
-      // Also grab lastScrapedAt for debugging
-      const staleVehicles = await db.select({ 
-        id: vehicles.id, 
-        vin: vehicles.vin, 
-        year: vehicles.year, 
-        make: vehicles.make, 
-        model: vehicles.model,
-        trim: vehicles.trim,
-        dealershipId: vehicles.dealershipId,
-        lastScrapedAt: vehicles.lastScrapedAt
-      })
+      // SAFETY CHECK: Get current vehicle count for these dealerships
+      // This prevents mass deletion if a scrape has issues (e.g., filtering problems, partial failures)
+      const existingVehicleCount = await db.select({ count: sql<number>`count(*)` })
         .from(vehicles)
-        .where(
-          and(
-            inArray(vehicles.dealershipId, dealershipIdsArray),
-            or(
-              lt(vehicles.lastScrapedAt, scrapeStartTime),
-              isNull(vehicles.lastScrapedAt)
-            )
-          )
-        );
+        .where(inArray(vehicles.dealershipId, dealershipIdsArray));
       
-      if (staleVehicles.length > 0) {
-        console.log(`Found ${staleVehicles.length} vehicles no longer on source website:`);
-        for (const v of staleVehicles) {
-          const lastScrape = v.lastScrapedAt ? v.lastScrapedAt.toISOString() : 'never';
-          console.log(`  - ${v.year} ${v.make} ${v.model} ${v.trim} (VIN: ${v.vin || 'N/A'}) [Dealership ${v.dealershipId}] Last scraped: ${lastScrape}`);
-        }
-        
-        // Delete stale vehicles (first delete related records to avoid foreign key constraints)
-        const staleIds = staleVehicles.map(v => v.id);
-        
-        // Delete related chat conversations first
-        await db.delete(chatConversations).where(inArray(chatConversations.vehicleId, staleIds));
-        
-        // Delete related vehicle views
-        await db.delete(vehicleViews).where(inArray(vehicleViews.vehicleId, staleIds));
-        
-        // Now delete the vehicles
-        await db.delete(vehicles).where(inArray(vehicles.id, staleIds));
-        
-        console.log(`✓ Removed ${staleVehicles.length} sold/stale vehicles`);
+      const currentCount = Number(existingVehicleCount[0]?.count || 0);
+      const scrapedCount = result.total;
+      const deletionThreshold = 0.3; // Only proceed if we scraped at least 30% of existing inventory
+      
+      console.log(`Current inventory: ${currentCount} vehicles, Scraped: ${scrapedCount} vehicles`);
+      
+      // If we scraped significantly fewer vehicles than exist, skip deletion to prevent data loss
+      if (currentCount > 10 && scrapedCount < currentCount * deletionThreshold) {
+        console.log(`⚠ SAFETY CHECK TRIGGERED: Scraped only ${scrapedCount}/${currentCount} vehicles (${Math.round(scrapedCount/currentCount*100)}%)`);
+        console.log(`  Skipping stale vehicle cleanup to prevent accidental data loss.`);
+        console.log(`  This may indicate: scraper issues, website changes, or filtering problems.`);
+        console.log(`  To force cleanup, manually trigger with at least ${Math.ceil(currentCount * deletionThreshold)} vehicles scraped.`);
       } else {
-        console.log('✓ No stale vehicles to remove');
-        
-        // Debug: Show sample of recently scraped vehicles for this dealership
-        const sampleVehicles = await db.select({ 
+        // Find vehicles whose lastScrapedAt is before the scrape start time
+        // ONLY for dealerships that were successfully scraped
+        // Also grab lastScrapedAt for debugging
+        const staleVehicles = await db.select({ 
+          id: vehicles.id, 
+          vin: vehicles.vin, 
           year: vehicles.year, 
           make: vehicles.make, 
           model: vehicles.model,
+          trim: vehicles.trim,
+          dealershipId: vehicles.dealershipId,
           lastScrapedAt: vehicles.lastScrapedAt
         })
           .from(vehicles)
-          .where(inArray(vehicles.dealershipId, dealershipIdsArray))
-          .limit(5);
+          .where(
+            and(
+              inArray(vehicles.dealershipId, dealershipIdsArray),
+              or(
+                lt(vehicles.lastScrapedAt, scrapeStartTime),
+                isNull(vehicles.lastScrapedAt)
+              )
+            )
+          );
         
-        console.log(`Sample of vehicles in scraped dealerships:`);
-        for (const v of sampleVehicles) {
-          console.log(`  - ${v.year} ${v.make} ${v.model} - Last scraped: ${v.lastScrapedAt?.toISOString() || 'never'}`);
+        if (staleVehicles.length > 0) {
+          // Another safety check: Don't delete more than 50% of inventory at once
+          const maxDeletions = Math.floor(currentCount * 0.5);
+          if (staleVehicles.length > maxDeletions && currentCount > 10) {
+            console.log(`⚠ SAFETY CHECK: Would delete ${staleVehicles.length} of ${currentCount} vehicles (${Math.round(staleVehicles.length/currentCount*100)}%)`);
+            console.log(`  Capping deletions to ${maxDeletions} vehicles to prevent accidental mass deletion.`);
+            console.log(`  Remaining stale vehicles will be caught in subsequent scrapes.`);
+          }
+          
+          const vehiclesToDelete = staleVehicles.slice(0, maxDeletions);
+          
+          console.log(`Found ${staleVehicles.length} vehicles no longer on source website (deleting ${vehiclesToDelete.length}):`);
+          for (const v of vehiclesToDelete) {
+            const lastScrape = v.lastScrapedAt ? v.lastScrapedAt.toISOString() : 'never';
+            console.log(`  - ${v.year} ${v.make} ${v.model} ${v.trim} (VIN: ${v.vin || 'N/A'}) [Dealership ${v.dealershipId}] Last scraped: ${lastScrape}`);
+          }
+          
+          // Delete stale vehicles (first delete related records to avoid foreign key constraints)
+          const staleIds = vehiclesToDelete.map(v => v.id);
+          
+          // Delete related chat conversations first
+          await db.delete(chatConversations).where(inArray(chatConversations.vehicleId, staleIds));
+          
+          // Delete related vehicle views
+          await db.delete(vehicleViews).where(inArray(vehicleViews.vehicleId, staleIds));
+          
+          // Now delete the vehicles
+          await db.delete(vehicles).where(inArray(vehicles.id, staleIds));
+          
+          console.log(`✓ Removed ${vehiclesToDelete.length} sold/stale vehicles`);
+        } else {
+          console.log('✓ No stale vehicles to remove');
+          
+          // Debug: Show sample of recently scraped vehicles for this dealership
+          const sampleVehicles = await db.select({ 
+            year: vehicles.year, 
+            make: vehicles.make, 
+            model: vehicles.model,
+            lastScrapedAt: vehicles.lastScrapedAt
+          })
+            .from(vehicles)
+            .where(inArray(vehicles.dealershipId, dealershipIdsArray))
+            .limit(5);
+          
+          console.log(`Sample of vehicles in scraped dealerships:`);
+          for (const v of sampleVehicles) {
+            console.log(`  - ${v.year} ${v.make} ${v.model} - Last scraped: ${v.lastScrapedAt?.toISOString() || 'never'}`);
+          }
         }
       }
     }

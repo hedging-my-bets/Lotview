@@ -138,14 +138,25 @@ function isLowKilometers(year: number, odometer: number): boolean {
 
 // Check if a vehicle appears to be NEW (not used) based on various indicators
 // This function uses multiple signals to accurately detect new cars
-function isLikelyNewVehicle(year: number, odometer: number | null, rawOdometerKm: number | null, isNewCondition: boolean): boolean {
+// scrapingUsedInventory: if true, we're scraping from a /used/ page so trust the dealership's classification
+function isLikelyNewVehicle(year: number, odometer: number | null, rawOdometerKm: number | null, isNewCondition: boolean, scrapingUsedInventory: boolean = false): boolean {
   const currentYear = new Date().getFullYear();
   const nextYear = currentYear + 1;
   
   // PRIMARY: If the page explicitly says it's new (from DOM/text detection)
+  // This is the most reliable signal - even on used inventory pages, if the VDP says "New", skip it
   if (isNewCondition) {
     console.log(`    ⚠ NEW CAR DETECTED: Page explicitly indicates "New" condition`);
     return true;
+  }
+  
+  // If scraping from a /used/ or /preowned/ URL, trust the dealership's classification
+  // Don't use heuristics like odometer or year to second-guess them
+  // Demo vehicles, trade-ins, and returns often have very low mileage but are legitimately "used"
+  if (scrapingUsedInventory) {
+    // Only skip if the VDP explicitly says "New" (handled above)
+    // Otherwise, trust that everything on the used inventory page is used
+    return false;
   }
   
   // If it's next year's model, it's definitely new (dealerships often list next year models early)
@@ -903,26 +914,32 @@ async function scrapeVehicleDetailPage(page: any, vdpUrl: string, retries = 2): 
           }
         }
         
-        // Strategy 2: Check for MSRP label (new cars show MSRP, used don't)
-        if (!isNewCondition) {
-          if (/\\bMSRP\\b/i.test(pageText) && !/\\bbelow\\s*MSRP\\b/i.test(pageText)) {
-            // Has MSRP but not "below MSRP" (which is sometimes used for used car deals)
-            isNewCondition = true;
-          }
-        }
-        
-        // Strategy 3: Check for explicit "New Vehicle" or "New Car" phrases
-        if (!isNewCondition) {
-          // Be careful to avoid "new arrival", "new to inventory", "new listing"
-          if (/\\b(?:new\\s+(?:vehicle|car|suv|truck|sedan|hatchback)|brand\\s*new)\\b/i.test(pageText)) {
-            isNewCondition = true;
-          }
-        }
-        
-        // Strategy 4: Check URL for /new/ path segment
+        // Strategy 2: Check URL for explicit /new/ path segment (STRONG SIGNAL)
+        // This is more reliable than text-based detection
         if (!isNewCondition) {
           var currentUrl = window.location.href.toLowerCase();
-          if (currentUrl.indexOf('/new/') !== -1 || currentUrl.indexOf('/new-vehicles/') !== -1) {
+          if (currentUrl.indexOf('/new/') !== -1 || currentUrl.indexOf('/new-vehicles/') !== -1 || currentUrl.indexOf('sale_class=new') !== -1) {
+            isNewCondition = true;
+          }
+        }
+        
+        // SKIP MSRP and text-based "new vehicle" detection when URL indicates used
+        // Many dealers show "Compare to MSRP" or "Below MSRP" on used car pages
+        // Also, promotional text like "New deals on used cars" can trigger false positives
+        // Only use aggressive text detection if URL explicitly says /new/
+        var urlIndicatesUsed = window.location.href.toLowerCase().indexOf('used') !== -1 || 
+                               window.location.href.toLowerCase().indexOf('preowned') !== -1 ||
+                               window.location.href.toLowerCase().indexOf('pre-owned') !== -1;
+        
+        if (!isNewCondition && !urlIndicatesUsed) {
+          // Strategy 3: Check for MSRP label (only when URL doesn't indicate used)
+          if (/\\bMSRP\\b/i.test(pageText) && !/\\b(?:below|under|compared\\s+to|vs\\.?|original)\\s*MSRP\\b/i.test(pageText)) {
+            isNewCondition = true;
+          }
+          
+          // Strategy 4: Check for explicit "New Vehicle" or "New Car" phrases (only when URL doesn't indicate used)
+          // Be careful to avoid "new arrival", "new to inventory", "new listing"
+          if (/\\b(?:brand\\s*new|factory\\s*new)\\b/i.test(pageText)) {
             isNewCondition = true;
           }
         }
@@ -1382,7 +1399,10 @@ async function scrapeDealerListings(
       
       // FILTER: Skip new vehicles (very low odometer, next year models, or explicit "New" condition)
       // This prevents new cars from being added to used car inventory
-      if (isLikelyNewVehicle(urlData.year, detailData.odometer, detailData.rawOdometerKm, detailData.isNewCondition)) {
+      // If we're scraping from a /used/ or /preowned/ page, trust the dealership's classification
+      const lowerUrl = dealerConfig.url.toLowerCase();
+      const scrapingUsedInventory = lowerUrl.includes('/used') || lowerUrl.includes('/preowned') || lowerUrl.includes('sc=used');
+      if (isLikelyNewVehicle(urlData.year, detailData.odometer, detailData.rawOdometerKm, detailData.isNewCondition, scrapingUsedInventory)) {
         console.log(`    ❌ SKIPPING: ${urlData.year} ${urlData.make} ${urlData.model} - appears to be a NEW vehicle, not used`);
         // Human-like delay before continuing to next
         await randomDelay(400, 800);
