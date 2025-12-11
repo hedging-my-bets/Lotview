@@ -42,6 +42,7 @@ function MarketingRouter() {
       <Route path="/sales/auto-posting" component={SalesAutoPosting} />
       <Route path="/sales/conversations" component={SalesConversations} />
       <Route path="/sales/marketplace-blast" component={MarketplaceBlast} />
+      <Route path="/marketplace-blast" component={MarketplaceBlast} />
       <Route path="/contacts" component={ContactsPage} />
       <Route path="/admin" component={Admin} />
       <Route path="/super-admin" component={SuperAdminDashboard} />
@@ -68,6 +69,7 @@ function DealershipRouter() {
       <Route path="/sales/auto-posting" component={SalesAutoPosting} />
       <Route path="/sales/conversations" component={SalesConversations} />
       <Route path="/sales/marketplace-blast" component={MarketplaceBlast} />
+      <Route path="/marketplace-blast" component={MarketplaceBlast} />
       <Route path="/contacts" component={ContactsPage} />
       <Route path="/admin" component={Admin} />
       <Route path="/super-admin" component={SuperAdminDashboard} />
