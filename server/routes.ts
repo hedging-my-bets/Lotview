@@ -11897,6 +11897,129 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
 
+  // ==================== FACEBOOK ACCOUNTS FOR MARKETPLACE BLAST ====================
+  
+  // Get user's Facebook accounts
+  app.get("/api/facebook-accounts", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const dealershipId = req.dealershipId!;
+      const accounts = await storage.getFacebookAccountsByUser(userId, dealershipId);
+      res.json(accounts);
+    } catch (error: any) {
+      console.error("Error fetching Facebook accounts:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch accounts" });
+    }
+  });
+
+  // Create a new Facebook account
+  app.post("/api/facebook-accounts", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const dealershipId = req.dealershipId!;
+      const { accountName } = req.body;
+      
+      if (!accountName) {
+        return res.status(400).json({ error: "Account name is required" });
+      }
+      
+      const account = await storage.createFacebookAccount({
+        dealershipId,
+        userId,
+        accountName,
+        isActive: true
+      });
+      
+      res.json(account);
+    } catch (error: any) {
+      console.error("Error creating Facebook account:", error);
+      res.status(500).json({ error: error.message || "Failed to create account" });
+    }
+  });
+
+  // ==================== AD TEMPLATES FOR MARKETPLACE BLAST ====================
+  
+  // Get user's ad templates
+  app.get("/api/ad-templates", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const dealershipId = req.dealershipId!;
+      const templates = await storage.getAdTemplatesByUser(userId, dealershipId);
+      res.json(templates);
+    } catch (error: any) {
+      console.error("Error fetching ad templates:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch templates" });
+    }
+  });
+
+  // Create a new ad template
+  app.post("/api/ad-templates", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const dealershipId = req.dealershipId!;
+      const { templateName, titleTemplate, descriptionTemplate, isDefault } = req.body;
+      
+      if (!templateName || !titleTemplate || !descriptionTemplate) {
+        return res.status(400).json({ error: "Template name, title, and description are required" });
+      }
+      
+      const template = await storage.createAdTemplate({
+        dealershipId,
+        userId,
+        templateName,
+        titleTemplate,
+        descriptionTemplate,
+        isDefault: isDefault || false
+      });
+      
+      res.json(template);
+    } catch (error: any) {
+      console.error("Error creating ad template:", error);
+      res.status(500).json({ error: error.message || "Failed to create template" });
+    }
+  });
+
+  // Update an ad template
+  app.patch("/api/ad-templates/:id", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const dealershipId = req.dealershipId!;
+      const templateId = parseInt(req.params.id);
+      const { templateName, titleTemplate, descriptionTemplate, isDefault } = req.body;
+      
+      const template = await storage.updateAdTemplate(templateId, userId, dealershipId, {
+        templateName,
+        titleTemplate,
+        descriptionTemplate,
+        isDefault
+      });
+      
+      if (!template) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+      
+      res.json(template);
+    } catch (error: any) {
+      console.error("Error updating ad template:", error);
+      res.status(500).json({ error: error.message || "Failed to update template" });
+    }
+  });
+
+  // Delete an ad template
+  app.delete("/api/ad-templates/:id", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const dealershipId = req.dealershipId!;
+      const templateId = parseInt(req.params.id);
+      
+      await storage.deleteAdTemplate(templateId, userId, dealershipId);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error deleting ad template:", error);
+      res.status(500).json({ error: error.message || "Failed to delete template" });
+    }
+  });
+
   // ==================== MARKETPLACE BLAST ROUTES ====================
   
   // Get vehicles for Marketplace Blast queue (sorted by priority - aged inventory first)
