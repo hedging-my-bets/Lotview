@@ -5,7 +5,7 @@ import { db } from './db';
 import { vehicles, vehicleViews, chatConversations } from '@shared/schema';
 import { scrapeAllCarGurusDealers } from './cargurus-scraper';
 import { generateVehicleDescription } from './openai';
-import { scrapeAllDealerListings, scrapeDealerListingsWithCallback, type DealerVehicleListing } from './dealer-listing-scraper';
+import { scrapeAllDealerListings, scrapeDealerListingsWithCallback, scrapeDealerListingsCheckpointed, type DealerVehicleListing } from './dealer-listing-scraper';
 import { matchCarGurusToDealer } from './vehicle-matcher';
 
 // Upsert a single vehicle by VIN (or stockNumber if VIN is null)
@@ -1331,12 +1331,14 @@ export async function scrapeAllDealershipsIncremental(): Promise<number> {
       return await upsertVehicleByVin(vehicleData);
     };
     
-    const result = await scrapeDealerListingsWithCallback(onVehicleSaved);
+    // Use checkpointed scraper for crash recovery and resume capability
+    const result = await scrapeDealerListingsCheckpointed(onVehicleSaved);
     
-    console.log(`\n✓ INCREMENTAL SCRAPE COMPLETE`);
+    console.log(`\n✓ CHECKPOINTED SCRAPE COMPLETE`);
     console.log(`  - Total: ${result.total} vehicles`);
     console.log(`  - New: ${result.inserted} vehicles`);
     console.log(`  - Updated: ${result.updated} vehicles`);
+    console.log(`  - Resumed from checkpoint: ${result.resumed ? 'Yes' : 'No'}`);
     console.log(`  - Dealerships scraped: ${scrapedDealershipIds.size}`);
     
     // STEP: Remove sold vehicles (those not found in this scrape)
