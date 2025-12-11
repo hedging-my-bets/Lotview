@@ -251,3 +251,153 @@ export async function generateVehicleDescription(vehicle: VehicleData, dealershi
     return `This ${vehicle.year} ${vehicle.make} ${vehicle.model} ${vehicle.trim} is an exceptional ${vehicle.type.toLowerCase()} available at ${vehicle.dealership}. With ${vehicle.odometer.toLocaleString()} km on the odometer and priced at $${vehicle.price.toLocaleString()}, it represents outstanding value in today's market. ${vehicle.badges.length > 0 ? `Features include: ${vehicle.badges.join(', ')}.` : ''} Visit us in ${vehicle.location} to experience this vehicle firsthand and explore our flexible financing options.`;
   }
 }
+
+// Social templates type for Marketplace Blast
+export interface SocialTemplates {
+  marketplace: {
+    title: string;
+    description: string;
+  };
+  pagePost?: {
+    body: string;
+  };
+  instagram?: {
+    caption: string;
+    hashtags: string;
+  };
+  reply?: {
+    message: string;
+  };
+}
+
+// Generate Marketplace listing content for a vehicle
+export async function generateMarketplaceContent(
+  vehicle: {
+    year: number;
+    make: string;
+    model: string;
+    trim: string;
+    type: string;
+    price: number;
+    odometer: number;
+    badges: string[];
+    description: string;
+    location: string;
+    dealership: string;
+    vin?: string;
+    carfaxUrl?: string;
+  },
+  dealershipId: number,
+  dealershipName?: string
+): Promise<SocialTemplates> {
+  try {
+    const vehicleName = `${vehicle.year} ${vehicle.make} ${vehicle.model}${vehicle.trim ? ` ${vehicle.trim}` : ''}`;
+    
+    const prompt = `Generate SHORT, punchy Facebook Marketplace listing content for this vehicle.
+
+VEHICLE DETAILS:
+- Year: ${vehicle.year}
+- Make: ${vehicle.make}
+- Model: ${vehicle.model}
+- Trim: ${vehicle.trim || 'Base'}
+- Type: ${vehicle.type}
+- Price: $${vehicle.price.toLocaleString()} CAD
+- Kilometers: ${vehicle.odometer.toLocaleString()} km
+- Location: ${vehicle.location}
+- Dealership: ${vehicle.dealership}
+${vehicle.badges.length > 0 ? `- Features: ${vehicle.badges.join(', ')}` : ''}
+${vehicle.carfaxUrl ? '- Clean Carfax available' : ''}
+
+REQUIREMENTS:
+1. Title: Maximum 100 characters. Format: "[Year] [Make] [Model] [Trim] | [Key Feature] | [Condition]"
+   Examples: "2023 Hyundai Tucson Preferred AWD | One Owner | No Accidents"
+2. Description: 3-4 short paragraphs, maximum 500 characters total. Focus on:
+   - Key selling points (condition, history, features)
+   - What makes this vehicle special
+   - Call to action
+3. Do NOT mention financing rates or loan approvals
+4. Be professional but friendly
+5. Use Canadian spelling (kilometres, colour)
+
+Return ONLY valid JSON in this exact format, no other text:
+{
+  "marketplace": {
+    "title": "...",
+    "description": "..."
+  },
+  "pagePost": {
+    "body": "..."
+  },
+  "reply": {
+    "message": "..."
+  }
+}`;
+
+    const { client: openaiClient, source } = await getOpenAIClient(dealershipId);
+    const model = source === 'dealership' ? 'gpt-4o-mini' : 'gpt-5';
+
+    const response = await openaiClient.chat.completions.create({
+      model: model,
+      messages: [
+        {
+          role: "system",
+          content: "You are an expert automotive copywriter for Canadian car dealerships. Generate compelling, compliant Facebook Marketplace listings. Always return valid JSON only."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      max_completion_tokens: 600,
+      temperature: 0.8,
+    });
+
+    const content = response.choices[0]?.message?.content?.trim() || '';
+    
+    // Try to parse JSON from the response
+    let templates: SocialTemplates;
+    try {
+      // Clean up the response - remove markdown code blocks if present
+      let cleanContent = content;
+      if (cleanContent.startsWith('```json')) {
+        cleanContent = cleanContent.replace(/^```json\n?/, '').replace(/\n?```$/, '');
+      } else if (cleanContent.startsWith('```')) {
+        cleanContent = cleanContent.replace(/^```\n?/, '').replace(/\n?```$/, '');
+      }
+      templates = JSON.parse(cleanContent);
+    } catch (parseError) {
+      console.error('Failed to parse AI response, using fallback:', parseError);
+      // Fallback templates
+      templates = {
+        marketplace: {
+          title: `${vehicle.year} ${vehicle.make} ${vehicle.model} ${vehicle.trim} | Great Value | Well Maintained`,
+          description: `This ${vehicleName} is available at ${vehicle.dealership} in ${vehicle.location}. With ${vehicle.odometer.toLocaleString()} km, it's priced at $${vehicle.price.toLocaleString()}. ${vehicle.badges.length > 0 ? `Features: ${vehicle.badges.slice(0, 3).join(', ')}.` : ''} Contact us for more details!`
+        },
+        pagePost: {
+          body: `🚗 Just Listed: ${vehicleName}\n💰 $${vehicle.price.toLocaleString()}\n📍 ${vehicle.odometer.toLocaleString()} km\n\nAvailable now at ${vehicle.dealership}. DM us for details!`
+        },
+        reply: {
+          message: `Hi! Yes, the ${vehicleName} is still available. It's priced at $${vehicle.price.toLocaleString()} with ${vehicle.odometer.toLocaleString()} km. Would you like to schedule a viewing?`
+        }
+      };
+    }
+
+    return templates;
+  } catch (error) {
+    console.error('Error generating marketplace content:', error);
+    // Return fallback content
+    const vehicleName = `${vehicle.year} ${vehicle.make} ${vehicle.model}${vehicle.trim ? ` ${vehicle.trim}` : ''}`;
+    return {
+      marketplace: {
+        title: `${vehicle.year} ${vehicle.make} ${vehicle.model} ${vehicle.trim} | Great Value`,
+        description: `${vehicleName} available at ${vehicle.dealership}. ${vehicle.odometer.toLocaleString()} km, $${vehicle.price.toLocaleString()}. Contact us today!`
+      },
+      pagePost: {
+        body: `🚗 ${vehicleName}\n💰 $${vehicle.price.toLocaleString()}\n📍 ${vehicle.odometer.toLocaleString()} km\n\nAvailable at ${vehicle.dealership}!`
+      },
+      reply: {
+        message: `Yes, the ${vehicleName} is available at $${vehicle.price.toLocaleString()}. Would you like to schedule a viewing?`
+      }
+    };
+  }
+}

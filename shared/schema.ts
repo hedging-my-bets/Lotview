@@ -145,6 +145,11 @@ export const vehicles = pgTable("vehicles", {
   isManuallyEdited: boolean("is_manually_edited").default(false), // Flag to preserve manual edits during scraper updates
   lastEditedBy: integer("last_edited_by"), // User ID who last edited manually
   lastEditedAt: timestamp("last_edited_at"), // When vehicle was last manually edited
+  // Marketplace Blast - AI-generated social content
+  socialTemplates: text("social_templates"), // JSON: { marketplace: { title, description }, pagePost: { body }, instagram: { caption, hashtags } }
+  socialTemplatesGeneratedAt: timestamp("social_templates_generated_at"), // When AI content was last generated
+  marketplacePostedAt: timestamp("marketplace_posted_at"), // When vehicle was last posted to Marketplace (for queue filtering)
+  marketplacePostedBy: integer("marketplace_posted_by"), // User ID who posted to Marketplace
   createdAt: timestamp("created_at").defaultNow().notNull(),
   lastScrapedAt: timestamp("last_scraped_at").defaultNow(), // Track when vehicle was last scraped (for incremental sync)
 });

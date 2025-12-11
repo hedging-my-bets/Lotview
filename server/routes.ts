@@ -30,6 +30,7 @@ import { generateChatResponse, type ChatMessage } from "./openai";
 import { authMiddleware, requireRole, generateToken, comparePassword, hashPassword, verifyToken, type AuthRequest } from "./auth";
 import { requireDealership, superAdminOnly } from "./tenant-middleware";
 import { facebookService } from "./facebook-service";
+import { generateMarketplaceContent, type SocialTemplates } from "./openai";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import multer from "multer";
@@ -11893,6 +11894,251 @@ Format your response in clear sections with actionable recommendations.`;
     } catch (error: any) {
       console.error("Error sending lead notification:", error);
       res.status(500).json({ error: error.message || "Failed to send notification" });
+    }
+  });
+
+  // ==================== MARKETPLACE BLAST ROUTES ====================
+  
+  // Get vehicles for Marketplace Blast queue (sorted by priority - aged inventory first)
+  app.get("/api/marketplace-blast/queue", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const includePosted = req.query.includePosted === 'true';
+      const limit = parseInt(req.query.limit as string) || 50;
+      
+      // Get all vehicles (high limit to get full inventory)
+      const result = await storage.getVehicles(dealershipId, 1000, 0);
+      const allVehicles = result.vehicles;
+      
+      // Calculate days since listed for each vehicle
+      const now = new Date();
+      type VehicleWithAge = typeof allVehicles[number] & { daysInStock: number };
+      const vehiclesWithAge: VehicleWithAge[] = allVehicles.map(v => {
+        const createdAt = new Date(v.createdAt);
+        const daysInStock = Math.floor((now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
+        return { ...v, daysInStock };
+      });
+      
+      // Filter: exclude recently posted (within last 7 days) unless includePosted is true
+      let filtered = vehiclesWithAge;
+      if (!includePosted) {
+        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        filtered = vehiclesWithAge.filter(v => 
+          !v.marketplacePostedAt || new Date(v.marketplacePostedAt) < sevenDaysAgo
+        );
+      }
+      
+      // Sort by days in stock (aged inventory first), then by price
+      filtered.sort((a, b) => {
+        // Aged inventory first (more days = higher priority)
+        if (b.daysInStock !== a.daysInStock) {
+          return b.daysInStock - a.daysInStock;
+        }
+        // Then by price (higher price = higher priority for margin)
+        return b.price - a.price;
+      });
+      
+      // Limit results
+      const queue = filtered.slice(0, limit).map(v => ({
+        id: v.id,
+        year: v.year,
+        make: v.make,
+        model: v.model,
+        trim: v.trim,
+        type: v.type,
+        price: v.price,
+        odometer: v.odometer,
+        images: v.images?.slice(0, 10) || [],
+        location: v.location,
+        dealership: v.dealership,
+        daysInStock: v.daysInStock,
+        socialTemplates: v.socialTemplates ? JSON.parse(v.socialTemplates) : null,
+        socialTemplatesGeneratedAt: v.socialTemplatesGeneratedAt,
+        marketplacePostedAt: v.marketplacePostedAt,
+        vin: v.vin,
+        stockNumber: v.stockNumber,
+        carfaxUrl: v.carfaxUrl,
+        badges: v.badges || []
+      }));
+      
+      res.json({ 
+        vehicles: queue,
+        total: filtered.length,
+        hasMore: filtered.length > limit
+      });
+    } catch (error: any) {
+      console.error("Error fetching marketplace blast queue:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch queue" });
+    }
+  });
+  
+  // Generate AI content for a single vehicle
+  app.post("/api/marketplace-blast/generate/:vehicleId", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const vehicleId = parseInt(req.params.vehicleId);
+      
+      const vehicle = await storage.getVehicleById(vehicleId, dealershipId);
+      if (!vehicle) {
+        return res.status(404).json({ error: "Vehicle not found" });
+      }
+      
+      // Generate Marketplace content using AI
+      const templates = await generateMarketplaceContent(
+        {
+          year: vehicle.year,
+          make: vehicle.make,
+          model: vehicle.model,
+          trim: vehicle.trim,
+          type: vehicle.type,
+          price: vehicle.price,
+          odometer: vehicle.odometer,
+          badges: vehicle.badges || [],
+          description: vehicle.description,
+          location: vehicle.location,
+          dealership: vehicle.dealership,
+          vin: vehicle.vin || undefined,
+          carfaxUrl: vehicle.carfaxUrl || undefined
+        },
+        dealershipId
+      );
+      
+      // Save templates to vehicle
+      await storage.updateVehicle(vehicleId, {
+        socialTemplates: JSON.stringify(templates),
+        socialTemplatesGeneratedAt: new Date()
+      }, dealershipId);
+      
+      res.json({ 
+        success: true,
+        templates,
+        generatedAt: new Date()
+      });
+    } catch (error: any) {
+      console.error("Error generating marketplace content:", error);
+      res.status(500).json({ error: error.message || "Failed to generate content" });
+    }
+  });
+  
+  // Bulk generate AI content for multiple vehicles
+  app.post("/api/marketplace-blast/generate-bulk", authMiddleware, requireRole("manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { vehicleIds, regenerate = false } = req.body;
+      
+      if (!Array.isArray(vehicleIds) || vehicleIds.length === 0) {
+        return res.status(400).json({ error: "vehicleIds array is required" });
+      }
+      
+      // Limit to 20 at a time to avoid timeout
+      const limitedIds = vehicleIds.slice(0, 20);
+      const results: { vehicleId: number; success: boolean; error?: string }[] = [];
+      
+      for (const vehicleId of limitedIds) {
+        try {
+          const vehicle = await storage.getVehicleById(vehicleId, dealershipId);
+          if (!vehicle) {
+            results.push({ vehicleId, success: false, error: "Vehicle not found" });
+            continue;
+          }
+          
+          // Skip if already has templates unless regenerate is true
+          if (vehicle.socialTemplates && !regenerate) {
+            results.push({ vehicleId, success: true });
+            continue;
+          }
+          
+          const templates = await generateMarketplaceContent(
+            {
+              year: vehicle.year,
+              make: vehicle.make,
+              model: vehicle.model,
+              trim: vehicle.trim,
+              type: vehicle.type,
+              price: vehicle.price,
+              odometer: vehicle.odometer,
+              badges: vehicle.badges || [],
+              description: vehicle.description,
+              location: vehicle.location,
+              dealership: vehicle.dealership,
+              vin: vehicle.vin || undefined,
+              carfaxUrl: vehicle.carfaxUrl || undefined
+            },
+            dealershipId
+          );
+          
+          await storage.updateVehicle(vehicleId, {
+            socialTemplates: JSON.stringify(templates),
+            socialTemplatesGeneratedAt: new Date()
+          }, dealershipId);
+          
+          results.push({ vehicleId, success: true });
+        } catch (error: any) {
+          results.push({ vehicleId, success: false, error: error.message });
+        }
+      }
+      
+      res.json({
+        success: true,
+        processed: results.length,
+        successful: results.filter(r => r.success).length,
+        failed: results.filter(r => !r.success).length,
+        results
+      });
+    } catch (error: any) {
+      console.error("Error in bulk generate:", error);
+      res.status(500).json({ error: error.message || "Failed to generate content" });
+    }
+  });
+  
+  // Mark vehicle as posted to Marketplace
+  app.post("/api/marketplace-blast/mark-posted/:vehicleId", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const userId = req.user!.id;
+      const vehicleId = parseInt(req.params.vehicleId);
+      
+      const vehicle = await storage.getVehicleById(vehicleId, dealershipId);
+      if (!vehicle) {
+        return res.status(404).json({ error: "Vehicle not found" });
+      }
+      
+      await storage.updateVehicle(vehicleId, {
+        marketplacePostedAt: new Date(),
+        marketplacePostedBy: userId
+      }, dealershipId);
+      
+      res.json({ success: true, postedAt: new Date() });
+    } catch (error: any) {
+      console.error("Error marking as posted:", error);
+      res.status(500).json({ error: error.message || "Failed to mark as posted" });
+    }
+  });
+  
+  // Download photos as ZIP for a vehicle (returns list of image URLs for now)
+  app.get("/api/marketplace-blast/photos/:vehicleId", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const vehicleId = parseInt(req.params.vehicleId);
+      const limit = parseInt(req.query.limit as string) || 10;
+      
+      const vehicle = await storage.getVehicleById(vehicleId, dealershipId);
+      if (!vehicle) {
+        return res.status(404).json({ error: "Vehicle not found" });
+      }
+      
+      // Return first N images (optimized for Marketplace)
+      const images = (vehicle.images || []).slice(0, limit);
+      
+      res.json({
+        vehicleId,
+        vehicleName: `${vehicle.year} ${vehicle.make} ${vehicle.model} ${vehicle.trim}`,
+        images,
+        count: images.length
+      });
+    } catch (error: any) {
+      console.error("Error fetching photos:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch photos" });
     }
   });
   
