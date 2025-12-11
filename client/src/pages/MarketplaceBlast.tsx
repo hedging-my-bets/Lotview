@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
@@ -22,6 +23,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
   Copy,
@@ -43,7 +53,9 @@ import {
   Download,
   ImageIcon,
   FileText,
-  ChevronDown
+  ChevronDown,
+  Plus,
+  Settings
 } from "lucide-react";
 
 interface SocialTemplates {
@@ -346,13 +358,13 @@ function applyTemplate(template: Template, vehicle: BlastVehicle): { title: stri
 
 function VehicleAccordionItem({
   vehicle,
-  templates,
+  templates = DEFAULT_TEMPLATES,
   onGenerateContent,
   onMarkPosted,
   isGenerating,
 }: {
   vehicle: BlastVehicle;
-  templates: Template[];
+  templates?: Template[];
   onGenerateContent: (vehicleId: number) => void;
   onMarkPosted: (vehicleId: number) => void;
   isGenerating: boolean;
@@ -360,7 +372,8 @@ function VehicleAccordionItem({
   const { toast } = useToast();
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>(vehicle.socialTemplates ? "ai" : "standard");
 
-  const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
+  const safeTemplates = templates || DEFAULT_TEMPLATES;
+  const selectedTemplate = safeTemplates.find(t => t.id === selectedTemplateId);
   
   const { title, description } = useMemo(() => {
     if (selectedTemplateId === "ai" && vehicle.socialTemplates) {
@@ -511,7 +524,7 @@ function VehicleAccordionItem({
                       <SelectValue placeholder="Select template" />
                     </SelectTrigger>
                     <SelectContent>
-                      {templates.map(t => (
+                      {safeTemplates.map(t => (
                         <SelectItem 
                           key={t.id} 
                           value={t.id}
@@ -622,6 +635,10 @@ export default function MarketplaceBlast() {
   const [selectedAccount, setSelectedAccount] = useState<FacebookAccount | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedVehicles, setExpandedVehicles] = useState<string[]>([]);
+  const [showTemplateDialog, setShowTemplateDialog] = useState(false);
+  const [newTemplateName, setNewTemplateName] = useState("");
+  const [newTemplateTitle, setNewTemplateTitle] = useState("{year} {make} {model} - ${price}");
+  const [newTemplateDescription, setNewTemplateDescription] = useState("");
 
   // Fetch queue
   const { data: queueData, isLoading: queueLoading } = useQuery<{ vehicles: BlastVehicle[]; total: number }>({
@@ -712,6 +729,46 @@ export default function MarketplaceBlast() {
     }
   });
 
+  // Create template mutation
+  const createTemplateMutation = useMutation({
+    mutationFn: async (templateData: { templateName: string; titleTemplate: string; descriptionTemplate: string }) => {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch('/api/ad-templates', {
+        method: 'POST',
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(templateData)
+      });
+      if (!res.ok) throw new Error('Failed to create template');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ad-templates'] });
+      setShowTemplateDialog(false);
+      setNewTemplateName("");
+      setNewTemplateTitle("{year} {make} {model} - ${price}");
+      setNewTemplateDescription("");
+      toast({ title: "Template created!", description: "Your new template is now available for all listings" });
+    },
+    onError: () => {
+      toast({ title: "Failed to create template", description: "Please try again", variant: "destructive" });
+    }
+  });
+
+  const handleCreateTemplate = () => {
+    if (!newTemplateName.trim() || !newTemplateTitle.trim() || !newTemplateDescription.trim()) {
+      toast({ title: "Missing fields", description: "Please fill in all template fields", variant: "destructive" });
+      return;
+    }
+    createTemplateMutation.mutate({
+      templateName: newTemplateName,
+      titleTemplate: newTemplateTitle,
+      descriptionTemplate: newTemplateDescription
+    });
+  };
+
   // Filter vehicles by search
   const vehicles = queueData?.vehicles || [];
   const filteredVehicles = useMemo(() => {
@@ -755,11 +812,80 @@ export default function MarketplaceBlast() {
                 </Button>
               </Link>
             </div>
-            <div className="flex items-center gap-2">
-              <Zap className="w-6 h-6 text-[#1877f2]" />
-              <span className="text-xl font-bold bg-gradient-to-r from-[#1877f2] to-[#00aad2] bg-clip-text text-transparent">
-                Marketplace Blast
-              </span>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Zap className="w-6 h-6 text-[#1877f2]" />
+                <span className="text-xl font-bold bg-gradient-to-r from-[#1877f2] to-[#00aad2] bg-clip-text text-transparent">
+                  Marketplace Blast
+                </span>
+              </div>
+              <Dialog open={showTemplateDialog} onOpenChange={setShowTemplateDialog}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-2" data-testid="create-template-button">
+                    <Plus className="w-4 h-4" />
+                    New Template
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-lg">
+                  <DialogHeader>
+                    <DialogTitle>Create New Template</DialogTitle>
+                    <DialogDescription>
+                      Create a reusable template for your Marketplace listings. Use placeholders like {"{year}"}, {"{make}"}, {"{model}"}, {"${price}"}, {"{mileage}"}, {"{location}"}.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="template-name">Template Name</Label>
+                      <Input 
+                        id="template-name"
+                        placeholder="e.g., Luxury Sale"
+                        value={newTemplateName}
+                        onChange={(e) => setNewTemplateName(e.target.value)}
+                        data-testid="input-template-name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="template-title">Title Template</Label>
+                      <Input 
+                        id="template-title"
+                        placeholder="{year} {make} {model} - ${price}"
+                        value={newTemplateTitle}
+                        onChange={(e) => setNewTemplateTitle(e.target.value)}
+                        data-testid="input-template-title"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="template-description">Description Template</Label>
+                      <Textarea 
+                        id="template-description"
+                        placeholder="Check out this {year} {make} {model}! Only {mileage} km..."
+                        className="min-h-[120px]"
+                        value={newTemplateDescription}
+                        onChange={(e) => setNewTemplateDescription(e.target.value)}
+                        data-testid="input-template-description"
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setShowTemplateDialog(false)}>
+                      Cancel
+                    </Button>
+                    <Button 
+                      onClick={handleCreateTemplate}
+                      disabled={createTemplateMutation.isPending}
+                      className="gap-2"
+                      data-testid="save-template-button"
+                    >
+                      {createTemplateMutation.isPending ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Plus className="w-4 h-4" />
+                      )}
+                      Create Template
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </div>
           </div>
         </div>
