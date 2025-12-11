@@ -699,6 +699,20 @@ export default function Sales() {
                 </CardContent>
               </Card>
             </a>
+            <a href="/marketplace-blast" className="block" data-testid="marketplace-blast-link">
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer border-[#1877f2]/30 bg-gradient-to-br from-[#1877f2]/5 to-white">
+                <CardContent className="p-4 flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-[#1877f2]/10 flex items-center justify-center">
+                    <Facebook className="w-6 h-6 text-[#1877f2]" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-foreground">Marketplace Blast</h3>
+                    <p className="text-sm text-muted-foreground">Post vehicles to Facebook Marketplace</p>
+                  </div>
+                  <Badge className="ml-auto bg-[#1877f2]">Quick</Badge>
+                </CardContent>
+              </Card>
+            </a>
           </div>
 
           <Tabs defaultValue="accounts" className="w-full">
