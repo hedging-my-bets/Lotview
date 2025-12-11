@@ -1,6 +1,11 @@
 import { storage } from './storage';
-import { scrapeAllDealershipsIncremental } from './scraper';
+import { scrapeAllDealershipsIncremental, upsertVehicleByVin, type ScrapedVehicle } from './scraper';
 import { getGlobalApifyService, getApifyServiceForDealership } from './apify-service';
+import { 
+  getBrowserlessServiceForDealership, 
+  getGlobalBrowserlessService,
+  type BrowserlessScrapeResult 
+} from './browserless-service';
 import type { InsertScrapeRun, Vehicle } from '@shared/schema';
 import { db } from './db';
 import { vehicles, scrapeSources } from '@shared/schema';
@@ -15,7 +20,7 @@ interface ScrapeResult {
   vehiclesInserted: number;
   vehiclesUpdated: number;
   vehiclesDeleted: number;
-  method: 'puppeteer' | 'apify' | 'cache_preserve';
+  method: 'puppeteer' | 'browserless' | 'apify' | 'cache_preserve';
   error?: string;
   retryCount: number;
 }
@@ -38,7 +43,150 @@ async function attemptPuppeteerScrape(): Promise<{ success: boolean; total: numb
 }
 
 /**
- * Apify Market Data Refresh (Secondary Fallback)
+ * Browserless Cloud Fallback (Secondary - True Puppeteer Replacement)
+ * 
+ * This fallback uses Browserless.io cloud infrastructure to run the same
+ * Puppeteer scraping logic but in their managed cloud environment.
+ * This provides a TRUE backup for local Puppeteer failures.
+ * 
+ * DEGRADED MODE NOTE: The Browserless fallback extracts core vehicle data
+ * (year, make, model, price, odometer, images) but may miss some enrichments
+ * that the full local scraper provides (VIN from detail pages, full image galleries,
+ * Carfax links, trim parsing from headings). This is acceptable as an emergency
+ * fallback since it still imports valid inventory data.
+ */
+async function attemptBrowserlessScrape(dealershipId?: number): Promise<{
+  success: boolean;
+  vehiclesImported: number;
+  error?: string;
+}> {
+  try {
+    const browserlessService = dealershipId
+      ? await getBrowserlessServiceForDealership(dealershipId)
+      : getGlobalBrowserlessService();
+
+    if (!browserlessService) {
+      return { success: false, vehiclesImported: 0, error: 'Browserless service not configured' };
+    }
+
+    const connectionTest = await browserlessService.testConnection();
+    if (!connectionTest.success) {
+      return { success: false, vehiclesImported: 0, error: `Browserless connection failed: ${connectionTest.message}` };
+    }
+
+    console.log('[Robust Scraper] Browserless connected. Fetching scrape sources...');
+
+    const sources = dealershipId
+      ? await db.select().from(scrapeSources).where(
+          and(eq(scrapeSources.dealershipId, dealershipId), eq(scrapeSources.isActive, true))
+        )
+      : await db.select().from(scrapeSources).where(eq(scrapeSources.isActive, true));
+
+    if (sources.length === 0) {
+      return { success: false, vehiclesImported: 0, error: 'No active scrape sources configured' };
+    }
+
+    let totalImported = 0;
+
+    for (const source of sources) {
+      console.log(`[Robust Scraper] Browserless scraping: ${source.sourceName} (${source.sourceUrl})`);
+      
+      try {
+        const result = await browserlessService.scrapeInventoryUrl(source.sourceUrl);
+        
+        if (result.success && result.vehicles.length > 0) {
+          console.log(`[Robust Scraper] Browserless found ${result.vehicles.length} vehicles from ${source.sourceName}`);
+          
+          for (const v of result.vehicles) {
+            // Extract additional data from cardText if available
+            const cardText = v.cardText || '';
+            
+            // Try to extract trim from the vehicle title/heading
+            let trim = 'Base';
+            const trimMatch = cardText.match(/(?:^|\s)([A-Z][A-Za-z0-9]+(?:\s+[A-Za-z0-9]+)?)\s*(?:\||$)/);
+            if (trimMatch && !['Used', 'New', 'Certified'].includes(trimMatch[1])) {
+              trim = trimMatch[1].trim();
+            }
+            
+            // Determine body type from card text
+            let bodyType = 'SUV';
+            const bodyLower = cardText.toLowerCase();
+            if (bodyLower.includes('sedan')) bodyType = 'Sedan';
+            else if (bodyLower.includes('truck') || bodyLower.includes('pickup')) bodyType = 'Truck';
+            else if (bodyLower.includes('hatchback')) bodyType = 'Hatchback';
+            else if (bodyLower.includes('coupe')) bodyType = 'Coupe';
+            else if (bodyLower.includes('wagon')) bodyType = 'Wagon';
+            else if (bodyLower.includes('minivan') || bodyLower.includes('van')) bodyType = 'Minivan';
+            
+            // Extract badges from card text
+            const badges: string[] = [];
+            if (/one owner|1 owner|single owner/i.test(cardText)) badges.push('One Owner');
+            if (/no accidents?|accident[\s-]?free|clean history/i.test(cardText)) badges.push('No Accidents');
+            if (/certified|cpo/i.test(cardText)) badges.push('Certified Pre-Owned');
+            if (/low km|low kilo/i.test(cardText)) badges.push('Low Kilometers');
+            if (/new arrival|just arrived/i.test(cardText)) badges.push('New Arrival');
+            
+            // Try to extract VIN if present
+            let vin: string | undefined;
+            const vinMatch = cardText.match(/\b([A-HJ-NPR-Z0-9]{17})\b/);
+            if (vinMatch) vin = vinMatch[1];
+            
+            // Generate description
+            const description = `${v.year} ${v.make} ${v.model} ${trim}`.trim() + 
+              (v.odometer ? ` with ${v.odometer.toLocaleString()} km` : '') +
+              ` at ${source.sourceName}`;
+            
+            // Use all images if available, otherwise fall back to primary image
+            const images: string[] = v.images && v.images.length > 0 
+              ? v.images 
+              : (v.primaryImage ? [v.primaryImage] : []);
+            
+            const vehicleData: ScrapedVehicle = {
+              year: v.year,
+              make: v.make,
+              model: v.model,
+              trim,
+              type: bodyType,
+              price: v.price,
+              odometer: v.odometer,
+              images,
+              badges,
+              location: source.sourceName,
+              dealership: source.sourceName,
+              dealershipId: source.dealershipId,
+              description,
+              dealerVdpUrl: v.detailUrl,
+              vin,
+              stockNumber: v.stockNumber || undefined,
+            };
+            
+            const saved = await upsertVehicleByVin(vehicleData);
+            if (saved) totalImported++;
+          }
+        } else if (!result.success) {
+          console.warn(`[Robust Scraper] Browserless failed for ${source.sourceName}: ${result.error}`);
+        }
+      } catch (sourceError) {
+        console.warn(`[Robust Scraper] Error scraping ${source.sourceName}:`, sourceError);
+      }
+    }
+
+    if (totalImported > 0) {
+      return { success: true, vehiclesImported: totalImported };
+    }
+
+    return { success: false, vehiclesImported: 0, error: 'Browserless scraped but found no vehicles' };
+  } catch (error) {
+    return {
+      success: false,
+      vehiclesImported: 0,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Apify Market Data Refresh (Tertiary Fallback)
  * 
  * ARCHITECTURAL NOTE: The Apify AutoTrader.ca actor searches by make/model/year,
  * NOT by dealership website URL. This means Apify cannot directly substitute for
@@ -165,7 +313,7 @@ export async function runRobustScrape(
   const startTime = Date.now();
   let retryCount = 0;
   let lastError = '';
-  let method: 'puppeteer' | 'apify' | 'cache_preserve' = 'puppeteer';
+  let method: 'puppeteer' | 'browserless' | 'apify' | 'cache_preserve' = 'puppeteer';
 
   const runData: InsertScrapeRun = {
     dealershipId: dealershipId || null,
@@ -178,6 +326,7 @@ export async function runRobustScrape(
   const run = await storage.createScrapeRun(runData);
   console.log(`[Robust Scraper] Started scrape run #${run.id} (triggered by: ${triggeredBy})`);
 
+  // ===== TIER 1: Local Puppeteer with retries =====
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     console.log(`[Robust Scraper] Attempt ${attempt}/${MAX_RETRIES} using Puppeteer...`);
     
@@ -218,8 +367,41 @@ export async function runRobustScrape(
     }
   }
 
-  console.log('[Robust Scraper] All Puppeteer attempts failed. Trying Apify market data refresh...');
+  // ===== TIER 2: Browserless Cloud Puppeteer (TRUE FALLBACK) =====
+  console.log('[Robust Scraper] All local Puppeteer attempts failed. Trying Browserless cloud fallback...');
   
+  const browserlessResult = await attemptBrowserlessScrape(dealershipId);
+  
+  if (browserlessResult.success) {
+    method = 'browserless';
+    const duration = Date.now() - startTime;
+    await storage.updateScrapeRun(run.id, {
+      status: 'success',
+      scrapeMethod: 'browserless',
+      vehiclesFound: browserlessResult.vehiclesImported,
+      vehiclesInserted: browserlessResult.vehiclesImported,
+      durationMs: duration,
+      retryCount,
+      errorMessage: `Local Puppeteer failed: ${lastError}. Browserless cloud recovered ${browserlessResult.vehiclesImported} vehicles.`,
+      completedAt: new Date(),
+    });
+    
+    console.log(`[Robust Scraper] ✓ Browserless cloud recovery: ${browserlessResult.vehiclesImported} vehicles imported`);
+    
+    return {
+      success: true,
+      vehiclesFound: browserlessResult.vehiclesImported,
+      vehiclesInserted: browserlessResult.vehiclesImported,
+      vehiclesUpdated: 0,
+      vehiclesDeleted: 0,
+      method: 'browserless',
+      retryCount,
+    };
+  }
+
+  console.log(`[Robust Scraper] Browserless failed: ${browserlessResult.error}. Trying Apify market data refresh...`);
+
+  // ===== TIER 3: Apify Market Data Refresh (Validation Only) =====
   const apifyResult = await attemptApifyMarketDataRefresh(dealershipId);
   
   if (apifyResult.success) {
@@ -231,13 +413,12 @@ export async function runRobustScrape(
       vehiclesUpdated: apifyResult.vehiclesUpdated,
       durationMs: duration,
       retryCount,
-      errorMessage: `Puppeteer failed: ${lastError}. Apify market refresh touched ${apifyResult.vehiclesUpdated} vehicles (no new inventory discovered).`,
+      errorMessage: `Puppeteer failed: ${lastError}. Browserless failed: ${browserlessResult.error}. Apify market refresh touched ${apifyResult.vehiclesUpdated} vehicles (no new inventory discovered).`,
       completedAt: new Date(),
     });
     
     console.log(`[Robust Scraper] ⚠ Apify partial recovery: ${apifyResult.vehiclesUpdated} vehicles refreshed (market data only, no new inventory)`);
     
-    // success=false because no new inventory was imported - just existing data refreshed
     return {
       success: false,
       vehiclesFound: 0,
@@ -245,22 +426,22 @@ export async function runRobustScrape(
       vehiclesUpdated: apifyResult.vehiclesUpdated,
       vehiclesDeleted: 0,
       method: 'apify',
-      error: `Puppeteer failed. Apify market refresh updated ${apifyResult.vehiclesUpdated} existing vehicles.`,
+      error: `Puppeteer and Browserless failed. Apify market refresh updated ${apifyResult.vehiclesUpdated} existing vehicles.`,
       retryCount,
     };
   }
 
-  console.log('[Robust Scraper] Apify refresh failed. Preserving existing inventory (no deletions)...');
+  // ===== TIER 4: Cache Preserve (Prevent Data Loss) =====
+  console.log('[Robust Scraper] All scraping methods failed. Preserving existing inventory (no deletions)...');
   method = 'cache_preserve';
   
   const preserveResult = await preserveExistingInventory(dealershipId);
   const duration = Date.now() - startTime;
   
-  // Determine final status: 'partial' if we have preserved vehicles, 'failed' if nothing
   const finalStatus = preserveResult.vehiclesPreserved > 0 ? 'partial' : 'failed';
   const errorMsg = `All scrape methods failed. ${preserveResult.vehiclesPreserved > 0 
     ? `Preserved ${preserveResult.vehiclesPreserved} existing vehicles.` 
-    : 'No inventory data available.'} Puppeteer: ${lastError}; Apify: ${apifyResult.error}`;
+    : 'No inventory data available.'} Puppeteer: ${lastError}; Browserless: ${browserlessResult.error}; Apify: ${apifyResult.error}`;
   
   await storage.updateScrapeRun(run.id, {
     status: finalStatus,

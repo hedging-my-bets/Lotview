@@ -73,6 +73,8 @@ export const dealershipApiKeys = pgTable("dealership_api_keys", {
   googleAnalyticsId: text("google_analytics_id"), // Google Analytics 4 measurement ID (e.g., G-XXXXX)
   googleAdsId: text("google_ads_id"), // Google Ads account ID for remarketing (e.g., AW-XXXXX)
   facebookPixelId: text("facebook_pixel_id"), // Facebook Pixel ID for remarketing
+  browserlessApiKey: text("browserless_api_key"), // Browserless.io API key for cloud Puppeteer fallback
+  scrapingbeeApiKey: text("scrapingbee_api_key"), // ScrapingBee API key for cloud scraping fallback
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -527,7 +529,7 @@ export const scrapeRuns = pgTable("scrape_runs", {
   id: serial("id").primaryKey(),
   dealershipId: integer("dealership_id").references(() => dealerships.id, { onDelete: 'cascade' }),
   scrapeType: text("scrape_type").notNull().default("incremental"), // "full", "incremental"
-  scrapeMethod: text("scrape_method").notNull().default("puppeteer"), // "puppeteer", "apify", "fallback", "cache_preserve"
+  scrapeMethod: text("scrape_method").notNull().default("puppeteer"), // "puppeteer", "browserless", "apify", "cache_preserve"
   status: text("status").notNull().default("running"), // "running", "success", "failed", "partial"
   vehiclesFound: integer("vehicles_found").default(0),
   vehiclesInserted: integer("vehicles_inserted").default(0),

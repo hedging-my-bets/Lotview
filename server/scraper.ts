@@ -10,7 +10,7 @@ import { matchCarGurusToDealer } from './vehicle-matcher';
 
 // Upsert a single vehicle by VIN (or stockNumber if VIN is null)
 // This enables incremental saving - each vehicle is saved immediately after scraping
-async function upsertVehicleByVin(vehicleData: ScrapedVehicle): Promise<{ action: 'inserted' | 'updated', id: number }> {
+export async function upsertVehicleByVin(vehicleData: ScrapedVehicle): Promise<{ action: 'inserted' | 'updated', id: number }> {
   const now = new Date();
   
   // Build the vehicle record
@@ -88,7 +88,7 @@ async function upsertVehicleByVin(vehicleData: ScrapedVehicle): Promise<{ action
   }
 }
 
-interface ScrapedVehicle {
+export interface ScrapedVehicle {
   year: number;
   make: string;
   model: string;
