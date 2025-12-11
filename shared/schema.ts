@@ -551,6 +551,30 @@ export const insertScrapeRunSchema = createInsertSchema(scrapeRuns).omit({
 export type InsertScrapeRun = z.infer<typeof insertScrapeRunSchema>;
 export type ScrapeRun = typeof scrapeRuns.$inferSelect;
 
+// Scrape queue - Checkpointed VDP URLs for resumable scraping
+export const scrapeQueue = pgTable("scrape_queue", {
+  id: serial("id").primaryKey(),
+  scrapeRunId: integer("scrape_run_id").references(() => scrapeRuns.id, { onDelete: 'cascade' }),
+  dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
+  vdpUrl: text("vdp_url").notNull(),
+  vehicleTitle: text("vehicle_title"), // e.g., "2024 Toyota Corolla" for quick reference
+  position: integer("position").notNull(), // Order in the queue (1, 2, 3...)
+  status: text("status").notNull().default("pending"), // "pending", "processing", "completed", "failed"
+  vehicleId: integer("vehicle_id"), // Populated after successful save
+  errorMessage: text("error_message"),
+  retryCount: integer("retry_count").default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  processedAt: timestamp("processed_at"),
+});
+
+export const insertScrapeQueueSchema = createInsertSchema(scrapeQueue).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertScrapeQueue = z.infer<typeof insertScrapeQueueSchema>;
+export type ScrapeQueue = typeof scrapeQueue.$inferSelect;
+
 // Facebook accounts for salespeople (up to 5 per user)
 export const facebookAccounts = pgTable("facebook_accounts", {
   id: serial("id").primaryKey(),

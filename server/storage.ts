@@ -244,7 +244,10 @@ import {
   type InsertCallParticipant,
   scrapeRuns,
   type ScrapeRun,
-  type InsertScrapeRun
+  type InsertScrapeRun,
+  scrapeQueue,
+  type ScrapeQueue,
+  type InsertScrapeQueue
 } from "@shared/schema";
 import { eq, desc, asc, sql, and, gte, lte, lt, gt, inArray, or, ilike } from "drizzle-orm";
 
@@ -880,6 +883,15 @@ export interface IStorage {
   updateScrapeRun(id: number, updates: Partial<InsertScrapeRun>): Promise<ScrapeRun | undefined>;
   getScrapeRuns(dealershipId?: number, limit?: number): Promise<ScrapeRun[]>;
   getLatestScrapeRun(dealershipId?: number): Promise<ScrapeRun | undefined>;
+
+  // Scrape Queue - Checkpointed VDP processing
+  createScrapeQueueBatch(items: InsertScrapeQueue[]): Promise<ScrapeQueue[]>;
+  getPendingScrapeQueueItems(scrapeRunId: number): Promise<ScrapeQueue[]>;
+  getIncompleteScrapeQueue(dealershipId: number): Promise<{ scrapeRunId: number; items: ScrapeQueue[] } | null>;
+  updateScrapeQueueItem(id: number, updates: Partial<InsertScrapeQueue>): Promise<ScrapeQueue | undefined>;
+  markScrapeQueueCompleted(id: number, vehicleId: number): Promise<void>;
+  markScrapeQueueFailed(id: number, errorMessage: string): Promise<void>;
+  clearScrapeQueue(scrapeRunId: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -5808,6 +5820,95 @@ export class DatabaseStorage implements IStorage {
   async getLatestScrapeRun(dealershipId?: number): Promise<ScrapeRun | undefined> {
     const runs = await this.getScrapeRuns(dealershipId, 1);
     return runs[0];
+  }
+
+  // ====== SCRAPE QUEUE ======
+  async createScrapeQueueBatch(items: InsertScrapeQueue[]): Promise<ScrapeQueue[]> {
+    if (items.length === 0) return [];
+    const result = await db.insert(scrapeQueue).values(items).returning();
+    return result;
+  }
+
+  async getPendingScrapeQueueItems(scrapeRunId: number): Promise<ScrapeQueue[]> {
+    return await db.select()
+      .from(scrapeQueue)
+      .where(
+        and(
+          eq(scrapeQueue.scrapeRunId, scrapeRunId),
+          or(
+            eq(scrapeQueue.status, "pending"),
+            eq(scrapeQueue.status, "processing")
+          )
+        )
+      )
+      .orderBy(asc(scrapeQueue.position));
+  }
+
+  async getIncompleteScrapeQueue(dealershipId: number): Promise<{ scrapeRunId: number; items: ScrapeQueue[] } | null> {
+    // Find the most recent scrape run with pending queue items
+    const recentRuns = await db.select()
+      .from(scrapeRuns)
+      .where(
+        and(
+          eq(scrapeRuns.dealershipId, dealershipId),
+          eq(scrapeRuns.status, "running")
+        )
+      )
+      .orderBy(desc(scrapeRuns.startedAt))
+      .limit(1);
+
+    if (recentRuns.length === 0) return null;
+
+    const run = recentRuns[0];
+    const pendingItems = await db.select()
+      .from(scrapeQueue)
+      .where(
+        and(
+          eq(scrapeQueue.scrapeRunId, run.id),
+          or(
+            eq(scrapeQueue.status, "pending"),
+            eq(scrapeQueue.status, "processing")
+          )
+        )
+      )
+      .orderBy(asc(scrapeQueue.position));
+
+    if (pendingItems.length === 0) return null;
+
+    return { scrapeRunId: run.id, items: pendingItems };
+  }
+
+  async updateScrapeQueueItem(id: number, updates: Partial<InsertScrapeQueue>): Promise<ScrapeQueue | undefined> {
+    const result = await db.update(scrapeQueue)
+      .set(updates)
+      .where(eq(scrapeQueue.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async markScrapeQueueCompleted(id: number, vehicleId: number): Promise<void> {
+    await db.update(scrapeQueue)
+      .set({
+        status: "completed",
+        vehicleId,
+        processedAt: new Date()
+      })
+      .where(eq(scrapeQueue.id, id));
+  }
+
+  async markScrapeQueueFailed(id: number, errorMessage: string): Promise<void> {
+    await db.update(scrapeQueue)
+      .set({
+        status: "failed",
+        errorMessage,
+        processedAt: new Date()
+      })
+      .where(eq(scrapeQueue.id, id));
+  }
+
+  async clearScrapeQueue(scrapeRunId: number): Promise<void> {
+    await db.delete(scrapeQueue)
+      .where(eq(scrapeQueue.scrapeRunId, scrapeRunId));
   }
 }
 
