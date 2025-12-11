@@ -241,7 +241,10 @@ import {
   type InsertCallScoringResponse,
   callParticipants,
   type CallParticipant,
-  type InsertCallParticipant
+  type InsertCallParticipant,
+  scrapeRuns,
+  type ScrapeRun,
+  type InsertScrapeRun
 } from "@shared/schema";
 import { eq, desc, asc, sql, and, gte, lte, lt, gt, inArray, or, ilike } from "drizzle-orm";
 
@@ -871,6 +874,12 @@ export interface IStorage {
   getCallParticipants(callRecordingId: number): Promise<CallParticipant[]>;
   createCallParticipant(participant: InsertCallParticipant): Promise<CallParticipant>;
   updateCallParticipant(id: number, participant: Partial<InsertCallParticipant>): Promise<CallParticipant | undefined>;
+
+  // Scrape Runs - Inventory scrape logging
+  createScrapeRun(run: InsertScrapeRun): Promise<ScrapeRun>;
+  updateScrapeRun(id: number, updates: Partial<InsertScrapeRun>): Promise<ScrapeRun | undefined>;
+  getScrapeRuns(dealershipId?: number, limit?: number): Promise<ScrapeRun[]>;
+  getLatestScrapeRun(dealershipId?: number): Promise<ScrapeRun | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -5766,6 +5775,39 @@ export class DatabaseStorage implements IStorage {
       .where(eq(callParticipants.id, id))
       .returning();
     return result[0];
+  }
+
+  // ====== SCRAPE RUNS ======
+  async createScrapeRun(run: InsertScrapeRun): Promise<ScrapeRun> {
+    const result = await db.insert(scrapeRuns).values(run).returning();
+    return result[0];
+  }
+
+  async updateScrapeRun(id: number, updates: Partial<InsertScrapeRun>): Promise<ScrapeRun | undefined> {
+    const result = await db.update(scrapeRuns)
+      .set(updates)
+      .where(eq(scrapeRuns.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async getScrapeRuns(dealershipId?: number, limit: number = 20): Promise<ScrapeRun[]> {
+    if (dealershipId) {
+      return await db.select()
+        .from(scrapeRuns)
+        .where(eq(scrapeRuns.dealershipId, dealershipId))
+        .orderBy(desc(scrapeRuns.startedAt))
+        .limit(limit);
+    }
+    return await db.select()
+      .from(scrapeRuns)
+      .orderBy(desc(scrapeRuns.startedAt))
+      .limit(limit);
+  }
+
+  async getLatestScrapeRun(dealershipId?: number): Promise<ScrapeRun | undefined> {
+    const runs = await this.getScrapeRuns(dealershipId, 1);
+    return runs[0];
   }
 }
 

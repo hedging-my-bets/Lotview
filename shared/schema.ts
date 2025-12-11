@@ -522,6 +522,33 @@ export const insertScrapeSourceSchema = createInsertSchema(scrapeSources).omit({
 export type InsertScrapeSource = z.infer<typeof insertScrapeSourceSchema>;
 export type ScrapeSource = typeof scrapeSources.$inferSelect;
 
+// Scrape runs - Log each inventory scrape attempt with status and error info
+export const scrapeRuns = pgTable("scrape_runs", {
+  id: serial("id").primaryKey(),
+  dealershipId: integer("dealership_id").references(() => dealerships.id, { onDelete: 'cascade' }),
+  scrapeType: text("scrape_type").notNull().default("incremental"), // "full", "incremental"
+  scrapeMethod: text("scrape_method").notNull().default("puppeteer"), // "puppeteer", "apify", "fallback", "cache_preserve"
+  status: text("status").notNull().default("running"), // "running", "success", "failed", "partial"
+  vehiclesFound: integer("vehicles_found").default(0),
+  vehiclesInserted: integer("vehicles_inserted").default(0),
+  vehiclesUpdated: integer("vehicles_updated").default(0),
+  vehiclesDeleted: integer("vehicles_deleted").default(0),
+  errorMessage: text("error_message"),
+  retryCount: integer("retry_count").default(0),
+  durationMs: integer("duration_ms"),
+  triggeredBy: text("triggered_by").default("scheduler"), // "scheduler", "manual", "webhook"
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+});
+
+export const insertScrapeRunSchema = createInsertSchema(scrapeRuns).omit({
+  id: true,
+  startedAt: true,
+});
+
+export type InsertScrapeRun = z.infer<typeof insertScrapeRunSchema>;
+export type ScrapeRun = typeof scrapeRuns.$inferSelect;
+
 // Facebook accounts for salespeople (up to 5 per user)
 export const facebookAccounts = pgTable("facebook_accounts", {
   id: serial("id").primaryKey(),

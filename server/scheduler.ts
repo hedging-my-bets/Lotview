@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import { scrapeAllDealerships, scrapeAllDealershipsIncremental } from './scraper';
+import { runRobustScrape } from './robust-scraper';
 import { storage } from './storage';
 import { facebookService } from './facebook-service';
 import { facebookCatalogService } from './facebook-catalog-service';
@@ -16,12 +17,16 @@ export function startInventoryScheduler() {
     return;
   }
 
-  // Run scraper every 24 hours at midnight - uses incremental save
+  // Run scraper every 24 hours at midnight - uses robust scraper with retry + fallback
   cron.schedule('0 0 * * *', async () => {
-    console.log('🕐 Running scheduled inventory sync (INCREMENTAL MODE)...');
+    console.log('🕐 Running scheduled inventory sync (ROBUST MODE with retry + Apify fallback)...');
     try {
-      const count = await scrapeAllDealershipsIncremental();
-      console.log(`✓ Scheduled sync complete: ${count} vehicles saved`);
+      const result = await runRobustScrape('scheduler');
+      if (result.success) {
+        console.log(`✓ Scheduled sync complete: ${result.vehiclesFound} vehicles (method: ${result.method}, retries: ${result.retryCount})`);
+      } else {
+        console.error(`✗ Scheduled sync failed after ${result.retryCount} retries: ${result.error}`);
+      }
     } catch (error) {
       console.error('✗ Scheduled sync failed:', error);
     }

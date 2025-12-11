@@ -60,6 +60,12 @@ Preferred communication style: Simple, everyday language.
 - **Authentication**: JWT, bcrypt.
 - **Sales Manager Tools**: NHTSA API (VIN Decoder), MarketCheck API (Market Pricing), Geocoder.ca API (Geocoding).
 - **Cron Scheduling**: Node-cron (inventory sync, Facebook token refresh, market analysis, Facebook Catalog sync, FWC CRM sync).
+- **Robust Scraper**: Three-tier fallback system for inventory sync:
+  1. **Primary**: Puppeteer scraping with 3 retries + exponential backoff (5s, 15s, 30s)
+  2. **Secondary**: Apify market data refresh (validates existing inventory against AutoTrader.ca)
+  3. **Tertiary**: Cache preserve mode (keeps existing inventory to prevent data loss)
+  - Scrape runs are logged in `scrape_runs` table with status, method, duration, and error details
+  - **Architectural Note**: Apify AutoTrader.ca actor searches by make/model, not by dealer URL, so it cannot fully substitute for Puppeteer dealer website scraping
 - **AI/LLM**: OpenAI GPT-5 via Replit AI Integrations or per-dealership OpenAI API keys.
 - **Carfax Integration**: Automated scraping of Carfax URLs.
 - **Facebook Integration**: OAuth 2.0, Graph API for page connections, page posting, and Facebook Catalog API.
