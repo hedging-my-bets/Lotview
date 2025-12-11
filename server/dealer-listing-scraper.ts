@@ -12,6 +12,7 @@ import {
   type ExtractedImage
 } from './precision-image-extractor';
 import { storage } from './storage';
+import type { ScrapeQueue, InsertScrapeQueue } from '@shared/schema';
 
 // Apply stealth plugin to evade bot detection
 puppeteer.use(StealthPlugin());
@@ -1565,4 +1566,396 @@ export async function scrapeDealerListingsWithCallback(
   console.log(`\n✓ TRUE INCREMENTAL scrape complete: ${totalCount} total (${insertedCount} new, ${updatedCount} updated)\n`);
   
   return { total: totalCount, inserted: insertedCount, updated: updatedCount };
+}
+
+// ====== CHECKPOINTED SCRAPING (Save progress every 5 vehicles) ======
+
+export interface CheckpointedScrapeResult {
+  total: number;
+  inserted: number;
+  updated: number;
+  resumed: boolean;
+  scrapeRunId: number;
+}
+
+/**
+ * Extract VDP URLs from a dealer listing page without scraping details.
+ * This is used to populate the queue first.
+ */
+async function extractVdpUrlsOnly(dealerConfig: DealerConfig): Promise<Array<{ vdpUrl: string; vehicleTitle: string }>> {
+  console.log(`[${dealerConfig.name}] Extracting VDP URLs from listing page...`);
+  
+  const fingerprint = generateRandomFingerprint();
+  const proxy = proxyManager.getNext();
+  
+  console.log(`  Applied fingerprint: ${fingerprint.viewport.width}x${fingerprint.viewport.height}`);
+  
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--no-zygote',
+      '--disable-gpu',
+      '--disable-blink-features=AutomationControlled',
+      ...(proxy ? [`--proxy-server=${proxy.server}`] : []),
+      `--window-size=${fingerprint.viewport.width},${fingerprint.viewport.height}`
+    ],
+    defaultViewport: fingerprint.viewport
+  });
+  
+  try {
+    const page = await browser.newPage();
+    await applyFingerprint(page, fingerprint);
+    
+    // Load existing cookies if available
+    const savedCookies = await cookieStore.loadCookies(dealerConfig.domain);
+    if (savedCookies && savedCookies.length > 0) {
+      try {
+        await page.setCookie(...savedCookies);
+      } catch (e) {}
+    } else {
+      console.log(`⚠ No cf_clearance cookie found for ${dealerConfig.domain}`);
+    }
+    
+    const response = await page.goto(dealerConfig.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    console.log(`  Response status: ${response?.status()}, url: ${response?.url()}`);
+    
+    // Handle Cloudflare challenge
+    const isChallenged = await isCloudflareChallenge(page);
+    if (isChallenged) {
+      console.log('  ⚠ Cloudflare challenge detected - waiting for automatic solve...');
+      let attempts = 0;
+      const maxAttempts = 60;
+      
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        try {
+          const hasVehicles = await page.evaluate(() => {
+            return document.querySelectorAll('a[href*="/vehicles/2"]').length > 0;
+          });
+          if (hasVehicles) {
+            console.log(`  ✓ Cloudflare challenge solved after ${attempts + 1} seconds!`);
+            const cookies = await page.cookies();
+            await cookieStore.saveCookies(dealerConfig.domain, cookies);
+            break;
+          }
+        } catch (err) {}
+        
+        const stillChallenged = await isCloudflareChallenge(page);
+        if (!stillChallenged) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          break;
+        }
+        attempts++;
+      }
+      
+      if (attempts >= maxAttempts) {
+        throw new Error('Cloudflare challenge did not resolve after 60 seconds');
+      }
+    }
+    
+    // Scroll to load all vehicles
+    await humanLikeScroll(page);
+    await randomDelay(500, 1000);
+    
+    // Wait for vehicle links
+    await page.waitForSelector('a[href*="/vehicles/2"]', { timeout: 10000 });
+    
+    // Infinite scroll to load ALL vehicles
+    console.log(`  Scrolling to load all vehicles...`);
+    let previousCount = 0;
+    let stableCount = 0;
+    
+    for (let i = 0; i < 30; i++) {
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const currentCount = await page.evaluate(() => {
+        return document.querySelectorAll('a[href*="/vehicles/2"]').length;
+      });
+      
+      if (currentCount === previousCount) {
+        stableCount++;
+        if (stableCount >= 3) break;
+      } else {
+        stableCount = 0;
+      }
+      previousCount = currentCount;
+    }
+    
+    // Extract VDP URLs
+    const vdpUrls = await page.evaluate(function(baseUrl) {
+      var results: Array<{ vdpUrl: string; vehicleTitle: string }> = [];
+      var processedUrls: Record<string, boolean> = {};
+      var links = document.querySelectorAll('a[href*="/vehicles/2"]');
+      
+      for (var i = 0; i < links.length; i++) {
+        var link = links[i];
+        var href = link.getAttribute('href');
+        if (!href) continue;
+        
+        var match = href.match(/\/vehicles\/(\d{4})\/([a-z-]+)\/([a-z0-9-]+)\/([a-z-]+)\/([a-z]+)\/(\d+)\//i);
+        if (!match) continue;
+        
+        var fullUrl = href.indexOf('http') === 0 ? href : 'https://' + baseUrl + href;
+        if (processedUrls[fullUrl]) continue;
+        processedUrls[fullUrl] = true;
+        
+        var year = match[1];
+        var makeParts = match[2].split('-');
+        var make = makeParts.map(function(p: string) { return p.charAt(0).toUpperCase() + p.slice(1); }).join(' ');
+        var modelParts = match[3].split('-');
+        var model = modelParts.map(function(p: string) { return p.charAt(0).toUpperCase() + p.slice(1); }).join(' ');
+        
+        results.push({ vdpUrl: fullUrl, vehicleTitle: year + ' ' + make + ' ' + model });
+      }
+      
+      return results;
+    }, dealerConfig.domain);
+    
+    console.log(`  ✓ Found ${vdpUrls.length} VDP URLs`);
+    
+    await browser.close();
+    return vdpUrls;
+    
+  } catch (error) {
+    console.error(`  ✗ Error extracting VDP URLs:`, error);
+    try { await browser.close(); } catch (e) {}
+    return [];
+  }
+}
+
+/**
+ * Checkpointed scraping with queue-based progress tracking.
+ * - First extracts all VDP URLs and saves to queue
+ * - Processes in batches of 5, checkpointing each vehicle
+ * - Supports resuming from incomplete queue
+ */
+export async function scrapeDealerListingsCheckpointed(
+  onVehicleSaved: VehicleSaveCallback,
+  scrapeRunId?: number
+): Promise<CheckpointedScrapeResult> {
+  console.log('\n=== CHECKPOINTED SCRAPING (Saves progress every 5 vehicles) ===');
+  
+  let totalCount = 0;
+  let insertedCount = 0;
+  let updatedCount = 0;
+  let resumed = false;
+  let currentScrapeRunId = scrapeRunId || 0;
+  
+  // Get configs from database
+  const dealerConfigs = await getDealerConfigsFromDb();
+  console.log(`  Found ${dealerConfigs.length} active scrape sources`);
+  
+  const CHECKPOINT_INTERVAL = 5; // Save checkpoint every 5 vehicles
+  
+  for (const config of dealerConfigs) {
+    console.log(`\n[${config.name}] Starting checkpointed scrape (dealershipId: ${config.dealershipId})...`);
+    
+    try {
+      // Check for incomplete queue from a previous run
+      const incompleteQueue = await storage.getIncompleteScrapeQueue(config.dealershipId);
+      
+      let queueItems: ScrapeQueue[] = [];
+      
+      if (incompleteQueue && incompleteQueue.items.length > 0) {
+        // Resume from previous incomplete run
+        console.log(`  📋 Resuming from previous run (${incompleteQueue.items.length} vehicles remaining)`);
+        queueItems = incompleteQueue.items;
+        currentScrapeRunId = incompleteQueue.scrapeRunId;
+        resumed = true;
+      } else {
+        // Fresh start - extract VDP URLs and populate queue
+        console.log(`  📋 Fresh scrape - extracting VDP URLs first...`);
+        const vdpUrls = await extractVdpUrlsOnly(config);
+        
+        if (vdpUrls.length === 0) {
+          console.log(`  ⚠ No VDP URLs found, skipping dealership`);
+          continue;
+        }
+        
+        // Create queue entries
+        const queueEntries: InsertScrapeQueue[] = vdpUrls.map((url, index) => ({
+          scrapeRunId: currentScrapeRunId || null,
+          dealershipId: config.dealershipId,
+          vdpUrl: url.vdpUrl,
+          vehicleTitle: url.vehicleTitle,
+          position: index + 1,
+          status: "pending" as const,
+        }));
+        
+        // Batch insert queue entries
+        queueItems = await storage.createScrapeQueueBatch(queueEntries);
+        console.log(`  ✓ Queued ${queueItems.length} vehicles for processing`);
+      }
+      
+      // Process queue items in batches
+      const fingerprint = generateRandomFingerprint();
+      console.log(`  Applied fingerprint: ${fingerprint.viewport.width}x${fingerprint.viewport.height}`);
+      
+      const browser = await puppeteer.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--disable-gpu',
+          '--disable-blink-features=AutomationControlled',
+          `--window-size=${fingerprint.viewport.width},${fingerprint.viewport.height}`
+        ],
+        defaultViewport: fingerprint.viewport
+      });
+      
+      let page = await browser.newPage();
+      await applyFingerprint(page, fingerprint);
+      
+      // Load cookies
+      const savedCookies = await cookieStore.loadCookies(config.domain);
+      if (savedCookies && savedCookies.length > 0) {
+        try { await page.setCookie(...savedCookies); } catch (e) {}
+      }
+      
+      let savedCookiesBackup = savedCookies || [];
+      let processedInBatch = 0;
+      
+      // Helper to refresh page
+      const refreshPage = async (reason: string) => {
+        console.log(`    🔄 ${reason}`);
+        try {
+          savedCookiesBackup = await page.cookies();
+        } catch (e) {}
+        try { await page.close(); } catch (e) {}
+        page = await browser.newPage();
+        if (savedCookiesBackup.length > 0) {
+          await page.setCookie(...savedCookiesBackup);
+        }
+        await applyFingerprint(page, fingerprint);
+        console.log(`    ✓ Page refreshed with ${savedCookiesBackup.length} cookies preserved`);
+      };
+      
+      console.log(`  Processing ${queueItems.length} vehicles (checkpoint every ${CHECKPOINT_INTERVAL})...`);
+      
+      for (let i = 0; i < queueItems.length; i++) {
+        const queueItem = queueItems[i];
+        console.log(`  [${i + 1}/${queueItems.length}] ${queueItem.vehicleTitle}...`);
+        
+        // Mark as processing
+        await storage.updateScrapeQueueItem(queueItem.id, { status: "processing" });
+        
+        // Refresh page periodically
+        if (processedInBatch > 0 && processedInBatch % CHECKPOINT_INTERVAL === 0) {
+          await refreshPage(`Checkpoint refresh (processed ${processedInBatch} vehicles)`);
+        }
+        
+        try {
+          // Extract vehicle data
+          const detailData = await scrapeVehicleDetailPage(page, queueItem.vdpUrl);
+          
+          // Parse year/make/model from title
+          const titleParts = (queueItem.vehicleTitle || '').split(' ');
+          const year = parseInt(titleParts[0]) || 2024;
+          const make = titleParts[1] || '';
+          const model = titleParts.slice(2).join(' ') || '';
+          
+          // Check if new vehicle (skip if so)
+          const lowerUrl = config.url.toLowerCase();
+          const scrapingUsedInventory = lowerUrl.includes('/used') || lowerUrl.includes('/preowned');
+          if (isLikelyNewVehicle(year, detailData.odometer, detailData.rawOdometerKm, detailData.isNewCondition, scrapingUsedInventory)) {
+            console.log(`    ❌ SKIPPING: appears to be a NEW vehicle`);
+            await storage.markScrapeQueueCompleted(queueItem.id, 0);
+            continue;
+          }
+          
+          // Build vehicle data
+          const recalculatedBadges = detectBadges(detailData.description || '', year, detailData.odometer || undefined);
+          const existingBadges = detailData.badges.filter(b => !recalculatedBadges.includes(b) && b !== 'Low Kilometers');
+          const finalBadges = [...recalculatedBadges, ...existingBadges];
+          
+          const vehicleData: DealerVehicleListing = {
+            vin: detailData.vin,
+            year,
+            make,
+            model,
+            trim: detailData.trim,
+            odometer: detailData.odometer,
+            price: detailData.price,
+            images: detailData.images,
+            description: detailData.description,
+            badges: finalBadges,
+            type: detailData.type,
+            stockNumber: detailData.stockNumber,
+            vdpUrl: queueItem.vdpUrl,
+            dealershipId: config.dealershipId,
+            dealershipName: config.name,
+            location: config.location,
+            imageQuality: detailData.imageQuality,
+            dataQualityScore: detailData.dataQualityScore,
+          };
+          
+          // Save vehicle
+          const result = await onVehicleSaved(vehicleData);
+          
+          // Mark as completed
+          await storage.markScrapeQueueCompleted(queueItem.id, result.id);
+          
+          totalCount++;
+          processedInBatch++;
+          if (result.action === 'inserted') {
+            insertedCount++;
+            console.log(`    💾 NEW: ${vehicleData.year} ${vehicleData.make} ${vehicleData.model} (ID: ${result.id})`);
+          } else {
+            updatedCount++;
+            console.log(`    💾 UPDATED: ${vehicleData.year} ${vehicleData.make} ${vehicleData.model} (ID: ${result.id})`);
+          }
+          
+          // Human-like delay
+          await randomDelay(800, 1500);
+          
+        } catch (error: any) {
+          console.error(`    ✗ Error processing ${queueItem.vehicleTitle}:`, error.message);
+          
+          // Mark as failed
+          const retryCount = (queueItem.retryCount || 0) + 1;
+          if (retryCount < 3) {
+            // Will retry on next run
+            await storage.updateScrapeQueueItem(queueItem.id, { 
+              status: "pending",
+              retryCount,
+              errorMessage: error.message 
+            });
+          } else {
+            await storage.markScrapeQueueFailed(queueItem.id, error.message);
+          }
+          
+          // If frame detachment, refresh and continue
+          if (error.message?.includes('detached') || error.message?.includes('closed')) {
+            await refreshPage('Emergency recovery from frame detachment');
+          }
+        }
+      }
+      
+      try { await browser.close(); } catch (e) {}
+      console.log(`  ✓ ${config.name}: Completed (${totalCount} processed)`);
+      
+    } catch (error) {
+      console.error(`  ✗ Failed to scrape ${config.name}:`, error);
+    }
+  }
+  
+  console.log(`\n✓ CHECKPOINTED scrape complete: ${totalCount} total (${insertedCount} new, ${updatedCount} updated)${resumed ? ' [RESUMED]' : ''}\n`);
+  
+  return { 
+    total: totalCount, 
+    inserted: insertedCount, 
+    updated: updatedCount, 
+    resumed,
+    scrapeRunId: currentScrapeRunId 
+  };
 }
