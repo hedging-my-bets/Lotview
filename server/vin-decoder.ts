@@ -31,7 +31,12 @@ export async function decodeVIN(vin: string): Promise<VINDecodeResult> {
     }
     
     const url = `https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/${cleanVIN}?format=json`;
-    const response = await fetch(url);
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
     
     if (!response.ok) {
       throw new Error(`NHTSA API error: ${response.statusText}`);
@@ -67,6 +72,15 @@ export async function decodeVIN(vin: string): Promise<VINDecodeResult> {
     };
   } catch (error) {
     console.error('VIN decode error:', error);
+    
+    if (error instanceof Error && error.name === 'AbortError') {
+      return {
+        vin,
+        errorCode: 'TIMEOUT',
+        errorMessage: 'VIN decode request timed out. Please try again.'
+      };
+    }
+    
     return {
       vin,
       errorCode: 'DECODE_ERROR',

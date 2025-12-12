@@ -720,7 +720,7 @@ export default function Manager() {
     defaultRadiusKm: 50
   });
   const [isSavingSettings, setIsSavingSettings] = useState(false);
-  const [activeManagerTab, setActiveManagerTab] = useState<'appraisal' | 'inventory' | 'my-inventory' | 'conversations' | 'prompts' | 'settings' | 'history' | 'followup' | 'call-scoring' | 'templates'>('appraisal');
+  const [activeManagerTab, setActiveManagerTab] = useState<'appraisal' | 'inventory' | 'my-inventory' | 'conversations' | 'prompts' | 'settings' | 'history' | 'followup' | 'call-scoring' | 'templates' | 'appointments'>('appraisal');
 
   // Conversations state
   const [allConversations, setAllConversations] = useState<{
