@@ -30,7 +30,7 @@ async function decodeVINWithMarketCheck(vin: string, apiKey: string): Promise<VI
   const startTime = Date.now();
   
   try {
-    const url = `https://api.marketcheck.com/v2/decode/car/vin/${vin}?api_key=${apiKey}`;
+    const url = `https://api.marketcheck.com/v2/decode/car/${vin}/specs?api_key=${apiKey}`;
     
     console.log(`[VIN Decoder] Trying MarketCheck for ${vin}`);
     
