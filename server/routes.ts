@@ -95,27 +95,6 @@ setInterval(() => {
   }
 }, 3600000);
 
-// DEPRECATED: Legacy admin authentication middleware
-// WARNING: This is insecure and should only be used for backward compatibility in development
-// In production, all admin routes should use JWT authentication
-const LEGACY_ADMIN_ENABLED = process.env.LEGACY_ADMIN_ENABLED === "true" || process.env.NODE_ENV === "development";
-
-const adminAuthMiddleware = (req: any, res: any, next: any) => {
-  // Disable legacy auth in production for security
-  if (!LEGACY_ADMIN_ENABLED) {
-    return res.status(401).json({ error: 'Legacy admin authentication is disabled. Please use JWT authentication.' });
-  }
-  
-  const adminToken = req.headers['x-admin-token'];
-  
-  // Simple token check - only for development/testing
-  if (adminToken === 'admin123') {
-    next();
-  } else {
-    res.status(401).json({ error: 'Unauthorized - Admin access required' });
-  }
-};
-
 export async function registerRoutes(app: Express): Promise<Server> {
   
   // ===== PUBLIC OBJECT STORAGE (Persistent file serving) =====
