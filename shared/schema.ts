@@ -75,6 +75,7 @@ export const dealershipApiKeys = pgTable("dealership_api_keys", {
   facebookPixelId: text("facebook_pixel_id"), // Facebook Pixel ID for remarketing
   browserlessApiKey: text("browserless_api_key"), // Browserless.io API key for cloud Puppeteer fallback
   scrapingbeeApiKey: text("scrapingbee_api_key"), // ScrapingBee API key for cloud scraping fallback
+  apiNinjasKey: text("api_ninjas_key"), // API Ninjas key for VIN decoding fallback
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
