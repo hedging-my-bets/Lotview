@@ -1445,7 +1445,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Messenger conversations (Multi-Tenant with role-based filtering)
-  async getMessengerConversations(dealershipId: number, userId?: number, userRole?: string): Promise<(MessengerConversation & { ownerName?: string })[]> {
+  async getMessengerConversations(dealershipId: number, userId?: number, userRole?: string): Promise<(MessengerConversation & { ownerName?: string; assignedTo?: { id: number; name: string } })[]> {
     // For managers (manager, general_manager, super_admin), show all conversations
     // For salespeople, only show conversations from their connected Facebook accounts
     if (userRole === 'salesperson' && userId) {
@@ -1463,24 +1463,8 @@ export class DatabaseStorage implements IStorage {
       
       const accountIds = userAccounts.map(a => a.id);
       
-      // Get conversations only from those accounts
-      const conversations = await db.select({
-        id: messengerConversations.id,
-        dealershipId: messengerConversations.dealershipId,
-        facebookAccountId: messengerConversations.facebookAccountId,
-        pageId: messengerConversations.pageId,
-        pageName: messengerConversations.pageName,
-        conversationId: messengerConversations.conversationId,
-        participantName: messengerConversations.participantName,
-        participantId: messengerConversations.participantId,
-        lastMessage: messengerConversations.lastMessage,
-        lastMessageAt: messengerConversations.lastMessageAt,
-        unreadCount: messengerConversations.unreadCount,
-        status: messengerConversations.status,
-        createdAt: messengerConversations.createdAt,
-        updatedAt: messengerConversations.updatedAt,
-        ownerName: users.name
-      })
+      // Get conversations only from those accounts - select all MessengerConversation fields
+      const conversations = await db.select()
         .from(messengerConversations)
         .innerJoin(facebookAccounts, eq(messengerConversations.facebookAccountId, facebookAccounts.id))
         .innerJoin(users, eq(facebookAccounts.userId, users.id))
@@ -1490,34 +1474,24 @@ export class DatabaseStorage implements IStorage {
         ))
         .orderBy(desc(messengerConversations.lastMessageAt));
       
-      return conversations;
+      return conversations.map(row => ({
+        ...row.messenger_conversations,
+        ownerName: row.users.name
+      }));
     }
     
-    // Managers see all conversations in the dealership
-    const conversations = await db.select({
-      id: messengerConversations.id,
-      dealershipId: messengerConversations.dealershipId,
-      facebookAccountId: messengerConversations.facebookAccountId,
-      pageId: messengerConversations.pageId,
-      pageName: messengerConversations.pageName,
-      conversationId: messengerConversations.conversationId,
-      participantName: messengerConversations.participantName,
-      participantId: messengerConversations.participantId,
-      lastMessage: messengerConversations.lastMessage,
-      lastMessageAt: messengerConversations.lastMessageAt,
-      unreadCount: messengerConversations.unreadCount,
-      status: messengerConversations.status,
-      createdAt: messengerConversations.createdAt,
-      updatedAt: messengerConversations.updatedAt,
-      ownerName: users.name
-    })
+    // Managers see all conversations in the dealership - select all MessengerConversation fields
+    const conversations = await db.select()
       .from(messengerConversations)
       .innerJoin(facebookAccounts, eq(messengerConversations.facebookAccountId, facebookAccounts.id))
       .innerJoin(users, eq(facebookAccounts.userId, users.id))
       .where(eq(messengerConversations.dealershipId, dealershipId))
       .orderBy(desc(messengerConversations.lastMessageAt));
     
-    return conversations;
+    return conversations.map(row => ({
+      ...row.messenger_conversations,
+      ownerName: row.users.name
+    }));
   }
 
   async createMessengerConversation(conversation: InsertMessengerConversation): Promise<MessengerConversation> {
@@ -1540,23 +1514,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getMessengerConversationById(id: number, dealershipId: number): Promise<(MessengerConversation & { pageAccessToken: string }) | undefined> {
-    const result = await db.select({
-      id: messengerConversations.id,
-      dealershipId: messengerConversations.dealershipId,
-      facebookAccountId: messengerConversations.facebookAccountId,
-      pageId: messengerConversations.pageId,
-      pageName: messengerConversations.pageName,
-      conversationId: messengerConversations.conversationId,
-      participantName: messengerConversations.participantName,
-      participantId: messengerConversations.participantId,
-      lastMessage: messengerConversations.lastMessage,
-      lastMessageAt: messengerConversations.lastMessageAt,
-      unreadCount: messengerConversations.unreadCount,
-      status: messengerConversations.status,
-      createdAt: messengerConversations.createdAt,
-      updatedAt: messengerConversations.updatedAt,
-      pageAccessToken: facebookAccounts.accessToken
-    })
+    const result = await db.select()
       .from(messengerConversations)
       .innerJoin(facebookAccounts, eq(messengerConversations.facebookAccountId, facebookAccounts.id))
       .where(and(
@@ -1565,11 +1523,14 @@ export class DatabaseStorage implements IStorage {
       ))
       .limit(1);
     
-    if (!result[0] || !result[0].pageAccessToken) {
+    if (!result[0] || !result[0].facebook_accounts.accessToken) {
       return undefined;
     }
     
-    return result[0] as MessengerConversation & { pageAccessToken: string };
+    return {
+      ...result[0].messenger_conversations,
+      pageAccessToken: result[0].facebook_accounts.accessToken
+    };
   }
 
   // Messenger messages (Multi-Tenant)

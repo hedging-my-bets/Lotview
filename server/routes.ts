@@ -7521,10 +7521,8 @@ Format your response in clear sections with actionable recommendations.`;
             price: l.price,
             mileage: l.mileage,
             sellerName: l.sellerName,
-            city: l.city,
-            province: l.province,
-            listingUrl: l.listingUrl,
-            daysOnMarket: l.daysOnMarket
+            location: l.location,
+            listingUrl: l.listingUrl
           }));
 
         return {
@@ -9660,7 +9658,7 @@ Format your response in clear sections with actionable recommendations.`;
     console.log(`GHL opportunity event for dealership ${dealershipId}:`, payload?.opportunity?.id);
   }
   
-  async function handleGhlCallEvent(dealershipId: number, payload: any, storageInstance: IStorage) {
+  async function handleGhlCallEvent(dealershipId: number, payload: any, storageInstance: typeof storage) {
     console.log(`[GHL Call] Processing call event for dealership ${dealershipId}`);
     
     // Extract call data from various GHL webhook formats
@@ -11322,9 +11320,9 @@ Format your response in clear sections with actionable recommendations.`;
       await storage.createCrmActivity({
         contactId: contact.id,
         dealershipId,
-        type: 'contact_created',
-        description: 'Contact was created',
-        performedById: userId
+        activityType: 'contact_created',
+        content: 'Contact was created',
+        userId
       });
       
       res.status(201).json(contact);
@@ -11385,9 +11383,9 @@ Format your response in clear sections with actionable recommendations.`;
       await storage.createCrmActivity({
         contactId: id,
         dealershipId,
-        type: 'contact_updated',
-        description: 'Contact information was updated',
-        performedById: userId
+        activityType: 'contact_updated',
+        content: 'Contact information was updated',
+        userId
       });
       
       res.json(contact);
