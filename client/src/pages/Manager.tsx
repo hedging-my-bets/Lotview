@@ -33,6 +33,8 @@ function InventoryAnalysisTab() {
   const [inventoryData, setInventoryData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [colorLoadingVins, setColorLoadingVins] = useState<Set<string>>(new Set());
+  const [vehicleColors, setVehicleColors] = useState<Record<string, { interiorColor?: string; exteriorColor?: string; cargurusUrl?: string }>>({});
 
   const radiusOptions = [
     { value: '50', label: '50 km' },
@@ -84,6 +86,53 @@ function InventoryAnalysisTab() {
       });
     } finally {
       setIsRefreshing(false);
+    }
+  };
+
+  const fetchColorsForVehicle = async (vin: string) => {
+    if (!vin || colorLoadingVins.has(vin)) return;
+    
+    setColorLoadingVins(prev => new Set(prev).add(vin));
+    try {
+      const token = localStorage.getItem('auth_token');
+      const result = await apiPost<any>('/api/manager/lookup-colors', 
+        { vin },
+        { 'Authorization': `Bearer ${token}` }
+      );
+      
+      if (result.found) {
+        setVehicleColors(prev => ({
+          ...prev,
+          [vin]: {
+            interiorColor: result.interiorColor,
+            exteriorColor: result.exteriorColor,
+            cargurusUrl: result.cargurusUrl
+          }
+        }));
+        toast({
+          title: "Colors Found",
+          description: `${result.exteriorColor || 'Unknown'} exterior, ${result.interiorColor || 'Unknown'} interior`
+        });
+      } else {
+        toast({
+          title: "No Colors Found",
+          description: "Could not find color information for this vehicle",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching colors:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch color information",
+        variant: "destructive"
+      });
+    } finally {
+      setColorLoadingVins(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(vin);
+        return newSet;
+      });
     }
   };
 
@@ -252,6 +301,44 @@ function InventoryAnalysisTab() {
                           <p className="text-xs text-muted-foreground">
                             {vehicle.mileage.toLocaleString()} km
                           </p>
+                        )}
+                        {/* Color display */}
+                        {(vehicleColors[vehicle.vin] || vehicle.exteriorColor || vehicle.interiorColor) && (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {(vehicleColors[vehicle.vin]?.exteriorColor || vehicle.exteriorColor) && (
+                              <Badge variant="outline" className="text-xs">
+                                Ext: {vehicleColors[vehicle.vin]?.exteriorColor || vehicle.exteriorColor}
+                              </Badge>
+                            )}
+                            {(vehicleColors[vehicle.vin]?.interiorColor || vehicle.interiorColor) && (
+                              <Badge variant="outline" className="text-xs">
+                                Int: {vehicleColors[vehicle.vin]?.interiorColor || vehicle.interiorColor}
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                        {/* Fetch colors button */}
+                        {vehicle.vin && !vehicleColors[vehicle.vin] && !vehicle.exteriorColor && !vehicle.interiorColor && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="mt-2 h-7 text-xs"
+                            onClick={() => fetchColorsForVehicle(vehicle.vin)}
+                            disabled={colorLoadingVins.has(vehicle.vin)}
+                            data-testid={`button-fetch-colors-${vehicle.id}`}
+                          >
+                            {colorLoadingVins.has(vehicle.vin) ? (
+                              <>
+                                <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+                                Fetching...
+                              </>
+                            ) : (
+                              <>
+                                <Search className="w-3 h-3 mr-1" />
+                                Fetch Colors
+                              </>
+                            )}
+                          </Button>
                         )}
                       </div>
                     </div>

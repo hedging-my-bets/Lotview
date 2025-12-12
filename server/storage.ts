@@ -111,6 +111,9 @@ import {
   type InsertManagerSettings,
   marketListings,
   type MarketListing,
+  cargurusColorCache,
+  type CargurusColorCache,
+  type InsertCargurusColorCache,
   type InsertMarketListing,
   globalSettings,
   type GlobalSetting,
@@ -596,8 +599,14 @@ export interface IStorage {
   getMarketListingsByUrls(dealershipId: number, urls: string[]): Promise<MarketListing[]>;
   createMarketListing(listing: InsertMarketListing): Promise<MarketListing>;
   updateMarketListing(id: number, dealershipId: number, listing: Partial<InsertMarketListing>): Promise<MarketListing | undefined>;
+  updateMarketListingColors(id: number, dealershipId: number, colors: { interiorColor?: string; exteriorColor?: string; vin?: string }): Promise<MarketListing | undefined>;
   deactivateMarketListing(dealershipId: number, url: string): Promise<boolean>;
   deleteOldMarketListings(dealershipId: number, daysOld: number): Promise<number>;
+  
+  // CarGurus Color Cache
+  getCargurusColorByVin(vin: string): Promise<CargurusColorCache | undefined>;
+  upsertCargurusColorCache(data: InsertCargurusColorCache): Promise<CargurusColorCache>;
+  getExpiredCargurusColors(): Promise<CargurusColorCache[]>;
   
   // External API Tokens (Multi-Tenant)
   getExternalApiTokens(dealershipId: number): Promise<ExternalApiToken[]>;
@@ -3491,6 +3500,58 @@ export class DatabaseStorage implements IStorage {
       ))
       .returning();
     return result[0];
+  }
+
+  async updateMarketListingColors(id: number, dealershipId: number, colors: { interiorColor?: string; exteriorColor?: string; vin?: string }): Promise<MarketListing | undefined> {
+    const result = await db
+      .update(marketListings)
+      .set({
+        interiorColor: colors.interiorColor,
+        exteriorColor: colors.exteriorColor,
+        vin: colors.vin,
+        colorScrapedAt: new Date()
+      })
+      .where(and(
+        eq(marketListings.id, id),
+        eq(marketListings.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+
+  async getCargurusColorByVin(vin: string): Promise<CargurusColorCache | undefined> {
+    const result = await db
+      .select()
+      .from(cargurusColorCache)
+      .where(eq(cargurusColorCache.vin, vin))
+      .limit(1);
+    return result[0];
+  }
+
+  async upsertCargurusColorCache(data: InsertCargurusColorCache): Promise<CargurusColorCache> {
+    const result = await db
+      .insert(cargurusColorCache)
+      .values(data)
+      .onConflictDoUpdate({
+        target: cargurusColorCache.vin,
+        set: {
+          interiorColor: data.interiorColor,
+          exteriorColor: data.exteriorColor,
+          cargurusListingId: data.cargurusListingId,
+          cargurusUrl: data.cargurusUrl,
+          expiresAt: data.expiresAt,
+          scrapedAt: new Date()
+        }
+      })
+      .returning();
+    return result[0];
+  }
+
+  async getExpiredCargurusColors(): Promise<CargurusColorCache[]> {
+    return await db
+      .select()
+      .from(cargurusColorCache)
+      .where(sql`${cargurusColorCache.expiresAt} < NOW()`);
   }
 
   async deactivateMarketListing(dealershipId: number, url: string): Promise<boolean> {

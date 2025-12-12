@@ -7619,6 +7619,100 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
 
+  // Lookup colors for a vehicle from CarGurus (Manager+)
+  app.post("/api/manager/lookup-colors", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const { vin, year, make, model, trim } = req.body;
+      
+      if (!vin && (!year || !make || !model)) {
+        return res.status(400).json({ error: "VIN or year/make/model required" });
+      }
+      
+      // VIN-based lookup (preferred - can cache)
+      if (vin) {
+        // Check cache first
+        const cached = await storage.getCargurusColorByVin(vin);
+        if (cached && new Date(cached.expiresAt) > new Date()) {
+          return res.json({ 
+            cached: true, 
+            found: true,
+            interiorColor: cached.interiorColor,
+            exteriorColor: cached.exteriorColor,
+            cargurusUrl: cached.cargurusUrl
+          });
+        }
+        
+        // Scrape CarGurus by VIN
+        const { lookupCargurusColors } = await import("./cargurus-color-service");
+        const result = await lookupCargurusColors(vin);
+        
+        if (result.found) {
+          // Cache the result (30 day TTL)
+          const expiresAt = new Date();
+          expiresAt.setDate(expiresAt.getDate() + 30);
+          
+          await storage.upsertCargurusColorCache({
+            vin: result.vin,
+            interiorColor: result.interiorColor || null,
+            exteriorColor: result.exteriorColor || null,
+            cargurusListingId: result.cargurusListingId || null,
+            cargurusUrl: result.cargurusUrl || null,
+            expiresAt
+          });
+        }
+        
+        return res.json({
+          cached: false,
+          found: result.found,
+          interiorColor: result.interiorColor,
+          exteriorColor: result.exteriorColor,
+          cargurusUrl: result.cargurusUrl,
+          error: result.error
+        });
+      }
+      
+      // Year/Make/Model lookup (returns multiple results, caches each VIN found)
+      const { lookupCargurusColorsByYearMakeModel } = await import("./cargurus-color-service");
+      const results = await lookupCargurusColorsByYearMakeModel(
+        parseInt(year),
+        make,
+        model,
+        trim
+      );
+      
+      // Cache all results with VINs
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 30);
+      
+      for (const result of results) {
+        if (result.vin && result.found) {
+          await storage.upsertCargurusColorCache({
+            vin: result.vin,
+            interiorColor: result.interiorColor || null,
+            exteriorColor: result.exteriorColor || null,
+            cargurusListingId: result.cargurusListingId || null,
+            cargurusUrl: result.cargurusUrl || null,
+            expiresAt
+          });
+        }
+      }
+      
+      // Return first matching result or summary
+      const firstMatch = results.find(r => r.found);
+      res.json({
+        cached: false,
+        found: !!firstMatch,
+        interiorColor: firstMatch?.interiorColor,
+        exteriorColor: firstMatch?.exteriorColor,
+        cargurusUrl: firstMatch?.cargurusUrl,
+        totalResults: results.length
+      });
+    } catch (error) {
+      logError('Color lookup error:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-lookup-colors' });
+      res.status(500).json({ error: "Failed to lookup colors" });
+    }
+  });
+
   // Get Apify market pricing for a specific vehicle (Manager+)
   app.post("/api/manager/apify-market-pricing", authMiddleware, requireRole("manager"), async (req: AuthRequest, res) => {
     try {
