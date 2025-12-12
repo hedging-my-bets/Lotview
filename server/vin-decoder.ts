@@ -18,12 +18,128 @@ export interface VINDecodeResult {
   vehicleType?: string;
   errorCode?: string;
   errorMessage?: string;
-  source?: 'nhtsa' | 'api_ninjas';
+  source?: 'marketcheck' | 'api_ninjas' | 'nhtsa';
   responseTimeMs?: number;
 }
 
 async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function decodeVINWithMarketCheck(vin: string, apiKey: string): Promise<VINDecodeResult | null> {
+  const startTime = Date.now();
+  
+  try {
+    const url = `https://mc-api.marketcheck.com/v2/decode/car/vin/${vin}?api_key=${apiKey}`;
+    
+    console.log(`[VIN Decoder] Trying MarketCheck for ${vin}`);
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
+    clearTimeout(timeoutId);
+    
+    const responseTime = Date.now() - startTime;
+    console.log(`[VIN Decoder] MarketCheck responded in ${responseTime}ms with status ${response.status}`);
+    
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Unknown error');
+      console.log(`[VIN Decoder] MarketCheck error: ${response.status} - ${errorText}`);
+      return null;
+    }
+    
+    const data = await response.json();
+    
+    if (!data || data.error) {
+      console.log('[VIN Decoder] MarketCheck returned error:', data?.error);
+      return null;
+    }
+    
+    return {
+      vin,
+      year: data.year?.toString() || undefined,
+      make: data.make || undefined,
+      model: data.model || undefined,
+      trim: data.trim || undefined,
+      bodyClass: data.body_type || data.body_style || undefined,
+      engineCylinders: data.cylinders?.toString() || undefined,
+      engineHP: data.horsepower?.toString() || undefined,
+      fuelType: data.fuel_type || undefined,
+      driveType: data.drivetrain || undefined,
+      transmission: data.transmission || undefined,
+      doors: data.doors?.toString() || undefined,
+      manufacturer: data.manufacturer || undefined,
+      vehicleType: data.vehicle_type || undefined,
+      source: 'marketcheck',
+      responseTimeMs: responseTime
+    };
+  } catch (error) {
+    const responseTime = Date.now() - startTime;
+    const isTimeout = error instanceof Error && error.name === 'AbortError';
+    console.log(`[VIN Decoder] MarketCheck error (${responseTime}ms):`, isTimeout ? 'TIMEOUT' : (error instanceof Error ? error.message : 'Unknown error'));
+    return null;
+  }
+}
+
+async function decodeVINWithApiNinjas(vin: string, apiKey: string): Promise<VINDecodeResult | null> {
+  const startTime = Date.now();
+  
+  try {
+    const url = `https://api.api-ninjas.com/v1/vinlookup?vin=${vin}`;
+    
+    console.log(`[VIN Decoder] Trying API Ninjas for ${vin}`);
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'X-Api-Key': apiKey,
+        'Accept': 'application/json'
+      }
+    });
+    clearTimeout(timeoutId);
+    
+    const responseTime = Date.now() - startTime;
+    console.log(`[VIN Decoder] API Ninjas responded in ${responseTime}ms with status ${response.status}`);
+    
+    if (!response.ok) {
+      console.log(`[VIN Decoder] API Ninjas returned ${response.status}`);
+      return null;
+    }
+    
+    const data = await response.json();
+    
+    if (!data || data.error) {
+      console.log('[VIN Decoder] API Ninjas returned error:', data?.error);
+      return null;
+    }
+    
+    return {
+      vin,
+      year: data.model_year?.toString() || undefined,
+      make: data.make || undefined,
+      model: data.model || undefined,
+      trim: data.trim || undefined,
+      bodyClass: data.body_class || undefined,
+      manufacturer: data.manufacturer || undefined,
+      plantCountry: data.plant_country || undefined,
+      vehicleType: data.vehicle_type || undefined,
+      source: 'api_ninjas',
+      responseTimeMs: responseTime
+    };
+  } catch (error) {
+    const responseTime = Date.now() - startTime;
+    console.log(`[VIN Decoder] API Ninjas error (${responseTime}ms):`, error instanceof Error ? error.message : 'Unknown error');
+    return null;
+  }
 }
 
 async function decodeVINWithNHTSA(vin: string, attempt: number = 1): Promise<VINDecodeResult> {
@@ -110,61 +226,6 @@ async function decodeVINWithNHTSA(vin: string, attempt: number = 1): Promise<VIN
   }
 }
 
-async function decodeVINWithApiNinjas(vin: string, apiKey: string): Promise<VINDecodeResult | null> {
-  const startTime = Date.now();
-  
-  try {
-    const url = `https://api.api-ninjas.com/v1/vinlookup?vin=${vin}`;
-    
-    console.log(`[VIN Decoder] Trying API Ninjas for ${vin}`);
-    
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-    
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        'X-Api-Key': apiKey,
-        'Accept': 'application/json'
-      }
-    });
-    clearTimeout(timeoutId);
-    
-    const responseTime = Date.now() - startTime;
-    console.log(`[VIN Decoder] API Ninjas responded in ${responseTime}ms with status ${response.status}`);
-    
-    if (!response.ok) {
-      console.log(`[VIN Decoder] API Ninjas returned ${response.status}`);
-      return null;
-    }
-    
-    const data = await response.json();
-    
-    if (!data || data.error) {
-      console.log('[VIN Decoder] API Ninjas returned error:', data?.error);
-      return null;
-    }
-    
-    return {
-      vin,
-      year: data.model_year?.toString() || undefined,
-      make: data.make || undefined,
-      model: data.model || undefined,
-      trim: data.trim || undefined,
-      bodyClass: data.body_class || undefined,
-      manufacturer: data.manufacturer || undefined,
-      plantCountry: data.plant_country || undefined,
-      vehicleType: data.vehicle_type || undefined,
-      source: 'api_ninjas',
-      responseTimeMs: responseTime
-    };
-  } catch (error) {
-    const responseTime = Date.now() - startTime;
-    console.log(`[VIN Decoder] API Ninjas error (${responseTime}ms):`, error instanceof Error ? error.message : 'Unknown error');
-    return null;
-  }
-}
-
 export async function decodeVIN(vin: string, dealershipId?: number): Promise<VINDecodeResult> {
   const cleanVIN = vin.trim().toUpperCase();
   const startTime = Date.now();
@@ -180,24 +241,31 @@ export async function decodeVIN(vin: string, dealershipId?: number): Promise<VIN
   console.log(`[VIN Decoder] Starting decode for ${cleanVIN}`);
   
   const effectiveDealershipId = dealershipId || 1;
-  let apiNinjasKey: string | null = null;
+  let marketCheckApiKey: string | null = null;
   
   try {
     const apiKeys = await storage.getDealershipApiKeys(effectiveDealershipId);
-    apiNinjasKey = apiKeys?.apiNinjasKey || null;
+    marketCheckApiKey = apiKeys?.marketcheckKey || null;
   } catch (error) {
     console.log('[VIN Decoder] Error fetching API keys:', error);
   }
   
-  const nhtsaResult = await decodeVINWithNHTSA(cleanVIN);
+  const apiNinjasKey = process.env.API_NINJAS_KEY || null;
   
-  if (!nhtsaResult.errorCode) {
-    console.log(`[VIN Decoder] Success with NHTSA in ${nhtsaResult.responseTimeMs}ms`);
-    return nhtsaResult;
+  // Priority 1: MarketCheck (fastest, most reliable when available)
+  if (marketCheckApiKey) {
+    const marketCheckResult = await decodeVINWithMarketCheck(cleanVIN, marketCheckApiKey);
+    
+    if (marketCheckResult && !marketCheckResult.errorCode) {
+      console.log(`[VIN Decoder] Success with MarketCheck in ${marketCheckResult.responseTimeMs}ms`);
+      return marketCheckResult;
+    }
+    console.log('[VIN Decoder] MarketCheck failed, trying next fallback');
+  } else {
+    console.log('[VIN Decoder] No MarketCheck API key configured');
   }
   
-  console.log(`[VIN Decoder] NHTSA failed: ${nhtsaResult.errorCode}`);
-  
+  // Priority 2: API Ninjas (from environment variable)
   if (apiNinjasKey) {
     const apiNinjasResult = await decodeVINWithApiNinjas(cleanVIN, apiNinjasKey);
     
@@ -205,8 +273,18 @@ export async function decodeVIN(vin: string, dealershipId?: number): Promise<VIN
       console.log(`[VIN Decoder] Success with API Ninjas in ${apiNinjasResult.responseTimeMs}ms`);
       return apiNinjasResult;
     }
+    console.log('[VIN Decoder] API Ninjas failed, trying next fallback');
   } else {
-    console.log('[VIN Decoder] No API Ninjas key configured, skipping fallback');
+    console.log('[VIN Decoder] No API Ninjas key configured (set API_NINJAS_KEY env var)');
+  }
+  
+  // Priority 3: NHTSA (free, but sometimes slow/unavailable)
+  console.log('[VIN Decoder] Falling back to NHTSA');
+  const nhtsaResult = await decodeVINWithNHTSA(cleanVIN);
+  
+  if (!nhtsaResult.errorCode) {
+    console.log(`[VIN Decoder] Success with NHTSA in ${nhtsaResult.responseTimeMs}ms`);
+    return nhtsaResult;
   }
   
   const totalTime = Date.now() - startTime;
