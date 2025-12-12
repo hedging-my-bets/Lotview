@@ -1943,6 +1943,18 @@ export default function Manager() {
                               <div className="text-sm font-semibold">{vinResults.driveType}</div>
                             </div>
                           )}
+                          {vinResults.exteriorColor && (
+                            <div data-testid="result-exterior-color">
+                              <div className="text-xs text-muted-foreground font-medium">Exterior Color</div>
+                              <div className="text-sm font-semibold">{vinResults.exteriorColor}</div>
+                            </div>
+                          )}
+                          {vinResults.interiorColor && (
+                            <div data-testid="result-interior-color">
+                              <div className="text-xs text-muted-foreground font-medium">Interior Color</div>
+                              <div className="text-sm font-semibold">{vinResults.interiorColor}</div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
