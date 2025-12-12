@@ -332,7 +332,7 @@ export interface IStorage {
   deleteFacebookCatalogConfig(dealershipId: number): Promise<boolean>;
   
   // Priority vehicles
-  getPagePriorityVehicles(pageId: number): Promise<PagePriorityVehicle[]>;
+  getPagePriorityVehicles(pageId: number, dealershipId: number): Promise<PagePriorityVehicle[]>;
   setPagePriorityVehicles(pageId: number, vehicleIds: number[], dealershipId: number): Promise<void>;
   
   // GoHighLevel config
@@ -1262,8 +1262,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Priority vehicles
-  async getPagePriorityVehicles(pageId: number): Promise<PagePriorityVehicle[]> {
-    return await db.select().from(pagePriorityVehicles).where(eq(pagePriorityVehicles.pageId, pageId));
+  async getPagePriorityVehicles(pageId: number, dealershipId: number): Promise<PagePriorityVehicle[]> {
+    return await db.select().from(pagePriorityVehicles).where(
+      and(eq(pagePriorityVehicles.pageId, pageId), eq(pagePriorityVehicles.dealershipId, dealershipId))
+    );
   }
 
   async setPagePriorityVehicles(pageId: number, vehicleIds: number[], dealershipId: number): Promise<void> {

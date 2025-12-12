@@ -3230,11 +3230,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get priority vehicles for a page
-  app.get("/api/facebook-pages/:id/priority-vehicles", async (req, res) => {
+  // Get priority vehicles for a page - requires authentication and dealership context
+  app.get("/api/facebook-pages/:id/priority-vehicles", authMiddleware, requireDealership, async (req, res) => {
     try {
       const pageId = parseInt(req.params.id);
-      const priorities = await storage.getPagePriorityVehicles(pageId);
+      const dealershipId = req.dealershipId!;
+      const priorities = await storage.getPagePriorityVehicles(pageId, dealershipId);
       res.json(priorities);
     } catch (error) {
       console.error("Error fetching priorities:", error);
