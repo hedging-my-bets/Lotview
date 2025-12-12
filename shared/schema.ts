@@ -1083,7 +1083,31 @@ export const marketListings = pgTable("market_listings", {
   postedDate: timestamp("posted_date"), // When the listing was posted
   scrapedAt: timestamp("scraped_at").defaultNow().notNull(), // When we scraped it
   isActive: boolean("is_active").notNull().default(true), // False if listing is removed
+  interiorColor: text("interior_color"), // Interior color from CarGurus
+  exteriorColor: text("exterior_color"), // Exterior color from CarGurus
+  vin: text("vin"), // Vehicle VIN for color lookup
+  colorScrapedAt: timestamp("color_scraped_at"), // When colors were last scraped
 });
+
+// CarGurus Color Cache - Stores scraped color data by VIN with TTL
+export const cargurusColorCache = pgTable("cargurus_color_cache", {
+  id: serial("id").primaryKey(),
+  vin: text("vin").notNull().unique(), // VIN as primary lookup key
+  interiorColor: text("interior_color"),
+  exteriorColor: text("exterior_color"),
+  cargurusListingId: text("cargurus_listing_id"), // CarGurus listing ID where color was found
+  cargurusUrl: text("cargurus_url"), // URL of the listing
+  scrapedAt: timestamp("scraped_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at").notNull(), // TTL for cache (e.g., 30 days)
+});
+
+export const insertCargurusColorCacheSchema = createInsertSchema(cargurusColorCache).omit({
+  id: true,
+  scrapedAt: true,
+});
+
+export type InsertCargurusColorCache = z.infer<typeof insertCargurusColorCacheSchema>;
+export type CargurusColorCache = typeof cargurusColorCache.$inferSelect;
 
 export const insertMarketListingSchema = createInsertSchema(marketListings).omit({
   id: true,
