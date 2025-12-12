@@ -23,7 +23,7 @@ export interface VINDecodeResult {
 
 async function decodeVINWithMarketCheck(vin: string, apiKey: string): Promise<VINDecodeResult | null> {
   try {
-    const url = `https://api.marketcheck.com/v2/decode/car/vin/${vin}?api_key=${apiKey}`;
+    const url = `https://api.marketcheck.com/v2/decode/car/${vin}/specs?api_key=${apiKey}`;
     
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -38,8 +38,8 @@ async function decodeVINWithMarketCheck(vin: string, apiKey: string): Promise<VI
     
     const data = await response.json();
     
-    if (!data || data.error) {
-      console.log('[VIN Decoder] MarketCheck returned error:', data?.error);
+    if (!data || data.error || data.is_valid === false) {
+      console.log('[VIN Decoder] MarketCheck returned error or invalid VIN:', data?.error || 'VIN not valid');
       return null;
     }
     
@@ -49,14 +49,14 @@ async function decodeVINWithMarketCheck(vin: string, apiKey: string): Promise<VI
       make: data.make || undefined,
       model: data.model || undefined,
       trim: data.trim || undefined,
-      bodyClass: data.body_type || data.body_style || undefined,
-      engineCylinders: data.engine_cylinders?.toString() || undefined,
-      engineHP: data.engine_hp?.toString() || undefined,
+      bodyClass: data.body_type || undefined,
+      engineCylinders: data.cylinders?.toString() || undefined,
+      engineHP: undefined,
       fuelType: data.fuel_type || undefined,
-      driveType: data.drivetrain || data.drive_type || undefined,
+      driveType: data.drivetrain || undefined,
       transmission: data.transmission || undefined,
       doors: data.doors?.toString() || undefined,
-      manufacturer: data.manufacturer || undefined,
+      manufacturer: undefined,
       plantCountry: data.made_in || undefined,
       vehicleType: data.vehicle_type || undefined,
       source: 'marketcheck'
