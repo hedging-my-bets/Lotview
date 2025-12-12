@@ -12,6 +12,10 @@ if (!JWT_SECRET && process.env.NODE_ENV === "production") {
 const SECRET = JWT_SECRET || "olympic-auto-jwt-dev-secret-DO-NOT-USE-IN-PRODUCTION";
 const JWT_EXPIRES_IN = "7d";
 
+// JWT claims for security best practices
+const JWT_ISSUER = "lotview.ai";
+const JWT_AUDIENCE = "lotview-api";
+
 export interface AuthRequest extends Request {
   user?: {
     id: number;
@@ -40,13 +44,20 @@ export function generateToken(user: User): string {
       dealershipId: user.dealershipId,
     },
     SECRET,
-    { expiresIn: JWT_EXPIRES_IN }
+    { 
+      expiresIn: JWT_EXPIRES_IN,
+      issuer: JWT_ISSUER,
+      audience: JWT_AUDIENCE,
+    }
   );
 }
 
 export function verifyToken(token: string): any {
   try {
-    return jwt.verify(token, SECRET);
+    return jwt.verify(token, SECRET, {
+      issuer: JWT_ISSUER,
+      audience: JWT_AUDIENCE,
+    });
   } catch (error) {
     return null;
   }

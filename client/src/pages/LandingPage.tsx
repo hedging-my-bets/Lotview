@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { getVehicles } from "@/lib/api";
+import lotviewLogo from "@assets/Gemini_Generated_Image_x5uznsx5uznsx5uz_(1)_1764799238587.png";
 
 export default function LandingPage() {
   const [isVisible, setIsVisible] = useState(false);
@@ -49,11 +50,10 @@ export default function LandingPage() {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-2">
               <img 
-                src="/attached_assets/Gemini_Generated_Image_x5uznsx5uznsx5uz_(1)_1764799238587.png" 
+                src={lotviewLogo} 
                 alt="Lotview.ai" 
                 className="h-10 w-auto"
                 onError={(e) => {
-                  // Fallback to text logo if image fails
                   const target = e.target as HTMLImageElement;
                   target.style.display = 'none';
                   target.parentElement!.innerHTML = '<div class="flex items-center gap-2"><div class="w-8 h-8 bg-gradient-to-br from-[#022d60] to-[#00aad2] rounded-lg flex items-center justify-center"><svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0M17 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0M5 17H3v-6l2-5h9l4 5h1a2 2 0 0 1 2 2v4h-2m-4 0H9m-6-6h15m-6 0V6"></path></svg></div><span class="text-xl font-bold text-[#022d60]">Lotview.ai</span></div>';

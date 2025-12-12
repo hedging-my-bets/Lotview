@@ -27,6 +27,21 @@ interface RequestOptions extends Omit<RequestInit, 'body'> {
   body?: unknown;
 }
 
+function handleSessionExpiry(status: number): void {
+  if (status === 401 || status === 419) {
+    const currentPath = window.location.pathname;
+    const publicPaths = ['/', '/login', '/privacy', '/terms', '/vehicles'];
+    const isPublicPath = publicPaths.some(p => currentPath === p || currentPath.startsWith('/vehicles/'));
+    
+    if (!isPublicPath) {
+      localStorage.removeItem('token');
+      sessionStorage.removeItem('token');
+      
+      window.location.href = '/login?session=expired';
+    }
+  }
+}
+
 export async function apiRequest<T = unknown>(
   endpoint: string, 
   options: RequestOptions = {}
@@ -46,6 +61,8 @@ export async function apiRequest<T = unknown>(
   });
   
   if (!response.ok) {
+    handleSessionExpiry(response.status);
+    
     let errorBody: ApiError | undefined;
     try {
       errorBody = await response.json();
