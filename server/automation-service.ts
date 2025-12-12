@@ -1,5 +1,6 @@
 import { storage } from "./storage";
 import { createGhlApiService, type GhlApiResponse } from "./ghl-api-service";
+import { logInfo, logError, logWarn } from "./error-utils";
 import type { 
   FollowUpSequence, 
   FollowUpQueue, 
@@ -67,7 +68,7 @@ export class AutomationService {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`[Automation] SMS send failed: ${response.status} - ${errorText}`);
+        logError('[Automation] SMS send failed', null, { dealershipId: this.dealershipId, status: response.status, errorText });
         return { success: false, error: errorText, errorCode: `HTTP_${response.status}` };
       }
 
@@ -75,7 +76,7 @@ export class AutomationService {
       return { success: true, data };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      console.error(`[Automation] SMS send error:`, error);
+      logError('[Automation] SMS send error', error, { dealershipId: this.dealershipId });
       return { success: false, error: errorMessage, errorCode: "NETWORK_ERROR" };
     }
   }
@@ -85,16 +86,15 @@ export class AutomationService {
   }
 
   async processDueFollowUps(): Promise<{ processed: number; successful: number; failed: number }> {
-    console.log(`[Automation] Processing due follow-ups for dealership ${this.dealershipId}`);
+    logInfo('[Automation] Processing due follow-ups', { dealershipId: this.dealershipId });
 
     const dueItems = await storage.getDueFollowUpItems(this.dealershipId, 50);
     
     if (dueItems.length === 0) {
-      console.log(`[Automation] No due follow-ups for dealership ${this.dealershipId}`);
       return { processed: 0, successful: 0, failed: 0 };
     }
 
-    console.log(`[Automation] Found ${dueItems.length} due follow-ups`);
+    logInfo('[Automation] Found due follow-ups', { dealershipId: this.dealershipId, count: dueItems.length });
 
     let successful = 0;
     let failed = 0;
@@ -113,7 +113,7 @@ export class AutomationService {
       } catch (error) {
         failed++;
         const errorMessage = error instanceof Error ? error.message : "Unknown error";
-        console.error(`[Automation] Error processing item ${item.id}:`, error);
+        logError(`[Automation] Error processing item ${item.id}`, error, { dealershipId: this.dealershipId, itemId: item.id });
         
         await storage.updateFollowUpQueueItem(item.id, this.dealershipId, {
           status: 'failed',
@@ -135,7 +135,7 @@ export class AutomationService {
       }
     }
 
-    console.log(`[Automation] Completed: ${successful} successful, ${failed} failed`);
+    logInfo('[Automation] Follow-ups completed', { dealershipId: this.dealershipId, successful, failed });
     return { processed: dueItems.length, successful, failed };
   }
 
@@ -322,14 +322,13 @@ export class AutomationService {
     const matchingSequence = activeSequences.find(s => s.triggerType === params.triggerType);
 
     if (!matchingSequence) {
-      console.log(`[Automation] No active sequence for trigger type: ${params.triggerType}`);
+      logWarn('[Automation] No active sequence for trigger type', { dealershipId: this.dealershipId, triggerType: params.triggerType });
       return { success: false, error: 'No matching sequence found' };
     }
 
     if (params.contactPhone) {
       const existing = await storage.getPendingFollowUpsByContact(this.dealershipId, params.contactPhone);
       if (existing.length > 0) {
-        console.log(`[Automation] Contact already has pending follow-ups: ${params.contactPhone}`);
         return { success: false, error: 'Contact already in sequence' };
       }
     }
@@ -376,7 +375,7 @@ export class AutomationService {
       metadata: JSON.stringify({ triggerType: params.triggerType, sequenceId: matchingSequence.id }),
     });
 
-    console.log(`[Automation] Created follow-up queue item ${queueItem.id} for trigger: ${params.triggerType}`);
+    logInfo('[Automation] Created follow-up queue item', { dealershipId: this.dealershipId, queueItemId: queueItem.id, triggerType: params.triggerType });
     return { success: true, queueItemId: queueItem.id };
   }
 
@@ -384,12 +383,12 @@ export class AutomationService {
     try {
       await storage.createAutomationLog(log as InsertAutomationLog);
     } catch (error) {
-      console.error('[Automation] Failed to log action:', error);
+      logError('[Automation] Failed to log action', error, { dealershipId: this.dealershipId });
     }
   }
 
   async scanAndCreateAppointmentReminders(): Promise<{ created24h: number; created2h: number }> {
-    console.log(`[Automation] Scanning PBS appointments for reminders - dealership ${this.dealershipId}`);
+    logInfo('[Automation] Scanning PBS appointments for reminders', { dealershipId: this.dealershipId });
 
     const now = new Date();
     
@@ -400,11 +399,10 @@ export class AutomationService {
       const upcomingAppointments = await storage.getUpcomingPbsAppointments(this.dealershipId, 48);
       
       if (upcomingAppointments.length === 0) {
-        console.log(`[Automation] No upcoming PBS appointments for dealership ${this.dealershipId}`);
         return { created24h: 0, created2h: 0 };
       }
 
-      console.log(`[Automation] Found ${upcomingAppointments.length} upcoming appointments`);
+      logInfo('[Automation] Found upcoming appointments', { dealershipId: this.dealershipId, count: upcomingAppointments.length });
 
       for (const appointment of upcomingAppointments) {
         if (!appointment.scheduledDate) continue;
@@ -421,7 +419,6 @@ export class AutomationService {
         const contactPhone = this.normalizePhoneNumber(rawPhone);
 
         if (!contactPhone) {
-          console.log(`[Automation] Skipping appointment ${appointment.pbsAppointmentId} - no valid phone number`);
           continue;
         }
 
@@ -452,7 +449,6 @@ export class AutomationService {
             status: 'pending',
           });
           created24h++;
-          console.log(`[Automation] Created 24h reminder for appointment ${appointment.pbsAppointmentId}`);
         }
 
         if (!has2hReminder && scheduled2hSendAt > now) {
@@ -471,15 +467,14 @@ export class AutomationService {
             status: 'pending',
           });
           created2h++;
-          console.log(`[Automation] Created 2h reminder for appointment ${appointment.pbsAppointmentId}`);
         }
       }
 
-      console.log(`[Automation] Created ${created24h} 24h reminders and ${created2h} 2h reminders`);
+      logInfo('[Automation] Created appointment reminders', { dealershipId: this.dealershipId, created24h, created2h });
       return { created24h, created2h };
 
     } catch (error) {
-      console.error(`[Automation] Error scanning appointments:`, error);
+      logError('[Automation] Error scanning appointments', error, { dealershipId: this.dealershipId });
       return { created24h, created2h };
     }
   }
@@ -498,16 +493,15 @@ export class AutomationService {
   }
 
   async processDueAppointmentReminders(): Promise<{ processed: number; successful: number; failed: number }> {
-    console.log(`[Automation] Processing due appointment reminders for dealership ${this.dealershipId}`);
+    logInfo('[Automation] Processing due appointment reminders', { dealershipId: this.dealershipId });
 
     const dueReminders = await storage.getDueAppointmentReminders(this.dealershipId, 50);
     
     if (dueReminders.length === 0) {
-      console.log(`[Automation] No due appointment reminders for dealership ${this.dealershipId}`);
       return { processed: 0, successful: 0, failed: 0 };
     }
 
-    console.log(`[Automation] Found ${dueReminders.length} due appointment reminders`);
+    logInfo('[Automation] Found due appointment reminders', { dealershipId: this.dealershipId, count: dueReminders.length });
 
     const dealership = await storage.getDealership(this.dealershipId);
     const dealershipName = dealership?.name || 'Your Dealership';
@@ -520,7 +514,6 @@ export class AutomationService {
         const lockResult = await storage.lockAppointmentReminderForProcessing(reminder.id, this.dealershipId);
         
         if (!lockResult) {
-          console.log(`[Automation] Reminder ${reminder.id} already being processed or not pending, skipping`);
           continue;
         }
 
@@ -533,7 +526,7 @@ export class AutomationService {
       } catch (error) {
         failed++;
         const errorMessage = error instanceof Error ? error.message : "Unknown error";
-        console.error(`[Automation] Error processing reminder ${reminder.id}:`, error);
+        logError('[Automation] Error processing reminder', error, { dealershipId: this.dealershipId, reminderId: reminder.id });
         
         try {
           await storage.updateAppointmentReminder(reminder.id, this.dealershipId, {
@@ -541,12 +534,12 @@ export class AutomationService {
             errorMessage,
           });
         } catch (e) {
-          console.error(`[Automation] Failed to update reminder ${reminder.id} to failed:`, e);
+          logError('[Automation] Failed to update reminder to failed', e, { dealershipId: this.dealershipId, reminderId: reminder.id });
         }
       }
     }
 
-    console.log(`[Automation] Reminders completed: ${successful} successful, ${failed} failed`);
+    logInfo('[Automation] Reminders completed', { dealershipId: this.dealershipId, successful, failed });
     return { processed: dueReminders.length, successful, failed };
   }
 
@@ -561,7 +554,7 @@ export class AutomationService {
           errorMessage: 'No phone number available',
         });
       } catch (e) {
-        console.error(`[Automation] Failed to update reminder ${reminder.id}:`, e);
+        logError('[Automation] Failed to update reminder', e, { dealershipId: this.dealershipId, reminderId: reminder.id });
       }
       return { success: false, error: 'No phone number' };
     }
@@ -589,7 +582,7 @@ export class AutomationService {
               errorMessage: 'Failed to create GHL contact',
             });
           } catch (e) {
-            console.error(`[Automation] Failed to update reminder ${reminder.id}:`, e);
+            logError('[Automation] Failed to update reminder', e, { dealershipId: this.dealershipId, reminderId: reminder.id });
           }
           return { success: false, error: 'Failed to create GHL contact' };
         }
@@ -609,7 +602,7 @@ export class AutomationService {
           contactId: ghlContactId,
         });
       } catch (e) {
-        console.error(`[Automation] Failed to update reminder ${reminder.id} to sent:`, e);
+        logError('[Automation] Failed to update reminder to sent', e, { dealershipId: this.dealershipId, reminderId: reminder.id });
       }
 
       await this.logAction({
@@ -635,7 +628,7 @@ export class AutomationService {
           errorMessage: sendResult.error,
         });
       } catch (e) {
-        console.error(`[Automation] Failed to update reminder ${reminder.id} to failed:`, e);
+        logError('[Automation] Failed to update reminder to failed', e, { dealershipId: this.dealershipId, reminderId: reminder.id });
       }
 
       await this.logAction({
@@ -686,16 +679,15 @@ export class AutomationService {
   }
 
   async processPriceDropAlerts(): Promise<{ processed: number; successful: number; failed: number }> {
-    console.log(`[Automation] Processing price drop alerts for dealership ${this.dealershipId}`);
+    logInfo('[Automation] Processing price drop alerts', { dealershipId: this.dealershipId });
 
     const priceDrops = await storage.getPriceWatchesWithPriceDrops(this.dealershipId);
     
     if (priceDrops.length === 0) {
-      console.log(`[Automation] No price drops to alert for dealership ${this.dealershipId}`);
       return { processed: 0, successful: 0, failed: 0 };
     }
 
-    console.log(`[Automation] Found ${priceDrops.length} price drops to alert`);
+    logInfo('[Automation] Found price drops to alert', { dealershipId: this.dealershipId, count: priceDrops.length });
 
     const dealership = await storage.getDealership(this.dealershipId);
     const dealershipName = dealership?.name || 'Your Dealership';
@@ -714,7 +706,7 @@ export class AutomationService {
       } catch (error) {
         failed++;
         const errorMessage = error instanceof Error ? error.message : "Unknown error";
-        console.error(`[Automation] Error processing price drop alert ${priceDropWatch.id}:`, error);
+        logError('[Automation] Error processing price drop alert', error, { dealershipId: this.dealershipId, watchId: priceDropWatch.id });
         
         await this.logAction({
           dealershipId: this.dealershipId,
@@ -730,7 +722,7 @@ export class AutomationService {
       }
     }
 
-    console.log(`[Automation] Price drop alerts completed: ${successful} successful, ${failed} failed`);
+    logInfo('[Automation] Price drop alerts completed', { dealershipId: this.dealershipId, successful, failed });
     return { processed: priceDrops.length, successful, failed };
   }
 
@@ -881,7 +873,7 @@ export class AutomationService {
         
         if (existing) {
           await storage.incrementPriceWatchViewCount(existing.id, this.dealershipId);
-          console.log(`[Automation] Incremented view count for existing price watch ${existing.id}`);
+          logInfo('[Automation] Incremented view count for existing price watch', { dealershipId: this.dealershipId, watchId: existing.id });
           return { success: true, watchId: existing.id };
         }
       }
@@ -903,7 +895,7 @@ export class AutomationService {
       priceWhenSubscribed: vehicle.price,
     });
 
-    console.log(`[Automation] Created price watch ${watch.id} for vehicle ${params.vehicleId}`);
+    logInfo('[Automation] Created price watch', { dealershipId: this.dealershipId, watchId: watch.id, vehicleId: params.vehicleId });
 
     await this.logAction({
       dealershipId: this.dealershipId,
@@ -927,7 +919,7 @@ export class AutomationService {
 }
 
 export async function processAllDealershipFollowUps(): Promise<void> {
-  console.log('[Automation] Starting automation processing for all dealerships');
+  logInfo('[Automation] Starting automation processing for all dealerships');
   
   const dealerships = await storage.getAllDealerships();
   
@@ -945,11 +937,11 @@ export async function processAllDealershipFollowUps(): Promise<void> {
       await automation.processPriceDropAlerts();
       
     } catch (error) {
-      console.error(`[Automation] Error processing dealership ${dealership.id}:`, error);
+      logError('[Automation] Error processing dealership', error, { dealershipId: dealership.id });
     }
   }
 
-  console.log('[Automation] Completed automation processing for all dealerships');
+  logInfo('[Automation] Completed automation processing for all dealerships');
 }
 
 export function createAutomationService(dealershipId: number): AutomationService {

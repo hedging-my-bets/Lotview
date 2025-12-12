@@ -3,6 +3,7 @@ import { storage } from './storage';
 import { createGhlApiService } from './ghl-api-service';
 import { ghlContactSync, ghlAppointmentSync, ghlConfig } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
+import { logError, logInfo } from './error-utils';
 
 interface SyncResult {
   success: boolean;
@@ -68,7 +69,7 @@ export function createGhlSyncService(dealershipId: number) {
 
       return { success: false, error: response.error || 'Failed to create GHL contact' };
     } catch (error) {
-      console.error(`Error syncing contact ${pbsContactId} to GHL:`, error);
+      logError(`Error syncing contact ${pbsContactId} to GHL`, error, { dealershipId, pbsContactId });
       return { success: false, error: String(error) };
     }
   }
@@ -146,7 +147,7 @@ export function createGhlSyncService(dealershipId: number) {
 
       return { success: false, error: response.error || 'Failed to create GHL appointment' };
     } catch (error) {
-      console.error(`Error syncing appointment ${pbsAppointmentId} to GHL:`, error);
+      logError(`Error syncing appointment ${pbsAppointmentId} to GHL`, error, { dealershipId, pbsAppointmentId });
       return { success: false, error: String(error) };
     }
   }
@@ -274,7 +275,7 @@ export function createGhlSyncService(dealershipId: number) {
 
       return { success: false, error: response.error || 'Failed to create opportunity' };
     } catch (error) {
-      console.error('Error creating GHL opportunity:', error);
+      logError('Error creating GHL opportunity', error, { dealershipId });
       return { success: false, error: String(error) };
     }
   }
@@ -314,7 +315,7 @@ export function createGhlSyncService(dealershipId: number) {
         errors: errors.length > 0 ? errors : undefined
       };
     } catch (error) {
-      console.error('Error running GHL full sync:', error);
+      logError('Error running GHL full sync', error, { dealershipId });
       return { success: false, errors: [String(error)] };
     }
   }
@@ -422,16 +423,17 @@ export async function runGhlSyncForAllDealerships(): Promise<void> {
         const syncService = createGhlSyncService(config.dealershipId);
         const result = await syncService.runFullSync();
 
-        console.log(`GHL sync for dealership ${config.dealershipId}:`, {
-          contacts: result.contactsSynced,
-          appointments: result.appointmentsSynced,
-          errors: result.errors?.length || 0
+        logInfo(`GHL sync completed for dealership ${config.dealershipId}`, {
+          dealershipId: config.dealershipId,
+          contactsSynced: result.contactsSynced,
+          appointmentsSynced: result.appointmentsSynced,
+          errorCount: result.errors?.length || 0
         });
       } catch (error) {
-        console.error(`GHL sync error for dealership ${config.dealershipId}:`, error);
+        logError(`GHL sync error for dealership ${config.dealershipId}`, error, { dealershipId: config.dealershipId });
       }
     }
   } catch (error) {
-    console.error('Error running GHL sync for all dealerships:', error);
+    logError('Error running GHL sync for all dealerships', error);
   }
 }

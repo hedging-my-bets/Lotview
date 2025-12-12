@@ -4,6 +4,89 @@ export interface VehicleWithViews extends Vehicle {
   views: number;
 }
 
+export interface ApiError {
+  error: string;
+  code?: string;
+  correlationId?: string;
+  details?: Record<string, unknown>;
+}
+
+export class ApiRequestError extends Error {
+  status: number;
+  body?: ApiError;
+  
+  constructor(message: string, status: number, body?: ApiError) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = status;
+    this.body = body;
+  }
+}
+
+interface RequestOptions extends Omit<RequestInit, 'body'> {
+  body?: unknown;
+}
+
+export async function apiRequest<T = unknown>(
+  endpoint: string, 
+  options: RequestOptions = {}
+): Promise<T> {
+  const { body, headers: customHeaders, ...restOptions } = options;
+  
+  const headers: Record<string, string> = {
+    ...(body !== undefined && { 'Content-Type': 'application/json' }),
+    ...(customHeaders as Record<string, string>),
+  };
+  
+  const response = await fetch(endpoint, {
+    credentials: 'include',
+    ...restOptions,
+    headers,
+    ...(body !== undefined && { body: JSON.stringify(body) }),
+  });
+  
+  if (!response.ok) {
+    let errorBody: ApiError | undefined;
+    try {
+      errorBody = await response.json();
+    } catch {
+      // Response body wasn't JSON
+    }
+    throw new ApiRequestError(
+      errorBody?.error || `Request failed: ${response.status} ${response.statusText}`,
+      response.status,
+      errorBody
+    );
+  }
+  
+  const contentType = response.headers.get('content-type');
+  if (contentType?.includes('application/json')) {
+    return response.json();
+  }
+  
+  return undefined as T;
+}
+
+export function apiGet<T = unknown>(endpoint: string, headers?: Record<string, string>): Promise<T> {
+  return apiRequest<T>(endpoint, { method: 'GET', headers });
+}
+
+export function apiPost<T = unknown>(endpoint: string, body?: unknown, headers?: Record<string, string>): Promise<T> {
+  return apiRequest<T>(endpoint, { method: 'POST', body, headers });
+}
+
+export function apiPut<T = unknown>(endpoint: string, body?: unknown, headers?: Record<string, string>): Promise<T> {
+  return apiRequest<T>(endpoint, { method: 'PUT', body, headers });
+}
+
+export function apiPatch<T = unknown>(endpoint: string, body?: unknown, headers?: Record<string, string>): Promise<T> {
+  return apiRequest<T>(endpoint, { method: 'PATCH', body, headers });
+}
+
+export function apiDelete<T = unknown>(endpoint: string, headers?: Record<string, string>): Promise<T> {
+  return apiRequest<T>(endpoint, { method: 'DELETE', headers });
+}
+
 // Financing Rules Types
 export interface CreditTier {
   tierName: string;
@@ -24,71 +107,28 @@ export interface FinancingRules {
 }
 
 // Financing Rules API (Public, no auth required)
-export async function getFinancingRules(): Promise<FinancingRules> {
-  const response = await fetch("/api/public/financing-rules");
-  if (!response.ok) throw new Error("Failed to fetch financing rules");
-  return response.json();
+export function getFinancingRules(): Promise<FinancingRules> {
+  return apiGet<FinancingRules>("/api/public/financing-rules");
 }
 
 // Vehicle API
-export async function getVehicles(): Promise<Vehicle[]> {
+export function getVehicles(): Promise<Vehicle[]> {
   // Note: Dealership filtering is handled automatically by server-side tenant middleware
   // based on subdomain resolution - no need to pass dealershipId param
-  const response = await fetch("/api/vehicles");
-  if (!response.ok) throw new Error("Failed to fetch vehicles");
-  return response.json();
+  return apiGet<Vehicle[]>("/api/vehicles");
 }
 
-export async function getVehicleById(id: number): Promise<VehicleWithViews> {
-  const response = await fetch(`/api/vehicles/${id}`);
-  if (!response.ok) throw new Error("Failed to fetch vehicle");
-  return response.json();
+export function getVehicleById(id: number): Promise<VehicleWithViews> {
+  return apiGet<VehicleWithViews>(`/api/vehicles/${id}`);
 }
 
-export async function trackVehicleView(vehicleId: number, sessionId: string): Promise<void> {
-  const response = await fetch(`/api/vehicles/${vehicleId}/view`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sessionId }),
-  });
-  if (!response.ok) throw new Error("Failed to track view");
+export function trackVehicleView(vehicleId: number, sessionId: string): Promise<void> {
+  return apiPost(`/api/vehicles/${vehicleId}/view`, { sessionId });
 }
 
-// Facebook Pages API
-export interface FacebookPage {
-  id: number;
-  pageName: string;
-  pageId: string;
-  isActive: boolean;
-  selectedTemplate: string;
-  connectedAt: string;
-}
-
-export async function getFacebookPages(): Promise<FacebookPage[]> {
-  const response = await fetch("/api/facebook-pages");
-  if (!response.ok) throw new Error("Failed to fetch pages");
-  return response.json();
-}
-
-export async function createFacebookPage(pageName: string, pageId: string): Promise<FacebookPage> {
-  const response = await fetch("/api/facebook-pages", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pageName, pageId, isActive: true }),
-  });
-  if (!response.ok) throw new Error("Failed to create page");
-  return response.json();
-}
-
-export async function updateFacebookPage(id: number, data: Partial<FacebookPage>): Promise<FacebookPage> {
-  const response = await fetch(`/api/facebook-pages/${id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-  if (!response.ok) throw new Error("Failed to update page");
-  return response.json();
-}
+// NOTE: Facebook Pages management is handled via OAuth flow at /api/facebook/oauth/*
+// The facebookPages table is populated automatically during OAuth callback.
+// For direct API access, use authenticated routes with proper dealership context.
 
 // Chat API
 export interface ChatMessage {
@@ -102,17 +142,11 @@ export async function sendChatMessage(
   scenario?: string,
   dealershipId?: number
 ): Promise<string> {
-  const response = await fetch("/api/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages, vehicleContext, scenario, dealershipId }),
-  });
-  if (!response.ok) throw new Error("Failed to send chat message");
-  const data = await response.json();
+  const data = await apiPost<{ message: string }>("/api/chat", { messages, vehicleContext, scenario, dealershipId });
   return data.message;
 }
 
-export async function saveConversation(
+export function saveConversation(
   category: string,
   messages: ChatMessage[],
   sessionId: string,
@@ -120,22 +154,15 @@ export async function saveConversation(
   vehicleName?: string,
   dealershipId?: number
 ): Promise<{ id: number } | undefined> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = {};
   if (dealershipId) {
     headers["x-dealership-id"] = dealershipId.toString();
   }
-  const response = await fetch("/api/conversations", {
-    method: "POST",
-    headers,
-    credentials: "include",
-    body: JSON.stringify({ category, messages, sessionId, vehicleId, vehicleName }),
-  });
-  if (!response.ok) throw new Error("Failed to save conversation");
-  return response.json();
+  return apiPost<{ id: number }>("/api/conversations", { category, messages, sessionId, vehicleId, vehicleName }, headers);
 }
 
 // GoHighLevel CTA API
-export async function sendCTAToGHL(
+export function sendCTAToGHL(
   vehicleInfo: {
     year: number;
     make: string;
@@ -152,16 +179,5 @@ export async function sendCTAToGHL(
     phone?: string;
   }
 ): Promise<{ success: boolean; contactId?: string; error?: string }> {
-  const response = await fetch("/api/cta/send", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ vehicleInfo, ctaType, contactInfo }),
-  });
-  
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to send CTA to GoHighLevel");
-  }
-  
-  return response.json();
+  return apiPost("/api/cta/send", { vehicleInfo, ctaType, contactInfo });
 }

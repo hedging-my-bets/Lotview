@@ -2426,8 +2426,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Domain not allowed" });
       }
       
-      // Fetch the image with proper headers
+      // Fetch the image with proper headers - disable redirects to prevent SSRF via redirect chains
       const response = await fetch(imageUrl, {
+        redirect: 'error',
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
@@ -3164,12 +3165,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ===== FACEBOOK PAGES ROUTES =====
+  // ===== FACEBOOK PAGES ROUTES (LEGACY) =====
+  // NOTE: These routes are maintained for backward compatibility.
+  // Primary Facebook management now uses /api/facebook/accounts routes.
+  // The facebookPages table is still populated by OAuth callbacks for page management.
   
-  // Get all connected Facebook pages
-  app.get("/api/facebook-pages", async (req, res) => {
+  // Get all connected Facebook pages (protected)
+  app.get("/api/facebook-pages", authMiddleware, requireDealership, async (req, res) => {
     try {
-      const pages = await storage.getFacebookPages();
+      const dealershipId = req.dealershipId!;
+      const pages = await storage.getFacebookPages(dealershipId);
       res.json(pages);
     } catch (error) {
       console.error("Error fetching pages:", error);
@@ -3177,10 +3182,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Connect a Facebook page
-  app.post("/api/facebook-pages", async (req, res) => {
+  // Connect a Facebook page (protected) - prefer OAuth flow via /api/facebook/oauth/*
+  app.post("/api/facebook-pages", authMiddleware, requireDealership, async (req, res) => {
     try {
-      const parsed = insertFacebookPageSchema.safeParse(req.body);
+      const parsed = insertFacebookPageSchema.safeParse({
+        ...req.body,
+        dealershipId: req.dealershipId
+      });
       if (!parsed.success) {
         return res.status(400).json({ error: fromZodError(parsed.error).message });
       }
@@ -3193,8 +3201,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Update Facebook page (template, etc.)
-  app.patch("/api/facebook-pages/:id", async (req, res) => {
+  // Update Facebook page (template, etc.) - protected
+  app.patch("/api/facebook-pages/:id", authMiddleware, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const page = await storage.updateFacebookPage(id, req.body);
@@ -3210,7 +3218,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get priority vehicles for a page - requires authentication and dealership context
+  // DEPRECATED: Priority vehicles - replaced by remarketing system
+  // These endpoints are maintained for backward compatibility only
   app.get("/api/facebook-pages/:id/priority-vehicles", authMiddleware, requireDealership, async (req, res) => {
     try {
       const pageId = parseInt(req.params.id);
@@ -3223,7 +3232,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Set priority vehicles for a page
+  // DEPRECATED: Set priority vehicles - replaced by remarketing system
   app.post("/api/facebook-pages/:id/priority-vehicles", authMiddleware, requireDealership, async (req, res) => {
     try {
       const pageId = parseInt(req.params.id);
