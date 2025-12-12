@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Building2, Key, FileText, Plus, Eye, EyeOff, Trash2, LogOut, Settings2, CheckCircle2, XCircle, Loader2, Plug, Pencil, Webhook, Copy, AlertCircle, Clock, Link2, RefreshCw, Car, Rocket, Users, UserX, KeyRound, Search, Facebook, Bot, MessageSquare, Activity, Database, HardDrive, Shield, Server, UserCog, ArrowLeftRight, X } from "lucide-react";
 import OnboardingWizard from "@/components/OnboardingWizard";
 import { GhlIntegrationDialog } from "@/components/GhlIntegrationDialog";
+import { LaunchChecklist } from "@/components/LaunchChecklist";
 import { PromptEditor } from "@/components/PromptEditor";
 import { FollowUpSequenceEditor } from "@/components/FollowUpSequenceEditor";
 import { ConversationViewer } from "@/components/ConversationViewer";
@@ -423,6 +424,9 @@ export default function SuperAdminDashboard() {
   const [isSyncingCatalog, setIsSyncingCatalog] = useState<number | null>(null);
   const [isTestingCatalog, setIsTestingCatalog] = useState(false);
   const [isSavingCatalog, setIsSavingCatalog] = useState(false);
+
+  // Launch Checklist State
+  const [checklistDealershipId, setChecklistDealershipId] = useState<number | null>(null);
 
   // Create Dealership Mutation
   const createDealershipMutation = useMutation({
@@ -833,12 +837,23 @@ export default function SuperAdminDashboard() {
                           </TableCell>
                           <TableCell>{format(new Date(dealership.createdAt), "PPP")}</TableCell>
                           <TableCell className="text-right">
-                            <EditDealershipDialog 
-                              dealership={dealership}
-                              onSuccess={() => {
-                                queryClient.invalidateQueries({ queryKey: ["/api/super-admin/dealerships"] });
-                              }}
-                            />
+                            <div className="flex items-center justify-end gap-2">
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => setChecklistDealershipId(dealership.id)}
+                                data-testid={`btn-checklist-${dealership.id}`}
+                              >
+                                <CheckCircle2 className="h-4 w-4 mr-1" />
+                                Checklist
+                              </Button>
+                              <EditDealershipDialog 
+                                dealership={dealership}
+                                onSuccess={() => {
+                                  queryClient.invalidateQueries({ queryKey: ["/api/super-admin/dealerships"] });
+                                }}
+                              />
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -2305,6 +2320,24 @@ export default function SuperAdminDashboard() {
               )}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Launch Checklist Dialog */}
+      <Dialog open={checklistDealershipId !== null} onOpenChange={(open) => !open && setChecklistDealershipId(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              Launch Checklist
+            </DialogTitle>
+            <DialogDescription>
+              Track onboarding tasks and setup progress for {dealerships.find(d => d.id === checklistDealershipId)?.name || 'this dealership'}
+            </DialogDescription>
+          </DialogHeader>
+          {checklistDealershipId && (
+            <LaunchChecklist dealershipId={checklistDealershipId} />
+          )}
         </DialogContent>
       </Dialog>
     </div>

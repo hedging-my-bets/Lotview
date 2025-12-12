@@ -18,11 +18,12 @@ import {
   insertCrmTaskSchema,
   ghlAccounts,
   ghlContactSync,
+  ghlAppointmentSync,
   dealershipContacts,
   callScoringResponses,
   dealershipApiKeys
 } from "@shared/schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, and } from "drizzle-orm";
 import { fromZodError } from "zod-validation-error";
 import { triggerManualSync } from "./scheduler";
 import { testBadgeDetection } from "./scraper";
@@ -9475,6 +9476,26 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
   
+  // GHL Pipelines: List available pipelines
+  app.get("/api/ghl/pipelines", authMiddleware, requireRole("master", "sales_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      
+      const { createGhlApiService } = await import('./ghl-api-service');
+      const ghlService = createGhlApiService(dealershipId);
+      const result = await ghlService.getPipelines();
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, errorCode: result.errorCode });
+      }
+      
+      res.json(result.data);
+    } catch (error) {
+      console.error("Error fetching GHL pipelines:", error);
+      res.status(500).json({ error: "Failed to fetch pipelines" });
+    }
+  });
+  
   // GHL Calendars: List available calendars
   app.get("/api/ghl/calendars", authMiddleware, requireRole("master", "sales_manager", "service_manager"), async (req, res) => {
     try {
@@ -9533,6 +9554,131 @@ Format your response in clear sections with actionable recommendations.`;
     } catch (error) {
       console.error("Error creating GHL opportunity:", error);
       res.status(500).json({ error: "Failed to create opportunity" });
+    }
+  });
+  
+  // GHL Sync Stats: Get sync statistics for dashboard
+  app.get("/api/ghl/sync/stats", authMiddleware, requireRole("master", "sales_manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      
+      // Get counts of synced contacts and appointments
+      const [contactSyncs, appointmentSyncs, account, config] = await Promise.all([
+        db.select({ count: sql<number>`count(*)` }).from(ghlContactSync)
+          .where(eq(ghlContactSync.dealershipId, dealershipId)),
+        db.select({ count: sql<number>`count(*)` }).from(ghlAppointmentSync)
+          .where(eq(ghlAppointmentSync.dealershipId, dealershipId)),
+        storage.getGhlAccountByDealership(dealershipId),
+        storage.getGhlConfig(dealershipId)
+      ]);
+      
+      // Get pending syncs count
+      const pendingSyncs = await db.select({ count: sql<number>`count(*)` }).from(ghlContactSync)
+        .where(and(
+          eq(ghlContactSync.dealershipId, dealershipId),
+          eq(ghlContactSync.syncStatus, 'pending')
+        ));
+      
+      // Get last sync time from most recent contact sync
+      const lastSync = await db.select({ lastSyncAt: ghlContactSync.lastSyncAt }).from(ghlContactSync)
+        .where(eq(ghlContactSync.dealershipId, dealershipId))
+        .orderBy(desc(ghlContactSync.lastSyncAt))
+        .limit(1);
+      
+      res.json({
+        connected: !!account,
+        locationId: account?.locationId,
+        contactsSynced: contactSyncs[0]?.count || 0,
+        appointmentsSynced: appointmentSyncs[0]?.count || 0,
+        pendingSyncs: pendingSyncs[0]?.count || 0,
+        lastSyncAt: lastSync[0]?.lastSyncAt || null,
+        syncEnabled: config?.syncContacts || false,
+        bidirectionalSync: config?.bidirectionalSync || false
+      });
+    } catch (error) {
+      console.error("Error fetching GHL sync stats:", error);
+      res.status(500).json({ error: "Failed to fetch sync stats" });
+    }
+  });
+  
+  // GHL Sync Run: Manually trigger a sync
+  app.post("/api/ghl/sync/run", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      
+      // Check if GHL is connected
+      const account = await storage.getGhlAccountByDealership(dealershipId);
+      if (!account) {
+        return res.status(400).json({ error: "FWC CRM not connected" });
+      }
+      
+      const { createGhlApiService } = await import('./ghl-api-service');
+      const ghlService = createGhlApiService(dealershipId);
+      
+      // Fetch contacts from GHL and sync them (use searchContacts with empty query)
+      const contactsResult = await ghlService.searchContacts({ limit: 100 });
+      
+      if (!contactsResult.success) {
+        return res.status(500).json({ error: contactsResult.error || "Failed to fetch contacts from FWC" });
+      }
+      
+      const contacts = contactsResult.data?.contacts || [];
+      let synced = 0;
+      let errors = 0;
+      
+      for (const contact of contacts) {
+        try {
+          // Check if already synced
+          const existing = await storage.getGhlContactSync(dealershipId, contact.id);
+          if (existing) {
+            await storage.updateGhlContactSync(existing.id, dealershipId, {
+              syncStatus: 'synced'
+            });
+          } else {
+            await storage.createGhlContactSync({
+              dealershipId,
+              ghlContactId: contact.id,
+              syncStatus: 'synced',
+              syncDirection: 'ghl_to_local'
+            });
+          }
+          synced++;
+        } catch (err) {
+          errors++;
+          console.error(`Error syncing contact ${contact.id}:`, err);
+        }
+      }
+      
+      res.json({
+        success: true,
+        message: `Synced ${synced} contacts${errors > 0 ? `, ${errors} errors` : ''}`,
+        synced,
+        errors,
+        total: contacts.length
+      });
+    } catch (error) {
+      console.error("Error running GHL sync:", error);
+      res.status(500).json({ error: "Failed to run sync" });
+    }
+  });
+  
+  // GHL Disconnect: Remove GHL integration
+  app.delete("/api/ghl/disconnect", authMiddleware, requireRole("master"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      
+      const account = await storage.getGhlAccountByDealership(dealershipId);
+      if (!account) {
+        return res.status(404).json({ error: "No FWC CRM account connected" });
+      }
+      
+      // Delete the account (this will cascade delete config due to FK)
+      await storage.deleteGhlAccount(account.id, dealershipId);
+      
+      res.json({ success: true, message: "FWC CRM disconnected successfully" });
+    } catch (error) {
+      console.error("Error disconnecting GHL:", error);
+      res.status(500).json({ error: "Failed to disconnect" });
     }
   });
   
@@ -11700,6 +11846,113 @@ Format your response in clear sections with actionable recommendations.`;
     } catch (error) {
       console.error("Error deleting CRM task:", error);
       res.status(500).json({ error: "Failed to delete task" });
+    }
+  });
+  
+  // ===== CRM MESSAGE TEMPLATES =====
+  
+  // Get all message templates for the dealership
+  app.get("/api/crm/message-templates", authMiddleware, requireRole('salesperson', 'manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const channel = req.query.channel as string | undefined;
+      
+      const templates = await storage.getCrmMessageTemplates(dealershipId, channel);
+      res.json(templates);
+    } catch (error) {
+      console.error("Error fetching message templates:", error);
+      res.status(500).json({ error: "Failed to fetch message templates" });
+    }
+  });
+  
+  // Get a specific message template
+  app.get("/api/crm/message-templates/:id", authMiddleware, requireRole('salesperson', 'manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const id = parseInt(req.params.id);
+      
+      const template = await storage.getCrmMessageTemplateById(id, dealershipId);
+      
+      if (!template) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+      
+      res.json(template);
+    } catch (error) {
+      console.error("Error fetching message template:", error);
+      res.status(500).json({ error: "Failed to fetch message template" });
+    }
+  });
+  
+  // Create a new message template
+  app.post("/api/crm/message-templates", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const userId = req.user?.id;
+      
+      const { name, channel, category, subject, content, availableFields } = req.body;
+      
+      if (!name || !channel || !content) {
+        return res.status(400).json({ error: "Name, channel, and content are required" });
+      }
+      
+      if (!['email', 'sms', 'facebook'].includes(channel)) {
+        return res.status(400).json({ error: "Channel must be 'email', 'sms', or 'facebook'" });
+      }
+      
+      const template = await storage.createCrmMessageTemplate({
+        dealershipId,
+        createdById: userId,
+        name,
+        channel,
+        category: category || 'custom',
+        subject,
+        content,
+        availableFields: availableFields ? JSON.stringify(availableFields) : null,
+      });
+      
+      res.status(201).json(template);
+    } catch (error) {
+      console.error("Error creating message template:", error);
+      res.status(500).json({ error: "Failed to create message template" });
+    }
+  });
+  
+  // Update a message template
+  app.patch("/api/crm/message-templates/:id", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const id = parseInt(req.params.id);
+      
+      const template = await storage.updateCrmMessageTemplate(id, dealershipId, req.body);
+      
+      if (!template) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+      
+      res.json(template);
+    } catch (error) {
+      console.error("Error updating message template:", error);
+      res.status(500).json({ error: "Failed to update message template" });
+    }
+  });
+  
+  // Delete a message template
+  app.delete("/api/crm/message-templates/:id", authMiddleware, requireRole('manager', 'admin', 'master', 'super_admin'), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = (req as any).dealershipId;
+      const id = parseInt(req.params.id);
+      
+      const deleted = await storage.deleteCrmMessageTemplate(id, dealershipId);
+      
+      if (!deleted) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting message template:", error);
+      res.status(500).json({ error: "Failed to delete message template" });
     }
   });
   

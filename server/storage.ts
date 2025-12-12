@@ -227,6 +227,9 @@ import {
   crmMessages,
   type CrmMessage,
   type InsertCrmMessage,
+  crmMessageTemplates,
+  type CrmMessageTemplate,
+  type InsertCrmMessageTemplate,
   callScoringTemplates,
   type CallScoringTemplate,
   type InsertCallScoringTemplate,
@@ -850,6 +853,14 @@ export interface IStorage {
   createCrmMessage(message: InsertCrmMessage): Promise<CrmMessage>;
   updateCrmMessage(id: number, dealershipId: number, message: Partial<InsertCrmMessage>): Promise<CrmMessage | undefined>;
   getCrmMessages(contactId: number, dealershipId: number, limit?: number): Promise<CrmMessage[]>;
+  
+  // ====== CRM MESSAGE TEMPLATES ======
+  getCrmMessageTemplates(dealershipId: number, channel?: string): Promise<CrmMessageTemplate[]>;
+  getCrmMessageTemplateById(id: number, dealershipId: number): Promise<CrmMessageTemplate | undefined>;
+  createCrmMessageTemplate(template: InsertCrmMessageTemplate): Promise<CrmMessageTemplate>;
+  updateCrmMessageTemplate(id: number, dealershipId: number, template: Partial<InsertCrmMessageTemplate>): Promise<CrmMessageTemplate | undefined>;
+  deleteCrmMessageTemplate(id: number, dealershipId: number): Promise<boolean>;
+  incrementTemplateUsage(id: number, dealershipId: number): Promise<void>;
   
   // ====== MESSENGER HELPERS ======
   getMessengerConversationsByContactFacebookId(dealershipId: number, facebookId: string): Promise<any[]>;
@@ -5628,6 +5639,72 @@ export class DatabaseStorage implements IStorage {
       ))
       .orderBy(desc(crmMessages.createdAt))
       .limit(limit);
+  }
+  
+  // ====== CRM MESSAGE TEMPLATES ======
+  async getCrmMessageTemplates(dealershipId: number, channel?: string): Promise<CrmMessageTemplate[]> {
+    const conditions: any[] = [
+      eq(crmMessageTemplates.dealershipId, dealershipId),
+      eq(crmMessageTemplates.isActive, true)
+    ];
+    if (channel) {
+      conditions.push(eq(crmMessageTemplates.channel, channel));
+    }
+    return await db.select()
+      .from(crmMessageTemplates)
+      .where(and(...conditions))
+      .orderBy(desc(crmMessageTemplates.createdAt));
+  }
+  
+  async getCrmMessageTemplateById(id: number, dealershipId: number): Promise<CrmMessageTemplate | undefined> {
+    const result = await db.select()
+      .from(crmMessageTemplates)
+      .where(and(
+        eq(crmMessageTemplates.id, id),
+        eq(crmMessageTemplates.dealershipId, dealershipId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+  
+  async createCrmMessageTemplate(template: InsertCrmMessageTemplate): Promise<CrmMessageTemplate> {
+    if (!template.dealershipId) {
+      throw new Error('dealershipId is required when creating message templates');
+    }
+    const result = await db.insert(crmMessageTemplates).values(template).returning();
+    return result[0];
+  }
+  
+  async updateCrmMessageTemplate(id: number, dealershipId: number, template: Partial<InsertCrmMessageTemplate>): Promise<CrmMessageTemplate | undefined> {
+    const result = await db.update(crmMessageTemplates)
+      .set({ ...template, updatedAt: new Date() })
+      .where(and(
+        eq(crmMessageTemplates.id, id),
+        eq(crmMessageTemplates.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+  
+  async deleteCrmMessageTemplate(id: number, dealershipId: number): Promise<boolean> {
+    // Soft delete by setting isActive to false
+    const result = await db.update(crmMessageTemplates)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(and(
+        eq(crmMessageTemplates.id, id),
+        eq(crmMessageTemplates.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result.length > 0;
+  }
+  
+  async incrementTemplateUsage(id: number, dealershipId: number): Promise<void> {
+    await db.update(crmMessageTemplates)
+      .set({ timesUsed: sql`${crmMessageTemplates.timesUsed} + 1` })
+      .where(and(
+        eq(crmMessageTemplates.id, id),
+        eq(crmMessageTemplates.dealershipId, dealershipId)
+      ));
   }
   
   // ====== MESSENGER HELPERS ======

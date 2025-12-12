@@ -23,6 +23,7 @@ import { Progress } from "@/components/ui/progress";
 import { AiPromptEnhancer } from "@/components/AiPromptEnhancer";
 import { FollowUpSequenceEditor } from "@/components/FollowUpSequenceEditor";
 import { ConversationsPanel } from "@/components/ConversationsPanel";
+import { AppointmentsWidget } from "@/components/AppointmentsWidget";
 
 // Inventory Analysis Tab Component
 function InventoryAnalysisTab() {
@@ -1930,6 +1931,16 @@ export default function Manager() {
                   Appraisal History
                 </Button>
                 <Button
+                  variant={activeManagerTab === 'appointments' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setActiveManagerTab('appointments')}
+                  data-testid="tab-appointments"
+                  className="flex items-center gap-2 bg-blue-600/10 hover:bg-blue-600/20"
+                >
+                  <CalendarCheck className="w-4 h-4 text-blue-600" />
+                  <span className="text-blue-600 font-medium">Appointments</span>
+                </Button>
+                <Button
                   variant={activeManagerTab === 'followup' ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setActiveManagerTab('followup')}
@@ -3135,6 +3146,12 @@ export default function Manager() {
               {activeManagerTab === 'followup' && (
                 <div data-testid="tab-content-followup">
                   <FollowUpSequenceEditor dealershipId={user?.dealershipId || 1} />
+                </div>
+              )}
+
+              {activeManagerTab === 'appointments' && (
+                <div data-testid="tab-content-appointments">
+                  <AppointmentsWidget />
                 </div>
               )}
 
