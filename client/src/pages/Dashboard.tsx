@@ -11,6 +11,7 @@ import { ConversationViewer } from "@/components/ConversationViewer";
 import { ConversationsPanel } from "@/components/ConversationsPanel";
 import { useToast } from "@/hooks/use-toast";
 import { InventoryManagement } from "@/components/InventoryManagement";
+import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 import {
   Dialog,
   DialogContent,
@@ -126,13 +127,10 @@ function BrandingSection() {
   const fetchBranding = async () => {
     try {
       const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/dealership/branding", {
-        headers: { Authorization: `Bearer ${token}` },
+      const data = await apiGet<DealershipBranding>("/api/dealership/branding", {
+        Authorization: `Bearer ${token}`,
       });
-      if (response.ok) {
-        const data = await response.json();
-        setBranding(data);
-      }
+      setBranding(data);
     } catch (error) {
       console.error("Error fetching branding:", error);
     } finally {
@@ -198,18 +196,14 @@ function BrandingSection() {
   const handleRemoveLogo = async () => {
     try {
       const token = localStorage.getItem("auth_token");
-      const response = await fetch("/api/dealership/branding/logo", {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
+      await apiDelete("/api/dealership/branding/logo", {
+        Authorization: `Bearer ${token}`,
       });
-
-      if (response.ok) {
-        setBranding((prev) => (prev ? { ...prev, logoUrl: null } : null));
-        toast({
-          title: "Logo removed",
-          description: "Your dealership logo has been removed",
-        });
-      }
+      setBranding((prev) => (prev ? { ...prev, logoUrl: null } : null));
+      toast({
+        title: "Logo removed",
+        description: "Your dealership logo has been removed",
+      });
     } catch (error) {
       toast({
         title: "Error",
@@ -476,15 +470,10 @@ export default function Dashboard() {
   
   const loadWebsiteUrl = async (token: string) => {
     try {
-      const response = await fetch('/api/dealership/website-url', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+      const data = await apiGet<{ websiteUrl: string }>('/api/dealership/website-url', {
+        'Authorization': `Bearer ${token}`,
       });
-      if (response.ok) {
-        const data = await response.json();
-        setWebsiteUrl(data.websiteUrl);
-      }
+      setWebsiteUrl(data.websiteUrl);
     } catch (error) {
       console.error("Failed to load website URL:", error);
     }
@@ -492,16 +481,10 @@ export default function Dashboard() {
 
   const loadUsers = async (token: string) => {
     try {
-      const response = await fetch('/api/users', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+      const data = await apiGet<User[]>('/api/users', {
+        'Authorization': `Bearer ${token}`,
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        setUsers(data);
-      }
+      setUsers(data);
     } catch (error) {
       console.error("Failed to load users:", error);
     }
@@ -511,11 +494,8 @@ export default function Dashboard() {
     const token = localStorage.getItem('auth_token');
     
     try {
-      await fetch('/api/auth/logout', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+      await apiPost('/api/auth/logout', undefined, {
+        'Authorization': `Bearer ${token}`,
       });
     } catch (error) {
       console.error("Logout error:", error);
@@ -533,36 +513,21 @@ export default function Dashboard() {
     if (!token) return;
 
     try {
-      const response = await fetch('/api/users', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(newUser),
+      await apiPost('/api/users', newUser, {
+        'Authorization': `Bearer ${token}`,
       });
-
-      if (response.ok) {
-        toast({
-          title: "User Created",
-          description: `${newUser.name} has been added successfully`,
-        });
-        
-        setIsCreateDialogOpen(false);
-        setNewUser({ email: "", password: "", name: "", role: "salesperson" });
-        await loadUsers(token);
-      } else {
-        const error = await response.json();
-        toast({
-          title: "Error",
-          description: error.error || "Failed to create user",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
+      toast({
+        title: "User Created",
+        description: `${newUser.name} has been added successfully`,
+      });
+      
+      setIsCreateDialogOpen(false);
+      setNewUser({ email: "", password: "", name: "", role: "salesperson" });
+      await loadUsers(token);
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Failed to create user",
+        description: error.body?.error || "Failed to create user",
         variant: "destructive",
       });
     }
@@ -600,35 +565,20 @@ export default function Dashboard() {
         updateData.password = editUserForm.password;
       }
 
-      const response = await fetch(`/api/users/${editingUser.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(updateData),
+      await apiPatch(`/api/users/${editingUser.id}`, updateData, {
+        'Authorization': `Bearer ${token}`,
       });
-
-      if (response.ok) {
-        toast({
-          title: "User Updated",
-          description: "User information has been saved successfully",
-        });
-        setIsEditDialogOpen(false);
-        setEditingUser(null);
-        await loadUsers(token);
-      } else {
-        const data = await response.json();
-        toast({
-          title: "Error",
-          description: data.error || "Failed to update user",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
+      toast({
+        title: "User Updated",
+        description: "User information has been saved successfully",
+      });
+      setIsEditDialogOpen(false);
+      setEditingUser(null);
+      await loadUsers(token);
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Failed to update user",
+        description: error.body?.error || "Failed to update user",
         variant: "destructive",
       });
     }
@@ -639,22 +589,14 @@ export default function Dashboard() {
     if (!token) return;
 
     try {
-      const response = await fetch(`/api/users/${userId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ isActive: !currentStatus }),
+      await apiPatch(`/api/users/${userId}`, { isActive: !currentStatus }, {
+        'Authorization': `Bearer ${token}`,
       });
-
-      if (response.ok) {
-        toast({
-          title: "User Updated",
-          description: `User ${!currentStatus ? 'activated' : 'deactivated'} successfully`,
-        });
-        await loadUsers(token);
-      }
+      toast({
+        title: "User Updated",
+        description: `User ${!currentStatus ? 'activated' : 'deactivated'} successfully`,
+      });
+      await loadUsers(token);
     } catch (error) {
       toast({
         title: "Error",
@@ -666,14 +608,10 @@ export default function Dashboard() {
 
   const loadVehicles = async (token: string) => {
     try {
-      const response = await fetch('/api/vehicles', {
-        headers: { 'Authorization': `Bearer ${token}` },
+      const data = await apiGet<any[]>('/api/vehicles', {
+        'Authorization': `Bearer ${token}`,
       });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setAllVehicles(data);
-      }
+      setAllVehicles(data);
     } catch (error) {
       console.error("Failed to load vehicles:", error);
     }
@@ -681,14 +619,10 @@ export default function Dashboard() {
 
   const loadRemarketingVehicles = async (token: string) => {
     try {
-      const response = await fetch('/api/remarketing/vehicles', {
-        headers: { 'Authorization': `Bearer ${token}` },
+      const data = await apiGet<any[]>('/api/remarketing/vehicles', {
+        'Authorization': `Bearer ${token}`,
       });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setRemarketingVehicles(data);
-      }
+      setRemarketingVehicles(data);
     } catch (error) {
       console.error("Failed to load remarketing vehicles:", error);
     }
@@ -696,24 +630,13 @@ export default function Dashboard() {
 
   const loadFinancingRules = async (token: string) => {
     try {
-      const [tiersResponse, termsResponse] = await Promise.all([
-        fetch('/api/financing/credit-tiers', {
-          headers: { 'Authorization': `Bearer ${token}` },
-        }),
-        fetch('/api/financing/model-year-terms', {
-          headers: { 'Authorization': `Bearer ${token}` },
-        }),
+      const headers = { 'Authorization': `Bearer ${token}` };
+      const [tiers, terms] = await Promise.all([
+        apiGet<CreditScoreTier[]>('/api/financing/credit-tiers', headers),
+        apiGet<ModelYearTerm[]>('/api/financing/model-year-terms', headers),
       ]);
-
-      if (tiersResponse.ok) {
-        const tiers = await tiersResponse.json();
-        setCreditTiers(tiers);
-      }
-
-      if (termsResponse.ok) {
-        const terms = await termsResponse.json();
-        setModelYearTerms(terms);
-      }
+      setCreditTiers(tiers);
+      setModelYearTerms(terms);
     } catch (error) {
       console.error("Failed to load financing rules:", error);
     }
@@ -721,23 +644,19 @@ export default function Dashboard() {
 
   const loadPbsConfig = async (token: string) => {
     try {
-      const response = await fetch('/api/pbs/config', {
-        headers: { 'Authorization': `Bearer ${token}` },
+      const data = await apiGet<PbsConfig | null>('/api/pbs/config', {
+        'Authorization': `Bearer ${token}`,
       });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setPbsConfig(data);
-        if (data) {
-          setNewPbsConfig({
-            partnerId: data.partnerId,
-            username: data.username,
-            password: data.password,
-            webhookUrl: data.webhookUrl || "",
-            webhookSecret: data.webhookSecret || "",
-            pbsApiUrl: data.pbsApiUrl,
-          });
-        }
+      setPbsConfig(data);
+      if (data) {
+        setNewPbsConfig({
+          partnerId: data.partnerId,
+          username: data.username,
+          password: data.password,
+          webhookUrl: data.webhookUrl || "",
+          webhookSecret: data.webhookSecret || "",
+          pbsApiUrl: data.pbsApiUrl,
+        });
       }
     } catch (error) {
       console.error("Failed to load PBS config:", error);
@@ -746,14 +665,10 @@ export default function Dashboard() {
 
   const loadWebhookEvents = async (token: string) => {
     try {
-      const response = await fetch('/api/pbs/webhook-events?limit=50', {
-        headers: { 'Authorization': `Bearer ${token}` },
+      const data = await apiGet<PbsWebhookEvent[]>('/api/pbs/webhook-events?limit=50', {
+        'Authorization': `Bearer ${token}`,
       });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setWebhookEvents(data);
-      }
+      setWebhookEvents(data);
     } catch (error) {
       console.error("Failed to load webhook events:", error);
     }
@@ -761,14 +676,10 @@ export default function Dashboard() {
 
   const loadChatPrompts = async (token: string) => {
     try {
-      const response = await fetch('/api/chat-prompts', {
-        headers: { 'Authorization': `Bearer ${token}` },
+      const data = await apiGet<ChatPrompt[]>('/api/chat-prompts', {
+        'Authorization': `Bearer ${token}`,
       });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setChatPrompts(data);
-      }
+      setChatPrompts(data);
     } catch (error) {
       console.error("Failed to load chat prompts:", error);
     }
@@ -776,14 +687,10 @@ export default function Dashboard() {
 
   const loadDealershipFees = async (token: string) => {
     try {
-      const response = await fetch('/api/dealership-fees', {
-        headers: { 'Authorization': `Bearer ${token}` },
+      const data = await apiGet<DealershipFee[]>('/api/dealership-fees', {
+        'Authorization': `Bearer ${token}`,
       });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setDealershipFees(data);
-      }
+      setDealershipFees(data);
     } catch (error) {
       console.error("Failed to load dealership fees:", error);
     }
@@ -795,35 +702,20 @@ export default function Dashboard() {
     if (!token) return;
 
     try {
-      const response = await fetch('/api/dealership-fees', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(newFee),
+      await apiPost('/api/dealership-fees', newFee, {
+        'Authorization': `Bearer ${token}`,
       });
-
-      if (response.ok) {
-        toast({
-          title: "Fee Created",
-          description: `${newFee.feeName} has been added successfully`,
-        });
-        setIsFeeDialogOpen(false);
-        setNewFee({ feeName: "", feeAmount: 0, isPercentage: false, includeInPayment: true, displayOrder: 0 });
-        await loadDealershipFees(token);
-      } else {
-        const error = await response.json();
-        toast({
-          title: "Error",
-          description: error.error || "Failed to create fee",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
+      toast({
+        title: "Fee Created",
+        description: `${newFee.feeName} has been added successfully`,
+      });
+      setIsFeeDialogOpen(false);
+      setNewFee({ feeName: "", feeAmount: 0, isPercentage: false, includeInPayment: true, displayOrder: 0 });
+      await loadDealershipFees(token);
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Failed to create fee",
+        description: error.body?.error || "Failed to create fee",
         variant: "destructive",
       });
     }
@@ -834,33 +726,18 @@ export default function Dashboard() {
     if (!token) return;
 
     try {
-      const response = await fetch(`/api/dealership-fees/${id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(updates),
+      await apiPatch(`/api/dealership-fees/${id}`, updates, {
+        'Authorization': `Bearer ${token}`,
       });
-
-      if (response.ok) {
-        toast({
-          title: "Fee Updated",
-          description: "Fee has been updated successfully",
-        });
-        await loadDealershipFees(token);
-      } else {
-        const error = await response.json();
-        toast({
-          title: "Error",
-          description: error.error || "Failed to update fee",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
+      toast({
+        title: "Fee Updated",
+        description: "Fee has been updated successfully",
+      });
+      await loadDealershipFees(token);
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Failed to update fee",
+        description: error.body?.error || "Failed to update fee",
         variant: "destructive",
       });
     }
@@ -871,24 +748,14 @@ export default function Dashboard() {
     if (!token) return;
 
     try {
-      const response = await fetch(`/api/dealership-fees/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` },
+      await apiDelete(`/api/dealership-fees/${id}`, {
+        'Authorization': `Bearer ${token}`,
       });
-
-      if (response.ok) {
-        toast({
-          title: "Fee Deleted",
-          description: "Fee has been removed successfully",
-        });
-        await loadDealershipFees(token);
-      } else {
-        toast({
-          title: "Error",
-          description: "Failed to delete fee",
-          variant: "destructive",
-        });
-      }
+      toast({
+        title: "Fee Deleted",
+        description: "Fee has been removed successfully",
+      });
+      await loadDealershipFees(token);
     } catch (error) {
       toast({
         title: "Error",
@@ -923,37 +790,22 @@ export default function Dashboard() {
     if (!token) return;
 
     try {
-      const response = await fetch('/api/chat-prompts', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          scenario: editingPrompt.scenario,
-          systemPrompt: editingPrompt.systemPrompt,
-          greeting: editingPrompt.greeting,
-        }),
+      await apiPost('/api/chat-prompts', {
+        scenario: editingPrompt.scenario,
+        systemPrompt: editingPrompt.systemPrompt,
+        greeting: editingPrompt.greeting,
+      }, {
+        'Authorization': `Bearer ${token}`,
       });
-
-      if (response.ok) {
-        toast({
-          title: "Chat Prompt Saved",
-          description: `Prompt for ${editingPrompt.scenario} has been updated successfully`,
-        });
-        await loadChatPrompts(token);
-      } else {
-        const error = await response.json();
-        toast({
-          title: "Error",
-          description: error.error || "Failed to save chat prompt",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
+      toast({
+        title: "Chat Prompt Saved",
+        description: `Prompt for ${editingPrompt.scenario} has been updated successfully`,
+      });
+      await loadChatPrompts(token);
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Failed to save chat prompt",
+        description: error.body?.error || "Failed to save chat prompt",
         variant: "destructive",
       });
     }
@@ -965,34 +817,19 @@ export default function Dashboard() {
     if (!token) return;
 
     try {
-      const response = await fetch('/api/pbs/config', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(newPbsConfig),
+      await apiPost('/api/pbs/config', newPbsConfig, {
+        'Authorization': `Bearer ${token}`,
       });
-
-      if (response.ok) {
-        toast({
-          title: "PBS Configuration Saved",
-          description: "DMS integration settings have been updated",
-        });
-        setIsPbsDialogOpen(false);
-        await loadPbsConfig(token);
-      } else {
-        const error = await response.json();
-        toast({
-          title: "Error",
-          description: error.error || "Failed to save PBS configuration",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
+      toast({
+        title: "PBS Configuration Saved",
+        description: "DMS integration settings have been updated",
+      });
+      setIsPbsDialogOpen(false);
+      await loadPbsConfig(token);
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Failed to save PBS configuration",
+        description: error.body?.error || "Failed to save PBS configuration",
         variant: "destructive",
       });
     }
@@ -1013,43 +850,27 @@ export default function Dashboard() {
     }
 
     try {
-      const url = editingCreditTier 
-        ? `/api/financing/credit-tiers/${editingCreditTier.id}`
-        : '/api/financing/credit-tiers';
+      const headers = { 'Authorization': `Bearer ${token}` };
       
-      const method = editingCreditTier ? 'PATCH' : 'POST';
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(newCreditTier),
-      });
-
-      if (response.ok) {
-        toast({
-          title: editingCreditTier ? "Credit Tier Updated" : "Credit Tier Created",
-          description: `${newCreditTier.tierName} has been ${editingCreditTier ? 'updated' : 'added'} successfully`,
-        });
-        
-        setIsCreditTierDialogOpen(false);
-        setEditingCreditTier(null);
-        setNewCreditTier({ tierName: "", minScore: 300, maxScore: 850, interestRate: 5.99 });
-        await loadFinancingRules(token);
+      if (editingCreditTier) {
+        await apiPatch(`/api/financing/credit-tiers/${editingCreditTier.id}`, newCreditTier, headers);
       } else {
-        const error = await response.json();
-        toast({
-          title: "Error",
-          description: error.error || `Failed to ${editingCreditTier ? 'update' : 'create'} credit tier`,
-          variant: "destructive",
-        });
+        await apiPost('/api/financing/credit-tiers', newCreditTier, headers);
       }
-    } catch (error) {
+      
+      toast({
+        title: editingCreditTier ? "Credit Tier Updated" : "Credit Tier Created",
+        description: `${newCreditTier.tierName} has been ${editingCreditTier ? 'updated' : 'added'} successfully`,
+      });
+      
+      setIsCreditTierDialogOpen(false);
+      setEditingCreditTier(null);
+      setNewCreditTier({ tierName: "", minScore: 300, maxScore: 850, interestRate: 5.99 });
+      await loadFinancingRules(token);
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: `Failed to ${editingCreditTier ? 'update' : 'create'} credit tier`,
+        description: error.body?.error || `Failed to ${editingCreditTier ? 'update' : 'create'} credit tier`,
         variant: "destructive",
       });
     }
@@ -1071,20 +892,14 @@ export default function Dashboard() {
     if (!token) return;
 
     try {
-      const response = await fetch(`/api/financing/credit-tiers/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+      await apiDelete(`/api/financing/credit-tiers/${id}`, {
+        'Authorization': `Bearer ${token}`,
       });
-
-      if (response.ok) {
-        toast({
-          title: "Credit Tier Deleted",
-          description: "The tier has been removed successfully",
-        });
-        await loadFinancingRules(token);
-      }
+      toast({
+        title: "Credit Tier Deleted",
+        description: "The tier has been removed successfully",
+      });
+      await loadFinancingRules(token);
     } catch (error) {
       toast({
         title: "Error",
@@ -1118,43 +933,27 @@ export default function Dashboard() {
     }
 
     try {
-      const url = editingModelYearTerm
-        ? `/api/financing/model-year-terms/${editingModelYearTerm.id}`
-        : '/api/financing/model-year-terms';
+      const headers = { 'Authorization': `Bearer ${token}` };
       
-      const method = editingModelYearTerm ? 'PATCH' : 'POST';
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(newModelYearTerm),
-      });
-
-      if (response.ok) {
-        toast({
-          title: editingModelYearTerm ? "Model Year Term Updated" : "Model Year Term Created",
-          description: `The term rule has been ${editingModelYearTerm ? 'updated' : 'added'} successfully`,
-        });
-        
-        setIsModelYearDialogOpen(false);
-        setEditingModelYearTerm(null);
-        setNewModelYearTerm({ minModelYear: 2020, maxModelYear: 2025, availableTerms: ["36", "48", "60"] });
-        await loadFinancingRules(token);
+      if (editingModelYearTerm) {
+        await apiPatch(`/api/financing/model-year-terms/${editingModelYearTerm.id}`, newModelYearTerm, headers);
       } else {
-        const error = await response.json();
-        toast({
-          title: "Error",
-          description: error.error || `Failed to ${editingModelYearTerm ? 'update' : 'create'} model year term`,
-          variant: "destructive",
-        });
+        await apiPost('/api/financing/model-year-terms', newModelYearTerm, headers);
       }
-    } catch (error) {
+      
+      toast({
+        title: editingModelYearTerm ? "Model Year Term Updated" : "Model Year Term Created",
+        description: `The term rule has been ${editingModelYearTerm ? 'updated' : 'added'} successfully`,
+      });
+      
+      setIsModelYearDialogOpen(false);
+      setEditingModelYearTerm(null);
+      setNewModelYearTerm({ minModelYear: 2020, maxModelYear: 2025, availableTerms: ["36", "48", "60"] });
+      await loadFinancingRules(token);
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: `Failed to ${editingModelYearTerm ? 'update' : 'create'} model year term`,
+        description: error.body?.error || `Failed to ${editingModelYearTerm ? 'update' : 'create'} model year term`,
         variant: "destructive",
       });
     }
@@ -1176,39 +975,24 @@ export default function Dashboard() {
     if (!token) return;
 
     try {
-      const response = await fetch('/api/remarketing/vehicles', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          vehicleId: parseInt(selectedVehicleId),
-          budgetPriority,
-        }),
+      await apiPost('/api/remarketing/vehicles', {
+        vehicleId: parseInt(selectedVehicleId),
+        budgetPriority,
+      }, {
+        'Authorization': `Bearer ${token}`,
       });
-
-      if (response.ok) {
-        toast({
-          title: "Vehicle Added",
-          description: "Vehicle has been added to remarketing",
-        });
-        setIsAddVehicleDialogOpen(false);
-        setSelectedVehicleId("");
-        setBudgetPriority(3);
-        await loadRemarketingVehicles(token);
-      } else {
-        const error = await response.json();
-        toast({
-          title: "Error",
-          description: error.error || "Failed to add vehicle",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
+      toast({
+        title: "Vehicle Added",
+        description: "Vehicle has been added to remarketing",
+      });
+      setIsAddVehicleDialogOpen(false);
+      setSelectedVehicleId("");
+      setBudgetPriority(3);
+      await loadRemarketingVehicles(token);
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Failed to add vehicle to remarketing",
+        description: error.body?.error || "Failed to add vehicle to remarketing",
         variant: "destructive",
       });
     }
@@ -1219,22 +1003,14 @@ export default function Dashboard() {
     if (!token) return;
 
     try {
-      const response = await fetch(`/api/remarketing/vehicles/${id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ budgetPriority: newPriority }),
+      await apiPatch(`/api/remarketing/vehicles/${id}`, { budgetPriority: newPriority }, {
+        'Authorization': `Bearer ${token}`,
       });
-
-      if (response.ok) {
-        toast({
-          title: "Priority Updated",
-          description: "Budget priority has been updated",
-        });
-        await loadRemarketingVehicles(token);
-      }
+      toast({
+        title: "Priority Updated",
+        description: "Budget priority has been updated",
+      });
+      await loadRemarketingVehicles(token);
     } catch (error) {
       toast({
         title: "Error",
@@ -1249,18 +1025,14 @@ export default function Dashboard() {
     if (!token) return;
 
     try {
-      const response = await fetch(`/api/remarketing/vehicles/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` },
+      await apiDelete(`/api/remarketing/vehicles/${id}`, {
+        'Authorization': `Bearer ${token}`,
       });
-
-      if (response.ok) {
-        toast({
-          title: "Vehicle Removed",
-          description: "Vehicle has been removed from remarketing",
-        });
-        await loadRemarketingVehicles(token);
-      }
+      toast({
+        title: "Vehicle Removed",
+        description: "Vehicle has been removed from remarketing",
+      });
+      await loadRemarketingVehicles(token);
     } catch (error) {
       toast({
         title: "Error",
@@ -1275,20 +1047,14 @@ export default function Dashboard() {
     if (!token) return;
 
     try {
-      const response = await fetch(`/api/financing/model-year-terms/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+      await apiDelete(`/api/financing/model-year-terms/${id}`, {
+        'Authorization': `Bearer ${token}`,
       });
-
-      if (response.ok) {
-        toast({
-          title: "Model Year Term Deleted",
-          description: "The term rule has been removed successfully",
-        });
-        await loadFinancingRules(token);
-      }
+      toast({
+        title: "Model Year Term Deleted",
+        description: "The term rule has been removed successfully",
+      });
+      await loadFinancingRules(token);
     } catch (error) {
       toast({
         title: "Error",

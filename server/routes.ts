@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
+import { logError, logWarn, logInfo } from './error-utils';
 import { authLimiter, sensitiveLimiter } from "./app";
 import { 
   insertVehicleSchema, 
@@ -110,7 +111,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       objectStorageService.downloadObject(file, res);
     } catch (error) {
-      console.error("Error searching for public object:", error);
+      logError('Error searching for public object:', error instanceof Error ? error : new Error(String(error)), { route: 'public-objects-filePath(*)' });
       return res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -157,7 +158,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       });
     } catch (error) {
-      console.error("Error resolving tenancy:", error);
+      logError('Error resolving tenancy:', error instanceof Error ? error : new Error(String(error)), { route: 'api-tenancy-resolve' });
       res.json({ dealership: null });
     }
   });
@@ -201,7 +202,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         success: true 
       });
     } catch (error) {
-      console.error("Error during login:", error);
+      logError('Error during login:', error instanceof Error ? error : new Error(String(error)), { route: 'api-auth-login' });
       res.status(500).json({ error: "Login failed" });
     }
   });
@@ -219,7 +220,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { passwordHash, ...userWithoutPassword } = user;
       res.json({ user: userWithoutPassword });
     } catch (error) {
-      console.error("Error fetching user:", error);
+      logError('Error fetching user:', error instanceof Error ? error : new Error(String(error)), { route: 'api-auth-me' });
       res.status(500).json({ error: "Failed to fetch user info" });
     }
   });
@@ -233,7 +234,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`User ${authReq.user!.email} logged out at ${new Date().toISOString()}`);
       res.json({ success: true, message: "Logged out successfully" });
     } catch (error) {
-      console.error("Error during logout:", error);
+      logError('Error during logout:', error instanceof Error ? error : new Error(String(error)), { route: 'api-auth-logout' });
       res.status(500).json({ error: "Logout failed" });
     }
   });
@@ -273,7 +274,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         },
       });
     } catch (error) {
-      console.error("Error validating invite:", error);
+      logError('Error validating invite:', error instanceof Error ? error : new Error(String(error)), { route: 'api-invites-token' });
       res.status(500).json({ error: "Failed to validate invite" });
     }
   });
@@ -333,7 +334,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: "Account created successfully",
       });
     } catch (error) {
-      console.error("Error accepting invite:", error);
+      logError('Error accepting invite:', error instanceof Error ? error : new Error(String(error)), { route: 'api-invites-token-accept' });
       res.status(500).json({ error: "Failed to create account" });
     }
   });
@@ -366,7 +367,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         process.exit(0); // Process manager will restart
       }, 500);
     } catch (error) {
-      console.error("Error initiating server restart:", error);
+      logError('Error initiating server restart:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-restart-server' });
       res.status(500).json({ error: "Failed to restart server" });
     }
   });
@@ -377,7 +378,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const config = await storage.getSuperAdminConfig('secrets_password_hash');
       res.json({ isSet: !!config });
     } catch (error) {
-      console.error("Error checking secrets password status:", error);
+      logError('Error checking secrets password status:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-secrets-password-status' });
       res.status(500).json({ error: "Failed to check password status" });
     }
   });
@@ -399,7 +400,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isValid = await bcrypt.compare(password, config.value);
       res.json({ valid: isValid, needsSetup: false });
     } catch (error) {
-      console.error("Error verifying secrets password:", error);
+      logError('Error verifying secrets password:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-secrets-verify-password' });
       res.status(500).json({ error: "Failed to verify password" });
     }
   });
@@ -444,7 +445,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json({ success: true, message: 'Secrets password updated' });
     } catch (error) {
-      console.error("Error setting secrets password:", error);
+      logError('Error setting secrets password:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-secrets-set-password' });
       res.status(500).json({ error: "Failed to set password" });
     }
   });
@@ -483,7 +484,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(allApiKeys);
     } catch (error) {
-      console.error("Error fetching all API keys:", error);
+      logError('Error fetching all API keys:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-secrets-all-api-keys' });
       res.status(500).json({ error: "Failed to fetch API keys" });
     }
   });
@@ -494,7 +495,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const dealerships = await storage.getAllDealerships();
       res.json(dealerships);
     } catch (error) {
-      console.error("Error fetching dealerships:", error);
+      logError('Error fetching dealerships:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-dealerships' });
       res.status(500).json({ error: "Failed to fetch dealerships" });
     }
   });
@@ -588,7 +589,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.status(201).json(result);
     } catch (error) {
-      console.error("Error creating dealership:", error);
+      logError('Error creating dealership:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-dealerships' });
       res.status(500).json({ error: "Failed to create dealership" });
     }
   });
@@ -690,7 +691,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         masterUser: masterUser ? { id: masterUser.id, email: masterUser.email, name: masterUser.name } : null
       });
     } catch (error) {
-      console.error("Error updating dealership:", error);
+      logError('Error updating dealership:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-dealerships-dealershipId' });
       res.status(500).json({ error: "Failed to update dealership" });
     }
   });
@@ -714,7 +715,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         masterUser: masterUser ? { id: masterUser.id, email: masterUser.email, name: masterUser.name } : null
       });
     } catch (error) {
-      console.error("Error fetching dealership details:", error);
+      logError('Error fetching dealership details:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-dealerships-dealershipId' });
       res.status(500).json({ error: "Failed to fetch dealership details" });
     }
   });
@@ -725,7 +726,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const settings = await storage.getAllGlobalSettings();
       res.json(settings);
     } catch (error) {
-      console.error("Error fetching global settings:", error);
+      logError('Error fetching global settings:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-global-settings' });
       res.status(500).json({ error: "Failed to fetch global settings" });
     }
   });
@@ -762,7 +763,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(setting);
     } catch (error) {
-      console.error("Error setting global setting:", error);
+      logError('Error setting global setting:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-global-settings-key' });
       res.status(500).json({ error: "Failed to set global setting" });
     }
   });
@@ -791,7 +792,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json({ success: true });
     } catch (error) {
-      console.error("Error deleting global setting:", error);
+      logError('Error deleting global setting:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-global-settings-key' });
       res.status(500).json({ error: "Failed to delete global setting" });
     }
   });
@@ -805,7 +806,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = await storage.getAuditLogs(limit, offset);
       res.json(result);
     } catch (error) {
-      console.error("Error fetching audit logs:", error);
+      logError('Error fetching audit logs:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-audit-logs' });
       res.status(500).json({ error: "Failed to fetch audit logs" });
     }
   });
@@ -819,7 +820,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const logs = await storage.getScraperActivityLogs(dealershipId, limit);
       res.json(logs);
     } catch (error) {
-      console.error("Error fetching scraper logs:", error);
+      logError('Error fetching scraper logs:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-scraper-logs' });
       res.status(500).json({ error: "Failed to fetch scraper logs" });
     }
   });
@@ -909,7 +910,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         timestamp: new Date().toISOString()
       });
     } catch (error) {
-      console.error("Error fetching system health:", error);
+      logError('Error fetching system health:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-system-health' });
       res.status(500).json({ error: "Failed to fetch system health" });
     }
   });
@@ -924,7 +925,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const users = await storage.getAllUsersForSuperAdmin({ dealershipId, role, search });
       res.json(users);
     } catch (error) {
-      console.error("Error fetching all users:", error);
+      logError('Error fetching all users:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-users' });
       res.status(500).json({ error: "Failed to fetch users" });
     }
   });
@@ -970,7 +971,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json({ success: true, message: "User deleted successfully" });
     } catch (error) {
-      console.error("Error deleting user:", error);
+      logError('Error deleting user:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-users-userId' });
       res.status(500).json({ error: "Failed to delete user" });
     }
   });
@@ -1016,7 +1017,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json({ success: true, user: updated });
     } catch (error) {
-      console.error("Error updating user status:", error);
+      logError('Error updating user status:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-users-userId-status' });
       res.status(500).json({ error: "Failed to update user status" });
     }
   });
@@ -1054,7 +1055,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json({ success: true, message: "Password reset successfully" });
     } catch (error) {
-      console.error("Error resetting user password:", error);
+      logError('Error resetting user password:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-users-userId-reset-passw' });
       res.status(500).json({ error: "Failed to reset password" });
     }
   });
@@ -1112,7 +1113,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(updatedUser);
     } catch (error) {
-      console.error("Error updating user:", error);
+      logError('Error updating user:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-users-userId' });
       res.status(500).json({ error: "Failed to update user" });
     }
   });
@@ -1144,7 +1145,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(apiKeys);
     } catch (error) {
-      console.error("Error fetching dealership API keys:", error);
+      logError('Error fetching dealership API keys:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-dealerships-dealershipId' });
       res.status(500).json({ error: "Failed to fetch dealership API keys" });
     }
   });
@@ -1188,7 +1189,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(apiKeys);
     } catch (error) {
-      console.error("Error updating dealership API keys:", error);
+      logError('Error updating dealership API keys:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-dealerships-dealershipId' });
       res.status(500).json({ error: "Failed to update dealership API keys" });
     }
   });
@@ -1217,7 +1218,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.json({ success: false, error: error.error?.message || "Invalid API key" });
       }
     } catch (error) {
-      console.error("Error testing OpenAI API key:", error);
+      logError('Error testing OpenAI API key:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-dealerships-dealershipId' });
       res.json({ success: false, error: "Connection failed" });
     }
   });
@@ -1244,7 +1245,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.json({ success: false, error: error.error?.message || "Invalid credentials" });
       }
     } catch (error) {
-      console.error("Error testing Facebook credentials:", error);
+      logError('Error testing Facebook credentials:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-dealerships-dealershipId' });
       res.json({ success: false, error: "Connection failed" });
     }
   });
@@ -1278,7 +1279,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.json({ success: false, error: error.message || "Invalid API key or Location ID" });
       }
     } catch (error) {
-      console.error("Error testing GHL credentials:", error);
+      logError('Error testing GHL credentials:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-dealerships-dealershipId' });
       res.json({ success: false, error: "Connection failed" });
     }
   });
@@ -1306,7 +1307,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.json({ success: false, error: `API error: ${response.status}` });
       }
     } catch (error) {
-      console.error("Error testing MarketCheck credentials:", error);
+      logError('Error testing MarketCheck credentials:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-dealerships-dealershipId' });
       res.json({ success: false, error: "Connection failed" });
     }
   });
@@ -1338,7 +1339,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.json({ success: false, error: "Invalid API token" });
       }
     } catch (error) {
-      console.error("Error testing Apify credentials:", error);
+      logError('Error testing Apify credentials:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-dealerships-dealershipId' });
       res.json({ success: false, error: "Connection failed" });
     }
   });
@@ -1365,7 +1366,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.json({ success: false, error: result.error || "Connection failed" });
       }
     } catch (error) {
-      console.error("Error testing Gemini credentials:", error);
+      logError('Error testing Gemini credentials:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-dealerships-dealershipId' });
       res.json({ success: false, error: "Connection failed" });
     }
   });
@@ -1422,7 +1423,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: `Found ${result.listings.length} comparable vehicles`
       });
     } catch (error) {
-      console.error("Error running Apify scrape:", error);
+      logError('Error running Apify scrape:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-dealerships-dealershipId' });
       res.status(500).json({ 
         error: "Scrape failed", 
         details: error instanceof Error ? error.message : 'Unknown error' 
@@ -1463,7 +1464,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(dealershipsWithIntegrations);
     } catch (error) {
-      console.error("Error fetching dealerships with integrations:", error);
+      logError('Error fetching dealerships with integrations:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-dealerships-with-integra' });
       res.status(500).json({ error: "Failed to fetch dealerships with integrations" });
     }
   });
@@ -1476,7 +1477,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const configs = await storage.getAllFacebookCatalogConfigs();
       res.json(configs);
     } catch (error) {
-      console.error("Error fetching Facebook catalog configs:", error);
+      logError('Error fetching Facebook catalog configs:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-facebook-catalogs' });
       res.status(500).json({ error: "Failed to fetch Facebook catalog configurations" });
     }
   });
@@ -1493,7 +1494,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(config);
     } catch (error) {
-      console.error("Error fetching Facebook catalog config:", error);
+      logError('Error fetching Facebook catalog config:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-dealerships-dealershipId' });
       res.status(500).json({ error: "Failed to fetch Facebook catalog configuration" });
     }
   });
@@ -1537,7 +1538,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(config);
     } catch (error) {
-      console.error("Error saving Facebook catalog config:", error);
+      logError('Error saving Facebook catalog config:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-dealerships-dealershipId' });
       res.status(500).json({ error: "Failed to save Facebook catalog configuration" });
     }
   });
@@ -1568,7 +1569,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json({ success: true });
     } catch (error) {
-      console.error("Error deleting Facebook catalog config:", error);
+      logError('Error deleting Facebook catalog config:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-dealerships-dealershipId' });
       res.status(500).json({ error: "Failed to delete Facebook catalog configuration" });
     }
   });
@@ -1615,7 +1616,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.json({ success: false, error: result.error || "Connection failed" });
       }
     } catch (error) {
-      console.error("Error testing Facebook catalog connection:", error);
+      logError('Error testing Facebook catalog connection:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-dealerships-dealershipId' });
       res.json({ success: false, error: "Connection test failed" });
     }
   });
@@ -1698,7 +1699,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           : `Sync completed with errors: ${result.errors.join('; ')}`,
       });
     } catch (error) {
-      console.error("Error syncing to Facebook catalog:", error);
+      logError('Error syncing to Facebook catalog:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-dealerships-dealershipId' });
       res.status(500).json({ error: "Failed to sync to Facebook catalog" });
     }
   });
@@ -1711,7 +1712,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const groups = await storage.getAllFilterGroups();
       res.json(groups);
     } catch (error) {
-      console.error("Error fetching filter groups:", error);
+      logError('Error fetching filter groups:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-filter-groups' });
       res.status(500).json({ error: "Failed to fetch filter groups" });
     }
   });
@@ -1723,7 +1724,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const groups = await storage.getFilterGroups(dealershipId);
       res.json(groups);
     } catch (error) {
-      console.error("Error fetching filter groups:", error);
+      logError('Error fetching filter groups:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-filter-groups-dealership' });
       res.status(500).json({ error: "Failed to fetch filter groups" });
     }
   });
@@ -1749,7 +1750,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.status(201).json(group);
     } catch (error) {
-      console.error("Error creating filter group:", error);
+      logError('Error creating filter group:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-filter-groups' });
       res.status(500).json({ error: "Failed to create filter group" });
     }
   });
@@ -1771,7 +1772,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(group);
     } catch (error) {
-      console.error("Error updating filter group:", error);
+      logError('Error updating filter group:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-filter-groups-id' });
       res.status(500).json({ error: "Failed to update filter group" });
     }
   });
@@ -1793,7 +1794,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json({ success: true });
     } catch (error) {
-      console.error("Error deleting filter group:", error);
+      logError('Error deleting filter group:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-filter-groups-id' });
       res.status(500).json({ error: "Failed to delete filter group" });
     }
   });
@@ -1806,7 +1807,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const sources = await storage.getAllScrapeSources();
       res.json(sources);
     } catch (error) {
-      console.error("Error fetching scrape sources:", error);
+      logError('Error fetching scrape sources:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-scrape-sources' });
       res.status(500).json({ error: "Failed to fetch scrape sources" });
     }
   });
@@ -1832,7 +1833,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.status(201).json(source);
     } catch (error) {
-      console.error("Error creating scrape source:", error);
+      logError('Error creating scrape source:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-scrape-sources' });
       res.status(500).json({ error: "Failed to create scrape source" });
     }
   });
@@ -1850,7 +1851,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(source);
     } catch (error) {
-      console.error("Error updating scrape source:", error);
+      logError('Error updating scrape source:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-scrape-sources-id' });
       res.status(500).json({ error: "Failed to update scrape source" });
     }
   });
@@ -1867,7 +1868,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json({ success: true });
     } catch (error) {
-      console.error("Error deleting scrape source:", error);
+      logError('Error deleting scrape source:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-scrape-sources-id' });
       res.status(500).json({ error: "Failed to delete scrape source" });
     }
   });
@@ -1888,13 +1889,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Trigger full inventory scrape in background (don't await)
       import("./scraper").then(({ scrapeAllDealershipsIncremental }) => {
         scrapeAllDealershipsIncremental().catch((err: Error) => {
-          console.error(`Error during incremental scrape:`, err);
+          logError('Error during incremental scrape:', err instanceof Error ? err : new Error(String(err)), { route: 'api-super-admin-scrape-sources-id-scrape' });
         });
       });
       
       res.json({ success: true, message: "Scrape started in background" });
     } catch (error) {
-      console.error("Error triggering scrape:", error);
+      logError('Error triggering scrape:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-scrape-sources-id-scrape' });
       res.status(500).json({ error: "Failed to trigger scrape" });
     }
   });
@@ -1933,7 +1934,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json({ valid: errors.length === 0, errors });
     } catch (error) {
-      console.error("Error validating onboarding input:", error);
+      logError('Error validating onboarding input:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-onboarding-validate' });
       res.status(500).json({ error: "Failed to validate input" });
     }
   });
@@ -1988,7 +1989,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.status(201).json(result);
     } catch (error) {
-      console.error("Error starting onboarding:", error);
+      logError('Error starting onboarding:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-onboarding-start' });
       res.status(500).json({ error: error instanceof Error ? error.message : "Failed to start onboarding" });
     }
   });
@@ -2006,7 +2007,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(status);
     } catch (error) {
-      console.error("Error fetching onboarding status:", error);
+      logError('Error fetching onboarding status:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-onboarding-runs-runId' });
       res.status(500).json({ error: "Failed to fetch onboarding status" });
     }
   });
@@ -2018,7 +2019,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const runs = await OnboardingService.getAllRuns();
       res.json(runs);
     } catch (error) {
-      console.error("Error fetching onboarding runs:", error);
+      logError('Error fetching onboarding runs:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-onboarding-runs' });
       res.status(500).json({ error: "Failed to fetch onboarding runs" });
     }
   });
@@ -2033,7 +2034,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const progress = await storage.getLaunchChecklistProgress(dealershipId);
       res.json({ items, progress });
     } catch (error) {
-      console.error("Error fetching launch checklist:", error);
+      logError('Error fetching launch checklist:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-dealerships-dealershipId' });
       res.status(500).json({ error: "Failed to fetch launch checklist" });
     }
   });
@@ -2045,7 +2046,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const progress = await storage.getLaunchChecklistProgress(dealershipId);
       res.json(progress);
     } catch (error) {
-      console.error("Error fetching launch checklist progress:", error);
+      logError('Error fetching launch checklist progress:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-dealerships-dealershipId' });
       res.status(500).json({ error: "Failed to fetch progress" });
     }
   });
@@ -2063,7 +2064,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.json(item);
     } catch (error) {
-      console.error("Error completing checklist item:", error);
+      logError('Error completing checklist item:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-dealerships-dealershipId' });
       res.status(500).json({ error: "Failed to complete item" });
     }
   });
@@ -2081,7 +2082,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.json(item);
     } catch (error) {
-      console.error("Error skipping checklist item:", error);
+      logError('Error skipping checklist item:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-dealerships-dealershipId' });
       res.status(500).json({ error: "Failed to skip item" });
     }
   });
@@ -2103,7 +2104,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.json(item);
     } catch (error) {
-      console.error("Error updating checklist item:", error);
+      logError('Error updating checklist item:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-dealerships-dealershipId' });
       res.status(500).json({ error: "Failed to update item" });
     }
   });
@@ -2121,7 +2122,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const usersWithoutPasswords = users.map(({ passwordHash, ...user }) => user);
       res.json(usersWithoutPasswords);
     } catch (error) {
-      console.error("Error fetching users:", error);
+      logError('Error fetching users:', error instanceof Error ? error : new Error(String(error)), { route: 'api-users' });
       res.status(500).json({ error: "Failed to fetch users" });
     }
   });
@@ -2169,7 +2170,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { passwordHash: _, ...userWithoutPassword } = user;
       res.status(201).json(userWithoutPassword);
     } catch (error) {
-      console.error("Error creating user:", error);
+      logError('Error creating user:', error instanceof Error ? error : new Error(String(error)), { route: 'api-users' });
       res.status(500).json({ error: "Failed to create user" });
     }
   });
@@ -2204,7 +2205,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { passwordHash, ...userWithoutPassword } = user;
       res.json(userWithoutPassword);
     } catch (error) {
-      console.error("Error updating user:", error);
+      logError('Error updating user:', error instanceof Error ? error : new Error(String(error)), { route: 'api-users-id' });
       res.status(500).json({ error: "Failed to update user" });
     }
   });
@@ -2224,7 +2225,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.status(401).json({ error: "Invalid password", success: false });
       }
     } catch (error) {
-      console.error("Error during admin login:", error);
+      logError('Error during admin login:', error instanceof Error ? error : new Error(String(error)), { route: 'api-admin-login' });
       res.status(500).json({ error: "Login failed" });
     }
   });
@@ -2272,7 +2273,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.json(vehiclesWithViews);
       }
     } catch (error) {
-      console.error("Error fetching vehicles:", error);
+      logError('Error fetching vehicles:', error instanceof Error ? error : new Error(String(error)), { route: 'api-vehicles' });
       res.status(500).json({ error: "Failed to fetch vehicles" });
     }
   });
@@ -2294,7 +2295,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json({ ...vehicle, views });
     } catch (error) {
-      console.error("Error fetching vehicle:", error);
+      logError('Error fetching vehicle:', error instanceof Error ? error : new Error(String(error)), { route: 'api-vehicles-id' });
       res.status(500).json({ error: "Failed to fetch vehicle" });
     }
   });
@@ -2344,7 +2345,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })),
       });
     } catch (error) {
-      console.error("Error fetching financing rules:", error);
+      logError('Error fetching financing rules:', error instanceof Error ? error : new Error(String(error)), { route: 'api-public-financing-rules' });
       res.status(500).json({ error: "Failed to fetch financing rules" });
     }
   });
@@ -2359,7 +2360,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(groups);
     } catch (error) {
-      console.error("Error fetching filter groups:", error);
+      logError('Error fetching filter groups:', error instanceof Error ? error : new Error(String(error)), { route: 'api-public-filter-groups' });
       res.status(500).json({ error: "Failed to fetch filter groups" });
     }
   });
@@ -2380,7 +2381,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         facebookPixelId: apiKeys?.facebookPixelId || null,
       });
     } catch (error) {
-      console.error("Error fetching tracking config:", error);
+      logError('Error fetching tracking config:', error instanceof Error ? error : new Error(String(error)), { route: 'api-public-tracking-config' });
       res.status(500).json({ error: "Failed to fetch tracking config" });
     }
   });
@@ -2451,7 +2452,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const buffer = await response.arrayBuffer();
       res.send(Buffer.from(buffer));
     } catch (error) {
-      console.error("Image proxy error:", error);
+      logError('Image proxy error:', error instanceof Error ? error : new Error(String(error)), { route: 'api-public-image-proxy' });
       res.status(500).json({ error: "Failed to proxy image" });
     }
   });
@@ -2500,7 +2501,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(safeTokens);
     } catch (error) {
-      console.error("Error fetching external tokens:", error);
+      logError('Error fetching external tokens:', error instanceof Error ? error : new Error(String(error)), { route: 'api-external-tokens' });
       res.status(500).json({ error: "Failed to fetch external tokens" });
     }
   });
@@ -2563,7 +2564,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: "Save this token now - it won't be shown again!"
       });
     } catch (error) {
-      console.error("Error creating external token:", error);
+      logError('Error creating external token:', error instanceof Error ? error : new Error(String(error)), { route: 'api-external-tokens' });
       res.status(500).json({ error: "Failed to create external token" });
     }
   });
@@ -2592,7 +2593,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.status(204).send();
     } catch (error) {
-      console.error("Error deleting external token:", error);
+      logError('Error deleting external token:', error instanceof Error ? error : new Error(String(error)), { route: 'api-external-tokens-id' });
       res.status(500).json({ error: "Failed to delete external token" });
     }
   });
@@ -2732,7 +2733,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         results
       });
     } catch (error: any) {
-      console.error("Error importing vehicles:", error);
+      logError('Error importing vehicles:', error instanceof Error ? error : new Error(String(error)), { route: 'api-import-vehicles' });
       res.status(500).json({ error: "Failed to import vehicles", details: error.message });
     }
   });
@@ -2771,7 +2772,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         vehicles: vehicleData
       });
     } catch (error: any) {
-      console.error("Error fetching vehicles via external API:", error);
+      logError('Error fetching vehicles via external API:', error instanceof Error ? error : new Error(String(error)), { route: 'api-import-vehicles' });
       res.status(500).json({ error: "Failed to fetch vehicles", details: error.message });
     }
   });
@@ -2791,7 +2792,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.deleteVehicle(vehicleId, dealershipId);
       res.status(204).send();
     } catch (error: any) {
-      console.error("Error deleting vehicle via external API:", error);
+      logError('Error deleting vehicle via external API:', error instanceof Error ? error : new Error(String(error)), { route: 'api-import-vehicles-id' });
       res.status(500).json({ error: "Failed to delete vehicle", details: error.message });
     }
   });
@@ -2824,7 +2825,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.deleteVehicle(vehicle.id, dealershipId);
       res.json({ deleted: true, vehicleId: vehicle.id, vin: normalizedVin });
     } catch (error: any) {
-      console.error("Error deleting vehicle by VIN via external API:", error);
+      logError('Error deleting vehicle by VIN via external API:', error instanceof Error ? error : new Error(String(error)), { route: 'api-import-vehicles-vin-vin' });
       res.status(500).json({ error: "Failed to delete vehicle", details: error.message });
     }
   });
@@ -2909,7 +2910,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         deletedVins: deletedVins.slice(0, 50) // Limit response size
       });
     } catch (error: any) {
-      console.error("Error syncing vehicles via external API:", error);
+      logError('Error syncing vehicles via external API:', error instanceof Error ? error : new Error(String(error)), { route: 'api-import-vehicles-sync' });
       res.status(500).json({ error: "Failed to sync vehicles", details: error.message });
     }
   });
@@ -2926,7 +2927,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const vehicle = await storage.createVehicle({ ...parsed.data, dealershipId });
       res.status(201).json(vehicle);
     } catch (error) {
-      console.error("Error creating vehicle:", error);
+      logError('Error creating vehicle:', error instanceof Error ? error : new Error(String(error)), { route: 'api-vehicles' });
       res.status(500).json({ error: "Failed to create vehicle" });
     }
   });
@@ -2954,7 +2955,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json(vehicle);
     } catch (error) {
-      console.error("Error updating vehicle:", error);
+      logError('Error updating vehicle:', error instanceof Error ? error : new Error(String(error)), { route: 'api-vehicles-id' });
       res.status(500).json({ error: "Failed to update vehicle" });
     }
   });
@@ -2993,7 +2994,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(vehicle);
     } catch (error) {
-      console.error("Error updating VDP content:", error);
+      logError('Error updating VDP content:', error instanceof Error ? error : new Error(String(error)), { route: 'api-vehicles-id-vdp-content' });
       res.status(500).json({ error: "Failed to update VDP content" });
     }
   });
@@ -3007,7 +3008,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.deleteVehicle(id, dealershipId);
       res.status(204).send();
     } catch (error) {
-      console.error("Error deleting vehicle:", error);
+      logError('Error deleting vehicle:', error instanceof Error ? error : new Error(String(error)), { route: 'api-vehicles-id' });
       res.status(500).json({ error: "Failed to delete vehicle" });
     }
   });
@@ -3071,7 +3072,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
     } catch (error) {
-      console.error("Error generating video:", error);
+      logError('Error generating video:', error instanceof Error ? error : new Error(String(error)), { route: 'api-vehicles-id-generate-video' });
       res.status(500).json({ error: "Failed to generate video" });
     }
   });
@@ -3121,7 +3122,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
     } catch (error) {
-      console.error("Error generating description:", error);
+      logError('Error generating description:', error instanceof Error ? error : new Error(String(error)), { route: 'api-vehicles-id-generate-description' });
       res.status(500).json({ error: "Failed to generate description" });
     }
   });
@@ -3144,7 +3145,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.status(201).json(view);
     } catch (error) {
-      console.error("Error tracking view:", error);
+      logError('Error tracking view:', error instanceof Error ? error : new Error(String(error)), { route: 'api-vehicles-id-view' });
       res.status(500).json({ error: "Failed to track view" });
     }
   });
@@ -3160,7 +3161,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const count = await storage.getVehicleViews(vehicleId, dealershipId, hours);
       res.json({ vehicleId, hours, count });
     } catch (error) {
-      console.error("Error fetching views:", error);
+      logError('Error fetching views:', error instanceof Error ? error : new Error(String(error)), { route: 'api-vehicles-id-views' });
       res.status(500).json({ error: "Failed to fetch views" });
     }
   });
@@ -3177,7 +3178,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const pages = await storage.getFacebookPages(dealershipId);
       res.json(pages);
     } catch (error) {
-      console.error("Error fetching pages:", error);
+      logError('Error fetching pages:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-pages' });
       res.status(500).json({ error: "Failed to fetch pages" });
     }
   });
@@ -3196,7 +3197,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const page = await storage.createFacebookPage(parsed.data);
       res.status(201).json(page);
     } catch (error) {
-      console.error("Error connecting page:", error);
+      logError('Error connecting page:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-pages' });
       res.status(500).json({ error: "Failed to connect page" });
     }
   });
@@ -3213,7 +3214,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json(page);
     } catch (error) {
-      console.error("Error updating page:", error);
+      logError('Error updating page:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-pages-id' });
       res.status(500).json({ error: "Failed to update page" });
     }
   });
@@ -3227,7 +3228,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const priorities = await storage.getPagePriorityVehicles(pageId, dealershipId);
       res.json(priorities);
     } catch (error) {
-      console.error("Error fetching priorities:", error);
+      logError('Error fetching priorities:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-pages-id-priority-vehicles' });
       res.status(500).json({ error: "Failed to fetch priorities" });
     }
   });
@@ -3246,7 +3247,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.setPagePriorityVehicles(pageId, vehicleIds, dealershipId);
       res.status(200).json({ success: true });
     } catch (error) {
-      console.error("Error setting priorities:", error);
+      logError('Error setting priorities:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-pages-id-priority-vehicles' });
       res.status(500).json({ error: "Failed to set priorities" });
     }
   });
@@ -3268,7 +3269,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.setHeader('Content-Disposition', 'attachment; filename=scraper-appraisal-files.zip');
       fs.createReadStream(filePath).pipe(res);
     } catch (error) {
-      console.error("Error serving download:", error);
+      logError('Error serving download:', error instanceof Error ? error : new Error(String(error)), { route: 'api-download-scraper-files' });
       res.status(500).json({ error: "Failed to serve file" });
     }
   });
@@ -3342,7 +3343,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       });
     } catch (error) {
-      console.error("Error in single vehicle test:", error);
+      logError('Error in single vehicle test:', error instanceof Error ? error : new Error(String(error)), { route: 'api-scraper-test-single-vehicle' });
       res.status(500).json({ 
         success: false, 
         error: error instanceof Error ? error.message : "Failed to scrape vehicle" 
@@ -3356,7 +3357,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = await triggerManualSync();
       res.json(result);
     } catch (error) {
-      console.error("Error triggering sync:", error);
+      logError('Error triggering sync:', error instanceof Error ? error : new Error(String(error)), { route: 'api-scraper-sync' });
       res.status(500).json({ error: "Failed to trigger sync" });
     }
   });
@@ -3367,7 +3368,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await testBadgeDetection();
       res.json({ message: "Check console for badge detection test results" });
     } catch (error) {
-      console.error("Error testing badges:", error);
+      logError('Error testing badges:', error instanceof Error ? error : new Error(String(error)), { route: 'api-scraper-test-badges' });
       res.status(500).json({ error: "Failed to test badges" });
     }
   });
@@ -3405,7 +3406,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
       res.json({ message: response });
     } catch (error) {
-      console.error("Error generating chat response:", error);
+      logError('Error generating chat response:', error instanceof Error ? error : new Error(String(error)), { route: 'api-chat' });
       res.status(500).json({ error: "Failed to generate chat response" });
     }
   });
@@ -3451,7 +3452,7 @@ Provide a single, concise, friendly message that continues the conversation natu
 
       res.json({ suggestion: response });
     } catch (error) {
-      console.error("Error generating AI suggestion:", error);
+      logError('Error generating AI suggestion:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ai-suggest-reply' });
       res.status(500).json({ error: "Failed to generate suggestion", suggestion: null });
     }
   });
@@ -3491,7 +3492,7 @@ Provide a single, concise, friendly message that continues the conversation natu
 
       res.json(conversation);
     } catch (error) {
-      console.error("Error saving conversation:", error);
+      logError('Error saving conversation:', error instanceof Error ? error : new Error(String(error)), { route: 'api-conversations' });
       res.status(500).json({ error: "Failed to save conversation" });
     }
   });
@@ -3540,7 +3541,7 @@ Provide a single, concise, friendly message that continues the conversation natu
         res.json(parsed);
       }
     } catch (error) {
-      console.error("Error fetching conversations:", error);
+      logError('Error fetching conversations:', error instanceof Error ? error : new Error(String(error)), { route: 'api-conversations' });
       res.status(500).json({ error: "Failed to fetch conversations" });
     }
   });
@@ -3572,7 +3573,7 @@ Provide a single, concise, friendly message that continues the conversation natu
         messages: JSON.parse(conversation.messages)
       });
     } catch (error) {
-      console.error("Error fetching conversation:", error);
+      logError('Error fetching conversation:', error instanceof Error ? error : new Error(String(error)), { route: 'api-conversations-id' });
       res.status(500).json({ error: "Failed to fetch conversation" });
     }
   });
@@ -3590,7 +3591,7 @@ Provide a single, concise, friendly message that continues the conversation natu
       const conversations = await storage.getMessengerConversations(dealershipId, userId, userRole);
       res.json(conversations);
     } catch (error) {
-      console.error("Error fetching messenger conversations:", error);
+      logError('Error fetching messenger conversations:', error instanceof Error ? error : new Error(String(error)), { route: 'api-messenger-conversations' });
       res.status(500).json({ error: "Failed to fetch messenger conversations" });
     }
   });
@@ -3637,7 +3638,7 @@ Provide a single, concise, friendly message that continues the conversation natu
         message.trim(),
         req.user?.name || 'Sales Team'
       ).catch(err => {
-        console.error('[GHL Sync] Background sync failed:', err.message);
+        logError('[GHL Sync] Background sync failed', err instanceof Error ? err : new Error(String(err)), { route: 'api-messenger-conversations-id-reply' });
       });
 
       res.json({ 
@@ -3646,7 +3647,7 @@ Provide a single, concise, friendly message that continues the conversation natu
         message: "Reply sent successfully"
       });
     } catch (error: any) {
-      console.error("Error sending messenger reply:", error);
+      logError('Error sending messenger reply:', error instanceof Error ? error : new Error(String(error)), { route: 'api-messenger-conversations-id-reply' });
       res.status(500).json({ error: error.message || "Failed to send reply" });
     }
   });
@@ -3722,7 +3723,7 @@ Provide a single, concise, friendly message that continues the conversation natu
         message: `${type.toUpperCase()} sent successfully via FWC`
       });
     } catch (error: any) {
-      console.error("Error sending FWC follow-up:", error);
+      logError('Error sending FWC follow-up:', error instanceof Error ? error : new Error(String(error)), { route: 'api-conversations-id-fwc-message' });
       res.status(500).json({ error: error.message || "Failed to send FWC message" });
     }
   });
@@ -3885,7 +3886,7 @@ Provide a single, concise, friendly message that continues the conversation natu
         ghlContactId
       });
     } catch (error: any) {
-      console.error("Error sending message:", error);
+      logError('Error sending message:', error instanceof Error ? error : new Error(String(error)), { route: 'api-conversations-id-send-message' });
       res.status(500).json({ error: error.message || "Failed to send message" });
     }
   });
@@ -3907,7 +3908,7 @@ Provide a single, concise, friendly message that continues the conversation natu
       
       res.json(messages);
     } catch (error) {
-      console.error("Error fetching messenger messages:", error);
+      logError('Error fetching messenger messages:', error instanceof Error ? error : new Error(String(error)), { route: 'api-messenger-conversations-id-messages' });
       res.status(500).json({ error: "Failed to fetch messages" });
     }
   });
@@ -3936,7 +3937,7 @@ Provide a single, concise, friendly message that continues the conversation natu
 
       res.json({ success: true, assignment });
     } catch (error) {
-      console.error("Error assigning conversation:", error);
+      logError('Error assigning conversation:', error instanceof Error ? error : new Error(String(error)), { route: 'api-messenger-conversations-id-assign' });
       res.status(500).json({ error: "Failed to assign conversation" });
     }
   });
@@ -3954,7 +3955,7 @@ Provide a single, concise, friendly message that continues the conversation natu
       
       res.json(salespeople);
     } catch (error) {
-      console.error("Error fetching salespeople:", error);
+      logError('Error fetching salespeople:', error instanceof Error ? error : new Error(String(error)), { route: 'api-salespeople' });
       res.status(500).json({ error: "Failed to fetch salespeople" });
     }
   });
@@ -4080,7 +4081,7 @@ Provide a single, concise, friendly message that continues the conversation natu
               try {
                 await storage.updateConversationHandoff(conv.id, dealershipId, updates);
               } catch (err) {
-                console.warn(`[Conversations] Failed to update contact info for conv ${conv.id}:`, err);
+                logWarn(`[Conversations] Failed to update contact info for conv ${conv.id}:`, { route: 'api-all-conversations' });
               }
             }
           }
@@ -4103,7 +4104,7 @@ Provide a single, concise, friendly message that continues the conversation natu
         totalMessengerConversations: messengerChats.length
       });
     } catch (error) {
-      console.error("Error fetching all conversations:", error);
+      logError('Error fetching all conversations:', error instanceof Error ? error : new Error(String(error)), { route: 'api-all-conversations' });
       res.status(500).json({ error: "Failed to fetch conversations" });
     }
   });
@@ -4119,7 +4120,7 @@ Provide a single, concise, friendly message that continues the conversation natu
       const scheduledMessages = await storage.getScheduledMessagesByConversation(dealershipId, conversationId);
       res.json(scheduledMessages);
     } catch (error) {
-      console.error("Error fetching scheduled messages:", error);
+      logError('Error fetching scheduled messages:', error instanceof Error ? error : new Error(String(error)), { route: 'api-messenger-conversations-id-scheduled' });
       res.status(500).json({ error: "Failed to fetch scheduled messages" });
     }
   });
@@ -4133,7 +4134,7 @@ Provide a single, concise, friendly message that continues the conversation natu
       const scheduledMessages = await storage.getScheduledMessages(dealershipId, status);
       res.json(scheduledMessages);
     } catch (error) {
-      console.error("Error fetching scheduled messages:", error);
+      logError('Error fetching scheduled messages:', error instanceof Error ? error : new Error(String(error)), { route: 'api-scheduled-messages' });
       res.status(500).json({ error: "Failed to fetch scheduled messages" });
     }
   });
@@ -4152,7 +4153,7 @@ Provide a single, concise, friendly message that continues the conversation natu
         res.status(404).json({ error: "Scheduled message not found or already sent" });
       }
     } catch (error) {
-      console.error("Error cancelling scheduled message:", error);
+      logError('Error cancelling scheduled message:', error instanceof Error ? error : new Error(String(error)), { route: 'api-scheduled-messages-id-cancel' });
       res.status(500).json({ error: "Failed to cancel scheduled message" });
     }
   });
@@ -4176,7 +4177,7 @@ Provide a single, concise, friendly message that continues the conversation natu
       
       res.json({ success: true, aiEnabled: conversation.aiEnabled });
     } catch (error) {
-      console.error("Error toggling AI:", error);
+      logError('Error toggling AI:', error instanceof Error ? error : new Error(String(error)), { route: 'api-messenger-conversations-id-toggle-ai' });
       res.status(500).json({ error: "Failed to toggle AI" });
     }
   });
@@ -4203,7 +4204,7 @@ Provide a single, concise, friendly message that continues the conversation natu
         message: enabled ? "You are now in control. AI is watching and analyzing." : "AI is back in control."
       });
     } catch (error) {
-      console.error("Error toggling watch mode:", error);
+      logError('Error toggling watch mode:', error instanceof Error ? error : new Error(String(error)), { route: 'api-messenger-conversations-id-toggle-wa' });
       res.status(500).json({ error: "Failed to toggle watch mode" });
     }
   });
@@ -4234,7 +4235,7 @@ Provide a single, concise, friendly message that continues the conversation natu
       
       res.json({ success: true, message: updatedMessage });
     } catch (error) {
-      console.error("Error updating message training:", error);
+      logError('Error updating message training:', error instanceof Error ? error : new Error(String(error)), { route: 'api-messenger-messages-id-training' });
       res.status(500).json({ error: "Failed to update message training" });
     }
   });
@@ -4248,7 +4249,7 @@ Provide a single, concise, friendly message that continues the conversation natu
       const prompts = await storage.getChatPrompts(dealershipId);
       res.json(prompts);
     } catch (error) {
-      console.error("Error fetching chat prompts:", error);
+      logError('Error fetching chat prompts:', error instanceof Error ? error : new Error(String(error)), { route: 'api-chat-prompts' });
       res.status(500).json({ error: "Failed to fetch chat prompts" });
     }
   });
@@ -4266,7 +4267,7 @@ Provide a single, concise, friendly message that continues the conversation natu
 
       res.json(prompt);
     } catch (error) {
-      console.error("Error fetching chat prompt:", error);
+      logError('Error fetching chat prompt:', error instanceof Error ? error : new Error(String(error)), { route: 'api-chat-prompts-scenario' });
       res.status(500).json({ error: "Failed to fetch chat prompt" });
     }
   });
@@ -4306,7 +4307,7 @@ Provide a single, concise, friendly message that continues the conversation natu
         res.json(prompt);
       }
     } catch (error) {
-      console.error("Error saving chat prompt:", error);
+      logError('Error saving chat prompt:', error instanceof Error ? error : new Error(String(error)), { route: 'api-chat-prompts' });
       res.status(500).json({ error: "Failed to save chat prompt" });
     }
   });
@@ -4334,7 +4335,7 @@ Provide a single, concise, friendly message that continues the conversation natu
       
       res.json({ success: true, prompt });
     } catch (error) {
-      console.error("Error updating chat prompt:", error);
+      logError('Error updating chat prompt:', error instanceof Error ? error : new Error(String(error)), { route: 'api-chat-prompts-id' });
       res.status(500).json({ error: "Failed to update chat prompt" });
     }
   });
@@ -4423,7 +4424,7 @@ IMPORTANT: The suggestedPrompt should be a complete, ready-to-use system prompt.
         editedLength: editedResponse.length
       });
     } catch (error: any) {
-      console.error("Error generating training feedback:", error);
+      logError('Error generating training feedback:', error instanceof Error ? error : new Error(String(error)), { route: 'api-chat-training-feedback' });
       res.status(500).json({ error: error.message || "Failed to generate training feedback" });
     }
   });
@@ -4449,7 +4450,7 @@ IMPORTANT: The suggestedPrompt should be a complete, ready-to-use system prompt.
       const prompts = await storage.getAllChatPrompts(dealershipId);
       res.json(prompts);
     } catch (error) {
-      console.error("Error fetching all prompts:", error);
+      logError('Error fetching all prompts:', error instanceof Error ? error : new Error(String(error)), { route: 'api-admin-prompts' });
       res.status(500).json({ error: "Failed to fetch prompts" });
     }
   });
@@ -4478,7 +4479,7 @@ IMPORTANT: The suggestedPrompt should be a complete, ready-to-use system prompt.
       
       res.json(prompt);
     } catch (error) {
-      console.error("Error fetching prompt:", error);
+      logError('Error fetching prompt:', error instanceof Error ? error : new Error(String(error)), { route: 'api-admin-prompts-id' });
       res.status(500).json({ error: "Failed to fetch prompt" });
     }
   });
@@ -4527,7 +4528,7 @@ IMPORTANT: The suggestedPrompt should be a complete, ready-to-use system prompt.
       
       res.json(prompt);
     } catch (error) {
-      console.error("Error creating prompt:", error);
+      logError('Error creating prompt:', error instanceof Error ? error : new Error(String(error)), { route: 'api-admin-prompts' });
       res.status(500).json({ error: "Failed to create prompt" });
     }
   });
@@ -4569,7 +4570,7 @@ IMPORTANT: The suggestedPrompt should be a complete, ready-to-use system prompt.
       
       res.json(prompt);
     } catch (error) {
-      console.error("Error updating prompt:", error);
+      logError('Error updating prompt:', error instanceof Error ? error : new Error(String(error)), { route: 'api-admin-prompts-id' });
       res.status(500).json({ error: "Failed to update prompt" });
     }
   });
@@ -4599,7 +4600,7 @@ IMPORTANT: The suggestedPrompt should be a complete, ready-to-use system prompt.
       
       res.json({ success: true });
     } catch (error) {
-      console.error("Error deleting prompt:", error);
+      logError('Error deleting prompt:', error instanceof Error ? error : new Error(String(error)), { route: 'api-admin-prompts-id' });
       res.status(500).json({ error: "Failed to delete prompt" });
     }
   });
@@ -4660,7 +4661,7 @@ IMPORTANT: The suggestedPrompt should be a complete, ready-to-use system prompt.
         res.status(400).json({ error: "No GHL workflow ID configured for this prompt" });
       }
     } catch (error) {
-      console.error("Error syncing prompt to GHL:", error);
+      logError('Error syncing prompt to GHL:', error instanceof Error ? error : new Error(String(error)), { route: 'api-admin-prompts-id-sync-ghl' });
       
       // Update prompt with error - need to get dealershipId from the request again
       const authReq = req as AuthRequest;
@@ -4796,7 +4797,7 @@ Your task is to improve any customer-facing message to be more effective, engagi
 
       res.json({ enhanced });
     } catch (error: any) {
-      console.error("Error enhancing prompt:", error);
+      logError('Error enhancing prompt:', error instanceof Error ? error : new Error(String(error)), { route: 'api-admin-enhance-prompt' });
       res.status(500).json({ error: error.message || "Failed to enhance prompt" });
     }
   });
@@ -4822,7 +4823,7 @@ Your task is to improve any customer-facing message to be more effective, engagi
         message: "Connect GHL workflows by entering the workflow ID from your GHL dashboard"
       });
     } catch (error) {
-      console.error("Error fetching GHL workflows:", error);
+      logError('Error fetching GHL workflows:', error instanceof Error ? error : new Error(String(error)), { route: 'api-admin-ghl-workflows' });
       res.status(500).json({ error: "Failed to fetch GHL workflows" });
     }
   });
@@ -4891,7 +4892,7 @@ Format your response in clear sections with actionable recommendations.`;
 
       res.json({ insights: response, conversationCount: conversations.length });
     } catch (error) {
-      console.error("Error generating insights:", error);
+      logError('Error generating insights:', error instanceof Error ? error : new Error(String(error)), { route: 'api-chat-insights' });
       res.status(500).json({ error: "Failed to generate insights" });
     }
   });
@@ -4920,7 +4921,7 @@ Format your response in clear sections with actionable recommendations.`;
         res.json(null);
       }
     } catch (error) {
-      console.error("Error fetching API keys:", error);
+      logError('Error fetching API keys:', error instanceof Error ? error : new Error(String(error)), { route: 'api-dealership-api-keys' });
       res.status(500).json({ error: "Failed to fetch API keys" });
     }
   });
@@ -4970,7 +4971,7 @@ Format your response in clear sections with actionable recommendations.`;
         res.status(500).json({ error: "Failed to save API keys" });
       }
     } catch (error) {
-      console.error("Error updating API keys:", error);
+      logError('Error updating API keys:', error instanceof Error ? error : new Error(String(error)), { route: 'api-dealership-api-keys' });
       res.status(500).json({ error: "Failed to update API keys" });
     }
   });
@@ -5018,7 +5019,7 @@ Format your response in clear sections with actionable recommendations.`;
 
       res.json(result);
     } catch (error) {
-      console.error("Error handling CTA action:", error);
+      logError('Error handling CTA action:', error instanceof Error ? error : new Error(String(error)), { route: 'api-cta-send' });
       res.status(500).json({ error: "Failed to process CTA action" });
     }
   });
@@ -5059,11 +5060,11 @@ Format your response in clear sections with actionable recommendations.`;
             console.log(`[Chat Handoff] Successfully synced to GHL API - Contact: ${result.contactId}`);
           } else {
             errorMessage = result.error || "GHL API sync failed";
-            console.warn(`[Chat Handoff] GHL API failed: ${errorMessage}`);
+            logWarn('[Chat Handoff] GHL API failed: ${errorMessage}', { route: 'api-chat-handoff' });
           }
         } catch (apiError) {
           errorMessage = apiError instanceof Error ? apiError.message : "GHL API error";
-          console.warn(`[Chat Handoff] GHL API error: ${errorMessage}`);
+          logWarn('[Chat Handoff] GHL API error: ${errorMessage}', { route: 'api-chat-handoff' });
         }
       }
 
@@ -5125,7 +5126,7 @@ Format your response in clear sections with actionable recommendations.`;
         res.status(500).json({ error: errorMessage || "Failed to handoff conversation to SMS" });
       }
     } catch (error) {
-      console.error("Error handling SMS handoff:", error);
+      logError('Error handling SMS handoff:', error instanceof Error ? error : new Error(String(error)), { route: 'api-chat-handoff' });
       
       if (req.body.conversationId) {
         const dealershipId = req.dealershipId!;
@@ -5218,7 +5219,7 @@ Format your response in clear sections with actionable recommendations.`;
             });
           } catch (updateError) {
             // Non-fatal - conversation may not exist yet
-            console.warn(`[Auto-Sync] Could not update conversation ${conversationId}:`, updateError);
+            logWarn(`[Auto-Sync] Could not update conversation ${conversationId}:`, { route: 'api-chat-auto-sync-lead' });
           }
         }
         
@@ -5229,7 +5230,7 @@ Format your response in clear sections with actionable recommendations.`;
           message: "Lead synced to CRM for follow-up" 
         });
       } else {
-        console.warn(`[Auto-Sync] GHL sync failed: ${result.error}`);
+        logWarn('[Auto-Sync] GHL sync failed: ${result.error}', { route: 'api-chat-auto-sync-lead' });
         res.json({ 
           success: false, 
           error: result.error,
@@ -5237,7 +5238,7 @@ Format your response in clear sections with actionable recommendations.`;
         });
       }
     } catch (error) {
-      console.error("Error auto-syncing chat lead:", error);
+      logError('Error auto-syncing chat lead:', error instanceof Error ? error : new Error(String(error)), { route: 'api-chat-auto-sync-lead' });
       res.status(500).json({ error: "Failed to sync lead to CRM" });
     }
   });
@@ -5251,7 +5252,7 @@ Format your response in clear sections with actionable recommendations.`;
       const tiers = await storage.getCreditScoreTiers(dealershipId);
       res.json(tiers);
     } catch (error) {
-      console.error("Error fetching credit tiers:", error);
+      logError('Error fetching credit tiers:', error instanceof Error ? error : new Error(String(error)), { route: 'api-financing-credit-tiers' });
       res.status(500).json({ error: "Failed to fetch credit tiers" });
     }
   });
@@ -5289,7 +5290,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.status(201).json(tier);
     } catch (error) {
-      console.error("Error creating credit tier:", error);
+      logError('Error creating credit tier:', error instanceof Error ? error : new Error(String(error)), { route: 'api-financing-credit-tiers' });
       res.status(500).json({ error: "Failed to create credit tier" });
     }
   });
@@ -5325,7 +5326,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(tier);
     } catch (error) {
-      console.error("Error updating credit tier:", error);
+      logError('Error updating credit tier:', error instanceof Error ? error : new Error(String(error)), { route: 'api-financing-credit-tiers-id' });
       res.status(500).json({ error: "Failed to update credit tier" });
     }
   });
@@ -5338,7 +5339,7 @@ Format your response in clear sections with actionable recommendations.`;
       await storage.deleteCreditScoreTier(id, dealershipId);
       res.json({ success: true });
     } catch (error) {
-      console.error("Error deleting credit tier:", error);
+      logError('Error deleting credit tier:', error instanceof Error ? error : new Error(String(error)), { route: 'api-financing-credit-tiers-id' });
       res.status(500).json({ error: "Failed to delete credit tier" });
     }
   });
@@ -5350,7 +5351,7 @@ Format your response in clear sections with actionable recommendations.`;
       const terms = await storage.getModelYearTerms(dealershipId);
       res.json(terms);
     } catch (error) {
-      console.error("Error fetching model year terms:", error);
+      logError('Error fetching model year terms:', error instanceof Error ? error : new Error(String(error)), { route: 'api-financing-model-year-terms' });
       res.status(500).json({ error: "Failed to fetch model year terms" });
     }
   });
@@ -5390,7 +5391,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.status(201).json(term);
     } catch (error) {
-      console.error("Error creating model year term:", error);
+      logError('Error creating model year term:', error instanceof Error ? error : new Error(String(error)), { route: 'api-financing-model-year-terms' });
       res.status(500).json({ error: "Failed to create model year term" });
     }
   });
@@ -5427,7 +5428,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(term);
     } catch (error) {
-      console.error("Error updating model year term:", error);
+      logError('Error updating model year term:', error instanceof Error ? error : new Error(String(error)), { route: 'api-financing-model-year-terms-id' });
       res.status(500).json({ error: "Failed to update model year term" });
     }
   });
@@ -5440,7 +5441,7 @@ Format your response in clear sections with actionable recommendations.`;
       await storage.deleteModelYearTerm(id, dealershipId);
       res.json({ success: true });
     } catch (error) {
-      console.error("Error deleting model year term:", error);
+      logError('Error deleting model year term:', error instanceof Error ? error : new Error(String(error)), { route: 'api-financing-model-year-terms-id' });
       res.status(500).json({ error: "Failed to delete model year term" });
     }
   });
@@ -5454,7 +5455,7 @@ Format your response in clear sections with actionable recommendations.`;
       const fees = await storage.getDealershipFees(dealershipId);
       res.json(fees);
     } catch (error) {
-      console.error("Error fetching dealership fees:", error);
+      logError('Error fetching dealership fees:', error instanceof Error ? error : new Error(String(error)), { route: 'api-dealership-fees' });
       res.status(500).json({ error: "Failed to fetch dealership fees" });
     }
   });
@@ -5466,7 +5467,7 @@ Format your response in clear sections with actionable recommendations.`;
       const fees = await storage.getActiveDealershipFees(dealershipId);
       res.json(fees);
     } catch (error) {
-      console.error("Error fetching active fees:", error);
+      logError('Error fetching active fees:', error instanceof Error ? error : new Error(String(error)), { route: 'api-public-dealership-fees' });
       res.status(500).json({ error: "Failed to fetch fees" });
     }
   });
@@ -5512,7 +5513,7 @@ Format your response in clear sections with actionable recommendations.`;
         phone: dealership.phone || null,
       });
     } catch (error) {
-      console.error("Error fetching dealership info:", error);
+      logError('Error fetching dealership info:', error instanceof Error ? error : new Error(String(error)), { route: 'api-public-dealership-info' });
       res.status(500).json({ error: "Failed to fetch dealership info" });
     }
   });
@@ -5539,7 +5540,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.status(201).json(fee);
     } catch (error) {
-      console.error("Error creating dealership fee:", error);
+      logError('Error creating dealership fee:', error instanceof Error ? error : new Error(String(error)), { route: 'api-dealership-fees' });
       res.status(500).json({ error: "Failed to create dealership fee" });
     }
   });
@@ -5558,7 +5559,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(fee);
     } catch (error) {
-      console.error("Error updating dealership fee:", error);
+      logError('Error updating dealership fee:', error instanceof Error ? error : new Error(String(error)), { route: 'api-dealership-fees-id' });
       res.status(500).json({ error: "Failed to update dealership fee" });
     }
   });
@@ -5571,7 +5572,7 @@ Format your response in clear sections with actionable recommendations.`;
       await storage.deleteDealershipFee(id, dealershipId);
       res.json({ success: true });
     } catch (error) {
-      console.error("Error deleting dealership fee:", error);
+      logError('Error deleting dealership fee:', error instanceof Error ? error : new Error(String(error)), { route: 'api-dealership-fees-id' });
       res.status(500).json({ error: "Failed to delete dealership fee" });
     }
   });
@@ -5595,7 +5596,7 @@ Format your response in clear sections with actionable recommendations.`;
         websiteUrl: contacts?.websiteUrl || null 
       });
     } catch (error) {
-      console.error("Error fetching website URL:", error);
+      logError('Error fetching website URL:', error instanceof Error ? error : new Error(String(error)), { route: 'api-dealership-website-url' });
       res.status(500).json({ error: "Failed to fetch website URL" });
     }
   });
@@ -5616,7 +5617,7 @@ Format your response in clear sections with actionable recommendations.`;
         secondaryColor: branding?.secondaryColor || "#00aad2",
       });
     } catch (error) {
-      console.error("Error fetching branding:", error);
+      logError('Error fetching branding:', error instanceof Error ? error : new Error(String(error)), { route: 'api-dealership-branding' });
       res.status(500).json({ error: "Failed to fetch branding" });
     }
   });
@@ -5653,7 +5654,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json({ logoUrl });
     } catch (error) {
-      console.error("Error uploading logo:", error);
+      logError('Error uploading logo:', error instanceof Error ? error : new Error(String(error)), { route: 'api-dealership-branding-logo' });
       res.status(500).json({ error: "Failed to upload logo" });
     }
   });
@@ -5682,7 +5683,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json({ success: true });
     } catch (error) {
-      console.error("Error deleting logo:", error);
+      logError('Error deleting logo:', error instanceof Error ? error : new Error(String(error)), { route: 'api-dealership-branding-logo' });
       res.status(500).json({ error: "Failed to delete logo" });
     }
   });
@@ -5699,7 +5700,7 @@ Format your response in clear sections with actionable recommendations.`;
         vdpFooterDescription: dealership?.vdpFooterDescription || null,
       });
     } catch (error) {
-      console.error("Error fetching VDP footer:", error);
+      logError('Error fetching VDP footer:', error instanceof Error ? error : new Error(String(error)), { route: 'api-dealership-vdp-footer' });
       res.status(500).json({ error: "Failed to fetch VDP footer" });
     }
   });
@@ -5718,7 +5719,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json({ vdpFooterDescription: updated.vdpFooterDescription });
     } catch (error) {
-      console.error("Error updating VDP footer:", error);
+      logError('Error updating VDP footer:', error instanceof Error ? error : new Error(String(error)), { route: 'api-dealership-vdp-footer' });
       res.status(500).json({ error: "Failed to update VDP footer" });
     }
   });
@@ -5733,7 +5734,7 @@ Format your response in clear sections with actionable recommendations.`;
         vdpFooterDescription: dealership?.vdpFooterDescription || null,
       });
     } catch (error) {
-      console.error("Error fetching public VDP footer:", error);
+      logError('Error fetching public VDP footer:', error instanceof Error ? error : new Error(String(error)), { route: 'api-public-vdp-footer' });
       res.status(500).json({ error: "Failed to fetch VDP footer" });
     }
   });
@@ -5747,7 +5748,7 @@ Format your response in clear sections with actionable recommendations.`;
       const sources = await storage.getScrapeSources(dealershipId);
       res.json(sources);
     } catch (error) {
-      console.error("Error fetching scrape sources:", error);
+      logError('Error fetching scrape sources:', error instanceof Error ? error : new Error(String(error)), { route: 'api-scrape-sources' });
       res.status(500).json({ error: "Failed to fetch scrape sources" });
     }
   });
@@ -5780,7 +5781,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.status(201).json(source);
     } catch (error) {
-      console.error("Error creating scrape source:", error);
+      logError('Error creating scrape source:', error instanceof Error ? error : new Error(String(error)), { route: 'api-scrape-sources' });
       res.status(500).json({ error: "Failed to create scrape source" });
     }
   });
@@ -5808,7 +5809,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(source);
     } catch (error) {
-      console.error("Error updating scrape source:", error);
+      logError('Error updating scrape source:', error instanceof Error ? error : new Error(String(error)), { route: 'api-scrape-sources-id' });
       res.status(500).json({ error: "Failed to update scrape source" });
     }
   });
@@ -5821,7 +5822,7 @@ Format your response in clear sections with actionable recommendations.`;
       await storage.deleteScrapeSource(id, dealershipId);
       res.json({ success: true });
     } catch (error) {
-      console.error("Error deleting scrape source:", error);
+      logError('Error deleting scrape source:', error instanceof Error ? error : new Error(String(error)), { route: 'api-scrape-sources-id' });
       res.status(500).json({ error: "Failed to delete scrape source" });
     }
   });
@@ -5853,13 +5854,13 @@ Format your response in clear sections with actionable recommendations.`;
           
           console.log(`[Scraper] Completed scrape: ${vehicleCount} vehicles processed`);
         } catch (err) {
-          console.error(`[Scraper] Error during scrape for ${source.sourceName}:`, err);
+          logError('[Scraper] Error during scrape for ${source.sourceName}:', err instanceof Error ? err : new Error(String(err)), { route: 'api-scrape-sources-id-scrape' });
         }
       }).catch((err) => {
-        console.error(`[Scraper] Failed to import scraper module:`, err);
+        logError('[Scraper] Failed to import scraper module:', err instanceof Error ? err : new Error(String(err)), { route: 'api-scrape-sources-id-scrape' });
       });
     } catch (error) {
-      console.error("Error triggering scrape:", error);
+      logError('Error triggering scrape:', error instanceof Error ? error : new Error(String(error)), { route: 'api-scrape-sources-id-scrape' });
       res.status(500).json({ error: "Failed to trigger scrape" });
     }
   });
@@ -5875,7 +5876,7 @@ Format your response in clear sections with actionable recommendations.`;
       const accounts = await storage.getFacebookAccountsByUser(userId, dealershipId);
       res.json(accounts);
     } catch (error) {
-      console.error("Error fetching Facebook accounts:", error);
+      logError('Error fetching Facebook accounts:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-accounts' });
       res.status(500).json({ error: "Failed to fetch Facebook accounts" });
     }
   });
@@ -5915,7 +5916,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.status(201).json(account);
     } catch (error) {
-      console.error("Error creating Facebook account:", error);
+      logError('Error creating Facebook account:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-accounts' });
       res.status(500).json({ error: "Failed to create Facebook account" });
     }
   });
@@ -5943,7 +5944,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(account);
     } catch (error) {
-      console.error("Error updating Facebook account:", error);
+      logError('Error updating Facebook account:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-accounts-id' });
       res.status(500).json({ error: "Failed to update Facebook account" });
     }
   });
@@ -5964,7 +5965,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json({ success: true });
     } catch (error) {
-      console.error("Error deleting Facebook account:", error);
+      logError('Error deleting Facebook account:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-accounts-id' });
       res.status(500).json({ error: "Failed to delete Facebook account" });
     }
   });
@@ -5978,7 +5979,7 @@ Format your response in clear sections with actionable recommendations.`;
       const templates = await storage.getAdTemplatesByUser(userId, dealershipId);
       res.json(templates);
     } catch (error) {
-      console.error("Error fetching ad templates:", error);
+      logError('Error fetching ad templates:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-templates' });
       res.status(500).json({ error: "Failed to fetch ad templates" });
     }
   });
@@ -6004,7 +6005,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.status(201).json(template);
     } catch (error) {
-      console.error("Error creating ad template:", error);
+      logError('Error creating ad template:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-templates' });
       res.status(500).json({ error: "Failed to create ad template" });
     }
   });
@@ -6032,7 +6033,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(template);
     } catch (error) {
-      console.error("Error updating ad template:", error);
+      logError('Error updating ad template:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-templates-id' });
       res.status(500).json({ error: "Failed to update ad template" });
     }
   });
@@ -6053,7 +6054,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json({ success: true });
     } catch (error) {
-      console.error("Error deleting ad template:", error);
+      logError('Error deleting ad template:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-templates-id' });
       res.status(500).json({ error: "Failed to delete ad template" });
     }
   });
@@ -6067,7 +6068,7 @@ Format your response in clear sections with actionable recommendations.`;
       const queue = await storage.getPostingQueueByUser(userId, dealershipId);
       res.json(queue);
     } catch (error) {
-      console.error("Error fetching posting queue:", error);
+      logError('Error fetching posting queue:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-queue' });
       res.status(500).json({ error: "Failed to fetch posting queue" });
     }
   });
@@ -6109,7 +6110,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.status(201).json(item);
     } catch (error) {
-      console.error("Error adding to posting queue:", error);
+      logError('Error adding to posting queue:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-queue' });
       res.status(500).json({ error: "Failed to add to posting queue" });
     }
   });
@@ -6152,7 +6153,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(item);
     } catch (error) {
-      console.error("Error updating queue item:", error);
+      logError('Error updating queue item:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-queue-id' });
       res.status(500).json({ error: "Failed to update queue item" });
     }
   });
@@ -6173,7 +6174,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json({ success: true });
     } catch (error) {
-      console.error("Error deleting queue item:", error);
+      logError('Error deleting queue item:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-queue-id' });
       res.status(500).json({ error: "Failed to delete queue item" });
     }
   });
@@ -6187,7 +6188,7 @@ Format your response in clear sections with actionable recommendations.`;
       const schedule = await storage.getPostingScheduleByUser(userId, dealershipId);
       res.json(schedule || null);
     } catch (error) {
-      console.error("Error fetching posting schedule:", error);
+      logError('Error fetching posting schedule:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-schedule' });
       res.status(500).json({ error: "Failed to fetch posting schedule" });
     }
   });
@@ -6221,7 +6222,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(schedule);
     } catch (error) {
-      console.error("Error saving posting schedule:", error);
+      logError('Error saving posting schedule:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-schedule' });
       res.status(500).json({ error: "Failed to save posting schedule" });
     }
   });
@@ -6266,7 +6267,7 @@ Format your response in clear sections with actionable recommendations.`;
       const authUrl = facebookService.getAuthUrl(state);
       res.json({ authUrl, sessionId });
     } catch (error) {
-      console.error("Error starting OAuth session:", error);
+      logError('Error starting OAuth session:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-oauth-start' });
       res.status(500).json({ error: "Failed to start OAuth flow" });
     }
   });
@@ -6307,7 +6308,7 @@ Format your response in clear sections with actionable recommendations.`;
         }))
       });
     } catch (error) {
-      console.error("Error fetching OAuth session:", error);
+      logError('Error fetching OAuth session:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-oauth-session-sessionId' });
       res.status(500).json({ error: "Failed to fetch session" });
     }
   });
@@ -6403,7 +6404,7 @@ Format your response in clear sections with actionable recommendations.`;
         accounts: createdAccounts 
       });
     } catch (error) {
-      console.error("Error connecting pages:", error);
+      logError('Error connecting pages:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-accounts-connect' });
       res.status(500).json({ error: "Failed to connect pages" });
     }
   });
@@ -6434,7 +6435,7 @@ Format your response in clear sections with actionable recommendations.`;
       const authUrl = facebookService.getAuthUrl(state);
       res.json({ authUrl });
     } catch (error) {
-      console.error("Error initiating OAuth:", error);
+      logError('Error initiating OAuth:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-oauth-init-accountId' });
       res.status(500).json({ error: "Failed to initiate OAuth flow" });
     }
   });
@@ -6579,7 +6580,7 @@ Format your response in clear sections with actionable recommendations.`;
         </html>
       `);
     } catch (error) {
-      console.error("OAuth callback error:", error);
+      logError('OAuth callback error:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-oauth-callback' });
       res.status(500).send(`
         <html>
           <head><title>Connection Failed</title></head>
@@ -6618,7 +6619,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(formattedPages);
     } catch (error) {
-      console.error("Error fetching Facebook pages:", error);
+      logError('Error fetching Facebook pages:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-accounts-accountId-pages' });
       res.status(500).json({ error: error instanceof Error ? error.message : "Failed to fetch pages" });
     }
   });
@@ -6673,7 +6674,7 @@ Format your response in clear sections with actionable recommendations.`;
         page: { id: newPage.id, pageId: newPage.pageId, name: newPage.pageName }
       });
     } catch (error) {
-      console.error("Error connecting Facebook page:", error);
+      logError('Error connecting Facebook page:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-accounts-accountId-pages-pa' });
       res.status(500).json({ error: error instanceof Error ? error.message : "Failed to connect page" });
     }
   });
@@ -6688,7 +6689,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json({ success: true, message: "Page disconnected" });
     } catch (error) {
-      console.error("Error disconnecting Facebook page:", error);
+      logError('Error disconnecting Facebook page:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-pages-pageId-disconnect' });
       res.status(500).json({ error: "Failed to disconnect page" });
     }
   });
@@ -6707,7 +6708,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(safePages);
     } catch (error) {
-      console.error("Error fetching connected pages:", error);
+      logError('Error fetching connected pages:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-connected-pages' });
       res.status(500).json({ error: "Failed to fetch connected pages" });
     }
   });
@@ -6734,7 +6735,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json({ success: true, postId: result.postId });
     } catch (error) {
-      console.error("Error posting to Facebook page:", error);
+      logError('Error posting to Facebook page:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-pages-pageId-test-post' });
       res.status(500).json({ error: error instanceof Error ? error.message : "Failed to post" });
     }
   });
@@ -6776,7 +6777,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json({ success: true, postId: result.postId, vehicleId });
     } catch (error) {
-      console.error("Error posting vehicle to Facebook:", error);
+      logError('Error posting vehicle to Facebook:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-pages-pageId-post-vehicle-v' });
       res.status(500).json({ error: error instanceof Error ? error.message : "Failed to post vehicle" });
     }
   });
@@ -6852,7 +6853,7 @@ Format your response in clear sections with actionable recommendations.`;
         throw error;
       }
     } catch (error) {
-      console.error("Error posting to Facebook:", error);
+      logError('Error posting to Facebook:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-post-queueId' });
       res.status(500).json({ error: error instanceof Error ? error.message : "Failed to post to Facebook" });
     }
   });
@@ -6875,7 +6876,7 @@ Format your response in clear sections with actionable recommendations.`;
       const result = await decodeVIN(vin);
       res.json(result);
     } catch (error) {
-      console.error("Error decoding VIN:", error);
+      logError('Error decoding VIN:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-decode-vin' });
       res.json({
         vin: req.body.vin || '',
         errorCode: 'DECODE_ERROR',
@@ -7027,7 +7028,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(responseWithMeta);
     } catch (error) {
-      console.error("Error analyzing market pricing:", error);
+      logError('Error analyzing market pricing:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-market-pricing' });
       res.status(500).json({
         error: 'PRICING_ERROR',
         message: error instanceof Error ? error.message : "Failed to analyze market pricing"
@@ -7072,7 +7073,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result);
     } catch (error) {
-      console.error("Error in enhanced market analysis:", error);
+      logError('Error in enhanced market analysis:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-enhanced-market-analysis' });
       res.status(500).json({
         error: 'ANALYSIS_ERROR',
         message: error instanceof Error ? error.message : "Failed to perform market analysis"
@@ -7094,7 +7095,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(history);
     } catch (error) {
-      console.error("Error fetching price history:", error);
+      logError('Error fetching price history:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-price-history' });
       res.status(500).json({ error: "Failed to fetch price history" });
     }
   });
@@ -7113,7 +7114,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(snapshots);
     } catch (error) {
-      console.error("Error fetching market snapshots:", error);
+      logError('Error fetching market snapshots:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-market-snapshots' });
       res.status(500).json({ error: "Failed to fetch market snapshots" });
     }
   });
@@ -7125,7 +7126,7 @@ Format your response in clear sections with actionable recommendations.`;
       const competitors = await storage.getCompetitorDealers(dealershipId);
       res.json(competitors);
     } catch (error) {
-      console.error("Error fetching competitors:", error);
+      logError('Error fetching competitors:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-competitors' });
       res.status(500).json({ error: "Failed to fetch competitors" });
     }
   });
@@ -7142,7 +7143,7 @@ Format your response in clear sections with actionable recommendations.`;
       }, limit ? parseInt(limit as string) : 50);
       res.json(alerts);
     } catch (error) {
-      console.error("Error fetching competitor alerts:", error);
+      logError('Error fetching competitor alerts:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-competitor-alerts' });
       res.status(500).json({ error: "Failed to fetch competitor alerts" });
     }
   });
@@ -7156,7 +7157,7 @@ Format your response in clear sections with actionable recommendations.`;
       const summary = await service.getAlertSummary();
       res.json(summary);
     } catch (error) {
-      console.error("Error fetching competitor alert summary:", error);
+      logError('Error fetching competitor alert summary:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-competitor-alerts-summary' });
       res.status(500).json({ error: "Failed to fetch competitor alert summary" });
     }
   });
@@ -7176,7 +7177,7 @@ Format your response in clear sections with actionable recommendations.`;
       }
       res.json(alert);
     } catch (error) {
-      console.error("Error acknowledging competitor alert:", error);
+      logError('Error acknowledging competitor alert:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-competitor-alerts-id-acknowl' });
       res.status(500).json({ error: "Failed to acknowledge alert" });
     }
   });
@@ -7193,7 +7194,7 @@ Format your response in clear sections with actionable recommendations.`;
       }
       res.json(alert);
     } catch (error) {
-      console.error("Error resolving competitor alert:", error);
+      logError('Error resolving competitor alert:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-competitor-alerts-id-resolve' });
       res.status(500).json({ error: "Failed to resolve alert" });
     }
   });
@@ -7207,7 +7208,7 @@ Format your response in clear sections with actionable recommendations.`;
       const result = await service.runCompetitorScan();
       res.json(result);
     } catch (error) {
-      console.error("Error running competitor scan:", error);
+      logError('Error running competitor scan:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-competitor-scan' });
       res.status(500).json({ error: "Failed to run competitor scan" });
     }
   });
@@ -7221,7 +7222,7 @@ Format your response in clear sections with actionable recommendations.`;
       const makes = Array.from(new Set(marketListings.map(v => v.make))).filter(Boolean).sort();
       res.json(makes);
     } catch (error) {
-      console.error("Error fetching makes:", error);
+      logError('Error fetching makes:', error instanceof Error ? error : new Error(String(error)), { route: 'api-inventory-makes' });
       res.status(500).json({ error: "Failed to fetch makes" });
     }
   });
@@ -7242,7 +7243,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(models);
     } catch (error) {
-      console.error("Error fetching models:", error);
+      logError('Error fetching models:', error instanceof Error ? error : new Error(String(error)), { route: 'api-inventory-models' });
       res.status(500).json({ error: "Failed to fetch models" });
     }
   });
@@ -7265,7 +7266,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(trims);
     } catch (error) {
-      console.error("Error fetching trims:", error);
+      logError('Error fetching trims:', error instanceof Error ? error : new Error(String(error)), { route: 'api-inventory-trims' });
       res.status(500).json({ error: "Failed to fetch trims" });
     }
   });
@@ -7281,7 +7282,7 @@ Format your response in clear sections with actionable recommendations.`;
       const settings = await storage.getManagerSettings(userId, dealershipId);
       res.json(settings || null);
     } catch (error) {
-      console.error("Error fetching manager settings:", error);
+      logError('Error fetching manager settings:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-settings' });
       res.status(500).json({ error: "Failed to fetch settings" });
     }
   });
@@ -7323,7 +7324,7 @@ Format your response in clear sections with actionable recommendations.`;
         res.json(created);
       }
     } catch (error) {
-      console.error("Error saving manager settings:", error);
+      logError('Error saving manager settings:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-settings' });
       res.status(500).json({ error: "Failed to save settings" });
     }
   });
@@ -7335,7 +7336,7 @@ Format your response in clear sections with actionable recommendations.`;
       const branding = await storage.getDealershipBranding(dealershipId);
       res.json(branding || { dealershipId });
     } catch (error) {
-      console.error("Error fetching branding:", error);
+      logError('Error fetching branding:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-branding' });
       res.status(500).json({ error: "Failed to fetch branding" });
     }
   });
@@ -7360,7 +7361,7 @@ Format your response in clear sections with actionable recommendations.`;
 
       res.json(branding);
     } catch (error) {
-      console.error("Error updating branding:", error);
+      logError('Error updating branding:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-branding' });
       res.status(500).json({ error: "Failed to update branding" });
     }
   });
@@ -7411,7 +7412,7 @@ Format your response in clear sections with actionable recommendations.`;
         message: `Successfully aggregated ${result.totalListings} new listings from ${result.marketCheckCount + result.apifyCount + result.scraperCount} sources (MarketCheck: ${result.marketCheckCount}, Apify: ${result.apifyCount}, Scraper: ${result.scraperCount})`
       });
     } catch (error) {
-      console.error("Error aggregating market data:", error);
+      logError('Error aggregating market data:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-scrape-market' });
       res.status(500).json({ error: "Failed to aggregate market data" });
     }
   });
@@ -7539,7 +7540,7 @@ Format your response in clear sections with actionable recommendations.`;
         postalCode
       });
     } catch (error) {
-      console.error("Error fetching inventory analysis:", error);
+      logError('Error fetching inventory analysis:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-inventory-analysis' });
       res.status(500).json({ error: "Failed to fetch inventory analysis" });
     }
   });
@@ -7612,7 +7613,7 @@ Format your response in clear sections with actionable recommendations.`;
         updatedAt: new Date().toISOString()
       });
     } catch (error) {
-      console.error("Error refreshing inventory analysis:", error);
+      logError('Error refreshing inventory analysis:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-inventory-analysis-refresh' });
       res.status(500).json({ error: "Failed to refresh inventory analysis" });
     }
   });
@@ -7659,7 +7660,7 @@ Format your response in clear sections with actionable recommendations.`;
           message: `Found ${result.listings.length} comparable vehicles on AutoTrader.ca`
         });
       } catch (scrapeError) {
-        console.error("Apify scrape error:", scrapeError);
+        logError('Apify scrape error:', scrapeError instanceof Error ? scrapeError : new Error(String(scrapeError)), { route: 'api-manager-apify-market-pricing' });
         res.json({ 
           success: false, 
           error: "Scrape failed",
@@ -7667,7 +7668,7 @@ Format your response in clear sections with actionable recommendations.`;
         });
       }
     } catch (error) {
-      console.error("Error getting Apify market pricing:", error);
+      logError('Error getting Apify market pricing:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-apify-market-pricing' });
       res.status(500).json({ error: "Failed to get market pricing" });
     }
   });
@@ -7684,7 +7685,7 @@ Format your response in clear sections with actionable recommendations.`;
       const result = await storage.getVehicleAppraisals(dealershipId, limit, offset);
       res.json(result);
     } catch (error) {
-      console.error("Error fetching appraisals:", error);
+      logError('Error fetching appraisals:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-appraisals' });
       res.status(500).json({ error: "Failed to fetch appraisals" });
     }
   });
@@ -7706,7 +7707,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(appraisal);
     } catch (error) {
-      console.error("Error fetching appraisal:", error);
+      logError('Error fetching appraisal:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-appraisals-id' });
       res.status(500).json({ error: "Failed to fetch appraisal" });
     }
   });
@@ -7724,7 +7725,7 @@ Format your response in clear sections with actionable recommendations.`;
       const appraisal = await storage.getVehicleAppraisalByVin(vin, dealershipId);
       res.json({ exists: !!appraisal, appraisal: appraisal || null });
     } catch (error) {
-      console.error("Error checking VIN appraisal:", error);
+      logError('Error checking VIN appraisal:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-appraisals-vin-vin' });
       res.status(500).json({ error: "Failed to check VIN appraisal" });
     }
   });
@@ -7752,7 +7753,7 @@ Format your response in clear sections with actionable recommendations.`;
       const appraisal = await storage.createVehicleAppraisal(validationResult.data);
       res.status(201).json(appraisal);
     } catch (error) {
-      console.error("Error creating appraisal:", error);
+      logError('Error creating appraisal:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-appraisals' });
       res.status(500).json({ error: "Failed to create appraisal" });
     }
   });
@@ -7779,7 +7780,7 @@ Format your response in clear sections with actionable recommendations.`;
       const updated = await storage.updateVehicleAppraisal(id, dealershipId, updates);
       res.json(updated);
     } catch (error) {
-      console.error("Error updating appraisal:", error);
+      logError('Error updating appraisal:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-appraisals-id' });
       res.status(500).json({ error: "Failed to update appraisal" });
     }
   });
@@ -7801,7 +7802,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json({ success: true });
     } catch (error) {
-      console.error("Error deleting appraisal:", error);
+      logError('Error deleting appraisal:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-appraisals-id' });
       res.status(500).json({ error: "Failed to delete appraisal" });
     }
   });
@@ -7815,7 +7816,7 @@ Format your response in clear sections with actionable recommendations.`;
       const remarketingVehicles = await storage.getRemarketingVehicles(dealershipId);
       res.json(remarketingVehicles);
     } catch (error) {
-      console.error("Error fetching remarketing vehicles:", error);
+      logError('Error fetching remarketing vehicles:', error instanceof Error ? error : new Error(String(error)), { route: 'api-remarketing-vehicles' });
       res.status(500).json({ error: "Failed to fetch remarketing vehicles" });
     }
   });
@@ -7852,7 +7853,7 @@ Format your response in clear sections with actionable recommendations.`;
       const vehicle = await storage.addRemarketingVehicle({ dealershipId, vehicleId, budgetPriority, isActive: true });
       res.json(vehicle);
     } catch (error) {
-      console.error("Error adding remarketing vehicle:", error);
+      logError('Error adding remarketing vehicle:', error instanceof Error ? error : new Error(String(error)), { route: 'api-remarketing-vehicles' });
       res.status(500).json({ error: "Failed to add remarketing vehicle" });
     }
   });
@@ -7872,7 +7873,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(vehicle);
     } catch (error) {
-      console.error("Error updating remarketing vehicle:", error);
+      logError('Error updating remarketing vehicle:', error instanceof Error ? error : new Error(String(error)), { route: 'api-remarketing-vehicles-id' });
       res.status(500).json({ error: "Failed to update remarketing vehicle" });
     }
   });
@@ -7890,7 +7891,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json({ success: true });
     } catch (error) {
-      console.error("Error removing remarketing vehicle:", error);
+      logError('Error removing remarketing vehicle:', error instanceof Error ? error : new Error(String(error)), { route: 'api-remarketing-vehicles-id' });
       res.status(500).json({ error: "Failed to remove remarketing vehicle" });
     }
   });
@@ -7904,7 +7905,7 @@ Format your response in clear sections with actionable recommendations.`;
       const config = await storage.getPbsConfig(dealershipId);
       res.json(config || null);
     } catch (error) {
-      console.error("Error fetching PBS config:", error);
+      logError('Error fetching PBS config:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-config' });
       res.status(500).json({ error: "Failed to fetch PBS configuration" });
     }
   });
@@ -7949,7 +7950,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(config);
     } catch (error) {
-      console.error("Error saving PBS config:", error);
+      logError('Error saving PBS config:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-config' });
       res.status(500).json({ error: "Failed to save PBS configuration" });
     }
   });
@@ -7962,7 +7963,7 @@ Format your response in clear sections with actionable recommendations.`;
       await storage.deletePbsConfig(id, dealershipId);
       res.json({ success: true });
     } catch (error) {
-      console.error("Error deleting PBS config:", error);
+      logError('Error deleting PBS config:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-config-id' });
       res.status(500).json({ error: "Failed to delete PBS configuration" });
     }
   });
@@ -7983,7 +7984,7 @@ Format your response in clear sections with actionable recommendations.`;
         const timestamp = req.headers['x-pbs-timestamp'] as string;
         
         if (!signature || !timestamp) {
-          console.error("PBS webhook rejected: Missing signature or timestamp headers");
+          logError('PBS webhook rejected: Missing signature or timestamp headers', new Error('PBS webhook rejected: Missing signature or timestamp headers'), { route: 'api-pbs-webhook' });
           return res.status(401).json({ 
             error: "Unauthorized", 
             message: "Missing signature headers" 
@@ -8000,7 +8001,7 @@ Format your response in clear sections with actionable recommendations.`;
         // Use timing-safe comparison to prevent timing attacks
         // First check if lengths match (if not, signature is definitely invalid)
         if (signature.length !== expectedSignature.length) {
-          console.error("PBS webhook rejected: Invalid signature length");
+          logError('PBS webhook rejected: Invalid signature length', new Error('PBS webhook rejected: Invalid signature length'), { route: 'api-pbs-webhook' });
           return res.status(403).json({ 
             error: "Forbidden", 
             message: "Invalid signature" 
@@ -8011,7 +8012,7 @@ Format your response in clear sections with actionable recommendations.`;
           Buffer.from(signature),
           Buffer.from(expectedSignature)
         )) {
-          console.error("PBS webhook rejected: Invalid signature");
+          logError('PBS webhook rejected: Invalid signature', new Error('PBS webhook rejected: Invalid signature'), { route: 'api-pbs-webhook' });
           return res.status(403).json({ 
             error: "Forbidden", 
             message: "Invalid signature" 
@@ -8023,7 +8024,7 @@ Format your response in clear sections with actionable recommendations.`;
         const MAX_AGE = 5 * 60 * 1000; // 5 minutes in milliseconds
         
         if (timestampAge > MAX_AGE || timestampAge < 0) {
-          console.error("PBS webhook rejected: Timestamp too old or in future");
+          logError('PBS webhook rejected: Timestamp too old or in future', new Error('PBS webhook rejected: Timestamp too old or in future'), { route: 'api-pbs-webhook' });
           return res.status(403).json({ 
             error: "Forbidden", 
             message: "Timestamp outside valid window" 
@@ -8048,7 +8049,7 @@ Format your response in clear sections with actionable recommendations.`;
       // TODO: Process webhook asynchronously based on event type
       // Future implementation: Handle different event types (customer.created, vehicle.updated, etc.)
     } catch (error) {
-      console.error("Error processing PBS webhook:", error);
+      logError('Error processing PBS webhook:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-webhook' });
       res.status(500).json({ error: "Failed to process webhook" });
     }
   });
@@ -8061,7 +8062,7 @@ Format your response in clear sections with actionable recommendations.`;
       const events = await storage.getPbsWebhookEvents(dealershipId, limit);
       res.json(events);
     } catch (error) {
-      console.error("Error fetching PBS webhook events:", error);
+      logError('Error fetching PBS webhook events:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-webhook-events' });
       res.status(500).json({ error: "Failed to fetch webhook events" });
     }
   });
@@ -8085,7 +8086,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(event);
     } catch (error) {
-      console.error("Error updating webhook event:", error);
+      logError('Error updating webhook event:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-webhook-events-id' });
       res.status(500).json({ error: "Failed to update webhook event" });
     }
   });
@@ -8101,7 +8102,7 @@ Format your response in clear sections with actionable recommendations.`;
       const result = await pbsService.testConnection();
       res.json(result);
     } catch (error) {
-      console.error("Error testing PBS connection:", error);
+      logError('Error testing PBS connection:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-test-connection' });
       res.status(500).json({ success: false, message: error instanceof Error ? error.message : "Connection test failed" });
     }
   });
@@ -8115,7 +8116,7 @@ Format your response in clear sections with actionable recommendations.`;
       const logs = await pbsService.getApiLogs(limit);
       res.json(logs);
     } catch (error) {
-      console.error("Error fetching PBS API logs:", error);
+      logError('Error fetching PBS API logs:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-api-logs' });
       res.status(500).json({ error: "Failed to fetch API logs" });
     }
   });
@@ -8129,7 +8130,7 @@ Format your response in clear sections with actionable recommendations.`;
       const cleared = await pbsService.clearCache();
       res.json({ success: true, cleared });
     } catch (error) {
-      console.error("Error clearing PBS cache:", error);
+      logError('Error clearing PBS cache:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-clear-cache' });
       res.status(500).json({ error: "Failed to clear cache" });
     }
   });
@@ -8160,7 +8161,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error searching PBS contacts:", error);
+      logError('Error searching PBS contacts:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-sales-contacts-search' });
       res.status(500).json({ error: "Failed to search contacts" });
     }
   });
@@ -8180,7 +8181,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error fetching PBS contact:", error);
+      logError('Error fetching PBS contact:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-sales-contacts-contactId' });
       res.status(500).json({ error: "Failed to fetch contact" });
     }
   });
@@ -8204,7 +8205,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error creating PBS contact:", error);
+      logError('Error creating PBS contact:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-sales-contacts' });
       res.status(500).json({ error: "Failed to create contact" });
     }
   });
@@ -8225,7 +8226,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error updating PBS contact:", error);
+      logError('Error updating PBS contact:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-sales-contacts-contactId' });
       res.status(500).json({ error: "Failed to update contact" });
     }
   });
@@ -8245,7 +8246,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error fetching PBS contact vehicles:", error);
+      logError('Error fetching PBS contact vehicles:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-sales-contacts-contactId-vehicle' });
       res.status(500).json({ error: "Failed to fetch contact vehicles" });
     }
   });
@@ -8269,7 +8270,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error fetching PBS workplan events:", error);
+      logError('Error fetching PBS workplan events:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-sales-workplan-events' });
       res.status(500).json({ error: "Failed to fetch workplan events" });
     }
   });
@@ -8289,7 +8290,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error fetching PBS workplan event:", error);
+      logError('Error fetching PBS workplan event:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-sales-workplan-events-eventId' });
       res.status(500).json({ error: "Failed to fetch workplan event" });
     }
   });
@@ -8310,7 +8311,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error updating PBS workplan event:", error);
+      logError('Error updating PBS workplan event:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-sales-workplan-events-eventId' });
       res.status(500).json({ error: "Failed to update workplan event" });
     }
   });
@@ -8334,7 +8335,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error fetching PBS workplan appointments:", error);
+      logError('Error fetching PBS workplan appointments:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-sales-workplan-appointments' });
       res.status(500).json({ error: "Failed to fetch workplan appointments" });
     }
   });
@@ -8354,7 +8355,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error fetching PBS workplan appointment:", error);
+      logError('Error fetching PBS workplan appointment:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-sales-workplan-appointments-appo' });
       res.status(500).json({ error: "Failed to fetch workplan appointment" });
     }
   });
@@ -8378,7 +8379,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error creating PBS workplan appointment:", error);
+      logError('Error creating PBS workplan appointment:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-sales-workplan-appointments' });
       res.status(500).json({ error: "Failed to create workplan appointment" });
     }
   });
@@ -8399,7 +8400,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error updating PBS workplan appointment:", error);
+      logError('Error updating PBS workplan appointment:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-sales-workplan-appointments-appo' });
       res.status(500).json({ error: "Failed to update workplan appointment" });
     }
   });
@@ -8423,7 +8424,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error fetching PBS workplan reminders:", error);
+      logError('Error fetching PBS workplan reminders:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-sales-workplan-reminders' });
       res.status(500).json({ error: "Failed to fetch workplan reminders" });
     }
   });
@@ -8445,7 +8446,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error fetching PBS service bookings:", error);
+      logError('Error fetching PBS service bookings:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-service-appointments-booking' });
       res.status(500).json({ error: "Failed to fetch service bookings" });
     }
   });
@@ -8471,7 +8472,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error fetching PBS service appointments:", error);
+      logError('Error fetching PBS service appointments:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-service-appointments' });
       res.status(500).json({ error: "Failed to fetch service appointments" });
     }
   });
@@ -8491,7 +8492,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error fetching PBS service appointment:", error);
+      logError('Error fetching PBS service appointment:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-service-appointments-appointment' });
       res.status(500).json({ error: "Failed to fetch service appointment" });
     }
   });
@@ -8515,7 +8516,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error creating PBS service appointment:", error);
+      logError('Error creating PBS service appointment:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-service-appointments' });
       res.status(500).json({ error: "Failed to create service appointment" });
     }
   });
@@ -8536,7 +8537,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error updating PBS service appointment:", error);
+      logError('Error updating PBS service appointment:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-service-appointments-appointment' });
       res.status(500).json({ error: "Failed to update service appointment" });
     }
   });
@@ -8557,7 +8558,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error updating PBS service appointment vehicle:", error);
+      logError('Error updating PBS service appointment vehicle:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-service-appointments-appointment' });
       res.status(500).json({ error: "Failed to update service appointment vehicle" });
     }
   });
@@ -8581,7 +8582,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error fetching PBS repair orders:", error);
+      logError('Error fetching PBS repair orders:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-service-repair-orders' });
       res.status(500).json({ error: "Failed to fetch repair orders" });
     }
   });
@@ -8601,7 +8602,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error fetching PBS repair order:", error);
+      logError('Error fetching PBS repair order:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-service-repair-orders-repairOrde' });
       res.status(500).json({ error: "Failed to fetch repair order" });
     }
   });
@@ -8622,7 +8623,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error updating PBS repair order:", error);
+      logError('Error updating PBS repair order:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-service-repair-orders-repairOrde' });
       res.status(500).json({ error: "Failed to update repair order" });
     }
   });
@@ -8643,7 +8644,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error updating PBS repair order vehicle:", error);
+      logError('Error updating PBS repair order vehicle:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-service-repair-orders-repairOrde' });
       res.status(500).json({ error: "Failed to update repair order vehicle" });
     }
   });
@@ -8669,7 +8670,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error searching PBS parts inventory:", error);
+      logError('Error searching PBS parts inventory:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-parts-inventory-search' });
       res.status(500).json({ error: "Failed to search parts inventory" });
     }
   });
@@ -8689,7 +8690,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error fetching PBS part:", error);
+      logError('Error fetching PBS part:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-parts-inventory-partNumber' });
       res.status(500).json({ error: "Failed to fetch part" });
     }
   });
@@ -8709,7 +8710,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error fetching PBS parts order:", error);
+      logError('Error fetching PBS parts order:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-parts-orders-orderId' });
       res.status(500).json({ error: "Failed to fetch parts order" });
     }
   });
@@ -8729,7 +8730,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error fetching PBS purchase order:", error);
+      logError('Error fetching PBS purchase order:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-parts-purchase-orders-purchaseOr' });
       res.status(500).json({ error: "Failed to fetch purchase order" });
     }
   });
@@ -8749,7 +8750,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error fetching PBS tire storage:", error);
+      logError('Error fetching PBS tire storage:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-parts-tire-storage' });
       res.status(500).json({ error: "Failed to fetch tire storage" });
     }
   });
@@ -8768,7 +8769,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error fetching PBS shops:", error);
+      logError('Error fetching PBS shops:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-service-shops' });
       res.status(500).json({ error: "Failed to fetch shops" });
     }
   });
@@ -8796,7 +8797,7 @@ Format your response in clear sections with actionable recommendations.`;
       });
       res.json(config);
     } catch (error) {
-      console.error("Error saving GHL config:", error);
+      logError('Error saving GHL config:', error instanceof Error ? error : new Error(String(error)), { route: 'api-admin-ghl-config' });
       res.status(500).json({ error: "Failed to save GHL configuration" });
     }
   });
@@ -8819,7 +8820,7 @@ Format your response in clear sections with actionable recommendations.`;
       });
       res.json(config);
     } catch (error) {
-      console.error("Error saving GHL webhook config:", error);
+      logError('Error saving GHL webhook config:', error instanceof Error ? error : new Error(String(error)), { route: 'api-admin-ghl-webhook-config' });
       res.status(500).json({ error: "Failed to save GHL webhook configuration" });
     }
   });
@@ -8831,7 +8832,7 @@ Format your response in clear sections with actionable recommendations.`;
       const config = await storage.getActiveGHLWebhookConfig(dealershipId);
       res.json(config || null);
     } catch (error) {
-      console.error("Error fetching GHL webhook config:", error);
+      logError('Error fetching GHL webhook config:', error instanceof Error ? error : new Error(String(error)), { route: 'api-admin-ghl-webhook-config' });
       res.status(500).json({ error: "Failed to fetch GHL webhook configuration" });
     }
   });
@@ -8849,7 +8850,7 @@ Format your response in clear sections with actionable recommendations.`;
       const template = await storage.saveAIPromptTemplate({ name, dealershipId, promptText, isActive });
       res.json(template);
     } catch (error) {
-      console.error("Error saving AI prompt:", error);
+      logError('Error saving AI prompt:', error instanceof Error ? error : new Error(String(error)), { route: 'api-admin-ai-prompt' });
       res.status(500).json({ error: "Failed to save AI prompt template" });
     }
   });
@@ -8897,7 +8898,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json({ authUrl, state });
     } catch (error) {
-      console.error("Error generating GHL auth URL:", error);
+      logError('Error generating GHL auth URL:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ghl-auth-connect' });
       res.status(500).json({ error: "Failed to generate authorization URL" });
     }
   });
@@ -8908,7 +8909,7 @@ Format your response in clear sections with actionable recommendations.`;
       const { code, state, error } = req.query;
       
       if (error) {
-        console.error("GHL OAuth error:", error);
+        logError('GHL OAuth error:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ghl-auth-callback' });
         return res.redirect(`/dashboard?ghl_error=${encodeURIComponent(error as string)}`);
       }
       
@@ -8957,7 +8958,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       if (!tokenResponse.ok) {
         const errorText = await tokenResponse.text();
-        console.error("GHL token exchange failed:", errorText);
+        logError('GHL token exchange failed', new Error(errorText), { route: 'api-ghl-auth-callback' });
         return res.redirect('/dashboard?ghl_error=token_exchange_failed');
       }
       
@@ -8997,7 +8998,7 @@ Format your response in clear sections with actionable recommendations.`;
       console.log(`GHL account connected for dealership ${dealershipId}, location ${tokens.locationId}`);
       res.redirect('/dashboard?ghl_connected=true');
     } catch (error) {
-      console.error("Error in GHL OAuth callback:", error);
+      logError('Error in GHL OAuth callback:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ghl-auth-callback' });
       res.redirect('/dashboard?ghl_error=callback_error');
     }
   });
@@ -9026,7 +9027,7 @@ Format your response in clear sections with actionable recommendations.`;
         expiresAt: account.expiresAt
       });
     } catch (error) {
-      console.error("Error fetching GHL account:", error);
+      logError('Error fetching GHL account:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ghl-account' });
       res.status(500).json({ error: "Failed to fetch GHL account" });
     }
   });
@@ -9045,7 +9046,7 @@ Format your response in clear sections with actionable recommendations.`;
       console.log(`GHL account disconnected for dealership ${dealershipId}`);
       res.json({ success: true });
     } catch (error) {
-      console.error("Error disconnecting GHL account:", error);
+      logError('Error disconnecting GHL account:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ghl-account' });
       res.status(500).json({ error: "Failed to disconnect GHL account" });
     }
   });
@@ -9057,7 +9058,7 @@ Format your response in clear sections with actionable recommendations.`;
       const config = await storage.getGhlConfig(dealershipId);
       res.json(config || { configured: false });
     } catch (error) {
-      console.error("Error fetching GHL config:", error);
+      logError('Error fetching GHL config:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ghl-config' });
       res.status(500).json({ error: "Failed to fetch GHL configuration" });
     }
   });
@@ -9106,7 +9107,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(config);
     } catch (error) {
-      console.error("Error saving GHL config:", error);
+      logError('Error saving GHL config:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ghl-config' });
       res.status(500).json({ error: "Failed to save GHL configuration" });
     }
   });
@@ -9122,7 +9123,7 @@ Format your response in clear sections with actionable recommendations.`;
       // NOTE: In multi-tenant, we need to look up which dealership owns this location
       // For now, we'll process events and log them with a pending status
       if (!locationId) {
-        console.warn("GHL webhook received without locationId");
+        logWarn('GHL webhook received without locationId', { route: 'api-ghl-webhook' });
         return res.status(400).json({ error: "Missing locationId" });
       }
       
@@ -9137,7 +9138,7 @@ Format your response in clear sections with actionable recommendations.`;
       if (accounts.length > 0) {
         const account = accounts[0];
         if (!account.isActive) {
-          console.warn(`GHL webhook rejected: account inactive for dealership ${account.dealershipId}`);
+          logWarn('GHL webhook rejected: account inactive for dealership ${account.dealershipId}', { route: 'api-ghl-webhook' });
           return res.status(403).json({ error: "Account not active" });
         }
         dealershipId = account.dealershipId;
@@ -9156,7 +9157,7 @@ Format your response in clear sections with actionable recommendations.`;
       }
       
       if (!dealershipId) {
-        console.warn(`GHL webhook for unknown location: ${locationId}`);
+        logWarn('GHL webhook for unknown location: ${locationId}', { route: 'api-ghl-webhook' });
         return res.status(404).json({ error: "Location not registered" });
       }
       
@@ -9169,7 +9170,7 @@ Format your response in clear sections with actionable recommendations.`;
           .digest('hex');
         
         if (signature !== expectedSignature) {
-          console.warn("GHL webhook signature mismatch");
+          logWarn('GHL webhook signature mismatch', { route: 'api-ghl-webhook' });
           return res.status(401).json({ error: "Invalid signature" });
         }
       }
@@ -9277,7 +9278,7 @@ Format your response in clear sections with actionable recommendations.`;
             await storage.updateGhlWebhookEvent(event.id, dealershipId, { status: 'processed' });
           }
         } catch (processError) {
-          console.error("Error processing GHL webhook:", processError);
+          logError('Error processing GHL webhook:', processError instanceof Error ? processError : new Error(String(processError)), { route: 'api-ghl-webhook' });
           const event = await storage.getGhlWebhookEventByEventId(dealershipId, eventId);
           if (event) {
             await storage.updateGhlWebhookEvent(event.id, dealershipId, { 
@@ -9288,7 +9289,7 @@ Format your response in clear sections with actionable recommendations.`;
         }
       });
     } catch (error) {
-      console.error("Error receiving GHL webhook:", error);
+      logError('Error receiving GHL webhook:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ghl-webhook' });
       res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -9305,7 +9306,7 @@ Format your response in clear sections with actionable recommendations.`;
       );
       res.json(events);
     } catch (error) {
-      console.error("Error fetching GHL webhook events:", error);
+      logError('Error fetching GHL webhook events:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ghl-webhook-events' });
       res.status(500).json({ error: "Failed to fetch webhook events" });
     }
   });
@@ -9321,7 +9322,7 @@ Format your response in clear sections with actionable recommendations.`;
       );
       res.json(logs);
     } catch (error) {
-      console.error("Error fetching GHL API logs:", error);
+      logError('Error fetching GHL API logs:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ghl-api-logs' });
       res.status(500).json({ error: "Failed to fetch API logs" });
     }
   });
@@ -9342,7 +9343,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error searching GHL contacts:", error);
+      logError('Error searching GHL contacts:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ghl-contacts-search' });
       res.status(500).json({ error: "Failed to search contacts" });
     }
   });
@@ -9366,7 +9367,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error fetching GHL contact:", error);
+      logError('Error fetching GHL contact:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ghl-contacts-contactId' });
       res.status(500).json({ error: "Failed to fetch contact" });
     }
   });
@@ -9386,7 +9387,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.status(201).json(result.data);
     } catch (error) {
-      console.error("Error creating GHL contact:", error);
+      logError('Error creating GHL contact:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ghl-contacts' });
       res.status(500).json({ error: "Failed to create contact" });
     }
   });
@@ -9410,7 +9411,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error updating GHL contact:", error);
+      logError('Error updating GHL contact:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ghl-contacts-contactId' });
       res.status(500).json({ error: "Failed to update contact" });
     }
   });
@@ -9439,7 +9440,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error fetching GHL appointments:", error);
+      logError('Error fetching GHL appointments:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ghl-appointments' });
       res.status(500).json({ error: "Failed to fetch appointments" });
     }
   });
@@ -9459,7 +9460,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.status(201).json(result.data);
     } catch (error) {
-      console.error("Error creating GHL appointment:", error);
+      logError('Error creating GHL appointment:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ghl-appointments' });
       res.status(500).json({ error: "Failed to create appointment" });
     }
   });
@@ -9479,7 +9480,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error fetching GHL pipelines:", error);
+      logError('Error fetching GHL pipelines:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ghl-pipelines' });
       res.status(500).json({ error: "Failed to fetch pipelines" });
     }
   });
@@ -9499,7 +9500,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error fetching GHL calendars:", error);
+      logError('Error fetching GHL calendars:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ghl-calendars' });
       res.status(500).json({ error: "Failed to fetch calendars" });
     }
   });
@@ -9520,7 +9521,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result.data);
     } catch (error) {
-      console.error("Error fetching GHL opportunities:", error);
+      logError('Error fetching GHL opportunities:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ghl-opportunities' });
       res.status(500).json({ error: "Failed to fetch opportunities" });
     }
   });
@@ -9540,7 +9541,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.status(201).json(result.data);
     } catch (error) {
-      console.error("Error creating GHL opportunity:", error);
+      logError('Error creating GHL opportunity:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ghl-opportunities' });
       res.status(500).json({ error: "Failed to create opportunity" });
     }
   });
@@ -9584,7 +9585,7 @@ Format your response in clear sections with actionable recommendations.`;
         bidirectionalSync: config?.bidirectionalSync || false
       });
     } catch (error) {
-      console.error("Error fetching GHL sync stats:", error);
+      logError('Error fetching GHL sync stats:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ghl-sync-stats' });
       res.status(500).json({ error: "Failed to fetch sync stats" });
     }
   });
@@ -9633,7 +9634,7 @@ Format your response in clear sections with actionable recommendations.`;
           synced++;
         } catch (err) {
           errors++;
-          console.error(`Error syncing contact ${contact.id}:`, err);
+          logError('Error syncing contact ${contact.id}:', err instanceof Error ? err : new Error(String(err)), { route: 'api-ghl-sync-run' });
         }
       }
       
@@ -9645,7 +9646,7 @@ Format your response in clear sections with actionable recommendations.`;
         total: contacts.length
       });
     } catch (error) {
-      console.error("Error running GHL sync:", error);
+      logError('Error running GHL sync:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ghl-sync-run' });
       res.status(500).json({ error: "Failed to run sync" });
     }
   });
@@ -9665,7 +9666,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json({ success: true, message: "FWC CRM disconnected successfully" });
     } catch (error) {
-      console.error("Error disconnecting GHL:", error);
+      logError('Error disconnecting GHL:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ghl-disconnect' });
       res.status(500).json({ error: "Failed to disconnect" });
     }
   });
@@ -9692,7 +9693,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(syncs);
     } catch (error) {
-      console.error("Error fetching GHL contact syncs:", error);
+      logError('Error fetching GHL contact syncs:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ghl-sync-contacts' });
       res.status(500).json({ error: "Failed to fetch contact syncs" });
     }
   });
@@ -9712,7 +9713,7 @@ Format your response in clear sections with actionable recommendations.`;
         locationName: result.locationName
       });
     } catch (error) {
-      console.error("Error testing GHL connection:", error);
+      logError('Error testing GHL connection:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ghl-test-connection' });
       res.status(500).json({ error: "Failed to test connection" });
     }
   });
@@ -9856,10 +9857,10 @@ Format your response in clear sections with actionable recommendations.`;
         const analysisService = getCallAnalysisService(dealershipId);
         // Process asynchronously
         analysisService.processCallRecording(callRecording.id).catch(err => {
-          console.error(`[GHL Call] Error analyzing call ${callRecording.id}:`, err);
+          logError('[GHL Call] Error analyzing call ${callRecording.id}:', err instanceof Error ? err : new Error(String(err)), { route: 'api-ghl-test-connection' });
         });
       } catch (importError) {
-        console.error(`[GHL Call] Error importing analysis service:`, importError);
+        logError('[GHL Call] Error importing analysis service:', importError instanceof Error ? importError : new Error(String(importError)), { route: 'api-ghl-test-connection' });
       }
     }
   }
@@ -9880,7 +9881,7 @@ Format your response in clear sections with actionable recommendations.`;
         .where(eq(ghlAccounts.locationId, locationId));
       
       if (ghlAccountResults.length === 0) {
-        console.warn(`No dealership found for GHL location ${locationId}`);
+        logWarn('No dealership found for GHL location ${locationId}', { route: 'api-ghl-call-webhook' });
         return res.status(200).json({ received: true, warning: "Unknown location" });
       }
       
@@ -9917,13 +9918,13 @@ Format your response in clear sections with actionable recommendations.`;
         const { getCallAnalysisService } = await import('./call-analysis-service');
         const service = getCallAnalysisService(dealershipId);
         service.processCallRecording(callRecording.id).catch(err => {
-          console.error(`Error processing call ${callRecording.id}:`, err);
+          logError('Error processing call ${callRecording.id}:', err instanceof Error ? err : new Error(String(err)), { route: 'api-ghl-call-webhook' });
         });
       }
       
       res.json({ received: true, callId: callRecording.id });
     } catch (error) {
-      console.error("Error processing call webhook:", error);
+      logError('Error processing call webhook:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ghl-call-webhook' });
       res.status(500).json({ error: "Failed to process call webhook" });
     }
   });
@@ -9952,7 +9953,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result);
     } catch (error) {
-      console.error("Error fetching call recordings:", error);
+      logError('Error fetching call recordings:', error instanceof Error ? error : new Error(String(error)), { route: 'api-call-recordings' });
       res.status(500).json({ error: "Failed to fetch call recordings" });
     }
   });
@@ -9971,7 +9972,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(stats);
     } catch (error) {
-      console.error("Error fetching call stats:", error);
+      logError('Error fetching call stats:', error instanceof Error ? error : new Error(String(error)), { route: 'api-call-recordings-stats' });
       res.status(500).json({ error: "Failed to fetch call stats" });
     }
   });
@@ -9989,7 +9990,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(recording);
     } catch (error) {
-      console.error("Error fetching call recording:", error);
+      logError('Error fetching call recording:', error instanceof Error ? error : new Error(String(error)), { route: 'api-call-recordings-id' });
       res.status(500).json({ error: "Failed to fetch call recording" });
     }
   });
@@ -10020,7 +10021,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json({ message: "Analysis queued", callId: id });
     } catch (error) {
-      console.error("Error queuing call analysis:", error);
+      logError('Error queuing call analysis:', error instanceof Error ? error : new Error(String(error)), { route: 'api-call-recordings-id-analyze' });
       res.status(500).json({ error: "Failed to queue analysis" });
     }
   });
@@ -10045,7 +10046,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(recording);
     } catch (error) {
-      console.error("Error marking call as reviewed:", error);
+      logError('Error marking call as reviewed:', error instanceof Error ? error : new Error(String(error)), { route: 'api-call-recordings-id-review' });
       res.status(500).json({ error: "Failed to mark call as reviewed" });
     }
   });
@@ -10057,7 +10058,7 @@ Format your response in clear sections with actionable recommendations.`;
       const criteria = await storage.getCallAnalysisCriteria(dealershipId);
       res.json(criteria);
     } catch (error) {
-      console.error("Error fetching call analysis criteria:", error);
+      logError('Error fetching call analysis criteria:', error instanceof Error ? error : new Error(String(error)), { route: 'api-call-analysis-criteria' });
       res.status(500).json({ error: "Failed to fetch criteria" });
     }
   });
@@ -10080,7 +10081,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(criteria);
     } catch (error) {
-      console.error("Error creating call analysis criteria:", error);
+      logError('Error creating call analysis criteria:', error instanceof Error ? error : new Error(String(error)), { route: 'api-call-analysis-criteria' });
       res.status(500).json({ error: "Failed to create criteria" });
     }
   });
@@ -10098,7 +10099,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(criteria);
     } catch (error) {
-      console.error("Error updating call analysis criteria:", error);
+      logError('Error updating call analysis criteria:', error instanceof Error ? error : new Error(String(error)), { route: 'api-call-analysis-criteria-id' });
       res.status(500).json({ error: "Failed to update criteria" });
     }
   });
@@ -10112,7 +10113,7 @@ Format your response in clear sections with actionable recommendations.`;
       await storage.deleteCallAnalysisCriteria(id, dealershipId);
       res.json({ success: true });
     } catch (error) {
-      console.error("Error deleting call analysis criteria:", error);
+      logError('Error deleting call analysis criteria:', error instanceof Error ? error : new Error(String(error)), { route: 'api-call-analysis-criteria-id' });
       res.status(500).json({ error: "Failed to delete criteria" });
     }
   });
@@ -10127,7 +10128,7 @@ Format your response in clear sections with actionable recommendations.`;
       const criteria = await storage.getCallAnalysisCriteria(dealershipId);
       res.json(criteria);
     } catch (error) {
-      console.error("Error seeding default criteria:", error);
+      logError('Error seeding default criteria:', error instanceof Error ? error : new Error(String(error)), { route: 'api-call-analysis-criteria-seed-defaults' });
       res.status(500).json({ error: "Failed to seed defaults" });
     }
   });
@@ -10141,7 +10142,7 @@ Format your response in clear sections with actionable recommendations.`;
       const templates = await storage.getCallScoringTemplates(dealershipId);
       res.json(templates);
     } catch (error) {
-      console.error("Error fetching call scoring templates:", error);
+      logError('Error fetching call scoring templates:', error instanceof Error ? error : new Error(String(error)), { route: 'api-call-scoring-templates' });
       res.status(500).json({ error: "Failed to fetch templates" });
     }
   });
@@ -10162,7 +10163,7 @@ Format your response in clear sections with actionable recommendations.`;
       const criteria = await storage.getTemplateCriteria(id);
       res.json({ ...template, criteria });
     } catch (error) {
-      console.error("Error fetching call scoring template:", error);
+      logError('Error fetching call scoring template:', error instanceof Error ? error : new Error(String(error)), { route: 'api-call-scoring-templates-id' });
       res.status(500).json({ error: "Failed to fetch template" });
     }
   });
@@ -10193,7 +10194,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.status(201).json(template);
     } catch (error) {
-      console.error("Error creating call scoring template:", error);
+      logError('Error creating call scoring template:', error instanceof Error ? error : new Error(String(error)), { route: 'api-call-scoring-templates' });
       res.status(500).json({ error: "Failed to create template" });
     }
   });
@@ -10221,7 +10222,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.status(201).json({ ...clonedTemplate, criteria });
     } catch (error) {
-      console.error("Error cloning call scoring template:", error);
+      logError('Error cloning call scoring template:', error instanceof Error ? error : new Error(String(error)), { route: 'api-call-scoring-templates-id-clone' });
       res.status(500).json({ error: "Failed to clone template" });
     }
   });
@@ -10254,7 +10255,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(updated);
     } catch (error) {
-      console.error("Error updating call scoring template:", error);
+      logError('Error updating call scoring template:', error instanceof Error ? error : new Error(String(error)), { route: 'api-call-scoring-templates-id' });
       res.status(500).json({ error: "Failed to update template" });
     }
   });
@@ -10279,7 +10280,7 @@ Format your response in clear sections with actionable recommendations.`;
       await storage.deleteCallScoringTemplate(id);
       res.json({ success: true });
     } catch (error) {
-      console.error("Error deleting call scoring template:", error);
+      logError('Error deleting call scoring template:', error instanceof Error ? error : new Error(String(error)), { route: 'api-call-scoring-templates-id' });
       res.status(500).json({ error: "Failed to delete template" });
     }
   });
@@ -10297,7 +10298,7 @@ Format your response in clear sections with actionable recommendations.`;
       const criteria = await storage.getTemplateCriteria(templateId);
       res.json(criteria);
     } catch (error) {
-      console.error("Error fetching template criteria:", error);
+      logError('Error fetching template criteria:', error instanceof Error ? error : new Error(String(error)), { route: 'api-call-scoring-templates-templateId-cr' });
       res.status(500).json({ error: "Failed to fetch criteria" });
     }
   });
@@ -10339,7 +10340,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.status(201).json(criterion);
     } catch (error) {
-      console.error("Error creating criterion:", error);
+      logError('Error creating criterion:', error instanceof Error ? error : new Error(String(error)), { route: 'api-call-scoring-templates-templateId-cr' });
       res.status(500).json({ error: "Failed to create criterion" });
     }
   });
@@ -10371,7 +10372,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(updated);
     } catch (error) {
-      console.error("Error updating criterion:", error);
+      logError('Error updating criterion:', error instanceof Error ? error : new Error(String(error)), { route: 'api-call-scoring-criteria-id' });
       res.status(500).json({ error: "Failed to update criterion" });
     }
   });
@@ -10391,7 +10392,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json({ success: true });
     } catch (error) {
-      console.error("Error deleting criterion:", error);
+      logError('Error deleting criterion:', error instanceof Error ? error : new Error(String(error)), { route: 'api-call-scoring-criteria-id' });
       res.status(500).json({ error: "Failed to delete criterion" });
     }
   });
@@ -10412,7 +10413,7 @@ Format your response in clear sections with actionable recommendations.`;
       await storage.reorderCriteria(templateId, criteriaIds);
       res.json({ success: true });
     } catch (error) {
-      console.error("Error reordering criteria:", error);
+      logError('Error reordering criteria:', error instanceof Error ? error : new Error(String(error)), { route: 'api-call-scoring-templates-templateId-cr' });
       res.status(500).json({ error: "Failed to reorder criteria" });
     }
   });
@@ -10434,7 +10435,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(result);
     } catch (error) {
-      console.error("Error fetching scoring sheet:", error);
+      logError('Error fetching scoring sheet:', error instanceof Error ? error : new Error(String(error)), { route: 'api-call-recordings-callId-scoring' });
       res.status(500).json({ error: "Failed to fetch scoring sheet" });
     }
   });
@@ -10490,7 +10491,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(sheet);
     } catch (error) {
-      console.error("Error creating/updating scoring sheet:", error);
+      logError('Error creating/updating scoring sheet:', error instanceof Error ? error : new Error(String(error)), { route: 'api-call-recordings-callId-scoring' });
       res.status(500).json({ error: "Failed to save scoring sheet" });
     }
   });
@@ -10517,7 +10518,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(updated[0]);
     } catch (error) {
-      console.error("Error updating response:", error);
+      logError('Error updating response:', error instanceof Error ? error : new Error(String(error)), { route: 'api-call-scoring-responses-id' });
       res.status(500).json({ error: "Failed to update response" });
     }
   });
@@ -10548,7 +10549,7 @@ Format your response in clear sections with actionable recommendations.`;
       const savedResponses = await storage.bulkUpsertCallScoringResponses(responsesWithSheetId);
       res.json(savedResponses);
     } catch (error) {
-      console.error("Error bulk updating responses:", error);
+      logError('Error bulk updating responses:', error instanceof Error ? error : new Error(String(error)), { route: 'api-call-recordings-callId-scoring-respo' });
       res.status(500).json({ error: "Failed to save responses" });
     }
   });
@@ -10566,7 +10567,7 @@ Format your response in clear sections with actionable recommendations.`;
       const participants = await storage.getCallParticipants(callId);
       res.json(participants);
     } catch (error) {
-      console.error("Error fetching call participants:", error);
+      logError('Error fetching call participants:', error instanceof Error ? error : new Error(String(error)), { route: 'api-call-recordings-callId-participants' });
       res.status(500).json({ error: "Failed to fetch participants" });
     }
   });
@@ -10652,7 +10653,7 @@ Format your response in clear sections with actionable recommendations.`;
         }
       });
     } catch (error) {
-      console.error("Error starting impersonation:", error);
+      logError('Error starting impersonation:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-impersonate' });
       res.status(500).json({ error: "Failed to start impersonation" });
     }
   });
@@ -10687,7 +10688,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json({ success: true, session });
     } catch (error) {
-      console.error("Error ending impersonation:", error);
+      logError('Error ending impersonation:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-impersonate-end' });
       res.status(500).json({ error: "Failed to end impersonation" });
     }
   });
@@ -10702,7 +10703,7 @@ Format your response in clear sections with actionable recommendations.`;
       );
       res.json(result);
     } catch (error) {
-      console.error("Error fetching impersonation history:", error);
+      logError('Error fetching impersonation history:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-impersonation-history' });
       res.status(500).json({ error: "Failed to fetch history" });
     }
   });
@@ -10713,7 +10714,7 @@ Format your response in clear sections with actionable recommendations.`;
       const session = await storage.getActiveImpersonationSession(req.user!.id);
       res.json({ session: session || null });
     } catch (error) {
-      console.error("Error fetching active session:", error);
+      logError('Error fetching active session:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-impersonate-active' });
       res.status(500).json({ error: "Failed to fetch session" });
     }
   });
@@ -10781,10 +10782,10 @@ Format your response in clear sections with actionable recommendations.`;
       });
       
       ws.on('error', (error: Error) => {
-        console.error('WebSocket error:', error);
+        logError('WebSocket error:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-impersonate-active' });
       });
     } catch (error) {
-      console.error('WebSocket authentication error:', error);
+      logError('WebSocket authentication error:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-impersonate-active' });
       ws.close(4001, 'Authentication failed');
     }
   });
@@ -10820,13 +10821,13 @@ Format your response in clear sections with actionable recommendations.`;
   }) => {
     // Validate notification payload
     if (!NotificationSchema.validate(notification)) {
-      console.error('Invalid notification payload:', notification);
+      logError('Invalid notification payload', new Error(JSON.stringify(notification)), { route: 'websocket-broadcast' });
       return;
     }
     
     // Validate dealership ID
     if (typeof dealershipId !== 'number' || isNaN(dealershipId) || dealershipId < 1) {
-      console.error('Invalid dealership ID for broadcast:', dealershipId);
+      logError('Invalid dealership ID for broadcast', new Error(`Invalid dealershipId: ${dealershipId}`), { route: 'websocket-broadcast' });
       return;
     }
     
@@ -10868,7 +10869,7 @@ Format your response in clear sections with actionable recommendations.`;
       const sequences = await storage.getFollowUpSequences(dealershipId);
       res.json(sequences);
     } catch (error) {
-      console.error("Error fetching sequences:", error);
+      logError('Error fetching sequences:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-sequences' });
       res.status(500).json({ error: "Failed to fetch sequences" });
     }
   });
@@ -10887,7 +10888,7 @@ Format your response in clear sections with actionable recommendations.`;
       }
       res.json(sequence);
     } catch (error) {
-      console.error("Error fetching sequence:", error);
+      logError('Error fetching sequence:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-sequences-id' });
       res.status(500).json({ error: "Failed to fetch sequence" });
     }
   });
@@ -10905,7 +10906,7 @@ Format your response in clear sections with actionable recommendations.`;
       });
       res.status(201).json(sequence);
     } catch (error) {
-      console.error("Error creating sequence:", error);
+      logError('Error creating sequence:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-sequences' });
       res.status(500).json({ error: "Failed to create sequence" });
     }
   });
@@ -10924,7 +10925,7 @@ Format your response in clear sections with actionable recommendations.`;
       }
       res.json(sequence);
     } catch (error) {
-      console.error("Error updating sequence:", error);
+      logError('Error updating sequence:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-sequences-id' });
       res.status(500).json({ error: "Failed to update sequence" });
     }
   });
@@ -10943,7 +10944,7 @@ Format your response in clear sections with actionable recommendations.`;
       }
       res.json({ success: true });
     } catch (error) {
-      console.error("Error deleting sequence:", error);
+      logError('Error deleting sequence:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-sequences-id' });
       res.status(500).json({ error: "Failed to delete sequence" });
     }
   });
@@ -10957,7 +10958,7 @@ Format your response in clear sections with actionable recommendations.`;
       const items = await storage.getFollowUpQueueItems(dealershipId, status, limit);
       res.json(items);
     } catch (error) {
-      console.error("Error fetching queue:", error);
+      logError('Error fetching queue:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-queue' });
       res.status(500).json({ error: "Failed to fetch queue" });
     }
   });
@@ -10973,7 +10974,7 @@ Format your response in clear sections with actionable recommendations.`;
       }
       res.json(item);
     } catch (error) {
-      console.error("Error cancelling queue item:", error);
+      logError('Error cancelling queue item:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-queue-id-cancel' });
       res.status(500).json({ error: "Failed to cancel queue item" });
     }
   });
@@ -10990,7 +10991,7 @@ Format your response in clear sections with actionable recommendations.`;
       });
       res.json(result);
     } catch (error) {
-      console.error("Error triggering follow-up:", error);
+      logError('Error triggering follow-up:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-trigger' });
       res.status(500).json({ error: "Failed to trigger follow-up" });
     }
   });
@@ -11083,7 +11084,7 @@ Format your response in clear sections with actionable recommendations.`;
         queueItemId: result.queueItemId 
       });
     } catch (error) {
-      console.error("Error processing Facebook lead:", error);
+      logError('Error processing Facebook lead:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-facebook-lead' });
       res.status(500).json({ error: "Failed to process Facebook lead" });
     }
   });
@@ -11097,7 +11098,7 @@ Format your response in clear sections with actionable recommendations.`;
       const logs = await storage.getAutomationLogs(dealershipId, { automationType }, limit);
       res.json(logs);
     } catch (error) {
-      console.error("Error fetching automation logs:", error);
+      logError('Error fetching automation logs:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-logs' });
       res.status(500).json({ error: "Failed to fetch automation logs" });
     }
   });
@@ -11111,7 +11112,7 @@ Format your response in clear sections with actionable recommendations.`;
       const result = await automation.processDueFollowUps();
       res.json(result);
     } catch (error) {
-      console.error("Error running automation:", error);
+      logError('Error running automation:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-run' });
       res.status(500).json({ error: "Failed to run automation" });
     }
   });
@@ -11125,7 +11126,7 @@ Format your response in clear sections with actionable recommendations.`;
       const campaigns = await storage.getReengagementCampaigns(dealershipId);
       res.json(campaigns);
     } catch (error) {
-      console.error("Error fetching re-engagement campaigns:", error);
+      logError('Error fetching re-engagement campaigns:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-reengagement-campaigns' });
       res.status(500).json({ error: "Failed to fetch re-engagement campaigns" });
     }
   });
@@ -11141,7 +11142,7 @@ Format your response in clear sections with actionable recommendations.`;
       }
       res.json(campaign);
     } catch (error) {
-      console.error("Error fetching re-engagement campaign:", error);
+      logError('Error fetching re-engagement campaign:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-reengagement-campaigns-id' });
       res.status(500).json({ error: "Failed to fetch re-engagement campaign" });
     }
   });
@@ -11156,7 +11157,7 @@ Format your response in clear sections with actionable recommendations.`;
       });
       res.status(201).json(campaign);
     } catch (error) {
-      console.error("Error creating re-engagement campaign:", error);
+      logError('Error creating re-engagement campaign:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-reengagement-campaigns' });
       res.status(500).json({ error: "Failed to create re-engagement campaign" });
     }
   });
@@ -11172,7 +11173,7 @@ Format your response in clear sections with actionable recommendations.`;
       }
       res.json(campaign);
     } catch (error) {
-      console.error("Error updating re-engagement campaign:", error);
+      logError('Error updating re-engagement campaign:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-reengagement-campaigns-id' });
       res.status(500).json({ error: "Failed to update re-engagement campaign" });
     }
   });
@@ -11188,7 +11189,7 @@ Format your response in clear sections with actionable recommendations.`;
       }
       res.json({ success: true });
     } catch (error) {
-      console.error("Error deleting re-engagement campaign:", error);
+      logError('Error deleting re-engagement campaign:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-reengagement-campaigns-id' });
       res.status(500).json({ error: "Failed to delete re-engagement campaign" });
     }
   });
@@ -11204,7 +11205,7 @@ Format your response in clear sections with actionable recommendations.`;
       const summary = await storage.getSequencePerformanceSummary(dealershipId, startDate, endDate);
       res.json(summary);
     } catch (error) {
-      console.error("Error fetching sequence analytics summary:", error);
+      logError('Error fetching sequence analytics summary:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-analytics-summary' });
       res.status(500).json({ error: "Failed to fetch analytics summary" });
     }
   });
@@ -11219,7 +11220,7 @@ Format your response in clear sections with actionable recommendations.`;
       const executions = await storage.getSequenceExecutions(dealershipId, sequenceId, status, limit);
       res.json(executions);
     } catch (error) {
-      console.error("Error fetching sequence executions:", error);
+      logError('Error fetching sequence executions:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-analytics-executions' });
       res.status(500).json({ error: "Failed to fetch sequence executions" });
     }
   });
@@ -11232,7 +11233,7 @@ Format your response in clear sections with actionable recommendations.`;
       const messages = await storage.getSequenceMessages(dealershipId, executionId);
       res.json(messages);
     } catch (error) {
-      console.error("Error fetching sequence messages:", error);
+      logError('Error fetching sequence messages:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-analytics-executions-exec' });
       res.status(500).json({ error: "Failed to fetch sequence messages" });
     }
   });
@@ -11247,7 +11248,7 @@ Format your response in clear sections with actionable recommendations.`;
       const conversions = await storage.getSequenceConversions(dealershipId, sequenceId, startDate, endDate);
       res.json(conversions);
     } catch (error) {
-      console.error("Error fetching sequence conversions:", error);
+      logError('Error fetching sequence conversions:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-analytics-conversions' });
       res.status(500).json({ error: "Failed to fetch sequence conversions" });
     }
   });
@@ -11263,7 +11264,7 @@ Format your response in clear sections with actionable recommendations.`;
       const result = await storage.getAllContactActivity(dealershipId, limit, offset);
       res.json(result);
     } catch (error) {
-      console.error("Error fetching contact activity:", error);
+      logError('Error fetching contact activity:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-contact-activity' });
       res.status(500).json({ error: "Failed to fetch contact activity" });
     }
   });
@@ -11277,7 +11278,7 @@ Format your response in clear sections with actionable recommendations.`;
       const contacts = await storage.getInactiveContacts(dealershipId, inactiveDays, limit);
       res.json(contacts);
     } catch (error) {
-      console.error("Error fetching inactive contacts:", error);
+      logError('Error fetching inactive contacts:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-inactive-contacts' });
       res.status(500).json({ error: "Failed to fetch inactive contacts" });
     }
   });
@@ -11292,7 +11293,7 @@ Format your response in clear sections with actionable recommendations.`;
       });
       res.json(activity);
     } catch (error) {
-      console.error("Error logging contact activity:", error);
+      logError('Error logging contact activity:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-contact-activity' });
       res.status(500).json({ error: "Failed to log contact activity" });
     }
   });
@@ -11308,7 +11309,7 @@ Format your response in clear sections with actionable recommendations.`;
       }
       res.json(activity);
     } catch (error) {
-      console.error("Error updating contact activity:", error);
+      logError('Error updating contact activity:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-contact-activity-id' });
       res.status(500).json({ error: "Failed to update contact activity" });
     }
   });
@@ -11323,7 +11324,7 @@ Format your response in clear sections with actionable recommendations.`;
       });
       res.status(201).json(execution);
     } catch (error) {
-      console.error("Error creating sequence execution:", error);
+      logError('Error creating sequence execution:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-sequence-executions' });
       res.status(500).json({ error: "Failed to create sequence execution" });
     }
   });
@@ -11339,7 +11340,7 @@ Format your response in clear sections with actionable recommendations.`;
       }
       res.json(execution);
     } catch (error) {
-      console.error("Error updating sequence execution:", error);
+      logError('Error updating sequence execution:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-sequence-executions-id' });
       res.status(500).json({ error: "Failed to update sequence execution" });
     }
   });
@@ -11354,7 +11355,7 @@ Format your response in clear sections with actionable recommendations.`;
       });
       res.status(201).json(message);
     } catch (error) {
-      console.error("Error creating sequence message:", error);
+      logError('Error creating sequence message:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-sequence-messages' });
       res.status(500).json({ error: "Failed to create sequence message" });
     }
   });
@@ -11370,7 +11371,7 @@ Format your response in clear sections with actionable recommendations.`;
       }
       res.json(message);
     } catch (error) {
-      console.error("Error updating sequence message:", error);
+      logError('Error updating sequence message:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-sequence-messages-id' });
       res.status(500).json({ error: "Failed to update sequence message" });
     }
   });
@@ -11385,7 +11386,7 @@ Format your response in clear sections with actionable recommendations.`;
       });
       res.status(201).json(conversion);
     } catch (error) {
-      console.error("Error recording conversion:", error);
+      logError('Error recording conversion:', error instanceof Error ? error : new Error(String(error)), { route: 'api-automation-conversions' });
       res.status(500).json({ error: "Failed to record conversion" });
     }
   });
@@ -11426,7 +11427,7 @@ Format your response in clear sections with actionable recommendations.`;
       const result = await storage.getCrmContacts(dealershipId, filters, pagination, sorting);
       res.json(result);
     } catch (error) {
-      console.error("Error fetching CRM contacts:", error);
+      logError('Error fetching CRM contacts:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-contacts' });
       res.status(500).json({ error: "Failed to fetch contacts" });
     }
   });
@@ -11461,7 +11462,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.status(201).json(contact);
     } catch (error) {
-      console.error("Error creating CRM contact:", error);
+      logError('Error creating CRM contact:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-contacts' });
       res.status(500).json({ error: "Failed to create contact" });
     }
   });
@@ -11487,7 +11488,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(contact);
     } catch (error) {
-      console.error("Error fetching CRM contact:", error);
+      logError('Error fetching CRM contact:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-contacts-id' });
       res.status(500).json({ error: "Failed to fetch contact" });
     }
   });
@@ -11524,7 +11525,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(contact);
     } catch (error) {
-      console.error("Error updating CRM contact:", error);
+      logError('Error updating CRM contact:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-contacts-id' });
       res.status(500).json({ error: "Failed to update contact" });
     }
   });
@@ -11543,7 +11544,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json({ success: true });
     } catch (error) {
-      console.error("Error deleting CRM contact:", error);
+      logError('Error deleting CRM contact:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-contacts-id' });
       res.status(500).json({ error: "Failed to delete contact" });
     }
   });
@@ -11557,7 +11558,7 @@ Format your response in clear sections with actionable recommendations.`;
       const tags = await storage.getCrmTags(dealershipId);
       res.json(tags);
     } catch (error) {
-      console.error("Error fetching CRM tags:", error);
+      logError('Error fetching CRM tags:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-tags' });
       res.status(500).json({ error: "Failed to fetch tags" });
     }
   });
@@ -11581,7 +11582,7 @@ Format your response in clear sections with actionable recommendations.`;
       const tag = await storage.createCrmTag(parseResult.data);
       res.status(201).json(tag);
     } catch (error) {
-      console.error("Error creating CRM tag:", error);
+      logError('Error creating CRM tag:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-tags' });
       res.status(500).json({ error: "Failed to create tag" });
     }
   });
@@ -11600,7 +11601,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(tag);
     } catch (error) {
-      console.error("Error updating CRM tag:", error);
+      logError('Error updating CRM tag:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-tags-id' });
       res.status(500).json({ error: "Failed to update tag" });
     }
   });
@@ -11619,7 +11620,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json({ success: true });
     } catch (error) {
-      console.error("Error deleting CRM tag:", error);
+      logError('Error deleting CRM tag:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-tags-id' });
       res.status(500).json({ error: "Failed to delete tag" });
     }
   });
@@ -11634,7 +11635,7 @@ Format your response in clear sections with actionable recommendations.`;
       const contactTag = await storage.addTagToContact(contactId, tagId, userId);
       res.status(201).json(contactTag);
     } catch (error) {
-      console.error("Error adding tag to contact:", error);
+      logError('Error adding tag to contact:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-contacts-id-tags-tagId' });
       res.status(500).json({ error: "Failed to add tag" });
     }
   });
@@ -11653,7 +11654,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json({ success: true });
     } catch (error) {
-      console.error("Error removing tag from contact:", error);
+      logError('Error removing tag from contact:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-contacts-id-tags-tagId' });
       res.status(500).json({ error: "Failed to remove tag" });
     }
   });
@@ -11665,7 +11666,7 @@ Format your response in clear sections with actionable recommendations.`;
       const tags = await storage.getContactTags(contactId);
       res.json(tags);
     } catch (error) {
-      console.error("Error fetching contact tags:", error);
+      logError('Error fetching contact tags:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-contacts-id-tags' });
       res.status(500).json({ error: "Failed to fetch tags" });
     }
   });
@@ -11682,7 +11683,7 @@ Format your response in clear sections with actionable recommendations.`;
       const activities = await storage.getCrmActivities(contactId, dealershipId, limit);
       res.json(activities);
     } catch (error) {
-      console.error("Error fetching CRM activities:", error);
+      logError('Error fetching CRM activities:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-contacts-id-activities' });
       res.status(500).json({ error: "Failed to fetch activities" });
     }
   });
@@ -11708,7 +11709,7 @@ Format your response in clear sections with actionable recommendations.`;
       const activity = await storage.createCrmActivity(parseResult.data);
       res.status(201).json(activity);
     } catch (error) {
-      console.error("Error creating CRM activity:", error);
+      logError('Error creating CRM activity:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-contacts-id-activities' });
       res.status(500).json({ error: "Failed to create activity" });
     }
   });
@@ -11742,7 +11743,7 @@ Format your response in clear sections with actionable recommendations.`;
       const tasks = await storage.getCrmTasks(dealershipId, filters, limit);
       res.json(tasks);
     } catch (error) {
-      console.error("Error fetching CRM tasks:", error);
+      logError('Error fetching CRM tasks:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-tasks' });
       res.status(500).json({ error: "Failed to fetch tasks" });
     }
   });
@@ -11761,7 +11762,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(task);
     } catch (error) {
-      console.error("Error fetching CRM task:", error);
+      logError('Error fetching CRM task:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-tasks-id' });
       res.status(500).json({ error: "Failed to fetch task" });
     }
   });
@@ -11786,7 +11787,7 @@ Format your response in clear sections with actionable recommendations.`;
       const task = await storage.createCrmTask(parseResult.data);
       res.status(201).json(task);
     } catch (error) {
-      console.error("Error creating CRM task:", error);
+      logError('Error creating CRM task:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-tasks' });
       res.status(500).json({ error: "Failed to create task" });
     }
   });
@@ -11813,7 +11814,7 @@ Format your response in clear sections with actionable recommendations.`;
       const task = await storage.updateCrmTask(id, dealershipId, req.body);
       res.json(task);
     } catch (error) {
-      console.error("Error updating CRM task:", error);
+      logError('Error updating CRM task:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-tasks-id' });
       res.status(500).json({ error: "Failed to update task" });
     }
   });
@@ -11832,7 +11833,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json({ success: true });
     } catch (error) {
-      console.error("Error deleting CRM task:", error);
+      logError('Error deleting CRM task:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-tasks-id' });
       res.status(500).json({ error: "Failed to delete task" });
     }
   });
@@ -11848,7 +11849,7 @@ Format your response in clear sections with actionable recommendations.`;
       const templates = await storage.getCrmMessageTemplates(dealershipId, channel);
       res.json(templates);
     } catch (error) {
-      console.error("Error fetching message templates:", error);
+      logError('Error fetching message templates:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-message-templates' });
       res.status(500).json({ error: "Failed to fetch message templates" });
     }
   });
@@ -11867,7 +11868,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(template);
     } catch (error) {
-      console.error("Error fetching message template:", error);
+      logError('Error fetching message template:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-message-templates-id' });
       res.status(500).json({ error: "Failed to fetch message template" });
     }
   });
@@ -11901,7 +11902,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.status(201).json(template);
     } catch (error) {
-      console.error("Error creating message template:", error);
+      logError('Error creating message template:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-message-templates' });
       res.status(500).json({ error: "Failed to create message template" });
     }
   });
@@ -11920,7 +11921,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(template);
     } catch (error) {
-      console.error("Error updating message template:", error);
+      logError('Error updating message template:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-message-templates-id' });
       res.status(500).json({ error: "Failed to update message template" });
     }
   });
@@ -11939,7 +11940,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json({ success: true });
     } catch (error) {
-      console.error("Error deleting message template:", error);
+      logError('Error deleting message template:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-message-templates-id' });
       res.status(500).json({ error: "Failed to delete message template" });
     }
   });
@@ -11981,7 +11982,7 @@ Format your response in clear sections with actionable recommendations.`;
         res.status(400).json({ error: result.error });
       }
     } catch (error: any) {
-      console.error("Error sending CRM message:", error);
+      logError('Error sending CRM message:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-contacts-id-message' });
       res.status(500).json({ error: error.message || "Failed to send message" });
     }
   });
@@ -12014,7 +12015,7 @@ Format your response in clear sections with actionable recommendations.`;
         res.status(400).json({ error: result.error });
       }
     } catch (error: any) {
-      console.error("Error generating AI message suggestion:", error);
+      logError('Error generating AI message suggestion:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-contacts-id-suggest-message' });
       res.status(500).json({ error: error.message || "Failed to generate suggestion" });
     }
   });
@@ -12029,7 +12030,7 @@ Format your response in clear sections with actionable recommendations.`;
       const messages = await storage.getCrmMessages(contactId, dealershipId, limit);
       res.json(messages);
     } catch (error) {
-      console.error("Error fetching CRM messages:", error);
+      logError('Error fetching CRM messages:', error instanceof Error ? error : new Error(String(error)), { route: 'api-crm-contacts-id-messages' });
       res.status(500).json({ error: "Failed to fetch messages" });
     }
   });
@@ -12062,7 +12063,7 @@ Format your response in clear sections with actionable recommendations.`;
         res.status(400).json({ success: false, error: result.error });
       }
     } catch (error: any) {
-      console.error("Error sending test email:", error);
+      logError('Error sending test email:', error instanceof Error ? error : new Error(String(error)), { route: 'api-email-test' });
       res.status(500).json({ error: error.message || "Failed to send email" });
     }
   });
@@ -12099,7 +12100,7 @@ Format your response in clear sections with actionable recommendations.`;
         res.status(400).json({ success: false, error: result.error });
       }
     } catch (error: any) {
-      console.error("Error sending call scoring alert:", error);
+      logError('Error sending call scoring alert:', error instanceof Error ? error : new Error(String(error)), { route: 'api-email-call-scoring-alert' });
       res.status(500).json({ error: error.message || "Failed to send alert" });
     }
   });
@@ -12134,7 +12135,7 @@ Format your response in clear sections with actionable recommendations.`;
         res.status(400).json({ success: false, error: result.error });
       }
     } catch (error: any) {
-      console.error("Error sending lead notification:", error);
+      logError('Error sending lead notification:', error instanceof Error ? error : new Error(String(error)), { route: 'api-email-lead-notification' });
       res.status(500).json({ error: error.message || "Failed to send notification" });
     }
   });
@@ -12149,7 +12150,7 @@ Format your response in clear sections with actionable recommendations.`;
       const accounts = await storage.getFacebookAccountsByUser(userId, dealershipId);
       res.json(accounts);
     } catch (error: any) {
-      console.error("Error fetching Facebook accounts:", error);
+      logError('Error fetching Facebook accounts:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-accounts' });
       res.status(500).json({ error: error.message || "Failed to fetch accounts" });
     }
   });
@@ -12174,7 +12175,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(account);
     } catch (error: any) {
-      console.error("Error creating Facebook account:", error);
+      logError('Error creating Facebook account:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-accounts' });
       res.status(500).json({ error: error.message || "Failed to create account" });
     }
   });
@@ -12190,7 +12191,7 @@ Format your response in clear sections with actionable recommendations.`;
       const templates = await storage.getAdTemplatesForUser(userId, dealershipId);
       res.json(templates);
     } catch (error: any) {
-      console.error("Error fetching ad templates:", error);
+      logError('Error fetching ad templates:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ad-templates' });
       res.status(500).json({ error: error.message || "Failed to fetch templates" });
     }
   });
@@ -12202,7 +12203,7 @@ Format your response in clear sections with actionable recommendations.`;
       const templates = await storage.getSharedAdTemplates(dealershipId);
       res.json(templates);
     } catch (error: any) {
-      console.error("Error fetching shared templates:", error);
+      logError('Error fetching shared templates:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ad-templates-shared' });
       res.status(500).json({ error: error.message || "Failed to fetch shared templates" });
     }
   });
@@ -12231,7 +12232,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(template);
     } catch (error: any) {
-      console.error("Error creating ad template:", error);
+      logError('Error creating ad template:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ad-templates' });
       res.status(500).json({ error: error.message || "Failed to create template" });
     }
   });
@@ -12260,7 +12261,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(template);
     } catch (error: any) {
-      console.error("Error creating shared template:", error);
+      logError('Error creating shared template:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ad-templates-shared' });
       res.status(500).json({ error: error.message || "Failed to create shared template" });
     }
   });
@@ -12275,7 +12276,7 @@ Format your response in clear sections with actionable recommendations.`;
       const template = await storage.forkAdTemplate(templateId, userId, dealershipId);
       res.json(template);
     } catch (error: any) {
-      console.error("Error forking template:", error);
+      logError('Error forking template:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ad-templates-id-fork' });
       res.status(500).json({ error: error.message || "Failed to fork template" });
     }
   });
@@ -12301,7 +12302,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(template);
     } catch (error: any) {
-      console.error("Error updating ad template:", error);
+      logError('Error updating ad template:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ad-templates-id' });
       res.status(500).json({ error: error.message || "Failed to update template" });
     }
   });
@@ -12326,7 +12327,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json(template);
     } catch (error: any) {
-      console.error("Error updating shared template:", error);
+      logError('Error updating shared template:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ad-templates-shared-id' });
       res.status(500).json({ error: error.message || "Failed to update shared template" });
     }
   });
@@ -12341,7 +12342,7 @@ Format your response in clear sections with actionable recommendations.`;
       await storage.deleteAdTemplate(templateId, userId, dealershipId);
       res.json({ success: true });
     } catch (error: any) {
-      console.error("Error deleting ad template:", error);
+      logError('Error deleting ad template:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ad-templates-id' });
       res.status(500).json({ error: error.message || "Failed to delete template" });
     }
   });
@@ -12355,7 +12356,7 @@ Format your response in clear sections with actionable recommendations.`;
       await storage.deleteSharedAdTemplate(templateId, dealershipId);
       res.json({ success: true });
     } catch (error: any) {
-      console.error("Error deleting shared template:", error);
+      logError('Error deleting shared template:', error instanceof Error ? error : new Error(String(error)), { route: 'api-ad-templates-shared-id' });
       res.status(500).json({ error: error.message || "Failed to delete shared template" });
     }
   });
@@ -12430,7 +12431,7 @@ Format your response in clear sections with actionable recommendations.`;
         hasMore: filtered.length > limit
       });
     } catch (error: any) {
-      console.error("Error fetching marketplace blast queue:", error);
+      logError('Error fetching marketplace blast queue:', error instanceof Error ? error : new Error(String(error)), { route: 'api-marketplace-blast-queue' });
       res.status(500).json({ error: error.message || "Failed to fetch queue" });
     }
   });
@@ -12478,7 +12479,7 @@ Format your response in clear sections with actionable recommendations.`;
         generatedAt: new Date()
       });
     } catch (error: any) {
-      console.error("Error generating marketplace content:", error);
+      logError('Error generating marketplace content:', error instanceof Error ? error : new Error(String(error)), { route: 'api-marketplace-blast-generate-vehicleId' });
       res.status(500).json({ error: error.message || "Failed to generate content" });
     }
   });
@@ -12549,7 +12550,7 @@ Format your response in clear sections with actionable recommendations.`;
         results
       });
     } catch (error: any) {
-      console.error("Error in bulk generate:", error);
+      logError('Error in bulk generate:', error instanceof Error ? error : new Error(String(error)), { route: 'api-marketplace-blast-generate-bulk' });
       res.status(500).json({ error: error.message || "Failed to generate content" });
     }
   });
@@ -12573,7 +12574,7 @@ Format your response in clear sections with actionable recommendations.`;
       
       res.json({ success: true, postedAt: new Date() });
     } catch (error: any) {
-      console.error("Error marking as posted:", error);
+      logError('Error marking as posted:', error instanceof Error ? error : new Error(String(error)), { route: 'api-marketplace-blast-mark-posted-vehicl' });
       res.status(500).json({ error: error.message || "Failed to mark as posted" });
     }
   });
@@ -12600,7 +12601,7 @@ Format your response in clear sections with actionable recommendations.`;
         count: images.length
       });
     } catch (error: any) {
-      console.error("Error fetching photos:", error);
+      logError('Error fetching photos:', error instanceof Error ? error : new Error(String(error)), { route: 'api-marketplace-blast-photos-vehicleId' });
       res.status(500).json({ error: error.message || "Failed to fetch photos" });
     }
   });

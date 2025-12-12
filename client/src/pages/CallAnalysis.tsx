@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Navbar } from "@/components/Navbar";
+import { apiGet, apiPost, apiPatch, apiDelete, ApiRequestError } from "@/lib/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -501,13 +502,8 @@ function CallParticipantsPanel({ callId, token }: { callId: number; token: strin
     
     const fetchParticipants = async () => {
       try {
-        const response = await fetch(`/api/call-recordings/${callId}/participants`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setParticipants(data);
-        }
+        const data = await apiGet<CallParticipant[]>(`/api/call-recordings/${callId}/participants`, { 'Authorization': `Bearer ${token}` });
+        setParticipants(data);
       } catch (error) {
         console.error('Error fetching participants:', error);
       } finally {
@@ -868,13 +864,8 @@ function ScoringTemplatesDialog({
   const fetchTemplates = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/call-scoring/templates', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setTemplates(data);
-      }
+      const data = await apiGet<ScoringTemplate[]>('/api/call-scoring/templates', { 'Authorization': `Bearer ${token}` });
+      setTemplates(data);
     } catch (error) {
       console.error('Error fetching templates:', error);
     } finally {
@@ -884,13 +875,8 @@ function ScoringTemplatesDialog({
   
   const fetchTemplateDetails = async (templateId: number) => {
     try {
-      const response = await fetch(`/api/call-scoring/templates/${templateId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setSelectedTemplate(data);
-      }
+      const data = await apiGet<ScoringTemplate>(`/api/call-scoring/templates/${templateId}`, { 'Authorization': `Bearer ${token}` });
+      setSelectedTemplate(data);
     } catch (error) {
       console.error('Error fetching template details:', error);
     }
@@ -907,12 +893,7 @@ function ScoringTemplatesDialog({
   
   const handleCloneTemplate = async (templateId: number) => {
     try {
-      const response = await fetch(`/api/call-scoring/templates/${templateId}/clone`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (!response.ok) throw new Error('Failed to clone template');
-      const cloned = await response.json();
+      const cloned = await apiPost<ScoringTemplate>(`/api/call-scoring/templates/${templateId}/clone`, undefined, { 'Authorization': `Bearer ${token}` });
       toast({ title: "Success", description: "Template cloned successfully" });
       fetchTemplates();
       fetchTemplateDetails(cloned.id);
@@ -924,12 +905,7 @@ function ScoringTemplatesDialog({
   const handleUpdateTemplate = async (updates: Partial<ScoringTemplate>) => {
     if (!selectedTemplate) return;
     try {
-      const response = await fetch(`/api/call-scoring/templates/${selectedTemplate.id}`, {
-        method: 'PATCH',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates)
-      });
-      if (!response.ok) throw new Error('Failed to update template');
+      await apiPatch(`/api/call-scoring/templates/${selectedTemplate.id}`, updates, { 'Authorization': `Bearer ${token}` });
       toast({ title: "Success", description: "Template updated" });
       fetchTemplateDetails(selectedTemplate.id);
     } catch (error) {
@@ -941,19 +917,9 @@ function ScoringTemplatesDialog({
     if (!selectedTemplate) return;
     try {
       if (criterion.id) {
-        const response = await fetch(`/api/call-scoring/criteria/${criterion.id}`, {
-          method: 'PATCH',
-          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify(criterion)
-        });
-        if (!response.ok) throw new Error('Failed to update criterion');
+        await apiPatch(`/api/call-scoring/criteria/${criterion.id}`, criterion, { 'Authorization': `Bearer ${token}` });
       } else {
-        const response = await fetch(`/api/call-scoring/templates/${selectedTemplate.id}/criteria`, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify(criterion)
-        });
-        if (!response.ok) throw new Error('Failed to add criterion');
+        await apiPost(`/api/call-scoring/templates/${selectedTemplate.id}/criteria`, criterion, { 'Authorization': `Bearer ${token}` });
       }
       toast({ title: "Success", description: "Criterion saved" });
       fetchTemplateDetails(selectedTemplate.id);
@@ -964,11 +930,7 @@ function ScoringTemplatesDialog({
   
   const handleDeleteCriterion = async (criterionId: number) => {
     try {
-      const response = await fetch(`/api/call-scoring/criteria/${criterionId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (!response.ok) throw new Error('Failed to delete criterion');
+      await apiDelete(`/api/call-scoring/criteria/${criterionId}`, { 'Authorization': `Bearer ${token}` });
       toast({ title: "Success", description: "Criterion deleted" });
       if (selectedTemplate) fetchTemplateDetails(selectedTemplate.id);
     } catch (error) {
@@ -991,12 +953,7 @@ function ScoringTemplatesDialog({
     }
     
     try {
-      const response = await fetch(`/api/call-scoring/templates/${selectedTemplate.id}/criteria/reorder`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order: newOrder })
-      });
-      if (!response.ok) throw new Error('Failed to reorder');
+      await apiPost(`/api/call-scoring/templates/${selectedTemplate.id}/criteria/reorder`, { order: newOrder }, { 'Authorization': `Bearer ${token}` });
       fetchTemplateDetails(selectedTemplate.id);
     } catch (error) {
       toast({ title: "Error", description: "Failed to reorder criteria", variant: "destructive" });
@@ -1363,13 +1320,8 @@ function CallScoringSheet({
   
   const fetchTemplates = async () => {
     try {
-      const response = await fetch('/api/call-scoring/templates', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setTemplates(data);
-      }
+      const data = await apiGet<ScoringTemplate[]>('/api/call-scoring/templates', { 'Authorization': `Bearer ${token}` });
+      setTemplates(data);
     } catch (error) {
       console.error('Error fetching templates:', error);
     }
@@ -1378,23 +1330,18 @@ function CallScoringSheet({
   const fetchScoring = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/call-recordings/${callId}/scoring`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (response.ok) {
-        const data = await response.json();
-        if (data.sheet) {
-          setScoringSheet(data.sheet);
-          setResponses(data.responses || []);
-          setCriteria(data.criteria || []);
-          setSelectedTemplateId(data.sheet.templateId);
-          setCoachingNotes(data.sheet.coachingNotes || '');
-          const edited: Record<number, { score: number | null; comment: string }> = {};
-          (data.responses || []).forEach((r: ScoringResponse) => {
-            edited[r.criterionId] = { score: r.reviewerScore, comment: r.comment || '' };
-          });
-          setEditedResponses(edited);
-        }
+      const data = await apiGet<{ sheet: ScoringSheet | null; responses: ScoringResponse[]; criteria: ScoringCriterion[] }>(`/api/call-recordings/${callId}/scoring`, { 'Authorization': `Bearer ${token}` });
+      if (data.sheet) {
+        setScoringSheet(data.sheet);
+        setResponses(data.responses || []);
+        setCriteria(data.criteria || []);
+        setSelectedTemplateId(data.sheet.templateId);
+        setCoachingNotes(data.sheet.coachingNotes || '');
+        const edited: Record<number, { score: number | null; comment: string }> = {};
+        (data.responses || []).forEach((r: ScoringResponse) => {
+          edited[r.criterionId] = { score: r.reviewerScore, comment: r.comment || '' };
+        });
+        setEditedResponses(edited);
       }
     } catch (error) {
       console.error('Error fetching scoring:', error);
@@ -1410,12 +1357,7 @@ function CallScoringSheet({
     }
     setIsSaving(true);
     try {
-      const response = await fetch(`/api/call-recordings/${callId}/scoring`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ templateId: selectedTemplateId })
-      });
-      if (!response.ok) throw new Error('Failed to create scoring sheet');
+      await apiPost(`/api/call-recordings/${callId}/scoring`, { templateId: selectedTemplateId }, { 'Authorization': `Bearer ${token}` });
       toast({ title: "Success", description: "Scoring sheet created" });
       fetchScoring();
     } catch (error) {
@@ -1435,12 +1377,7 @@ function CallScoringSheet({
         comment: data.comment
       }));
       
-      const response = await fetch(`/api/call-recordings/${callId}/scoring/responses`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ responses: responsesToSave, coachingNotes })
-      });
-      if (!response.ok) throw new Error('Failed to save responses');
+      await apiPost(`/api/call-recordings/${callId}/scoring/responses`, { responses: responsesToSave, coachingNotes }, { 'Authorization': `Bearer ${token}` });
       toast({ title: "Success", description: "Scores saved successfully" });
       fetchScoring();
     } catch (error) {
@@ -1753,21 +1690,14 @@ export default function CallAnalysis() {
       params.append('limit', pagination.limit.toString());
       params.append('offset', pagination.offset.toString());
       
-      const response = await fetch(`/api/call-recordings?${params.toString()}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (response.status === 401 || response.status === 403) {
-        setLocation('/login');
-        return;
-      }
-      
-      if (!response.ok) throw new Error('Failed to fetch calls');
-      
-      const data = await response.json();
+      const data = await apiGet<{ calls: CallRecording[]; total: number }>(`/api/call-recordings?${params.toString()}`, { 'Authorization': `Bearer ${token}` });
       setCalls(data.calls || []);
       setPagination(prev => ({ ...prev, total: data.total || 0 }));
     } catch (error) {
+      if (error instanceof ApiRequestError && (error.status === 401 || error.status === 403)) {
+        setLocation('/login');
+        return;
+      }
       console.error('Error fetching calls:', error);
       toast({
         title: "Error",
@@ -1779,14 +1709,8 @@ export default function CallAnalysis() {
   
   const fetchCriteria = async () => {
     try {
-      const response = await fetch('/api/call-analysis-criteria', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setCriteria(data);
-      }
+      const data = await apiGet<AnalysisCriteria[]>('/api/call-analysis-criteria', { 'Authorization': `Bearer ${token}` });
+      setCriteria(data);
     } catch (error) {
       console.error('Error fetching criteria:', error);
     }
@@ -1794,14 +1718,8 @@ export default function CallAnalysis() {
   
   const fetchStats = async () => {
     try {
-      const response = await fetch('/api/call-recordings/stats', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setStats(data);
-      }
+      const data = await apiGet<CallStats>('/api/call-recordings/stats', { 'Authorization': `Bearer ${token}` });
+      setStats(data);
     } catch (error) {
       console.error('Error fetching stats:', error);
     }
@@ -1822,12 +1740,7 @@ export default function CallAnalysis() {
   
   const handleAnalyzeCall = async (callId: number) => {
     try {
-      const response = await fetch(`/api/call-recordings/${callId}/analyze`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (!response.ok) throw new Error('Failed to analyze call');
+      await apiPost(`/api/call-recordings/${callId}/analyze`, undefined, { 'Authorization': `Bearer ${token}` });
       
       toast({
         title: "Analysis Started",
@@ -1846,16 +1759,7 @@ export default function CallAnalysis() {
   
   const handleMarkReviewed = async (callId: number, notes: string) => {
     try {
-      const response = await fetch(`/api/call-recordings/${callId}/review`, {
-        method: 'PATCH',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ notes })
-      });
-      
-      if (!response.ok) throw new Error('Failed to mark as reviewed');
+      await apiPatch(`/api/call-recordings/${callId}/review`, { notes }, { 'Authorization': `Bearer ${token}` });
       
       toast({
         title: "Marked as Reviewed",
@@ -1876,21 +1780,11 @@ export default function CallAnalysis() {
   
   const handleSaveCriterion = async (criterion: Partial<AnalysisCriteria>) => {
     try {
-      const method = criterion.id ? 'PATCH' : 'POST';
-      const url = criterion.id 
-        ? `/api/call-analysis-criteria/${criterion.id}` 
-        : '/api/call-analysis-criteria';
-      
-      const response = await fetch(url, {
-        method,
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(criterion)
-      });
-      
-      if (!response.ok) throw new Error('Failed to save criterion');
+      if (criterion.id) {
+        await apiPatch(`/api/call-analysis-criteria/${criterion.id}`, criterion, { 'Authorization': `Bearer ${token}` });
+      } else {
+        await apiPost('/api/call-analysis-criteria', criterion, { 'Authorization': `Bearer ${token}` });
+      }
       
       toast({
         title: "Saved",
@@ -1909,12 +1803,7 @@ export default function CallAnalysis() {
   
   const handleDeleteCriterion = async (id: number) => {
     try {
-      const response = await fetch(`/api/call-analysis-criteria/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (!response.ok) throw new Error('Failed to delete criterion');
+      await apiDelete(`/api/call-analysis-criteria/${id}`, { 'Authorization': `Bearer ${token}` });
       
       toast({
         title: "Deleted",

@@ -10,6 +10,7 @@ import type { InsertScrapeRun, Vehicle } from '@shared/schema';
 import { db } from './db';
 import { vehicles, scrapeSources } from '@shared/schema';
 import { eq, and, inArray, desc } from 'drizzle-orm';
+import { logInfo, logWarn, logError } from './error-utils';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAYS = [5000, 15000, 30000]; // 5s, 15s, 30s exponential backoff
@@ -74,7 +75,7 @@ async function attemptBrowserlessScrape(dealershipId?: number): Promise<{
       return { success: false, vehiclesImported: 0, error: `Browserless connection failed: ${connectionTest.message}` };
     }
 
-    console.log('[Robust Scraper] Browserless connected. Fetching scrape sources...');
+    logInfo('[Robust Scraper] Browserless connected. Fetching scrape sources...', { service: 'scraper', method: 'browserless' });
 
     const sources = dealershipId
       ? await db.select().from(scrapeSources).where(
@@ -89,13 +90,13 @@ async function attemptBrowserlessScrape(dealershipId?: number): Promise<{
     let totalImported = 0;
 
     for (const source of sources) {
-      console.log(`[Robust Scraper] Browserless scraping: ${source.sourceName} (${source.sourceUrl})`);
+      logInfo('[Robust Scraper] Browserless scraping source', { service: 'scraper', method: 'browserless', sourceName: source.sourceName, sourceUrl: source.sourceUrl });
       
       try {
         const result = await browserlessService.scrapeInventoryUrl(source.sourceUrl);
         
         if (result.success && result.vehicles.length > 0) {
-          console.log(`[Robust Scraper] Browserless found ${result.vehicles.length} vehicles from ${source.sourceName}`);
+          logInfo('[Robust Scraper] Browserless found vehicles', { service: 'scraper', method: 'browserless', vehicleCount: result.vehicles.length, sourceName: source.sourceName });
           
           for (const v of result.vehicles) {
             // Extract additional data from cardText if available
@@ -164,10 +165,10 @@ async function attemptBrowserlessScrape(dealershipId?: number): Promise<{
             if (saved) totalImported++;
           }
         } else if (!result.success) {
-          console.warn(`[Robust Scraper] Browserless failed for ${source.sourceName}: ${result.error}`);
+          logWarn('[Robust Scraper] Browserless failed for source', { service: 'scraper', method: 'browserless', sourceName: source.sourceName, error: result.error });
         }
       } catch (sourceError) {
-        console.warn(`[Robust Scraper] Error scraping ${source.sourceName}:`, sourceError);
+        logWarn('[Robust Scraper] Error scraping source', { service: 'scraper', method: 'browserless', sourceName: source.sourceName, error: sourceError instanceof Error ? sourceError.message : String(sourceError) });
       }
     }
 
@@ -219,8 +220,8 @@ async function attemptApifyMarketDataRefresh(dealershipId?: number): Promise<{
       return { success: false, vehiclesUpdated: 0, error: `Apify connection failed: ${connectionTest.message}` };
     }
 
-    console.log('[Robust Scraper] Apify connected. Attempting market data refresh for existing inventory...');
-    console.log('[Robust Scraper] NOTE: Apify searches AutoTrader.ca by make/model, cannot discover new dealer inventory.');
+    logInfo('[Robust Scraper] Apify connected. Attempting market data refresh for existing inventory...', { service: 'scraper', method: 'apify' });
+    logInfo('[Robust Scraper] NOTE: Apify searches AutoTrader.ca by make/model, cannot discover new dealer inventory.', { service: 'scraper', method: 'apify' });
     
     const existingVehicles = dealershipId 
       ? await db.select().from(vehicles).where(eq(vehicles.dealershipId, dealershipId)).limit(50)
@@ -265,10 +266,10 @@ async function attemptApifyMarketDataRefresh(dealershipId?: number): Promise<{
               .where(eq(vehicles.id, vehicle.id));
             updatedCount++;
           }
-          console.log(`[Robust Scraper] Refreshed ${vehicleGroup.length} ${year} ${make} ${model} vehicles with market data`);
+          logInfo('[Robust Scraper] Refreshed vehicles with market data', { service: 'scraper', method: 'apify', vehicleCount: vehicleGroup.length, year, make, model });
         }
       } catch (err) {
-        console.warn(`[Robust Scraper] Failed to get market data for ${year} ${make} ${model}:`, err);
+        logWarn('[Robust Scraper] Failed to get market data', { service: 'scraper', method: 'apify', year, make, model, error: err instanceof Error ? err.message : String(err) });
       }
     }
 
@@ -295,7 +296,7 @@ async function preserveExistingInventory(dealershipId?: number): Promise<{
       ? await db.select().from(vehicles).where(eq(vehicles.dealershipId, dealershipId))
       : await db.select().from(vehicles);
 
-    console.log(`[Robust Scraper] Cache preserve mode: Keeping ${existingVehicles.length} existing vehicles (scrape failed, no deletions)`);
+    logInfo('[Robust Scraper] Cache preserve mode: Keeping existing vehicles', { service: 'scraper', method: 'cache_preserve', vehicleCount: existingVehicles.length });
     
     return { vehiclesPreserved: existingVehicles.length };
   } catch (error) {
@@ -324,11 +325,11 @@ export async function runRobustScrape(
   };
 
   const run = await storage.createScrapeRun(runData);
-  console.log(`[Robust Scraper] Started scrape run #${run.id} (triggered by: ${triggeredBy})`);
+  logInfo('[Robust Scraper] Started scrape run', { service: 'scraper', runId: run.id, triggeredBy });
 
   // ===== TIER 1: Local Puppeteer with retries =====
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    console.log(`[Robust Scraper] Attempt ${attempt}/${MAX_RETRIES} using Puppeteer...`);
+    logInfo('[Robust Scraper] Attempting Puppeteer scrape', { service: 'scraper', method: 'puppeteer', attempt, maxRetries: MAX_RETRIES });
     
     const result = await attemptPuppeteerScrape();
     
@@ -343,7 +344,7 @@ export async function runRobustScrape(
         completedAt: new Date(),
       });
       
-      console.log(`[Robust Scraper] ✓ Success on attempt ${attempt}: ${result.total} vehicles`);
+      logInfo('[Robust Scraper] Puppeteer scrape succeeded', { service: 'scraper', method: 'puppeteer', attempt, vehicleCount: result.total });
       
       return {
         success: true,
@@ -358,17 +359,17 @@ export async function runRobustScrape(
 
     lastError = result.error || 'Unknown error';
     retryCount++;
-    console.error(`[Robust Scraper] Attempt ${attempt} failed: ${lastError}`);
+    logError('[Robust Scraper] Puppeteer attempt failed', new Error(lastError), { service: 'scraper', method: 'puppeteer', attempt });
 
     if (attempt < MAX_RETRIES) {
       const delay = RETRY_DELAYS[attempt - 1] || 30000;
-      console.log(`[Robust Scraper] Retrying in ${delay / 1000}s...`);
+      logInfo('[Robust Scraper] Retrying after delay', { service: 'scraper', method: 'puppeteer', delaySeconds: delay / 1000 });
       await sleep(delay);
     }
   }
 
   // ===== TIER 2: Browserless Cloud Puppeteer (TRUE FALLBACK) =====
-  console.log('[Robust Scraper] All local Puppeteer attempts failed. Trying Browserless cloud fallback...');
+  logInfo('[Robust Scraper] All local Puppeteer attempts failed. Trying Browserless cloud fallback...', { service: 'scraper', method: 'browserless' });
   
   const browserlessResult = await attemptBrowserlessScrape(dealershipId);
   
@@ -386,7 +387,7 @@ export async function runRobustScrape(
       completedAt: new Date(),
     });
     
-    console.log(`[Robust Scraper] ✓ Browserless cloud recovery: ${browserlessResult.vehiclesImported} vehicles imported`);
+    logInfo('[Robust Scraper] Browserless cloud recovery succeeded', { service: 'scraper', method: 'browserless', vehiclesImported: browserlessResult.vehiclesImported });
     
     return {
       success: true,
@@ -399,7 +400,7 @@ export async function runRobustScrape(
     };
   }
 
-  console.log(`[Robust Scraper] Browserless failed: ${browserlessResult.error}. Trying Apify market data refresh...`);
+  logInfo('[Robust Scraper] Browserless failed. Trying Apify market data refresh...', { service: 'scraper', method: 'apify', browserlessError: browserlessResult.error });
 
   // ===== TIER 3: Apify Market Data Refresh (Validation Only) =====
   const apifyResult = await attemptApifyMarketDataRefresh(dealershipId);
@@ -417,7 +418,7 @@ export async function runRobustScrape(
       completedAt: new Date(),
     });
     
-    console.log(`[Robust Scraper] ⚠ Apify partial recovery: ${apifyResult.vehiclesUpdated} vehicles refreshed (market data only, no new inventory)`);
+    logWarn('[Robust Scraper] Apify partial recovery', { service: 'scraper', method: 'apify', vehiclesUpdated: apifyResult.vehiclesUpdated, note: 'market data only, no new inventory' });
     
     return {
       success: false,
@@ -432,7 +433,7 @@ export async function runRobustScrape(
   }
 
   // ===== TIER 4: Cache Preserve (Prevent Data Loss) =====
-  console.log('[Robust Scraper] All scraping methods failed. Preserving existing inventory (no deletions)...');
+  logWarn('[Robust Scraper] All scraping methods failed. Preserving existing inventory (no deletions)...', { service: 'scraper', method: 'cache_preserve' });
   method = 'cache_preserve';
   
   const preserveResult = await preserveExistingInventory(dealershipId);
@@ -454,9 +455,9 @@ export async function runRobustScrape(
   });
 
   if (preserveResult.vehiclesPreserved > 0) {
-    console.log(`[Robust Scraper] ⚠ Cache preserve mode: ${preserveResult.vehiclesPreserved} vehicles retained (partial success)`);
+    logWarn('[Robust Scraper] Cache preserve mode: vehicles retained', { service: 'scraper', method: 'cache_preserve', vehiclesPreserved: preserveResult.vehiclesPreserved, status: 'partial_success' });
   } else {
-    console.error(`[Robust Scraper] ✗ Complete failure: No vehicles found or preserved`);
+    logError('[Robust Scraper] Complete failure: No vehicles found or preserved', new Error('All scrape methods failed'), { service: 'scraper', method: 'cache_preserve' });
   }
 
   return {

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Navbar } from "@/components/Navbar";
+import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,16 +45,10 @@ function InventoryAnalysisTab() {
     setIsLoading(true);
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch(`/api/manager/inventory-analysis?radiusKm=${radius}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const data = await apiGet<any>(`/api/manager/inventory-analysis?radiusKm=${radius}`, {
+        'Authorization': `Bearer ${token}`
       });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setInventoryData(data);
-      } else {
-        throw new Error('Failed to fetch inventory analysis');
-      }
+      setInventoryData(data);
     } catch (error) {
       console.error('Error fetching inventory analysis:', error);
       toast({
@@ -70,26 +65,16 @@ function InventoryAnalysisTab() {
     setIsRefreshing(true);
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/manager/inventory-analysis/refresh', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` 
-        },
-        body: JSON.stringify({ radiusKm: selectedRadius === 'national' ? 2000 : parseInt(selectedRadius) })
+      const result = await apiPost<any>('/api/manager/inventory-analysis/refresh', 
+        { radiusKm: selectedRadius === 'national' ? 2000 : parseInt(selectedRadius) },
+        { 'Authorization': `Bearer ${token}` }
+      );
+      toast({
+        title: "Analysis Complete",
+        description: `Analyzed ${result.vehiclesAnalyzed} vehicle types, found ${result.newListingsFound} new market listings`
       });
-      
-      if (response.ok) {
-        const result = await response.json();
-        toast({
-          title: "Analysis Complete",
-          description: `Analyzed ${result.vehiclesAnalyzed} vehicle types, found ${result.newListingsFound} new market listings`
-        });
-        // Reload the data
-        await fetchInventoryAnalysis(selectedRadius);
-      } else {
-        throw new Error('Failed to refresh analysis');
-      }
+      // Reload the data
+      await fetchInventoryAnalysis(selectedRadius);
     } catch (error) {
       console.error('Error refreshing analysis:', error);
       toast({
@@ -352,16 +337,10 @@ function MarketplaceTemplatesTab() {
     setIsLoading(true);
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/ad-templates/shared', {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const data = await apiGet<any[]>('/api/ad-templates/shared', {
+        'Authorization': `Bearer ${token}`
       });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setTemplates(data);
-      } else {
-        throw new Error('Failed to fetch templates');
-      }
+      setTemplates(data);
     } catch (error) {
       console.error('Error fetching templates:', error);
       toast({
@@ -391,35 +370,24 @@ function MarketplaceTemplatesTab() {
     setIsSaving(true);
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/ad-templates/shared', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(newTemplate)
+      await apiPost('/api/ad-templates/shared', newTemplate, {
+        'Authorization': `Bearer ${token}`
       });
-
-      if (response.ok) {
-        toast({
-          title: "Template Created",
-          description: "The shared template is now available to all staff"
-        });
-        setIsCreating(false);
-        setNewTemplate({
-          templateName: '',
-          titleTemplate: '{year} {make} {model} - ${price}',
-          descriptionTemplate: ''
-        });
-        fetchTemplates();
-      } else {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to create template');
-      }
+      toast({
+        title: "Template Created",
+        description: "The shared template is now available to all staff"
+      });
+      setIsCreating(false);
+      setNewTemplate({
+        templateName: '',
+        titleTemplate: '{year} {make} {model} - ${price}',
+        descriptionTemplate: ''
+      });
+      fetchTemplates();
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message || "Failed to create template",
+        description: error.body?.error || error.message || "Failed to create template",
         variant: "destructive"
       });
     } finally {
@@ -433,34 +401,23 @@ function MarketplaceTemplatesTab() {
     setIsSaving(true);
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch(`/api/ad-templates/shared/${editingTemplate.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          templateName: editingTemplate.templateName,
-          titleTemplate: editingTemplate.titleTemplate,
-          descriptionTemplate: editingTemplate.descriptionTemplate
-        })
+      await apiPatch(`/api/ad-templates/shared/${editingTemplate.id}`, {
+        templateName: editingTemplate.templateName,
+        titleTemplate: editingTemplate.titleTemplate,
+        descriptionTemplate: editingTemplate.descriptionTemplate
+      }, {
+        'Authorization': `Bearer ${token}`
       });
-
-      if (response.ok) {
-        toast({
-          title: "Template Updated",
-          description: "Changes saved successfully"
-        });
-        setEditingTemplate(null);
-        fetchTemplates();
-      } else {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to update template');
-      }
+      toast({
+        title: "Template Updated",
+        description: "Changes saved successfully"
+      });
+      setEditingTemplate(null);
+      fetchTemplates();
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message || "Failed to update template",
+        description: error.body?.error || error.message || "Failed to update template",
         variant: "destructive"
       });
     } finally {
@@ -475,25 +432,18 @@ function MarketplaceTemplatesTab() {
 
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch(`/api/ad-templates/shared/${templateId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
+      await apiDelete(`/api/ad-templates/shared/${templateId}`, {
+        'Authorization': `Bearer ${token}`
       });
-
-      if (response.ok) {
-        toast({
-          title: "Template Deleted",
-          description: "The template has been removed"
-        });
-        fetchTemplates();
-      } else {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to delete template');
-      }
+      toast({
+        title: "Template Deleted",
+        description: "The template has been removed"
+      });
+      fetchTemplates();
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete template",
+        description: error.body?.error || error.message || "Failed to delete template",
         variant: "destructive"
       });
     }
@@ -886,30 +836,20 @@ export default function Manager() {
     setIsSendingReply(true);
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch(`/api/messenger-conversations/${viewingConversation.id}/reply`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ message: messengerReplyText.trim() })
+      await apiPost(`/api/messenger-conversations/${viewingConversation.id}/reply`, 
+        { message: messengerReplyText.trim() },
+        { 'Authorization': `Bearer ${token}` }
+      );
+      toast({
+        title: "Reply Sent",
+        description: "Your message has been sent successfully"
       });
-      
-      if (response.ok) {
-        toast({
-          title: "Reply Sent",
-          description: "Your message has been sent successfully"
-        });
-        setMessengerReplyText("");
-        loadConversations();
-      } else {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to send reply');
-      }
+      setMessengerReplyText("");
+      loadConversations();
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message || "Failed to send reply",
+        description: error.body?.error || error.message || "Failed to send reply",
         variant: "destructive"
       });
     } finally {
@@ -921,13 +861,10 @@ export default function Manager() {
     setIsLoadingConversations(true);
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/all-conversations', {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const data = await apiGet<any>('/api/all-conversations', {
+        'Authorization': `Bearer ${token}`
       });
-      if (response.ok) {
-        const data = await response.json();
-        setAllConversations(data);
-      }
+      setAllConversations(data);
     } catch (error) {
       console.error('Error loading conversations:', error);
       toast({
@@ -974,13 +911,10 @@ export default function Manager() {
   const loadMakes = async () => {
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/inventory/makes', {
-        headers: { 'Authorization': `Bearer ${token}` },
+      const data = await apiGet<string[]>('/api/inventory/makes', {
+        'Authorization': `Bearer ${token}`
       });
-      if (response.ok) {
-        const data = await response.json();
-        setMakes(data);
-      }
+      setMakes(data);
     } catch (error) {
       console.error("Error loading makes:", error);
     }
@@ -989,13 +923,10 @@ export default function Manager() {
   const loadModels = async (make: string) => {
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch(`/api/inventory/models?make=${encodeURIComponent(make)}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
+      const data = await apiGet<string[]>(`/api/inventory/models?make=${encodeURIComponent(make)}`, {
+        'Authorization': `Bearer ${token}`
       });
-      if (response.ok) {
-        const data = await response.json();
-        setModels(data);
-      }
+      setModels(data);
     } catch (error) {
       console.error("Error loading models:", error);
     }
@@ -1004,13 +935,10 @@ export default function Manager() {
   const loadTrims = async (make: string, model: string) => {
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch(`/api/inventory/trims?make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
+      const data = await apiGet<string[]>(`/api/inventory/trims?make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}`, {
+        'Authorization': `Bearer ${token}`
       });
-      if (response.ok) {
-        const data = await response.json();
-        setTrims(data);
-      }
+      setTrims(data);
     } catch (error) {
       console.error("Error loading trims:", error);
     }
@@ -1019,18 +947,15 @@ export default function Manager() {
   const loadSettings = async () => {
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/manager/settings', {
-        headers: { 'Authorization': `Bearer ${token}` },
+      const data = await apiGet<any>('/api/manager/settings', {
+        'Authorization': `Bearer ${token}`
       });
-      if (response.ok) {
-        const data = await response.json();
-        if (data) {
-          setSettings({
-            postalCode: data.postalCode || "",
-            defaultRadiusKm: data.defaultRadiusKm || 50
-          });
-          setPricingForm(prev => ({ ...prev, radiusKm: String(data.defaultRadiusKm || 50) }));
-        }
+      if (data) {
+        setSettings({
+          postalCode: data.postalCode || "",
+          defaultRadiusKm: data.defaultRadiusKm || 50
+        });
+        setPricingForm(prev => ({ ...prev, radiusKm: String(data.defaultRadiusKm || 50) }));
       }
     } catch (error) {
       console.error("Error loading settings:", error);
@@ -1040,13 +965,10 @@ export default function Manager() {
   const loadWebsiteUrl = async () => {
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/dealership/website-url', {
-        headers: { 'Authorization': `Bearer ${token}` },
+      const data = await apiGet<{ websiteUrl: string }>('/api/dealership/website-url', {
+        'Authorization': `Bearer ${token}`
       });
-      if (response.ok) {
-        const data = await response.json();
-        setWebsiteUrl(data.websiteUrl);
-      }
+      setWebsiteUrl(data.websiteUrl);
     } catch (error) {
       console.error("Error loading website URL:", error);
     }
@@ -1056,14 +978,11 @@ export default function Manager() {
     setIsLoadingMetrics(true);
     try {
       const token = localStorage.getItem('auth_token');
+      const headers = { 'Authorization': `Bearer ${token}` };
       
-      const [conversationsRes, queueRes] = await Promise.all([
-        fetch('/api/conversations', {
-          headers: { 'Authorization': `Bearer ${token}` },
-        }),
-        fetch('/api/facebook/queue', {
-          headers: { 'Authorization': `Bearer ${token}` },
-        })
+      const [conversationsData, queueData] = await Promise.all([
+        apiGet<any>('/api/conversations', headers).catch(() => null),
+        apiGet<any>('/api/facebook/queue', headers).catch(() => null)
       ]);
 
       let totalLeads = 0;
@@ -1071,25 +990,23 @@ export default function Manager() {
       let appointmentsBooked = 0;  // TODO: Implement appointments system
       let scheduledPosts = 0;
 
-      if (conversationsRes.ok) {
-        const data = await conversationsRes.json();
-        
+      if (conversationsData) {
         // Handle both array (backward compatible) and paginated response format
         let conversationsList: any[] = [];
-        if (Array.isArray(data)) {
-          conversationsList = data;
-        } else if (data && typeof data === 'object') {
+        if (Array.isArray(conversationsData)) {
+          conversationsList = conversationsData;
+        } else if (conversationsData && typeof conversationsData === 'object') {
           // Check for various response structures
-          if (Array.isArray(data.data)) {
-            conversationsList = data.data;
-          } else if (Array.isArray(data.conversations)) {
-            conversationsList = data.conversations;
+          if (Array.isArray(conversationsData.data)) {
+            conversationsList = conversationsData.data;
+          } else if (Array.isArray(conversationsData.conversations)) {
+            conversationsList = conversationsData.conversations;
           }
         }
         
         // Safely get total count
-        totalLeads = (data && typeof data === 'object' && typeof data.total === 'number')
-          ? data.total
+        totalLeads = (conversationsData && typeof conversationsData === 'object' && typeof conversationsData.total === 'number')
+          ? conversationsData.total
           : conversationsList.length;
         
         // Calculate active conversations (last 7 days)
@@ -1111,9 +1028,7 @@ export default function Manager() {
         }).length;
       }
 
-      if (queueRes.ok) {
-        const queueData = await queueRes.json();
-        
+      if (queueData) {
         // Handle both array and potential object response
         let queueList: any[] = [];
         if (Array.isArray(queueData)) {
@@ -1146,14 +1061,10 @@ export default function Manager() {
     setIsLoadingPrompts(true);
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/chat-prompts', {
-        headers: { 'Authorization': `Bearer ${token}` },
+      const data = await apiGet<any[]>('/api/chat-prompts', {
+        'Authorization': `Bearer ${token}`
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        setChatPrompts(data);
-      }
+      setChatPrompts(data);
     } catch (error) {
       console.error("Error loading chat prompts:", error);
     } finally {
@@ -1178,40 +1089,25 @@ export default function Manager() {
     setIsSavingPrompt(true);
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/chat-prompts', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          scenario: prompt.scenario,
-          greeting: editedPrompt.greeting,
-          systemPrompt: editedPrompt.systemPrompt
-        })
+      await apiPost('/api/chat-prompts', {
+        scenario: prompt.scenario,
+        greeting: editedPrompt.greeting,
+        systemPrompt: editedPrompt.systemPrompt
+      }, {
+        'Authorization': `Bearer ${token}`
       });
-
-      if (response.ok) {
-        toast({
-          title: "Success",
-          description: "Chat prompt saved successfully",
-        });
-        setEditingPromptId(null);
-        setEditedPrompt({ greeting: '', systemPrompt: '' });
-        loadChatPrompts();
-      } else {
-        const error = await response.json();
-        toast({
-          title: "Error",
-          description: error.error || "Failed to save prompt",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
+      toast({
+        title: "Success",
+        description: "Chat prompt saved successfully",
+      });
+      setEditingPromptId(null);
+      setEditedPrompt({ greeting: '', systemPrompt: '' });
+      loadChatPrompts();
+    } catch (error: any) {
       console.error("Error saving chat prompt:", error);
       toast({
         title: "Error",
-        description: "Failed to save prompt",
+        description: error.body?.error || "Failed to save prompt",
         variant: "destructive",
       });
     } finally {
@@ -1247,38 +1143,23 @@ export default function Manager() {
     setIsSavingSettings(true);
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/manager/settings', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          ...settings,
-          postalCode: trimmedPostalCode
-        }),
+      await apiPost('/api/manager/settings', {
+        ...settings,
+        postalCode: trimmedPostalCode
+      }, {
+        'Authorization': `Bearer ${token}`
       });
-
-      if (response.ok) {
-        setSettings(prev => ({ ...prev, postalCode: trimmedPostalCode }));
-        toast({
-          title: "Settings Saved",
-          description: "Your postal code and default radius have been saved",
-        });
-        setPricingForm(prev => ({ ...prev, radiusKm: String(settings.defaultRadiusKm) }));
-      } else {
-        const error = await response.json();
-        toast({
-          title: "Save Failed",
-          description: error.message || "Unable to save settings",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
+      setSettings(prev => ({ ...prev, postalCode: trimmedPostalCode }));
+      toast({
+        title: "Settings Saved",
+        description: "Your postal code and default radius have been saved",
+      });
+      setPricingForm(prev => ({ ...prev, radiusKm: String(settings.defaultRadiusKm) }));
+    } catch (error: any) {
       console.error("Error saving settings:", error);
       toast({
-        title: "Error",
-        description: "Failed to save settings. Please try again.",
+        title: "Save Failed",
+        description: error.body?.message || "Unable to save settings",
         variant: "destructive",
       });
     } finally {
@@ -1315,24 +1196,17 @@ export default function Manager() {
       const yearMin = Math.min(...years);
       const yearMax = Math.max(...years);
       
-      const response = await fetch('/api/manager/scrape-market', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          make: pricingForm.make,
-          model: pricingForm.model,
-          yearMin,
-          yearMax,
-          postalCode: settings.postalCode.trim(),
-          radiusKm: parseInt(pricingForm.radiusKm) || settings.defaultRadiusKm,
-          maxResults: 100
-        }),
+      const result = await apiPost<any>('/api/manager/scrape-market', {
+        make: pricingForm.make,
+        model: pricingForm.model,
+        yearMin,
+        yearMax,
+        postalCode: settings.postalCode.trim(),
+        radiusKm: parseInt(pricingForm.radiusKm) || settings.defaultRadiusKm,
+        maxResults: 100
+      }, {
+        'Authorization': `Bearer ${token}`
       });
-
-      const result = await response.json();
       
       if (result.error) {
         // Show detailed error breakdown if available
@@ -1408,16 +1282,9 @@ export default function Manager() {
 
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/manager/decode-vin', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ vin }),
+      const result = await apiPost<any>('/api/manager/decode-vin', { vin }, {
+        'Authorization': `Bearer ${token}`
       });
-
-      const result = await response.json();
       
       if (result.errorCode) {
         toast({
@@ -1444,20 +1311,17 @@ export default function Manager() {
 
         // Check for previous appraisal with this VIN
         try {
-          const appraisalRes = await fetch(`/api/manager/appraisals/vin/${vin}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+          const appraisalData = await apiGet<any>(`/api/manager/appraisals/vin/${vin}`, {
+            'Authorization': `Bearer ${token}`
           });
-          if (appraisalRes.ok) {
-            const appraisalData = await appraisalRes.json();
-            if (appraisalData) {
-              setPreviousAppraisal(appraisalData);
-              toast({
-                title: "Previous Appraisal Found",
-                description: `This vehicle was appraised on ${new Date(appraisalData.createdAt).toLocaleDateString()}`,
-              });
-            } else {
-              setPreviousAppraisal(null);
-            }
+          if (appraisalData) {
+            setPreviousAppraisal(appraisalData);
+            toast({
+              title: "Previous Appraisal Found",
+              description: `This vehicle was appraised on ${new Date(appraisalData.createdAt).toLocaleDateString()}`,
+            });
+          } else {
+            setPreviousAppraisal(null);
           }
         } catch (appraisalError) {
           console.error('Error checking for previous appraisal:', appraisalError);
@@ -1523,28 +1387,17 @@ export default function Manager() {
       const years = pricingForm.selectedYears.length > 0 ? pricingForm.selectedYears : [currentYear];
       
       // Call enhanced market analysis API for comprehensive data
-      const enhancedResponse = await fetch('/api/manager/enhanced-market-analysis', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          make: pricingForm.make,
-          model: pricingForm.model,
-          years,
-          trims: pricingForm.selectedTrims.length > 0 ? pricingForm.selectedTrims : undefined,
-          mileage: pricingForm.mileage ? parseInt(pricingForm.mileage) : undefined,
-          radiusKm: parseInt(pricingForm.radiusKm) || settings.defaultRadiusKm,
-          postalCode: settings.postalCode.trim(),
-        }),
+      const enhancedResult = await apiPost<any>('/api/manager/enhanced-market-analysis', {
+        make: pricingForm.make,
+        model: pricingForm.model,
+        years,
+        trims: pricingForm.selectedTrims.length > 0 ? pricingForm.selectedTrims : undefined,
+        mileage: pricingForm.mileage ? parseInt(pricingForm.mileage) : undefined,
+        radiusKm: parseInt(pricingForm.radiusKm) || settings.defaultRadiusKm,
+        postalCode: settings.postalCode.trim(),
+      }, {
+        'Authorization': `Bearer ${token}`
       });
-
-      if (!enhancedResponse.ok) {
-        throw new Error(`Server error: ${enhancedResponse.status}`);
-      }
-      
-      const enhancedResult = await enhancedResponse.json();
       
       if (enhancedResult.error) {
         toast({
@@ -1651,20 +1504,9 @@ export default function Manager() {
         notes: appraisalNotes || null,
       };
 
-      const response = await fetch('/api/manager/appraisals', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(appraisalData),
+      const savedAppraisal = await apiPost<any>('/api/manager/appraisals', appraisalData, {
+        'Authorization': `Bearer ${token}`
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to save appraisal');
-      }
-
-      const savedAppraisal = await response.json();
       setPreviousAppraisal(savedAppraisal);
       
       toast({
@@ -1708,22 +1550,10 @@ export default function Manager() {
     setIsLoadingAppraisalHistory(true);
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/manager/appraisals', {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const data = await apiGet<any>('/api/manager/appraisals', {
+        'Authorization': `Bearer ${token}`
       });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setAppraisalHistory(Array.isArray(data) ? data : []);
-      } else {
-        console.error('Failed to load appraisal history:', response.status);
-        toast({
-          title: "Error",
-          description: "Failed to load appraisal history",
-          variant: "destructive",
-        });
-        setAppraisalHistory([]);
-      }
+      setAppraisalHistory(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error loading appraisal history:', error);
       toast({

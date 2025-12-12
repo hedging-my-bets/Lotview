@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -203,12 +204,7 @@ export default function SuperAdminDashboard() {
     const token = localStorage.getItem('auth_token');
     
     try {
-      await fetch('/api/auth/logout', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      await apiPost('/api/auth/logout', undefined, { 'Authorization': `Bearer ${token}` });
     } catch (error) {
       console.error("Logout error:", error);
     }
@@ -238,15 +234,8 @@ export default function SuperAdminDashboard() {
     const checkSecretsPassword = async () => {
       try {
         const token = localStorage.getItem('auth_token');
-        const response = await fetch('/api/super-admin/secrets/password-status', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setIsSecretsPasswordSet(data.isSet);
-        } else {
-          setIsSecretsPasswordSet(false);
-        }
+        const data = await apiGet<{ isSet: boolean }>('/api/super-admin/secrets/password-status', { 'Authorization': `Bearer ${token}` });
+        setIsSecretsPasswordSet(data.isSet);
       } catch (error) {
         setIsSecretsPasswordSet(false);
       }
@@ -289,14 +278,9 @@ export default function SuperAdminDashboard() {
       if (userFilters.role) params.set('role', userFilters.role);
       if (userFilters.search) params.set('search', userFilters.search);
       const token = localStorage.getItem('auth_token');
-      const headers: HeadersInit = {};
+      const headers: Record<string, string> = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      const response = await fetch(`/api/super-admin/users?${params}`, { 
-        credentials: 'include',
-        headers 
-      });
-      if (!response.ok) throw new Error('Failed to fetch users');
-      return response.json();
+      return apiGet<UserWithDealership[]>(`/api/super-admin/users?${params}`, headers);
     }
   });
 
@@ -310,15 +294,14 @@ export default function SuperAdminDashboard() {
   const { data: activeSession, refetch: refetchActiveSession } = useQuery<{ session: ImpersonationSession | null }>({
     queryKey: ["/api/super-admin/impersonate/active"],
     queryFn: async () => {
-      const token = localStorage.getItem('auth_token');
-      const headers: HeadersInit = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-      const response = await fetch('/api/super-admin/impersonate/active', { 
-        credentials: 'include',
-        headers 
-      });
-      if (!response.ok) return { session: null };
-      return response.json();
+      try {
+        const token = localStorage.getItem('auth_token');
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        return await apiGet<{ session: ImpersonationSession | null }>('/api/super-admin/impersonate/active', headers);
+      } catch {
+        return { session: null };
+      }
     }
   });
   
@@ -329,24 +312,10 @@ export default function SuperAdminDashboard() {
     setIsImpersonating(true);
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/super-admin/impersonate', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          targetUserId: impersonationTarget.id,
-          reason: impersonationReason || 'Admin support session'
-        })
-      });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to start impersonation');
-      }
-      
-      const data = await response.json();
+      const data = await apiPost<{ token: string; targetUser: { id: number; name: string; email: string; role: string; dealershipId: number | null }; sessionId: number }>('/api/super-admin/impersonate', {
+        targetUserId: impersonationTarget.id,
+        reason: impersonationReason || 'Admin support session'
+      }, { 'Authorization': `Bearer ${token}` });
       
       // Store original token for exit
       localStorage.setItem('original_auth_token', token || '');
@@ -454,17 +423,7 @@ export default function SuperAdminDashboard() {
       facebookAppId?: string;
       facebookAppSecret?: string;
     }) => {
-      const response = await fetch("/api/super-admin/dealerships", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to create dealership");
-      }
-      return response.json();
+      return apiPost("/api/super-admin/dealerships", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/super-admin/dealerships"] });
@@ -479,21 +438,11 @@ export default function SuperAdminDashboard() {
   // Set Global Setting Mutation
   const setSettingMutation = useMutation({
     mutationFn: async (data: { key: string; value: string; description?: string; isSecret?: boolean }) => {
-      const response = await fetch(`/api/super-admin/global-settings/${data.key}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          value: data.value,
-          description: data.description,
-          isSecret: data.isSecret ?? true,
-        }),
+      return apiPatch(`/api/super-admin/global-settings/${data.key}`, {
+        value: data.value,
+        description: data.description,
+        isSecret: data.isSecret ?? true,
       });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to set setting");
-      }
-      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/super-admin/global-settings"] });
@@ -508,16 +457,7 @@ export default function SuperAdminDashboard() {
   // Delete Global Setting Mutation
   const deleteSettingMutation = useMutation({
     mutationFn: async (key: string) => {
-      const response = await fetch(`/api/super-admin/global-settings/${key}`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to delete setting");
-      }
-      return response.json();
+      return apiDelete(`/api/super-admin/global-settings/${key}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/super-admin/global-settings"] });
@@ -540,16 +480,7 @@ export default function SuperAdminDashboard() {
   // Delete User Mutation
   const deleteUserMutation = useMutation({
     mutationFn: async (userId: number) => {
-      const response = await fetch(`/api/super-admin/users/${userId}`, {
-        method: "DELETE",
-        headers: getAuthHeaders(),
-        credentials: "include",
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to delete user");
-      }
-      return response.json();
+      return apiDelete(`/api/super-admin/users/${userId}`, getAuthHeaders());
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/super-admin/users"] });
@@ -564,17 +495,7 @@ export default function SuperAdminDashboard() {
   // Update User Mutation
   const updateUserMutation = useMutation({
     mutationFn: async ({ userId, updates }: { userId: number; updates: Partial<{ name: string; email: string; role: string; dealershipId: number | null; isActive: boolean }> }) => {
-      const response = await fetch(`/api/super-admin/users/${userId}`, {
-        method: "PATCH",
-        headers: getAuthHeaders(),
-        credentials: "include",
-        body: JSON.stringify(updates),
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to update user");
-      }
-      return response.json();
+      return apiPatch(`/api/super-admin/users/${userId}`, updates, getAuthHeaders());
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/super-admin/users"] });
@@ -589,17 +510,7 @@ export default function SuperAdminDashboard() {
   // Update User Status Mutation
   const updateUserStatusMutation = useMutation({
     mutationFn: async ({ userId, isActive }: { userId: number; isActive: boolean }) => {
-      const response = await fetch(`/api/super-admin/users/${userId}/status`, {
-        method: "PATCH",
-        headers: getAuthHeaders(),
-        credentials: "include",
-        body: JSON.stringify({ isActive }),
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to update user status");
-      }
-      return response.json();
+      return apiPatch(`/api/super-admin/users/${userId}/status`, { isActive }, getAuthHeaders());
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/super-admin/users"] });
@@ -614,17 +525,7 @@ export default function SuperAdminDashboard() {
   // Reset User Password Mutation
   const resetPasswordMutation = useMutation({
     mutationFn: async ({ userId, newPassword }: { userId: number; newPassword: string }) => {
-      const response = await fetch(`/api/super-admin/users/${userId}/reset-password`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        credentials: "include",
-        body: JSON.stringify({ newPassword }),
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to reset password");
-      }
-      return response.json();
+      return apiPost(`/api/super-admin/users/${userId}/reset-password`, { newPassword }, getAuthHeaders());
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/super-admin/audit-logs"] });
@@ -682,16 +583,8 @@ export default function SuperAdminDashboard() {
                     setIsRestarting(true);
                     try {
                       const token = localStorage.getItem('auth_token');
-                      const response = await fetch('/api/super-admin/restart-server', {
-                        method: 'POST',
-                        headers: { 'Authorization': `Bearer ${token}` },
-                      });
-                      if (response.ok) {
-                        toast({ title: "Success", description: "Server restart initiated successfully" });
-                      } else {
-                        const error = await response.json();
-                        throw new Error(error.error || "Failed to restart server");
-                      }
+                      await apiPost('/api/super-admin/restart-server', undefined, { 'Authorization': `Bearer ${token}` });
+                      toast({ title: "Success", description: "Server restart initiated successfully" });
                     } catch (error) {
                       toast({ 
                         title: "Error", 
@@ -1012,35 +905,18 @@ export default function SuperAdminDashboard() {
                               setSecretsPasswordError('');
                               try {
                                 const token = localStorage.getItem('auth_token');
-                                const response = await fetch('/api/super-admin/secrets/verify-password', {
-                                  method: 'POST',
-                                  headers: { 
-                                    'Authorization': `Bearer ${token}`,
-                                    'Content-Type': 'application/json'
-                                  },
-                                  body: JSON.stringify({ password: secretsPassword })
+                                await apiPost('/api/super-admin/secrets/verify-password', { password: secretsPassword }, { 'Authorization': `Bearer ${token}` });
+                                setSecretsUnlocked(true);
+                                setLoadingSecrets(true);
+                                const data = await apiGet<DealershipSecrets[]>('/api/super-admin/secrets/all-api-keys', { 
+                                  'Authorization': `Bearer ${token}`,
+                                  'X-Secrets-Password': secretsPassword
                                 });
-                                if (response.ok) {
-                                  setSecretsUnlocked(true);
-                                  setLoadingSecrets(true);
-                                  const keysResponse = await fetch('/api/super-admin/secrets/all-api-keys', {
-                                    headers: { 
-                                      'Authorization': `Bearer ${token}`,
-                                      'X-Secrets-Password': secretsPassword
-                                    }
-                                  });
-                                  if (keysResponse.ok) {
-                                    const data = await keysResponse.json();
-                                    setDealershipSecrets(data);
-                                  }
-                                  setLoadingSecrets(false);
-                                  toast({ title: "Unlocked", description: "Secrets section unlocked successfully" });
-                                } else {
-                                  const error = await response.json();
-                                  setSecretsPasswordError(error.error || 'Invalid password');
-                                }
+                                setDealershipSecrets(data);
+                                setLoadingSecrets(false);
+                                toast({ title: "Unlocked", description: "Secrets section unlocked successfully" });
                               } catch (error) {
-                                setSecretsPasswordError('Failed to verify password');
+                                setSecretsPasswordError(error instanceof Error ? error.message : 'Failed to verify password');
                               } finally {
                                 setSettingSecretsPassword(false);
                               }
@@ -1100,37 +976,20 @@ export default function SuperAdminDashboard() {
                               setSecretsPasswordError('');
                               try {
                                 const token = localStorage.getItem('auth_token');
-                                const response = await fetch('/api/super-admin/secrets/set-password', {
-                                  method: 'POST',
-                                  headers: { 
-                                    'Authorization': `Bearer ${token}`,
-                                    'Content-Type': 'application/json'
-                                  },
-                                  body: JSON.stringify({ password: newSecretsPassword })
+                                await apiPost('/api/super-admin/secrets/set-password', { password: newSecretsPassword }, { 'Authorization': `Bearer ${token}` });
+                                setIsSecretsPasswordSet(true);
+                                setSecretsPassword(newSecretsPassword);
+                                setSecretsUnlocked(true);
+                                setLoadingSecrets(true);
+                                const data = await apiGet<DealershipSecrets[]>('/api/super-admin/secrets/all-api-keys', { 
+                                  'Authorization': `Bearer ${token}`,
+                                  'X-Secrets-Password': newSecretsPassword
                                 });
-                                if (response.ok) {
-                                  setIsSecretsPasswordSet(true);
-                                  setSecretsPassword(newSecretsPassword);
-                                  setSecretsUnlocked(true);
-                                  setLoadingSecrets(true);
-                                  const keysResponse = await fetch('/api/super-admin/secrets/all-api-keys', {
-                                    headers: { 
-                                      'Authorization': `Bearer ${token}`,
-                                      'X-Secrets-Password': newSecretsPassword
-                                    }
-                                  });
-                                  if (keysResponse.ok) {
-                                    const data = await keysResponse.json();
-                                    setDealershipSecrets(data);
-                                  }
-                                  setLoadingSecrets(false);
-                                  toast({ title: "Success", description: "Secrets password set successfully" });
-                                } else {
-                                  const error = await response.json();
-                                  setSecretsPasswordError(error.error || 'Failed to set password');
-                                }
+                                setDealershipSecrets(data);
+                                setLoadingSecrets(false);
+                                toast({ title: "Success", description: "Secrets password set successfully" });
                               } catch (error) {
-                                setSecretsPasswordError('Failed to set password');
+                                setSecretsPasswordError(error instanceof Error ? error.message : 'Failed to set password');
                               } finally {
                                 setSettingSecretsPassword(false);
                                 setNewSecretsPassword('');
@@ -1299,30 +1158,18 @@ export default function SuperAdminDashboard() {
                     setSecretsPasswordError('');
                     try {
                       const token = localStorage.getItem('auth_token');
-                      const response = await fetch('/api/super-admin/secrets/change-password', {
-                        method: 'POST',
-                        headers: { 
-                          'Authorization': `Bearer ${token}`,
-                          'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ 
-                          oldPassword: oldSecretsPassword, 
-                          newPassword: newSecretsPassword 
-                        })
-                      });
-                      if (response.ok) {
-                        setSecretsPassword(newSecretsPassword);
-                        setShowChangePasswordDialog(false);
-                        setOldSecretsPassword('');
-                        setNewSecretsPassword('');
-                        setConfirmSecretsPassword('');
-                        toast({ title: "Success", description: "Secrets password changed successfully" });
-                      } else {
-                        const error = await response.json();
-                        setSecretsPasswordError(error.error || 'Failed to change password');
-                      }
+                      await apiPost('/api/super-admin/secrets/change-password', { 
+                        oldPassword: oldSecretsPassword, 
+                        newPassword: newSecretsPassword 
+                      }, { 'Authorization': `Bearer ${token}` });
+                      setSecretsPassword(newSecretsPassword);
+                      setShowChangePasswordDialog(false);
+                      setOldSecretsPassword('');
+                      setNewSecretsPassword('');
+                      setConfirmSecretsPassword('');
+                      toast({ title: "Success", description: "Secrets password changed successfully" });
                     } catch (error) {
-                      setSecretsPasswordError('Failed to change password');
+                      setSecretsPasswordError(error instanceof Error ? error.message : 'Failed to change password');
                     } finally {
                       setSettingSecretsPassword(false);
                     }
@@ -1883,12 +1730,7 @@ export default function SuperAdminDashboard() {
                           setCatalogTestResult(null);
                           try {
                             const token = localStorage.getItem('auth_token');
-                            const response = await fetch(`/api/super-admin/dealerships/${selectedCatalogDealershipId}/test-facebook-catalog`, {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                              body: JSON.stringify({ catalogId: catalogFormData.catalogId, accessToken: catalogFormData.accessToken }),
-                            });
-                            const result = await response.json();
+                            const result = await apiPost<{ success: boolean; message?: string; error?: string }>(`/api/super-admin/dealerships/${selectedCatalogDealershipId}/test-facebook-catalog`, { catalogId: catalogFormData.catalogId, accessToken: catalogFormData.accessToken }, { 'Authorization': `Bearer ${token}` });
                             setCatalogTestResult({ success: result.success, message: result.message || result.error || 'Unknown result' });
                           } catch (error) {
                             setCatalogTestResult({ success: false, message: 'Connection test failed' });
@@ -1910,21 +1752,12 @@ export default function SuperAdminDashboard() {
                           setIsSavingCatalog(true);
                           try {
                             const token = localStorage.getItem('auth_token');
-                            const response = await fetch(`/api/super-admin/dealerships/${selectedCatalogDealershipId}/facebook-catalog`, {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                              body: JSON.stringify(catalogFormData),
-                            });
-                            if (response.ok) {
-                              toast({ title: "Success", description: "Facebook Catalog configuration saved" });
-                              setIsCatalogDialogOpen(false);
-                              refetchCatalogs();
-                            } else {
-                              const error = await response.json();
-                              toast({ title: "Error", description: error.error || "Failed to save configuration", variant: "destructive" });
-                            }
+                            await apiPost(`/api/super-admin/dealerships/${selectedCatalogDealershipId}/facebook-catalog`, catalogFormData, { 'Authorization': `Bearer ${token}` });
+                            toast({ title: "Success", description: "Facebook Catalog configuration saved" });
+                            setIsCatalogDialogOpen(false);
+                            refetchCatalogs();
                           } catch (error) {
-                            toast({ title: "Error", description: "Failed to save configuration", variant: "destructive" });
+                            toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to save configuration", variant: "destructive" });
                           }
                           setIsSavingCatalog(false);
                         }}
@@ -2005,11 +1838,7 @@ export default function SuperAdminDashboard() {
                                   setIsSyncingCatalog(config.dealershipId);
                                   try {
                                     const token = localStorage.getItem('auth_token');
-                                    const response = await fetch(`/api/super-admin/dealerships/${config.dealershipId}/sync-facebook-catalog`, {
-                                      method: 'POST',
-                                      headers: { 'Authorization': `Bearer ${token}` },
-                                    });
-                                    const result = await response.json();
+                                    const result = await apiPost<{ success: boolean; message?: string; error?: string }>(`/api/super-admin/dealerships/${config.dealershipId}/sync-facebook-catalog`, undefined, { 'Authorization': `Bearer ${token}` });
                                     if (result.success) {
                                       toast({ title: "Sync Complete", description: result.message });
                                     } else {
@@ -2054,16 +1883,9 @@ export default function SuperAdminDashboard() {
                                   if (!confirm('Are you sure you want to delete this catalog configuration?')) return;
                                   try {
                                     const token = localStorage.getItem('auth_token');
-                                    const response = await fetch(`/api/super-admin/dealerships/${config.dealershipId}/facebook-catalog`, {
-                                      method: 'DELETE',
-                                      headers: { 'Authorization': `Bearer ${token}` },
-                                    });
-                                    if (response.ok) {
-                                      toast({ title: "Deleted", description: "Catalog configuration removed" });
-                                      refetchCatalogs();
-                                    } else {
-                                      toast({ title: "Error", description: "Failed to delete", variant: "destructive" });
-                                    }
+                                    await apiDelete(`/api/super-admin/dealerships/${config.dealershipId}/facebook-catalog`, { 'Authorization': `Bearer ${token}` });
+                                    toast({ title: "Deleted", description: "Catalog configuration removed" });
+                                    refetchCatalogs();
                                   } catch (error) {
                                     toast({ title: "Error", description: "Failed to delete", variant: "destructive" });
                                   }
@@ -2350,22 +2172,12 @@ function ScrapeSourceRow({ source, onUpdate }: { source: ScrapeSource; onUpdate:
   const handleToggle = async () => {
     const token = localStorage.getItem('auth_token');
     try {
-      const response = await fetch(`/api/super-admin/scrape-sources/${source.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ isActive: !source.isActive }),
+      await apiPatch(`/api/super-admin/scrape-sources/${source.id}`, { isActive: !source.isActive }, { 'Authorization': `Bearer ${token}` });
+      toast({
+        title: "Source Updated",
+        description: `${source.sourceName} has been ${source.isActive ? 'deactivated' : 'activated'}`,
       });
-
-      if (response.ok) {
-        toast({
-          title: "Source Updated",
-          description: `${source.sourceName} has been ${source.isActive ? 'deactivated' : 'activated'}`,
-        });
-        onUpdate();
-      }
+      onUpdate();
     } catch (error) {
       toast({
         title: "Error",
@@ -2380,18 +2192,12 @@ function ScrapeSourceRow({ source, onUpdate }: { source: ScrapeSource; onUpdate:
     
     const token = localStorage.getItem('auth_token');
     try {
-      const response = await fetch(`/api/super-admin/scrape-sources/${source.id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` },
+      await apiDelete(`/api/super-admin/scrape-sources/${source.id}`, { 'Authorization': `Bearer ${token}` });
+      toast({
+        title: "Source Deleted",
+        description: `${source.sourceName} has been removed`,
       });
-
-      if (response.ok) {
-        toast({
-          title: "Source Deleted",
-          description: `${source.sourceName} has been removed`,
-        });
-        onUpdate();
-      }
+      onUpdate();
     } catch (error) {
       toast({
         title: "Error",
@@ -2404,28 +2210,15 @@ function ScrapeSourceRow({ source, onUpdate }: { source: ScrapeSource; onUpdate:
   const handleScrapeNow = async () => {
     const token = localStorage.getItem('auth_token');
     try {
-      const response = await fetch(`/api/super-admin/scrape-sources/${source.id}/scrape`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
+      await apiPost(`/api/super-admin/scrape-sources/${source.id}/scrape`, undefined, { 'Authorization': `Bearer ${token}` });
+      toast({
+        title: "Scrape Started",
+        description: "Inventory scrape has been initiated in the background",
       });
-
-      if (response.ok) {
-        toast({
-          title: "Scrape Started",
-          description: "Inventory scrape has been initiated in the background",
-        });
-      } else {
-        const error = await response.json();
-        toast({
-          title: "Error",
-          description: error.error || "Failed to trigger scrape",
-          variant: "destructive",
-        });
-      }
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to trigger scrape",
+        description: error instanceof Error ? error.message : "Failed to trigger scrape",
         variant: "destructive",
       });
     }
@@ -2503,13 +2296,8 @@ function CreateScrapeSourceDialog({ dealerships, onSuccess }: { dealerships: Dea
     }
     const token = localStorage.getItem('auth_token');
     try {
-      const response = await fetch(`/api/super-admin/filter-groups/dealership/${dealershipId}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (response.ok) {
-        const groups = await response.json();
-        setFilterGroups(groups);
-      }
+      const groups = await apiGet<FilterGroup[]>(`/api/super-admin/filter-groups/dealership/${dealershipId}`, { 'Authorization': `Bearer ${token}` });
+      setFilterGroups(groups);
     } catch (error) {
       console.error("Error fetching filter groups:", error);
     }
@@ -2529,26 +2317,14 @@ function CreateScrapeSourceDialog({ dealerships, onSuccess }: { dealerships: Dea
     const groupSlug = newGroupName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
     
     try {
-      const response = await fetch('/api/super-admin/filter-groups', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          dealershipId: parseInt(formData.dealershipId),
-          groupName: newGroupName.trim(),
-          groupSlug,
-          displayOrder: filterGroups.length,
-          isDefault: filterGroups.length === 0,
-        }),
-      });
-      
-      if (response.ok) {
-        const newGroup = await response.json();
-        return newGroup.id;
-      }
-      return null;
+      const newGroup = await apiPost<{ id: number }>('/api/super-admin/filter-groups', {
+        dealershipId: parseInt(formData.dealershipId),
+        groupName: newGroupName.trim(),
+        groupSlug,
+        displayOrder: filterGroups.length,
+        isDefault: filterGroups.length === 0,
+      }, { 'Authorization': `Bearer ${token}` });
+      return newGroup.id;
     } catch (error) {
       console.error("Error creating filter group:", error);
       return null;
@@ -2585,48 +2361,32 @@ function CreateScrapeSourceDialog({ dealerships, onSuccess }: { dealerships: Dea
         }
       }
 
-      const response = await fetch('/api/super-admin/scrape-sources', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          dealershipId: parseInt(formData.dealershipId),
-          sourceName: formData.sourceName,
-          sourceUrl: formData.sourceUrl,
-          sourceType: formData.sourceType,
-          scrapeFrequency: formData.scrapeFrequency,
-          filterGroupId,
-        }),
-      });
+      await apiPost('/api/super-admin/scrape-sources', {
+        dealershipId: parseInt(formData.dealershipId),
+        sourceName: formData.sourceName,
+        sourceUrl: formData.sourceUrl,
+        sourceType: formData.sourceType,
+        scrapeFrequency: formData.scrapeFrequency,
+        filterGroupId,
+      }, { 'Authorization': `Bearer ${token}` });
 
-      if (response.ok) {
-        toast({
-          title: "Source Created",
-          description: `${formData.sourceName} has been added successfully`,
-        });
-        setOpen(false);
-        setFormData({
-          dealershipId: "",
-          sourceName: "",
-          sourceUrl: "",
-          sourceType: "dealer_website",
-          scrapeFrequency: "daily",
-          filterGroupId: "",
-        });
-        setFilterGroups([]);
-        setShowNewGroupForm(false);
-        setNewGroupName("");
-        onSuccess();
-      } else {
-        const error = await response.json();
-        toast({
-          title: "Error",
-          description: error.error || "Failed to create source",
-          variant: "destructive",
-        });
-      }
+      toast({
+        title: "Source Created",
+        description: `${formData.sourceName} has been added successfully`,
+      });
+      setOpen(false);
+      setFormData({
+        dealershipId: "",
+        sourceName: "",
+        sourceUrl: "",
+        sourceType: "dealer_website",
+        scrapeFrequency: "daily",
+        filterGroupId: "",
+      });
+      setFilterGroups([]);
+      setShowNewGroupForm(false);
+      setNewGroupName("");
+      onSuccess();
     } catch (error) {
       toast({
         title: "Error",
@@ -2821,11 +2581,7 @@ function ScraperLogsTable() {
     queryKey: ["/api/super-admin/scraper-logs"],
     queryFn: async () => {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch("/api/super-admin/scraper-logs?limit=100", {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error("Failed to fetch scraper logs");
-      return response.json();
+      return apiGet<ScraperActivityLog[]>("/api/super-admin/scraper-logs?limit=100", { 'Authorization': `Bearer ${token}` });
     },
     refetchInterval: 30000,
   });
@@ -2932,19 +2688,14 @@ function EditDealershipDialog({ dealership, onSuccess }: { dealership: Dealershi
   const fetchDealershipDetails = async () => {
     const token = localStorage.getItem('auth_token');
     try {
-      const response = await fetch(`/api/super-admin/dealerships/${dealership.id}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setMasterUser(data.masterUser);
-        if (data.masterUser) {
-          setFormData(prev => ({
-            ...prev,
-            masterAdminEmail: data.masterUser.email,
-            masterAdminName: data.masterUser.name,
-          }));
-        }
+      const data = await apiGet<{ masterUser: { id: number; email: string; name: string } | null }>(`/api/super-admin/dealerships/${dealership.id}`, { 'Authorization': `Bearer ${token}` });
+      setMasterUser(data.masterUser);
+      if (data.masterUser) {
+        setFormData(prev => ({
+          ...prev,
+          masterAdminEmail: data.masterUser!.email,
+          masterAdminName: data.masterUser!.name,
+        }));
       }
     } catch (error) {
       console.error("Error fetching dealership details:", error);
@@ -2964,41 +2715,23 @@ function EditDealershipDialog({ dealership, onSuccess }: { dealership: Dealershi
     const token = localStorage.getItem('auth_token');
     
     try {
-      const response = await fetch(`/api/super-admin/dealerships/${dealership.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(formData),
-      });
-      
-      if (response.ok) {
-        const result = await response.json();
-        if (result.masterUser) {
-          setMasterUser(result.masterUser);
-        }
-        toast({
-          title: "Success",
-          description: result.masterUser 
-            ? `Dealership updated and master admin ${result.masterUser.email} saved successfully`
-            : "Dealership updated successfully",
-        });
-        setFormData(prev => ({ ...prev, masterAdminPassword: "" }));
-        setOpen(false);
-        onSuccess();
-      } else {
-        const error = await response.json();
-        toast({
-          title: "Error",
-          description: error.error || "Failed to update dealership",
-          variant: "destructive",
-        });
+      const result = await apiPatch<{ masterUser?: { email: string } }>(`/api/super-admin/dealerships/${dealership.id}`, formData, { 'Authorization': `Bearer ${token}` });
+      if (result.masterUser) {
+        setMasterUser(result.masterUser as { id: number; email: string; name: string });
       }
+      toast({
+        title: "Success",
+        description: result.masterUser 
+          ? `Dealership updated and master admin ${result.masterUser.email} saved successfully`
+          : "Dealership updated successfully",
+      });
+      setFormData(prev => ({ ...prev, masterAdminPassword: "" }));
+      setOpen(false);
+      onSuccess();
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to update dealership",
+        description: error instanceof Error ? error.message : "Failed to update dealership",
         variant: "destructive",
       });
     } finally {
@@ -3772,11 +3505,7 @@ function N8nTokensDialog({
     queryKey: ['external-tokens', dealershipId],
     queryFn: async () => {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch(`/api/external-tokens?dealershipId=${dealershipId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (!response.ok) throw new Error('Failed to fetch tokens');
-      return response.json();
+      return apiGet<ExternalToken[]>(`/api/external-tokens?dealershipId=${dealershipId}`, { 'Authorization': `Bearer ${token}` });
     },
     enabled: open
   });
@@ -3784,19 +3513,7 @@ function N8nTokensDialog({
   const createTokenMutation = useMutation({
     mutationFn: async (data: typeof tokenForm) => {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/external-tokens', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ ...data, dealershipId })
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to create token');
-      }
-      return response.json();
+      return apiPost<NewTokenResponse>('/api/external-tokens', { ...data, dealershipId }, { 'Authorization': `Bearer ${token}` });
     },
     onSuccess: (data: NewTokenResponse) => {
       setNewToken(data);
@@ -3813,14 +3530,7 @@ function N8nTokensDialog({
   const deleteTokenMutation = useMutation({
     mutationFn: async (id: number) => {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch(`/api/external-tokens/${id}?dealershipId=${dealershipId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to delete token');
-      }
+      await apiDelete(`/api/external-tokens/${id}?dealershipId=${dealershipId}`, { 'Authorization': `Bearer ${token}` });
     },
     onSuccess: () => {
       refetch();
@@ -4109,25 +3819,12 @@ function EditApiKeysDialog({
     e.preventDefault();
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch(`/api/super-admin/dealerships/${dealershipId}/api-keys`, {
-        method: "PATCH",
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify(formData),
-      });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to update API keys");
-      }
-      
+      await apiPatch(`/api/super-admin/dealerships/${dealershipId}/api-keys`, formData, { "Authorization": `Bearer ${token}` });
       toast({ title: "Success", description: "API keys updated successfully" });
       onSuccess();
       setOpen(false);
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } catch (error: unknown) {
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to update API keys", variant: "destructive" });
     }
   };
 
@@ -4137,14 +3834,8 @@ function EditApiKeysDialog({
     
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch(`/api/super-admin/dealerships/${dealershipId}/test-openai`, {
-        method: "POST",
-        headers: { 
-          "Authorization": `Bearer ${token}`,
-        },
-      });
-      const result = await response.json();
-      setTestResults({ ...testResults, openai: { success: result.success, message: result.message || result.error } });
+      const result = await apiPost<{ success: boolean; message?: string; error?: string }>(`/api/super-admin/dealerships/${dealershipId}/test-openai`, undefined, { "Authorization": `Bearer ${token}` });
+      setTestResults({ ...testResults, openai: { success: result.success, message: result.message || result.error || '' } });
     } catch (error) {
       setTestResults({ ...testResults, openai: { success: false, message: "Connection failed" } });
     } finally {
@@ -4158,14 +3849,8 @@ function EditApiKeysDialog({
     
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch(`/api/super-admin/dealerships/${dealershipId}/test-facebook`, {
-        method: "POST",
-        headers: { 
-          "Authorization": `Bearer ${token}`,
-        },
-      });
-      const result = await response.json();
-      setTestResults({ ...testResults, facebook: { success: result.success, message: result.message || result.error } });
+      const result = await apiPost<{ success: boolean; message?: string; error?: string }>(`/api/super-admin/dealerships/${dealershipId}/test-facebook`, undefined, { "Authorization": `Bearer ${token}` });
+      setTestResults({ ...testResults, facebook: { success: result.success, message: result.message || result.error || '' } });
     } catch (error) {
       setTestResults({ ...testResults, facebook: { success: false, message: "Connection failed" } });
     } finally {
@@ -4179,14 +3864,8 @@ function EditApiKeysDialog({
     
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch(`/api/super-admin/dealerships/${dealershipId}/test-ghl`, {
-        method: "POST",
-        headers: { 
-          "Authorization": `Bearer ${token}`,
-        },
-      });
-      const result = await response.json();
-      setTestResults({ ...testResults, ghl: { success: result.success, message: result.message || result.error } });
+      const result = await apiPost<{ success: boolean; message?: string; error?: string }>(`/api/super-admin/dealerships/${dealershipId}/test-ghl`, undefined, { "Authorization": `Bearer ${token}` });
+      setTestResults({ ...testResults, ghl: { success: result.success, message: result.message || result.error || '' } });
     } catch (error) {
       setTestResults({ ...testResults, ghl: { success: false, message: "Connection failed" } });
     } finally {
@@ -4200,14 +3879,8 @@ function EditApiKeysDialog({
     
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch(`/api/super-admin/dealerships/${dealershipId}/test-marketcheck`, {
-        method: "POST",
-        headers: { 
-          "Authorization": `Bearer ${token}`,
-        },
-      });
-      const result = await response.json();
-      setTestResults({ ...testResults, marketcheck: { success: result.success, message: result.message || result.error } });
+      const result = await apiPost<{ success: boolean; message?: string; error?: string }>(`/api/super-admin/dealerships/${dealershipId}/test-marketcheck`, undefined, { "Authorization": `Bearer ${token}` });
+      setTestResults({ ...testResults, marketcheck: { success: result.success, message: result.message || result.error || '' } });
     } catch (error) {
       setTestResults({ ...testResults, marketcheck: { success: false, message: "Connection failed" } });
     } finally {
@@ -4221,14 +3894,8 @@ function EditApiKeysDialog({
     
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch(`/api/super-admin/dealerships/${dealershipId}/test-apify`, {
-        method: "POST",
-        headers: { 
-          "Authorization": `Bearer ${token}`,
-        },
-      });
-      const result = await response.json();
-      setTestResults({ ...testResults, apify: { success: result.success, message: result.message || result.error } });
+      const result = await apiPost<{ success: boolean; message?: string; error?: string }>(`/api/super-admin/dealerships/${dealershipId}/test-apify`, undefined, { "Authorization": `Bearer ${token}` });
+      setTestResults({ ...testResults, apify: { success: result.success, message: result.message || result.error || '' } });
     } catch (error) {
       setTestResults({ ...testResults, apify: { success: false, message: "Connection failed" } });
     } finally {

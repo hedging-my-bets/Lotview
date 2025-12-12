@@ -1,4 +1,5 @@
 import type { Vehicle } from '@shared/schema';
+import { logError } from './error-utils';
 
 interface FacebookConfig {
   appId: string;
@@ -232,7 +233,7 @@ export class FacebookService {
         userId: data.data.user_id
       };
     } catch (error) {
-      console.error('Error validating token:', error);
+      logError('Error validating Facebook token', error instanceof Error ? error : new Error(String(error)), { service: 'facebook' });
       return null;
     }
   }
