@@ -55,7 +55,11 @@ import {
   FileText,
   ChevronDown,
   Plus,
-  Settings
+  Settings,
+  Pencil,
+  Trash2,
+  Share2,
+  Users
 } from "lucide-react";
 
 interface SocialTemplates {
@@ -639,6 +643,8 @@ export default function MarketplaceBlast() {
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedVehicles, setExpandedVehicles] = useState<string[]>([]);
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
+  const [showTemplateManager, setShowTemplateManager] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<DbTemplate | null>(null);
   const [newTemplateName, setNewTemplateName] = useState("");
   const [newTemplateTitle, setNewTemplateTitle] = useState("{year} {make} {model} - ${price}");
   const [newTemplateDescription, setNewTemplateDescription] = useState("");
@@ -774,6 +780,49 @@ export default function MarketplaceBlast() {
     }
   });
 
+  const updateTemplateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: { templateName: string; titleTemplate: string; descriptionTemplate: string; isShared?: boolean } }) => {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`/api/ad-templates/${id}`, {
+        method: 'PATCH',
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+      });
+      if (!res.ok) throw new Error('Failed to update template');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ad-templates'] });
+      setEditingTemplate(null);
+      toast({ title: "Template updated!", description: "Your changes have been saved" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update template", description: "Please try again", variant: "destructive" });
+    }
+  });
+
+  const deleteTemplateMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`/api/ad-templates/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Failed to delete template');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ad-templates'] });
+      toast({ title: "Template deleted!", description: "Template has been removed" });
+    },
+    onError: () => {
+      toast({ title: "Failed to delete template", description: "Please try again", variant: "destructive" });
+    }
+  });
+
   const handleCreateTemplate = () => {
     if (!newTemplateName.trim() || !newTemplateTitle.trim() || !newTemplateDescription.trim()) {
       toast({ title: "Missing fields", description: "Please fill in all template fields", variant: "destructive" });
@@ -903,10 +952,188 @@ export default function MarketplaceBlast() {
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="gap-2" 
+                onClick={() => setShowTemplateManager(true)}
+                data-testid="manage-templates-button"
+              >
+                <Settings className="w-4 h-4" />
+                Manage Templates
+              </Button>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Template Manager Dialog */}
+      <Dialog open={showTemplateManager} onOpenChange={setShowTemplateManager}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5" />
+              Template Manager
+            </DialogTitle>
+            <DialogDescription>
+              View and manage your Marketplace listing templates. Shared templates are visible to your team.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {dbTemplates.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <FileText className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                <p>No custom templates yet</p>
+                <p className="text-sm">Create your first template using the "New Template" button</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {dbTemplates.map((template) => (
+                  <Card key={template.id} data-testid={`template-card-${template.id}`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-medium">{template.templateName}</span>
+                            {template.isShared && (
+                              <Badge variant="secondary" className="text-xs">
+                                <Users className="w-3 h-3 mr-1" />
+                                Shared
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-sm text-muted-foreground truncate">
+                            Title: {template.titleTemplate}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                            {template.descriptionTemplate}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEditingTemplate(template)}
+                            data-testid={`edit-template-${template.id}`}
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => {
+                              if (confirm('Delete this template?')) {
+                                deleteTemplateMutation.mutate(template.id);
+                              }
+                            }}
+                            data-testid={`delete-template-${template.id}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowTemplateManager(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Template Dialog */}
+      <Dialog open={!!editingTemplate} onOpenChange={(open) => !open && setEditingTemplate(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit Template</DialogTitle>
+            <DialogDescription>
+              Update your template. Use placeholders like {"{year}"}, {"{make}"}, {"{model}"}, {"${price}"}, {"{mileage}"}.
+            </DialogDescription>
+          </DialogHeader>
+          {editingTemplate && (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-template-name">Template Name</Label>
+                <Input 
+                  id="edit-template-name"
+                  value={editingTemplate.templateName}
+                  onChange={(e) => setEditingTemplate({ ...editingTemplate, templateName: e.target.value })}
+                  data-testid="input-edit-template-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-template-title">Title Template</Label>
+                <Input 
+                  id="edit-template-title"
+                  value={editingTemplate.titleTemplate}
+                  onChange={(e) => setEditingTemplate({ ...editingTemplate, titleTemplate: e.target.value })}
+                  data-testid="input-edit-template-title"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-template-description">Description Template</Label>
+                <Textarea 
+                  id="edit-template-description"
+                  className="min-h-[120px]"
+                  value={editingTemplate.descriptionTemplate}
+                  onChange={(e) => setEditingTemplate({ ...editingTemplate, descriptionTemplate: e.target.value })}
+                  data-testid="input-edit-template-description"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="edit-template-shared"
+                  checked={editingTemplate.isShared}
+                  onChange={(e) => setEditingTemplate({ ...editingTemplate, isShared: e.target.checked })}
+                  className="rounded"
+                  data-testid="checkbox-template-shared"
+                />
+                <Label htmlFor="edit-template-shared" className="flex items-center gap-1 cursor-pointer">
+                  <Share2 className="w-4 h-4" />
+                  Share with team
+                </Label>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingTemplate(null)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => {
+                if (editingTemplate) {
+                  updateTemplateMutation.mutate({
+                    id: editingTemplate.id,
+                    data: {
+                      templateName: editingTemplate.templateName,
+                      titleTemplate: editingTemplate.titleTemplate,
+                      descriptionTemplate: editingTemplate.descriptionTemplate,
+                      isShared: editingTemplate.isShared
+                    }
+                  });
+                }
+              }}
+              disabled={updateTemplateMutation.isPending}
+              className="gap-2"
+              data-testid="save-edit-template-button"
+            >
+              {updateTemplateMutation.isPending ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <Check className="w-4 h-4" />
+              )}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="container mx-auto px-4 py-6 space-y-6">
         {/* KPI Cards */}
