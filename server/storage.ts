@@ -437,7 +437,7 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>; // Must include dealershipId in user data
   updateUser(id: number, user: Partial<InsertUser>, dealershipId?: number): Promise<User | undefined>;
   getAllUsers(dealershipId: number): Promise<User[]>; // REQUIRED: only get users from specific dealership
-  getUsersByRole(role: string): Promise<User[]>;
+  getUsersByRole(role: string, dealershipId: number): Promise<User[]>;
   getUsersByDealership(dealershipId: number): Promise<User[]>; // Get all users for a specific dealership
   
   // Super Admin User Management
@@ -1925,9 +1925,10 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(users.createdAt));
   }
 
-  async getUsersByRole(role: string): Promise<User[]> {
-    // TODO: Add dealershipId parameter to filter by dealership
-    return await db.select().from(users).where(eq(users.role, role)).orderBy(desc(users.createdAt));
+  async getUsersByRole(role: string, dealershipId: number): Promise<User[]> {
+    return await db.select().from(users)
+      .where(and(eq(users.role, role), eq(users.dealershipId, dealershipId)))
+      .orderBy(desc(users.createdAt));
   }
 
   async getUsersByDealership(dealershipId: number): Promise<User[]> {

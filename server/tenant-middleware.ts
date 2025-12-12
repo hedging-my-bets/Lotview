@@ -12,8 +12,13 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
-// JWT secret (same as auth.ts)
-const JWT_SECRET = process.env.JWT_SECRET || "olympic-auto-jwt-dev-secret-DO-NOT-USE-IN-PRODUCTION";
+// JWT_SECRET must be set in production for security
+const JWT_SECRET_ENV = process.env.JWT_SECRET;
+if (!JWT_SECRET_ENV && process.env.NODE_ENV === "production") {
+  throw new Error("JWT_SECRET environment variable is required in production");
+}
+// Development fallback (same as auth.ts)
+const JWT_SECRET = JWT_SECRET_ENV || "olympic-auto-jwt-dev-secret-DO-NOT-USE-IN-PRODUCTION";
 
 // Tenant resolution sources for tracking and debugging
 type TenantResolutionSource = 'jwt' | 'subdomain' | 'header' | 'default' | 'none';
