@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { Navbar } from "@/components/Navbar";
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -2985,16 +2985,28 @@ export default function Manager() {
                       <h3 className="text-lg font-semibold">Appraisal History</h3>
                       <p className="text-sm text-muted-foreground">View all saved vehicle appraisals</p>
                     </div>
-                    <Button
-                      onClick={loadAppraisalHistory}
-                      variant="outline"
-                      size="sm"
-                      disabled={isLoadingAppraisalHistory}
-                      data-testid="button-refresh-history"
-                    >
-                      <RefreshCw className={`w-4 h-4 mr-2 ${isLoadingAppraisalHistory ? 'animate-spin' : ''}`} />
-                      Refresh
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Link href="/manager/appraisals">
+                        <Button
+                          variant="default"
+                          size="sm"
+                          data-testid="button-full-appraisals"
+                        >
+                          <ExternalLink className="w-4 h-4 mr-2" />
+                          Full View
+                        </Button>
+                      </Link>
+                      <Button
+                        onClick={loadAppraisalHistory}
+                        variant="outline"
+                        size="sm"
+                        disabled={isLoadingAppraisalHistory}
+                        data-testid="button-refresh-history"
+                      >
+                        <RefreshCw className={`w-4 h-4 mr-2 ${isLoadingAppraisalHistory ? 'animate-spin' : ''}`} />
+                        Refresh
+                      </Button>
+                    </div>
                   </div>
 
                   {isLoadingAppraisalHistory ? (

@@ -28,6 +28,7 @@ import SalesAutoPosting from "@/pages/SalesAutoPosting";
 import SalesConversations from "@/pages/SalesConversations";
 import ContactsPage from "@/pages/ContactsPage";
 import MarketplaceBlast from "@/pages/MarketplaceBlast";
+import SavedAppraisals from "@/pages/SavedAppraisals";
 import { ImpersonationBanner } from "@/components/ImpersonationBanner";
 
 function MarketingRouter() {
@@ -38,6 +39,7 @@ function MarketingRouter() {
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/n8n-integration" component={N8nIntegration} />
       <Route path="/manager" component={Manager} />
+      <Route path="/manager/appraisals" component={SavedAppraisals} />
       <Route path="/sales" component={Sales} />
       <Route path="/sales/auto-posting" component={SalesAutoPosting} />
       <Route path="/sales/conversations" component={SalesConversations} />
@@ -65,6 +67,7 @@ function DealershipRouter() {
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/n8n-integration" component={N8nIntegration} />
       <Route path="/manager" component={Manager} />
+      <Route path="/manager/appraisals" component={SavedAppraisals} />
       <Route path="/sales" component={Sales} />
       <Route path="/sales/auto-posting" component={SalesAutoPosting} />
       <Route path="/sales/conversations" component={SalesConversations} />

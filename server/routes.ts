@@ -7915,9 +7915,16 @@ Format your response in clear sections with actionable recommendations.`;
       const dealershipId = req.dealershipId!;
       const limit = parseInt(req.query.limit as string) || 50;
       const offset = parseInt(req.query.offset as string) || 0;
+      const status = req.query.status as string | undefined;
+      const search = req.query.search as string | undefined;
       
-      const result = await storage.getVehicleAppraisals(dealershipId, limit, offset);
-      res.json(result);
+      const filters = {
+        status: status || undefined,
+        search: search || undefined,
+      };
+      
+      const result = await storage.getVehicleAppraisals(dealershipId, filters, limit, offset);
+      res.json({ ...result, limit, offset });
     } catch (error) {
       logError('Error fetching appraisals:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-appraisals' });
       res.status(500).json({ error: "Failed to fetch appraisals" });

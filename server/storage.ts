@@ -810,7 +810,7 @@ export interface IStorage {
   }>;
   
   // ====== VEHICLE APPRAISALS ======
-  getVehicleAppraisals(dealershipId: number, limit?: number, offset?: number): Promise<{ appraisals: VehicleAppraisal[]; total: number }>;
+  getVehicleAppraisals(dealershipId: number, filters?: { status?: string; search?: string; createdBy?: number }, limit?: number, offset?: number): Promise<{ appraisals: VehicleAppraisal[]; total: number }>;
   getVehicleAppraisalById(id: number, dealershipId: number): Promise<VehicleAppraisal | undefined>;
   getVehicleAppraisalByVin(vin: string, dealershipId: number): Promise<VehicleAppraisal | undefined>;
   searchVehicleAppraisals(dealershipId: number, query: string, limit?: number): Promise<VehicleAppraisal[]>;
@@ -5345,14 +5345,35 @@ export class DatabaseStorage implements IStorage {
   }
   
   // ====== VEHICLE APPRAISALS ======
-  async getVehicleAppraisals(dealershipId: number, limit: number = 50, offset: number = 0): Promise<{ appraisals: VehicleAppraisal[]; total: number }> {
+  async getVehicleAppraisals(dealershipId: number, filters?: { status?: string; search?: string; createdBy?: number }, limit: number = 50, offset: number = 0): Promise<{ appraisals: VehicleAppraisal[]; total: number }> {
+    const conditions: SQL[] = [eq(vehicleAppraisals.dealershipId, dealershipId)];
+    
+    if (filters?.status) {
+      conditions.push(eq(vehicleAppraisals.status, filters.status));
+    }
+    
+    if (filters?.createdBy) {
+      conditions.push(eq(vehicleAppraisals.createdBy, filters.createdBy));
+    }
+    
+    if (filters?.search) {
+      const searchTerm = `%${filters.search}%`;
+      conditions.push(or(
+        ilike(vehicleAppraisals.vin, searchTerm),
+        ilike(vehicleAppraisals.make, searchTerm),
+        ilike(vehicleAppraisals.model, searchTerm)
+      )!);
+    }
+    
+    const whereClause = conditions.length > 1 ? and(...conditions) : conditions[0];
+    
     const countResult = await db.select({ count: sql<number>`count(*)` })
       .from(vehicleAppraisals)
-      .where(eq(vehicleAppraisals.dealershipId, dealershipId));
+      .where(whereClause);
     
     const appraisals = await db.select()
       .from(vehicleAppraisals)
-      .where(eq(vehicleAppraisals.dealershipId, dealershipId))
+      .where(whereClause)
       .orderBy(desc(vehicleAppraisals.updatedAt))
       .limit(limit)
       .offset(offset);
