@@ -3625,21 +3625,46 @@ Provide a single, concise, friendly message that continues the conversation natu
         message.trim()
       );
 
+      // Create messenger message record for this outbound message
+      const messengerMessage = await storage.createMessengerMessage({
+        dealershipId,
+        conversationId,
+        facebookMessageId: result.messageId,
+        senderId: 'dealership',
+        senderName: req.user?.name || 'Sales Team',
+        isFromCustomer: false,
+        content: message.trim(),
+        isRead: true,
+        sentAt: new Date(),
+        syncSource: 'lotview',
+      });
+
       // Update the conversation's last message
       await storage.updateMessengerConversation(conversationId, dealershipId, {
         lastMessage: `You: ${message.trim().substring(0, 200)}`,
         lastMessageAt: new Date()
       });
 
-      // Sync message to GoHighLevel (background - don't block response)
+      // Sync message to GoHighLevel - MUST await to store ghlMessageId before webhook arrives
+      // This prevents duplicate messages when GHL webhook fires before ghlMessageId is persisted
       const ghlSyncService = createGhlMessageSyncService(dealershipId);
-      ghlSyncService.syncMessageToGhl(
-        conversation as any,
-        message.trim(),
-        req.user?.name || 'Sales Team'
-      ).catch(err => {
-        logError('[GHL Sync] Background sync failed', err instanceof Error ? err : new Error(String(err)), { route: 'api-messenger-conversations-id-reply' });
-      });
+      try {
+        const syncResult = await ghlSyncService.syncMessageToGhl(
+          conversation as any,
+          message.trim(),
+          req.user?.name || 'Sales Team'
+        );
+        
+        // Store the GHL message ID on our record for deduplication
+        if (syncResult.success && syncResult.ghlMessageId) {
+          await storage.updateMessengerMessage(messengerMessage.id, dealershipId, {
+            ghlMessageId: syncResult.ghlMessageId
+          });
+        }
+      } catch (err) {
+        logError('[GHL Sync] Sync to GHL failed', err instanceof Error ? err : new Error(String(err)), { route: 'api-messenger-conversations-id-reply' });
+        // Don't fail the request - FB message was sent successfully
+      }
 
       res.json({ 
         success: true, 

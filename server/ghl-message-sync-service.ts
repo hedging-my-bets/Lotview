@@ -1,5 +1,6 @@
 import { storage } from "./storage";
 import { createGhlApiService } from "./ghl-api-service";
+import { facebookService } from "./facebook-service";
 import type { MessengerConversation, MessengerMessage } from "@shared/schema";
 
 export class GhlMessageSyncService {
@@ -174,12 +175,13 @@ export class GhlMessageSyncService {
         await this.syncToChatConversation(webhookData);
       }
 
-      const conversation = await storage.getMessengerConversationByGhlId(
+      // Get conversation with page access token for potential Facebook forwarding
+      const conversationWithToken = await storage.getMessengerConversationWithTokenByGhlId(
         this.dealershipId,
         webhookData.conversationId
       );
 
-      if (!conversation) {
+      if (!conversationWithToken) {
         console.log(`[GHL Sync] No matching Messenger conversation for GHL conversation ${webhookData.conversationId}`);
         // Return success since we may have synced to chat_conversations above
         return { success: true };
@@ -195,11 +197,39 @@ export class GhlMessageSyncService {
         }
       } else {
         senderName = 'Sales Team';
+        
+        // For outbound messages from GHL, check if this message originated from Lotview
+        // by looking for an existing message with this ghlMessageId (deterministic check)
+        const existingByGhlId = await storage.getMessengerMessageByGhlId(this.dealershipId, webhookData.messageId);
+        
+        if (existingByGhlId) {
+          console.log(`[GHL Sync] Skipping - message already exists with ghlMessageId ${webhookData.messageId}`);
+          return { success: true }; // Already processed
+        }
+        
+        // Forward outbound GHL messages to Facebook Messenger
+        // This handles staff replies made directly in GHL (not from Lotview)
+        if (conversationWithToken.pageAccessToken && conversationWithToken.participantId) {
+          try {
+            console.log(`[GHL Sync] Forwarding outbound GHL message to Facebook Messenger for conversation ${conversationWithToken.id}`);
+            const fbResult = await facebookService.sendMessengerMessage(
+              conversationWithToken.pageAccessToken,
+              conversationWithToken.participantId,
+              webhookData.body
+            );
+            console.log(`[GHL Sync] Successfully sent message to Facebook, messageId: ${fbResult.messageId}`);
+          } catch (fbError: any) {
+            console.error(`[GHL Sync] Failed to forward message to Facebook Messenger:`, fbError.message);
+            // Don't fail the whole sync, just log the error
+          }
+        } else {
+          console.log(`[GHL Sync] Cannot forward to Facebook - missing pageAccessToken or participantId`);
+        }
       }
 
       const newMessage = await storage.createMessengerMessage({
         dealershipId: this.dealershipId,
-        conversationId: conversation.id,
+        conversationId: conversationWithToken.id,
         facebookMessageId: `ghl_${webhookData.messageId}`,
         senderId: webhookData.direction === 'inbound' ? webhookData.contactId : 'dealership',
         senderName: senderName,
@@ -211,16 +241,16 @@ export class GhlMessageSyncService {
         syncSource: 'ghl',
       });
 
-      await storage.updateMessengerConversation(conversation.id, this.dealershipId, {
+      await storage.updateMessengerConversation(conversationWithToken.id, this.dealershipId, {
         lastMessage: webhookData.direction === 'inbound'
           ? webhookData.body.substring(0, 200)
           : `You: ${webhookData.body.substring(0, 200)}`,
         lastMessageAt: new Date(webhookData.dateAdded),
-        unreadCount: webhookData.direction === 'inbound' ? (conversation.unreadCount || 0) + 1 : conversation.unreadCount,
+        unreadCount: webhookData.direction === 'inbound' ? (conversationWithToken.unreadCount || 0) + 1 : conversationWithToken.unreadCount,
         lastGhlSyncAt: new Date(),
       } as any);
 
-      console.log(`[GHL Sync] Created message from GHL webhook for conversation ${conversation.id}`);
+      console.log(`[GHL Sync] Created message from GHL webhook for conversation ${conversationWithToken.id}`);
 
       // Broadcast real-time update via WebSocket
       const broadcastNotification = (global as any).broadcastNotification;
@@ -230,7 +260,7 @@ export class GhlMessageSyncService {
           title: webhookData.direction === 'inbound' ? 'New Message' : 'Message Sent',
           message: webhookData.body.substring(0, 100),
           data: {
-            conversationId: conversation.id,
+            conversationId: conversationWithToken.id,
             conversationType: 'messenger',
             direction: webhookData.direction,
             senderName: senderName,

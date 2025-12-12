@@ -406,6 +406,7 @@ export interface IStorage {
   markMessagesAsRead(dealershipId: number, conversationId: number): Promise<void>;
   getMessengerMessageByGhlId(dealershipId: number, ghlMessageId: string): Promise<MessengerMessage | undefined>;
   getMessengerConversationByGhlId(dealershipId: number, ghlConversationId: string): Promise<MessengerConversation | undefined>;
+  getMessengerConversationWithTokenByGhlId(dealershipId: number, ghlConversationId: string): Promise<(MessengerConversation & { pageAccessToken: string; participantId: string }) | undefined>;
   updateMessengerMessage(id: number, dealershipId: number, data: Partial<InsertMessengerMessage>): Promise<MessengerMessage | undefined>;
   
   // Scheduled messages (Multi-Tenant)
@@ -1610,6 +1611,27 @@ export class DatabaseStorage implements IStorage {
       ))
       .limit(1);
     return result[0];
+  }
+
+  async getMessengerConversationWithTokenByGhlId(dealershipId: number, ghlConversationId: string): Promise<(MessengerConversation & { pageAccessToken: string; participantId: string }) | undefined> {
+    const result = await db.select()
+      .from(messengerConversations)
+      .innerJoin(facebookAccounts, eq(messengerConversations.facebookAccountId, facebookAccounts.id))
+      .where(and(
+        eq(messengerConversations.dealershipId, dealershipId),
+        eq(messengerConversations.ghlConversationId, ghlConversationId)
+      ))
+      .limit(1);
+    
+    if (!result[0] || !result[0].facebook_accounts.accessToken) {
+      return undefined;
+    }
+    
+    return {
+      ...result[0].messenger_conversations,
+      pageAccessToken: result[0].facebook_accounts.accessToken,
+      participantId: result[0].messenger_conversations.participantId
+    };
   }
 
   async updateMessengerMessage(id: number, dealershipId: number, data: Partial<InsertMessengerMessage>): Promise<MessengerMessage | undefined> {
