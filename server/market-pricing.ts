@@ -6,6 +6,43 @@ export interface MarketPricingRequest {
   trims?: string[]; // Support multiple trim selection
   mileage?: number;
   radius?: number; // miles for location-based search
+  interiorColor?: string; // Target interior color for matching
+  exteriorColor?: string; // Target exterior color for matching
+}
+
+// Calculate color match score (0-100) between two color strings
+function calculateColorMatchScore(targetColor?: string, compColor?: string): number {
+  if (!targetColor || !compColor) return 50; // Neutral score if colors unknown
+  
+  const normalize = (c: string) => c.toLowerCase().trim().replace(/[^a-z]/g, '');
+  const target = normalize(targetColor);
+  const comp = normalize(compColor);
+  
+  // Exact match
+  if (target === comp) return 100;
+  
+  // Partial match (one contains the other)
+  if (target.includes(comp) || comp.includes(target)) return 85;
+  
+  // Common color groupings (e.g., "jet black" matches "black")
+  const colorGroups: Record<string, string[]> = {
+    black: ['black', 'jet', 'ebony', 'onyx', 'obsidian', 'midnight', 'charcoal'],
+    white: ['white', 'pearl', 'ivory', 'snow', 'arctic', 'polar', 'cream'],
+    gray: ['gray', 'grey', 'silver', 'titanium', 'graphite', 'pewter', 'slate', 'steel'],
+    red: ['red', 'crimson', 'ruby', 'burgundy', 'maroon', 'cherry', 'scarlet', 'wine'],
+    blue: ['blue', 'navy', 'sapphire', 'cobalt', 'azure', 'indigo', 'ocean', 'royal'],
+    brown: ['brown', 'tan', 'beige', 'cognac', 'mocha', 'espresso', 'camel', 'saddle', 'caramel'],
+    green: ['green', 'olive', 'emerald', 'forest', 'sage', 'hunter', 'lime'],
+  };
+  
+  for (const group of Object.values(colorGroups)) {
+    const targetInGroup = group.some(c => target.includes(c));
+    const compInGroup = group.some(c => comp.includes(c));
+    if (targetInGroup && compInGroup) return 70;
+  }
+  
+  // No match
+  return 30;
 }
 
 export interface PricingComparison {
@@ -24,6 +61,9 @@ export interface PricingComparison {
   listingUrl?: string;
   listingType?: string;
   postedDate?: Date | null;
+  interiorColor?: string;
+  exteriorColor?: string;
+  colorMatchScore?: number; // 0-100 score for how well colors match target vehicle
 }
 
 export interface MarketPricingResult {
@@ -58,6 +98,8 @@ export interface Vehicle {
   listingUrl?: string; // Original listing URL for external sources
   postedDate?: Date | null;
   scrapedAt?: Date | null;
+  interiorColor?: string;
+  exteriorColor?: string;
 }
 
 export function analyzeMarketPricing(
@@ -129,10 +171,15 @@ export function analyzeMarketPricing(
     high: sortedPrices[q3Index]
   };
 
-  // Create detailed comparisons with source and URL info
+  // Create detailed comparisons with source, URL, and color match info
   const comparisons: PricingComparison[] = comparables.map(v => {
     const priceDiff = v.price - averagePrice;
     const percentDiff = ((priceDiff / averagePrice) * 100);
+    
+    // Calculate color match score (weighted: 60% interior, 40% exterior for trade-in valuation)
+    const interiorScore = calculateColorMatchScore(targetVehicle.interiorColor, v.interiorColor);
+    const exteriorScore = calculateColorMatchScore(targetVehicle.exteriorColor, v.exteriorColor);
+    const colorMatchScore = Math.round(interiorScore * 0.6 + exteriorScore * 0.4);
     
     return {
       stockNumber: v.stockNumber || `ID-${v.id}`,
@@ -149,7 +196,10 @@ export function analyzeMarketPricing(
       source: v.source,
       listingUrl: v.listingUrl,
       listingType: v.listingType,
-      postedDate: v.postedDate
+      postedDate: v.postedDate,
+      interiorColor: v.interiorColor,
+      exteriorColor: v.exteriorColor,
+      colorMatchScore
     };
   }).sort((a, b) => a.price - b.price);
 

@@ -6860,11 +6860,12 @@ Format your response in clear sections with actionable recommendations.`;
 
   // ===== SALES MANAGER ROUTES =====
   
-  // Decode VIN
-  app.post("/api/manager/decode-vin", authMiddleware, requireRole("manager"), async (req, res) => {
+  // Decode VIN with auto-save appraisal
+  app.post("/api/manager/decode-vin", authMiddleware, requireRole("manager"), async (req: AuthRequest, res) => {
     try {
-      const { vin } = req.body;
+      const { vin, autoSave = true } = req.body;
       const dealershipId = req.dealershipId || 1;
+      const userId = req.user?.id;
       
       if (!vin || typeof vin !== 'string') {
         return res.json({
@@ -6875,7 +6876,61 @@ Format your response in clear sections with actionable recommendations.`;
       }
       
       const result = await decodeVIN(vin, dealershipId);
-      res.json(result);
+      
+      // Auto-save appraisal if decode was successful and autoSave is enabled
+      let appraisalId: number | undefined;
+      if (autoSave && !result.errorCode && result.vin) {
+        try {
+          // Check if appraisal already exists for this VIN
+          const existing = await storage.getVehicleAppraisalByVin(result.vin, dealershipId);
+          
+          if (existing) {
+            // Update existing appraisal with latest decode data
+            await storage.updateVehicleAppraisal(existing.id, dealershipId, {
+              year: result.year ? parseInt(result.year) : undefined,
+              make: result.make || undefined,
+              model: result.model || undefined,
+              trim: result.trim || undefined,
+              bodyType: result.bodyClass || undefined,
+              driveType: result.driveType || undefined,
+              transmission: result.transmission || undefined,
+              fuelType: result.fuelType || undefined,
+              exteriorColor: result.exteriorColor || undefined,
+              interiorColor: result.interiorColor || undefined,
+              engineInfo: result.engineCylinders && result.engineHP 
+                ? `${result.engineCylinders} cyl, ${result.engineHP}hp` 
+                : undefined,
+            });
+            appraisalId = existing.id;
+          } else {
+            // Create new appraisal
+            const newAppraisal = await storage.createVehicleAppraisal({
+              dealershipId,
+              createdBy: userId || null,
+              vin: result.vin,
+              year: result.year ? parseInt(result.year) : undefined,
+              make: result.make || undefined,
+              model: result.model || undefined,
+              trim: result.trim || undefined,
+              bodyType: result.bodyClass || undefined,
+              driveType: result.driveType || undefined,
+              transmission: result.transmission || undefined,
+              fuelType: result.fuelType || undefined,
+              exteriorColor: result.exteriorColor || undefined,
+              interiorColor: result.interiorColor || undefined,
+              engineInfo: result.engineCylinders && result.engineHP 
+                ? `${result.engineCylinders} cyl, ${result.engineHP}hp` 
+                : undefined,
+              status: 'draft',
+            });
+            appraisalId = newAppraisal.id;
+          }
+        } catch (appraisalError) {
+          logWarn('Failed to auto-save appraisal:', { error: appraisalError instanceof Error ? appraisalError.message : String(appraisalError) });
+        }
+      }
+      
+      res.json({ ...result, appraisalId });
     } catch (error) {
       logError('Error decoding VIN:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-decode-vin' });
       res.json({
@@ -6887,9 +6942,9 @@ Format your response in clear sections with actionable recommendations.`;
   });
 
   // Market pricing analysis (uses external market listings)
-  app.post("/api/manager/market-pricing", authMiddleware, requireRole("manager"), async (req, res) => {
+  app.post("/api/manager/market-pricing", authMiddleware, requireRole("manager"), async (req: AuthRequest, res) => {
     try {
-      const { year, years, make, model, trim, trims, yearMin, yearMax, mileage, radiusKm, postalCode } = req.body;
+      const { year, years, make, model, trim, trims, yearMin, yearMax, mileage, radiusKm, postalCode, vin, autoSave = true } = req.body;
       
       // Validate required fields
       if (!year && !years && !yearMin) {
@@ -6947,7 +7002,7 @@ Format your response in clear sections with actionable recommendations.`;
 
       // If no market listings found, return message prompting manual scrape
       if (marketListings.length === 0) {
-        return res.json({
+        const noListingsResponse = {
           averagePrice: 0,
           medianPrice: 0,
           minPrice: 0,
@@ -6956,17 +7011,53 @@ Format your response in clear sections with actionable recommendations.`;
           comparisons: [],
           priceRange: { low: 0, high: 0 },
           recommendation: `No market data found. Please use the "Refresh Market Data" button to scrape current listings from AutoTrader.`,
-          marketPosition: 'at_market',
+          marketPosition: 'at_market' as const,
           meta: {
             dataSource: 'none',
             totalListings: 0,
-            sources: [],
+            sources: [] as string[],
             searchRadius: searchRadiusKm,
             postalCode: searchPostalCode,
             years: years || (year ? [parseInt(year)] : []),
             year: targetYear
           }
-        });
+        };
+        
+        // Auto-save appraisal even with no listings if VIN provided
+        let appraisalId: number | undefined;
+        if (autoSave && vin && typeof vin === 'string' && vin.length >= 11) {
+          try {
+            const dealershipId = req.dealershipId || 1;
+            const existing = await storage.getVehicleAppraisalByVin(vin, dealershipId);
+            
+            if (existing) {
+              await storage.updateVehicleAppraisal(existing.id, dealershipId, {
+                marketAnalysisData: JSON.stringify(noListingsResponse),
+                comparableCount: 0,
+              });
+              appraisalId = existing.id;
+            } else {
+              const newAppraisal = await storage.createVehicleAppraisal({
+                dealershipId,
+                createdBy: req.user?.id || null,
+                vin,
+                year: targetYear,
+                make,
+                model,
+                trim: trim || (trims && trims.length === 1 ? trims[0] : undefined),
+                mileage: mileage ? parseInt(mileage) : undefined,
+                marketAnalysisData: JSON.stringify(noListingsResponse),
+                comparableCount: 0,
+                status: 'draft',
+              });
+              appraisalId = newAppraisal.id;
+            }
+          } catch (appraisalError) {
+            logWarn('Failed to auto-save appraisal (no listings):', { error: appraisalError instanceof Error ? appraisalError.message : String(appraisalError) });
+          }
+        }
+        
+        return res.json({ ...noListingsResponse, appraisalId });
       }
 
       // Convert market listings to Vehicle format for pricing analysis
@@ -7027,7 +7118,55 @@ Format your response in clear sections with actionable recommendations.`;
         }
       };
       
-      res.json(responseWithMeta);
+      // Auto-save market analysis to appraisal if VIN is provided
+      let appraisalId: number | undefined;
+      if (autoSave && vin && typeof vin === 'string' && vin.length >= 11) {
+        try {
+          const dealershipId = req.dealershipId || 1;
+          const existing = await storage.getVehicleAppraisalByVin(vin, dealershipId);
+          
+          if (existing) {
+            // Update existing appraisal with market analysis data
+            const priceRangeStr = result.priceRange.low > 0 && result.priceRange.high > 0
+              ? `$${result.priceRange.low.toLocaleString()} - $${result.priceRange.high.toLocaleString()}`
+              : undefined;
+            
+            await storage.updateVehicleAppraisal(existing.id, dealershipId, {
+              marketAnalysisData: JSON.stringify(responseWithMeta),
+              comparableCount: result.totalComps,
+              averageMarketPrice: result.averagePrice * 100, // Convert to cents
+              marketPriceRange: priceRangeStr,
+            });
+            appraisalId = existing.id;
+          } else {
+            // Create new appraisal with market analysis data
+            const priceRangeStr = result.priceRange.low > 0 && result.priceRange.high > 0
+              ? `$${result.priceRange.low.toLocaleString()} - $${result.priceRange.high.toLocaleString()}`
+              : undefined;
+            
+            const newAppraisal = await storage.createVehicleAppraisal({
+              dealershipId,
+              createdBy: req.user?.id || null,
+              vin,
+              year: targetYear,
+              make,
+              model,
+              trim: trim || (trims && trims.length === 1 ? trims[0] : undefined),
+              mileage: mileage ? parseInt(mileage) : undefined,
+              marketAnalysisData: JSON.stringify(responseWithMeta),
+              comparableCount: result.totalComps,
+              averageMarketPrice: result.averagePrice * 100, // Convert to cents
+              marketPriceRange: priceRangeStr,
+              status: 'draft',
+            });
+            appraisalId = newAppraisal.id;
+          }
+        } catch (appraisalError) {
+          logWarn('Failed to auto-save market analysis to appraisal:', { error: appraisalError instanceof Error ? appraisalError.message : String(appraisalError) });
+        }
+      }
+      
+      res.json({ ...responseWithMeta, appraisalId });
     } catch (error) {
       logError('Error analyzing market pricing:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-market-pricing' });
       res.status(500).json({
