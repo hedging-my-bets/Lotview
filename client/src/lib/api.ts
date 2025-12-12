@@ -34,7 +34,9 @@ function handleSessionExpiry(status: number): void {
     const isPublicPath = publicPaths.some(p => currentPath === p || currentPath.startsWith('/vehicles/'));
     
     if (!isPublicPath) {
+      localStorage.removeItem('auth_token');
       localStorage.removeItem('token');
+      sessionStorage.removeItem('auth_token');
       sessionStorage.removeItem('token');
       
       window.location.href = '/login?session=expired';
