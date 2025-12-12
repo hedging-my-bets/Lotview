@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
+import { authLimiter, sensitiveLimiter } from "./app";
 import { 
   insertVehicleSchema, 
   insertVehicleViewSchema, 
@@ -183,8 +184,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // ===== AUTHENTICATION ROUTES (JWT) =====
   
-  // Login endpoint (all user roles)
-  app.post("/api/auth/login", async (req, res) => {
+  // Login endpoint (all user roles) - rate limited to prevent brute force
+  app.post("/api/auth/login", authLimiter, async (req, res) => {
     try {
       const { email, password } = req.body;
       
@@ -1040,8 +1041,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // Reset user password (super admin only)
-  app.post("/api/super-admin/users/:userId/reset-password", authMiddleware, superAdminOnly, async (req, res) => {
+  // Reset user password (super admin only) - rate limited for sensitive operation
+  app.post("/api/super-admin/users/:userId/reset-password", authMiddleware, superAdminOnly, sensitiveLimiter, async (req, res) => {
     try {
       const userId = parseInt(req.params.userId);
       const { newPassword } = req.body;
@@ -2230,8 +2231,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // ===== ADMIN AUTH ROUTES (LEGACY - for backward compatibility) =====
   
-  // Admin login endpoint
-  app.post("/api/admin/login", async (req, res) => {
+  // Admin login endpoint - rate limited to prevent brute force
+  app.post("/api/admin/login", authLimiter, async (req, res) => {
     try {
       const { password } = req.body;
       
@@ -3242,16 +3243,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Set priority vehicles for a page
-  app.post("/api/facebook-pages/:id/priority-vehicles", async (req, res) => {
+  app.post("/api/facebook-pages/:id/priority-vehicles", authMiddleware, requireDealership, async (req, res) => {
     try {
       const pageId = parseInt(req.params.id);
+      const dealershipId = req.dealershipId!;
       const { vehicleIds } = req.body;
 
       if (!Array.isArray(vehicleIds)) {
         return res.status(400).json({ error: "vehicleIds must be an array" });
       }
 
-      await storage.setPagePriorityVehicles(pageId, vehicleIds);
+      await storage.setPagePriorityVehicles(pageId, vehicleIds, dealershipId);
       res.status(200).json({ success: true });
     } catch (error) {
       console.error("Error setting priorities:", error);

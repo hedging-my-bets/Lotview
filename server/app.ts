@@ -2,6 +2,8 @@ import { type Server } from "node:http";
 import path from "node:path";
 
 import express, { type Express, type Request, Response, NextFunction } from "express";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import { registerRoutes } from "./routes";
 import { tenantMiddleware } from "./tenant-middleware";
 import { storage } from "./storage";
@@ -18,6 +20,57 @@ export function log(message: string, source = "express") {
 }
 
 export const app = express();
+
+// Security headers with helmet
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
+      imgSrc: ["'self'", "data:", "blob:", "https:", "http:"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      connectSrc: ["'self'", "https:", "wss:"],
+      frameSrc: ["'self'", "https://www.facebook.com"],
+      workerSrc: ["'self'", "blob:"],
+    },
+  },
+  crossOriginEmbedderPolicy: false, // Required for cross-origin images
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+}));
+
+// Global rate limiter - 1000 requests per 15 minutes per IP
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, please try again later" },
+  skip: (req) => {
+    // Skip rate limiting for static assets
+    return !req.path.startsWith('/api');
+  }
+});
+app.use(globalLimiter);
+
+// Strict rate limiter for authentication endpoints
+export const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 attempts per 15 minutes
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many login attempts, please try again after 15 minutes" },
+  // Use default IP-based key generator (handles IPv6 properly)
+});
+
+// Strict rate limiter for sensitive operations (password reset, etc.)
+export const sensitiveLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5, // 5 attempts per hour
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests for this sensitive operation, please try again later" },
+});
 
 declare module 'http' {
   interface IncomingMessage {

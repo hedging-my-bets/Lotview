@@ -333,7 +333,7 @@ export interface IStorage {
   
   // Priority vehicles
   getPagePriorityVehicles(pageId: number): Promise<PagePriorityVehicle[]>;
-  setPagePriorityVehicles(pageId: number, vehicleIds: number[]): Promise<void>;
+  setPagePriorityVehicles(pageId: number, vehicleIds: number[], dealershipId: number): Promise<void>;
   
   // GoHighLevel config
   saveGHLConfig(config: InsertGhlConfig): Promise<GhlConfig>;
@@ -1266,13 +1266,13 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(pagePriorityVehicles).where(eq(pagePriorityVehicles.pageId, pageId));
   }
 
-  async setPagePriorityVehicles(pageId: number, vehicleIds: number[]): Promise<void> {
+  async setPagePriorityVehicles(pageId: number, vehicleIds: number[], dealershipId: number): Promise<void> {
     // LEGACY/DEPRECATED: Page priority vehicles are being replaced by remarketing system
-    // TODO: Multi-tenant - hardcoded dealershipId for single-dealership
-    const dealershipId = 1;
     
-    // Delete existing priorities
-    await db.delete(pagePriorityVehicles).where(eq(pagePriorityVehicles.pageId, pageId));
+    // Delete existing priorities for this page and dealership
+    await db.delete(pagePriorityVehicles).where(
+      and(eq(pagePriorityVehicles.pageId, pageId), eq(pagePriorityVehicles.dealershipId, dealershipId))
+    );
     
     // Insert new priorities
     if (vehicleIds.length > 0) {
