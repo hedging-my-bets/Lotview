@@ -133,6 +133,8 @@ export const vehicles = pgTable("vehicles", {
   description: text("description").notNull(),
   fullPageContent: text("full_page_content"), // Full page content for AI description generation
   vin: text("vin"), // VIN number
+  interiorColor: text("interior_color"), // Interior color (from VIN decode or manual entry)
+  exteriorColor: text("exterior_color"), // Exterior color (from VIN decode or manual entry)
   stockNumber: text("stock_number"), // Stock # from dealership
   cargurusPrice: integer("cargurus_price"), // Price on CarGurus (for comparison)
   cargurusUrl: text("cargurus_url"), // Link to CarGurus listing

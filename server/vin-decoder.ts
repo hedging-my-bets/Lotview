@@ -78,6 +78,8 @@ async function decodeVINWithMarketCheck(vin: string, apiKey: string): Promise<VI
       doors: data.doors?.toString() || undefined,
       manufacturer: data.manufacturer || undefined,
       vehicleType: data.vehicle_type || undefined,
+      interiorColor: data.interior_color || undefined,
+      exteriorColor: data.exterior_color || data.color || undefined,
       source: 'marketcheck',
       responseTimeMs: responseTime
     };
