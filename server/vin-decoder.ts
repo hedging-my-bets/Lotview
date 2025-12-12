@@ -30,7 +30,7 @@ async function decodeVINWithMarketCheck(vin: string, apiKey: string): Promise<VI
   const startTime = Date.now();
   
   try {
-    const url = `https://mc-api.marketcheck.com/v2/decode/car/vin/${vin}?api_key=${apiKey}`;
+    const url = `https://api.marketcheck.com/v2/decode/car/vin/${vin}?api_key=${apiKey}`;
     
     console.log(`[VIN Decoder] Trying MarketCheck for ${vin}`);
     
@@ -265,26 +265,32 @@ export async function decodeVIN(vin: string, dealershipId?: number): Promise<VIN
     console.log('[VIN Decoder] No MarketCheck API key configured');
   }
   
-  // Priority 2: API Ninjas (from environment variable)
-  if (apiNinjasKey) {
-    const apiNinjasResult = await decodeVINWithApiNinjas(cleanVIN, apiNinjasKey);
-    
-    if (apiNinjasResult && !apiNinjasResult.errorCode) {
-      console.log(`[VIN Decoder] Success with API Ninjas in ${apiNinjasResult.responseTimeMs}ms`);
-      return apiNinjasResult;
-    }
-    console.log('[VIN Decoder] API Ninjas failed, trying next fallback');
-  } else {
-    console.log('[VIN Decoder] No API Ninjas key configured (set API_NINJAS_KEY env var)');
-  }
-  
-  // Priority 3: NHTSA (free, but sometimes slow/unavailable)
-  console.log('[VIN Decoder] Falling back to NHTSA');
+  // Priority 2: NHTSA (free government service, comprehensive data)
+  console.log('[VIN Decoder] Trying NHTSA');
   const nhtsaResult = await decodeVINWithNHTSA(cleanVIN);
   
   if (!nhtsaResult.errorCode) {
     console.log(`[VIN Decoder] Success with NHTSA in ${nhtsaResult.responseTimeMs}ms`);
     return nhtsaResult;
+  }
+  console.log('[VIN Decoder] NHTSA failed, trying next fallback');
+  
+  // Priority 3: API Ninjas (last resort - free tier has limited data)
+  if (apiNinjasKey) {
+    const apiNinjasResult = await decodeVINWithApiNinjas(cleanVIN, apiNinjasKey);
+    
+    if (apiNinjasResult && !apiNinjasResult.errorCode) {
+      // Check if API Ninjas returned actual data (not "premium subscribers" message)
+      if (apiNinjasResult.model && !apiNinjasResult.model.toLowerCase().includes('premium')) {
+        console.log(`[VIN Decoder] Success with API Ninjas in ${apiNinjasResult.responseTimeMs}ms`);
+        return apiNinjasResult;
+      }
+      console.log('[VIN Decoder] API Ninjas returned premium-only data, skipping');
+    } else {
+      console.log('[VIN Decoder] API Ninjas failed');
+    }
+  } else {
+    console.log('[VIN Decoder] No API Ninjas key configured (set API_NINJAS_KEY env var)');
   }
   
   const totalTime = Date.now() - startTime;
