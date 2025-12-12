@@ -1,4 +1,5 @@
 import { storage } from './storage';
+import puppeteer from 'puppeteer';
 
 export interface VINDecodeResult {
   vin: string;
@@ -16,9 +17,11 @@ export interface VINDecodeResult {
   manufacturer?: string;
   plantCountry?: string;
   vehicleType?: string;
+  interiorColor?: string;
+  exteriorColor?: string;
   errorCode?: string;
   errorMessage?: string;
-  source?: 'marketcheck' | 'api_ninjas' | 'nhtsa';
+  source?: 'marketcheck' | 'api_ninjas' | 'nhtsa' | 'cargurus';
   responseTimeMs?: number;
 }
 
@@ -226,6 +229,133 @@ async function decodeVINWithNHTSA(vin: string, attempt: number = 1): Promise<VIN
   }
 }
 
+interface CarGurusColorResult {
+  interiorColor?: string;
+  exteriorColor?: string;
+  found: boolean;
+}
+
+async function lookupCarGurusColors(vin: string): Promise<CarGurusColorResult> {
+  const startTime = Date.now();
+  let browser = null;
+  
+  try {
+    console.log(`[VIN Decoder] Looking up colors from CarGurus for ${vin}`);
+    
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--single-process'
+      ]
+    });
+    
+    const page = await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    
+    // Search CarGurus Canada for the VIN
+    const searchUrl = `https://www.cargurus.ca/Cars/inventorylisting/viewDetailsFilterViewInventoryListing.action?zip=V6H&showNegotiable=true&sortDir=ASC&sourceContext=carGurusHomePageModel&distance=50000&sortType=DEAL_SCORE&vin=${vin}`;
+    
+    await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 20000 });
+    await sleep(2000);
+    
+    // Try to find and click the first listing result
+    const listingLink = await page.$('a[href*="/Cars/link/"]');
+    
+    if (!listingLink) {
+      console.log(`[VIN Decoder] No CarGurus listing found for VIN ${vin}`);
+      return { found: false };
+    }
+    
+    // Get the listing URL and navigate to it
+    const href = await listingLink.evaluate((el: Element) => (el as HTMLAnchorElement).href);
+    await page.goto(href, { waitUntil: 'networkidle2', timeout: 20000 });
+    await sleep(2000);
+    
+    // Extract colors from the page
+    const colors = await page.evaluate(() => {
+      const result: { interiorColor?: string; exteriorColor?: string } = {};
+      
+      // Try to find __NEXT_DATA__ for structured data
+      try {
+        const nextDataScript = document.querySelector('script#__NEXT_DATA__');
+        if (nextDataScript && nextDataScript.textContent) {
+          const nextData = JSON.parse(nextDataScript.textContent);
+          const listing = nextData?.props?.pageProps?.listing || 
+                          nextData?.props?.pageProps?.listingDetail;
+          
+          if (listing) {
+            result.interiorColor = listing.interiorColor || listing.interior_color || undefined;
+            result.exteriorColor = listing.exteriorColor || listing.exterior_color || listing.color || undefined;
+            
+            if (result.interiorColor || result.exteriorColor) {
+              return result;
+            }
+          }
+        }
+      } catch (e) {
+        // JSON parse failed, try DOM extraction
+      }
+      
+      // DOM fallback - look for color labels
+      const allText = document.body.innerText;
+      
+      // Look for "Interior Color: <color>" pattern
+      const interiorMatch = allText.match(/Interior\s*(?:Color|Colour)?[:\s]+([A-Za-z\s]+?)(?:\n|Exterior|$)/i);
+      if (interiorMatch) {
+        result.interiorColor = interiorMatch[1].trim();
+      }
+      
+      // Look for "Exterior Color: <color>" pattern
+      const exteriorMatch = allText.match(/Exterior\s*(?:Color|Colour)?[:\s]+([A-Za-z\s]+?)(?:\n|Interior|$)/i);
+      if (exteriorMatch) {
+        result.exteriorColor = exteriorMatch[1].trim();
+      }
+      
+      // Alternative: look for color in specs table
+      const specRows = document.querySelectorAll('tr, [class*="spec"], [class*="detail"]');
+      specRows.forEach((row) => {
+        const text = row.textContent?.toLowerCase() || '';
+        if (text.includes('interior') && text.includes('color')) {
+          const colorMatch = row.textContent?.match(/(?:color|colour)[:\s]+(.+)/i);
+          if (colorMatch && !result.interiorColor) {
+            result.interiorColor = colorMatch[1].trim();
+          }
+        }
+        if (text.includes('exterior') && text.includes('color')) {
+          const colorMatch = row.textContent?.match(/(?:color|colour)[:\s]+(.+)/i);
+          if (colorMatch && !result.exteriorColor) {
+            result.exteriorColor = colorMatch[1].trim();
+          }
+        }
+      });
+      
+      return result;
+    });
+    
+    const responseTime = Date.now() - startTime;
+    console.log(`[VIN Decoder] CarGurus color lookup completed in ${responseTime}ms - Interior: ${colors.interiorColor || 'N/A'}, Exterior: ${colors.exteriorColor || 'N/A'}`);
+    
+    return {
+      interiorColor: colors.interiorColor,
+      exteriorColor: colors.exteriorColor,
+      found: !!(colors.interiorColor || colors.exteriorColor)
+    };
+    
+  } catch (error) {
+    const responseTime = Date.now() - startTime;
+    console.log(`[VIN Decoder] CarGurus color lookup failed after ${responseTime}ms:`, error instanceof Error ? error.message : 'Unknown error');
+    return { found: false };
+  } finally {
+    if (browser) {
+      await browser.close();
+    }
+  }
+}
+
 export async function decodeVIN(vin: string, dealershipId?: number): Promise<VINDecodeResult> {
   const cleanVIN = vin.trim().toUpperCase();
   const startTime = Date.now();
@@ -252,53 +382,84 @@ export async function decodeVIN(vin: string, dealershipId?: number): Promise<VIN
   
   const apiNinjasKey = process.env.API_NINJAS_KEY || null;
   
+  let decodeResult: VINDecodeResult | null = null;
+  
   // Priority 1: MarketCheck (fastest, most reliable when available)
   if (marketCheckApiKey) {
     const marketCheckResult = await decodeVINWithMarketCheck(cleanVIN, marketCheckApiKey);
     
     if (marketCheckResult && !marketCheckResult.errorCode) {
       console.log(`[VIN Decoder] Success with MarketCheck in ${marketCheckResult.responseTimeMs}ms`);
-      return marketCheckResult;
+      decodeResult = marketCheckResult;
+    } else {
+      console.log('[VIN Decoder] MarketCheck failed, trying next fallback');
     }
-    console.log('[VIN Decoder] MarketCheck failed, trying next fallback');
   } else {
     console.log('[VIN Decoder] No MarketCheck API key configured');
   }
   
   // Priority 2: NHTSA (free government service, comprehensive data)
-  console.log('[VIN Decoder] Trying NHTSA');
-  const nhtsaResult = await decodeVINWithNHTSA(cleanVIN);
-  
-  if (!nhtsaResult.errorCode) {
-    console.log(`[VIN Decoder] Success with NHTSA in ${nhtsaResult.responseTimeMs}ms`);
-    return nhtsaResult;
-  }
-  console.log('[VIN Decoder] NHTSA failed, trying next fallback');
-  
-  // Priority 3: API Ninjas (last resort - free tier has limited data)
-  if (apiNinjasKey) {
-    const apiNinjasResult = await decodeVINWithApiNinjas(cleanVIN, apiNinjasKey);
+  if (!decodeResult) {
+    console.log('[VIN Decoder] Trying NHTSA');
+    const nhtsaResult = await decodeVINWithNHTSA(cleanVIN);
     
-    if (apiNinjasResult && !apiNinjasResult.errorCode) {
-      // Check if API Ninjas returned actual data (not "premium subscribers" message)
-      if (apiNinjasResult.model && !apiNinjasResult.model.toLowerCase().includes('premium')) {
-        console.log(`[VIN Decoder] Success with API Ninjas in ${apiNinjasResult.responseTimeMs}ms`);
-        return apiNinjasResult;
-      }
-      console.log('[VIN Decoder] API Ninjas returned premium-only data, skipping');
+    if (!nhtsaResult.errorCode) {
+      console.log(`[VIN Decoder] Success with NHTSA in ${nhtsaResult.responseTimeMs}ms`);
+      decodeResult = nhtsaResult;
     } else {
-      console.log('[VIN Decoder] API Ninjas failed');
+      console.log('[VIN Decoder] NHTSA failed, trying next fallback');
+      
+      // Priority 3: API Ninjas (last resort - free tier has limited data)
+      if (apiNinjasKey) {
+        const apiNinjasResult = await decodeVINWithApiNinjas(cleanVIN, apiNinjasKey);
+        
+        if (apiNinjasResult && !apiNinjasResult.errorCode) {
+          // Check if API Ninjas returned actual data (not "premium subscribers" message)
+          if (apiNinjasResult.model && !apiNinjasResult.model.toLowerCase().includes('premium')) {
+            console.log(`[VIN Decoder] Success with API Ninjas in ${apiNinjasResult.responseTimeMs}ms`);
+            decodeResult = apiNinjasResult;
+          } else {
+            console.log('[VIN Decoder] API Ninjas returned premium-only data, skipping');
+          }
+        } else {
+          console.log('[VIN Decoder] API Ninjas failed');
+        }
+      } else {
+        console.log('[VIN Decoder] No API Ninjas key configured (set API_NINJAS_KEY env var)');
+      }
+      
+      // All decoders failed
+      if (!decodeResult) {
+        const totalTime = Date.now() - startTime;
+        console.log(`[VIN Decoder] All decoders failed after ${totalTime}ms`);
+        
+        return {
+          ...nhtsaResult,
+          errorMessage: `VIN decode failed after trying all available services. ${nhtsaResult.errorMessage}`,
+          responseTimeMs: totalTime
+        };
+      }
     }
-  } else {
-    console.log('[VIN Decoder] No API Ninjas key configured (set API_NINJAS_KEY env var)');
+  }
+  
+  // Enhancement: Try to get interior/exterior colors from CarGurus
+  if (decodeResult && !decodeResult.interiorColor) {
+    try {
+      console.log('[VIN Decoder] Enhancing with CarGurus color lookup...');
+      const colors = await lookupCarGurusColors(cleanVIN);
+      
+      if (colors.found) {
+        decodeResult.interiorColor = colors.interiorColor;
+        decodeResult.exteriorColor = colors.exteriorColor;
+        console.log(`[VIN Decoder] Added colors from CarGurus - Interior: ${colors.interiorColor || 'N/A'}, Exterior: ${colors.exteriorColor || 'N/A'}`);
+      }
+    } catch (error) {
+      console.log('[VIN Decoder] CarGurus color lookup failed, continuing without colors');
+    }
   }
   
   const totalTime = Date.now() - startTime;
-  console.log(`[VIN Decoder] All decoders failed after ${totalTime}ms`);
+  decodeResult.responseTimeMs = totalTime;
   
-  return {
-    ...nhtsaResult,
-    errorMessage: `VIN decode failed after trying all available services. ${nhtsaResult.errorMessage}`,
-    responseTimeMs: totalTime
-  };
+  return decodeResult;
 }
