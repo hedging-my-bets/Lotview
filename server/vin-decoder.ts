@@ -1,3 +1,5 @@
+import { storage } from './storage';
+
 export interface VINDecodeResult {
   vin: string;
   year?: string;
@@ -16,21 +18,58 @@ export interface VINDecodeResult {
   vehicleType?: string;
   errorCode?: string;
   errorMessage?: string;
+  source?: 'marketcheck' | 'nhtsa';
 }
 
-export async function decodeVIN(vin: string): Promise<VINDecodeResult> {
+async function decodeVINWithMarketCheck(vin: string, apiKey: string): Promise<VINDecodeResult | null> {
   try {
-    const cleanVIN = vin.trim().toUpperCase();
+    const url = `https://api.marketcheck.com/v2/decode/car/vin/${vin}?api_key=${apiKey}`;
     
-    if (cleanVIN.length !== 17) {
-      return {
-        vin: cleanVIN,
-        errorCode: 'INVALID_VIN_LENGTH',
-        errorMessage: 'VIN must be exactly 17 characters'
-      };
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      console.log(`[VIN Decoder] MarketCheck returned ${response.status}`);
+      return null;
     }
     
-    const url = `https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/${cleanVIN}?format=json`;
+    const data = await response.json();
+    
+    if (!data || data.error) {
+      console.log('[VIN Decoder] MarketCheck returned error:', data?.error);
+      return null;
+    }
+    
+    return {
+      vin,
+      year: data.year?.toString() || undefined,
+      make: data.make || undefined,
+      model: data.model || undefined,
+      trim: data.trim || undefined,
+      bodyClass: data.body_type || data.body_style || undefined,
+      engineCylinders: data.engine_cylinders?.toString() || undefined,
+      engineHP: data.engine_hp?.toString() || undefined,
+      fuelType: data.fuel_type || undefined,
+      driveType: data.drivetrain || data.drive_type || undefined,
+      transmission: data.transmission || undefined,
+      doors: data.doors?.toString() || undefined,
+      manufacturer: data.manufacturer || undefined,
+      plantCountry: data.made_in || undefined,
+      vehicleType: data.vehicle_type || undefined,
+      source: 'marketcheck'
+    };
+  } catch (error) {
+    console.log('[VIN Decoder] MarketCheck error:', error instanceof Error ? error.message : 'Unknown error');
+    return null;
+  }
+}
+
+async function decodeVINWithNHTSA(vin: string): Promise<VINDecodeResult> {
+  try {
+    const url = `https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/${vin}?format=json`;
     
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
@@ -47,14 +86,15 @@ export async function decodeVIN(vin: string): Promise<VINDecodeResult> {
     
     if (result.ErrorCode !== "0") {
       return {
-        vin: cleanVIN,
+        vin,
         errorCode: result.ErrorCode,
-        errorMessage: result.ErrorText || 'Unable to decode VIN'
+        errorMessage: result.ErrorText || 'Unable to decode VIN',
+        source: 'nhtsa'
       };
     }
     
     return {
-      vin: cleanVIN,
+      vin,
       year: result.ModelYear || undefined,
       make: result.Make || undefined,
       model: result.Model || undefined,
@@ -69,22 +109,61 @@ export async function decodeVIN(vin: string): Promise<VINDecodeResult> {
       manufacturer: result.Manufacturer || undefined,
       plantCountry: result.PlantCountry || undefined,
       vehicleType: result.VehicleType || undefined,
+      source: 'nhtsa'
     };
   } catch (error) {
-    console.error('VIN decode error:', error);
+    console.error('[VIN Decoder] NHTSA error:', error);
     
     if (error instanceof Error && error.name === 'AbortError') {
       return {
         vin,
         errorCode: 'TIMEOUT',
-        errorMessage: 'VIN decode request timed out. Please try again.'
+        errorMessage: 'VIN decode request timed out. Please try again.',
+        source: 'nhtsa'
       };
     }
     
     return {
       vin,
       errorCode: 'DECODE_ERROR',
-      errorMessage: error instanceof Error ? error.message : 'Failed to decode VIN'
+      errorMessage: error instanceof Error ? error.message : 'Failed to decode VIN',
+      source: 'nhtsa'
     };
   }
+}
+
+export async function decodeVIN(vin: string, dealershipId?: number): Promise<VINDecodeResult> {
+  const cleanVIN = vin.trim().toUpperCase();
+  
+  if (cleanVIN.length !== 17) {
+    return {
+      vin: cleanVIN,
+      errorCode: 'INVALID_VIN_LENGTH',
+      errorMessage: 'VIN must be exactly 17 characters'
+    };
+  }
+  
+  // Try MarketCheck first (faster, more reliable)
+  const effectiveDealershipId = dealershipId || 1;
+  try {
+    const apiKeys = await storage.getDealershipApiKeys(effectiveDealershipId);
+    
+    if (apiKeys?.marketcheckKey) {
+      console.log(`[VIN Decoder] Trying MarketCheck for ${cleanVIN}`);
+      const marketCheckResult = await decodeVINWithMarketCheck(cleanVIN, apiKeys.marketcheckKey);
+      
+      if (marketCheckResult && !marketCheckResult.errorCode) {
+        console.log('[VIN Decoder] MarketCheck success');
+        return marketCheckResult;
+      }
+    } else {
+      console.log('[VIN Decoder] No MarketCheck API key configured, using NHTSA');
+    }
+  } catch (error) {
+    console.log('[VIN Decoder] Error fetching MarketCheck key:', error);
+  }
+  
+  // Fallback to NHTSA
+  console.log(`[VIN Decoder] Falling back to NHTSA for ${cleanVIN}`);
+  return decodeVINWithNHTSA(cleanVIN);
 }

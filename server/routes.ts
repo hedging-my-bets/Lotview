@@ -6864,6 +6864,7 @@ Format your response in clear sections with actionable recommendations.`;
   app.post("/api/manager/decode-vin", authMiddleware, requireRole("manager"), async (req, res) => {
     try {
       const { vin } = req.body;
+      const dealershipId = req.dealershipId || 1;
       
       if (!vin || typeof vin !== 'string') {
         return res.json({
@@ -6873,7 +6874,7 @@ Format your response in clear sections with actionable recommendations.`;
         });
       }
       
-      const result = await decodeVIN(vin);
+      const result = await decodeVIN(vin, dealershipId);
       res.json(result);
     } catch (error) {
       logError('Error decoding VIN:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-decode-vin' });
