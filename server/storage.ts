@@ -406,6 +406,7 @@ export interface IStorage {
   markMessagesAsRead(dealershipId: number, conversationId: number): Promise<void>;
   getMessengerMessageByGhlId(dealershipId: number, ghlMessageId: string): Promise<MessengerMessage | undefined>;
   getMessengerConversationByGhlId(dealershipId: number, ghlConversationId: string): Promise<MessengerConversation | undefined>;
+  getMessengerConversationByGhlContactId(dealershipId: number, ghlContactId: string): Promise<MessengerConversation | undefined>;
   getMessengerConversationWithTokenByGhlId(dealershipId: number, ghlConversationId: string): Promise<(MessengerConversation & { pageAccessToken: string; participantId: string }) | undefined>;
   updateMessengerMessage(id: number, dealershipId: number, data: Partial<InsertMessengerMessage>): Promise<MessengerMessage | undefined>;
   
@@ -1608,6 +1609,17 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(messengerConversations.dealershipId, dealershipId),
         eq(messengerConversations.ghlConversationId, ghlConversationId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+
+  async getMessengerConversationByGhlContactId(dealershipId: number, ghlContactId: string): Promise<MessengerConversation | undefined> {
+    const result = await db.select()
+      .from(messengerConversations)
+      .where(and(
+        eq(messengerConversations.dealershipId, dealershipId),
+        eq(messengerConversations.ghlContactId, ghlContactId)
       ))
       .limit(1);
     return result[0];

@@ -276,6 +276,189 @@ export class GhlMessageSyncService {
       return { success: false, error: error.message };
     }
   }
+
+  async syncMetadataToGhl(
+    conversation: MessengerConversation & { ghlContactId?: string | null }
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      if (!conversation.ghlContactId) {
+        console.log(`[GHL Sync] Cannot sync metadata - conversation ${conversation.id} has no GHL contact`);
+        return { success: false, error: 'No GHL contact linked' };
+      }
+
+      const ghlService = createGhlApiService(this.dealershipId);
+
+      // Sync tags to GHL contact
+      if (conversation.tags && conversation.tags.length > 0) {
+        const tagResult = await ghlService.addTagsToContact(conversation.ghlContactId, conversation.tags);
+        if (!tagResult.success) {
+          console.warn(`[GHL Sync] Failed to sync tags to GHL contact:`, tagResult.error);
+        } else {
+          console.log(`[GHL Sync] Synced tags ${conversation.tags.join(', ')} to GHL contact ${conversation.ghlContactId}`);
+        }
+      }
+
+      // Sync contact info if available
+      const contactUpdates: Record<string, any> = {};
+      if (conversation.customerPhone) {
+        contactUpdates.phone = conversation.customerPhone;
+      }
+      if (conversation.customerEmail) {
+        contactUpdates.email = conversation.customerEmail;
+      }
+      if (conversation.vehicleOfInterest) {
+        contactUpdates.customFields = [
+          { key: 'vehicle_of_interest', value: conversation.vehicleOfInterest }
+        ];
+      }
+
+      if (Object.keys(contactUpdates).length > 0) {
+        const updateResult = await ghlService.updateContact(conversation.ghlContactId, contactUpdates);
+        if (!updateResult.success) {
+          console.warn(`[GHL Sync] Failed to update contact info in GHL:`, updateResult.error);
+        } else {
+          console.log(`[GHL Sync] Synced contact info to GHL contact ${conversation.ghlContactId}`);
+        }
+      }
+
+      // Update last sync timestamp
+      await storage.updateMessengerConversation(conversation.id, this.dealershipId, {
+        lastGhlSyncAt: new Date(),
+      } as any);
+
+      return { success: true };
+    } catch (error: any) {
+      console.error(`[GHL Sync] Error syncing metadata to GHL:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async handleGhlContactUpdate(webhookData: {
+    contactId: string;
+    locationId: string;
+    tags?: string[];
+    phone?: string;
+    email?: string;
+    customFields?: Array<{ id: string; key: string; value: string }>;
+  }): Promise<{ success: boolean; error?: string }> {
+    try {
+      // Find conversation by GHL contact ID
+      const conversation = await storage.getMessengerConversationByGhlContactId(
+        this.dealershipId,
+        webhookData.contactId
+      );
+
+      if (!conversation) {
+        console.log(`[GHL Sync] No conversation found for GHL contact ${webhookData.contactId}`);
+        return { success: true };
+      }
+
+      const updates: Record<string, any> = {};
+
+      // Sync tags from GHL to Lotview - Replace completely to handle tag removals
+      // GHL is treated as source of truth for bidirectional sync
+      if (webhookData.tags !== undefined) {
+        updates.tags = webhookData.tags;
+      }
+
+      // Sync phone and email - Overwrite to keep in sync (bidirectional)
+      if (webhookData.phone && webhookData.phone !== conversation.customerPhone) {
+        updates.customerPhone = webhookData.phone;
+      }
+      if (webhookData.email && webhookData.email !== conversation.customerEmail) {
+        updates.customerEmail = webhookData.email;
+      }
+
+      // Sync vehicle of interest from custom fields
+      if (webhookData.customFields) {
+        const vehicleField = webhookData.customFields.find(f => 
+          f.key === 'vehicle_of_interest' || f.key === 'vehicleOfInterest'
+        );
+        if (vehicleField && vehicleField.value) {
+          updates.vehicleOfInterest = vehicleField.value;
+        }
+      }
+
+      if (Object.keys(updates).length > 0) {
+        updates.lastGhlSyncAt = new Date();
+        await storage.updateMessengerConversation(conversation.id, this.dealershipId, updates as any);
+        console.log(`[GHL Sync] Updated conversation ${conversation.id} from GHL contact update`);
+      }
+
+      return { success: true };
+    } catch (error: any) {
+      console.error(`[GHL Sync] Error handling GHL contact update:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async handleGhlOpportunityUpdate(webhookData: {
+    opportunityId: string;
+    contactId: string;
+    locationId: string;
+    pipelineStageId?: string;
+    pipelineStageName?: string;
+    status?: string;
+  }): Promise<{ success: boolean; error?: string }> {
+    try {
+      // Find conversation by GHL contact ID
+      const conversation = await storage.getMessengerConversationByGhlContactId(
+        this.dealershipId,
+        webhookData.contactId
+      );
+
+      if (!conversation) {
+        console.log(`[GHL Sync] No conversation found for GHL contact ${webhookData.contactId}`);
+        return { success: true };
+      }
+
+      const updates: Record<string, any> = {};
+
+      // Map GHL pipeline stage to Lotview pipeline stage
+      if (webhookData.pipelineStageName) {
+        const stageName = webhookData.pipelineStageName.toLowerCase();
+        if (stageName.includes('inquiry') || stageName.includes('new')) {
+          updates.pipelineStage = 'inquiry';
+        } else if (stageName.includes('qualified') || stageName.includes('contacted')) {
+          updates.pipelineStage = 'qualified';
+        } else if (stageName.includes('test') || stageName.includes('demo')) {
+          updates.pipelineStage = 'test_drive';
+        } else if (stageName.includes('negotiat') || stageName.includes('proposal')) {
+          updates.pipelineStage = 'negotiation';
+        } else if (stageName.includes('closed') || stageName.includes('won') || stageName.includes('sold')) {
+          updates.pipelineStage = 'closed';
+          updates.leadStatus = 'sold';
+        } else if (stageName.includes('lost') || stageName.includes('dead')) {
+          updates.leadStatus = 'lost';
+        }
+      }
+
+      // Map GHL opportunity status to lead status
+      if (webhookData.status) {
+        const status = webhookData.status.toLowerCase();
+        if (status === 'won' || status === 'closed_won') {
+          updates.leadStatus = 'sold';
+        } else if (status === 'lost' || status === 'closed_lost') {
+          updates.leadStatus = 'lost';
+        } else if (status === 'open' || status === 'active') {
+          if (!updates.leadStatus) {
+            updates.leadStatus = 'hot';
+          }
+        }
+      }
+
+      if (Object.keys(updates).length > 0) {
+        updates.lastGhlSyncAt = new Date();
+        await storage.updateMessengerConversation(conversation.id, this.dealershipId, updates as any);
+        console.log(`[GHL Sync] Updated conversation ${conversation.id} from GHL opportunity update`);
+      }
+
+      return { success: true };
+    } catch (error: any) {
+      console.error(`[GHL Sync] Error handling GHL opportunity update:`, error);
+      return { success: false, error: error.message };
+    }
+  }
 }
 
 export function createGhlMessageSyncService(dealershipId: number): GhlMessageSyncService {

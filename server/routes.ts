@@ -4238,6 +4238,54 @@ Provide a single, concise, friendly message that continues the conversation natu
     }
   });
 
+  // Update conversation metadata (tags, lead status, pipeline stage, etc.) - Manager and above
+  app.patch("/api/messenger-conversations/:id/metadata", authMiddleware, requireRole("manager", "admin", "master", "super_admin"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const conversationId = parseInt(req.params.id);
+      const { leadStatus, pipelineStage, tags, vehicleOfInterest, assignedToUserId, customerPhone, customerEmail } = req.body;
+      
+      // Build update object with only provided fields
+      const updates: Record<string, any> = {};
+      if (leadStatus !== undefined) updates.leadStatus = leadStatus;
+      if (pipelineStage !== undefined) updates.pipelineStage = pipelineStage;
+      if (tags !== undefined) updates.tags = tags;
+      if (vehicleOfInterest !== undefined) updates.vehicleOfInterest = vehicleOfInterest;
+      if (assignedToUserId !== undefined) updates.assignedToUserId = assignedToUserId;
+      if (customerPhone !== undefined) updates.customerPhone = customerPhone;
+      if (customerEmail !== undefined) updates.customerEmail = customerEmail;
+      
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ error: "No metadata fields provided to update" });
+      }
+      
+      const conversation = await storage.updateMessengerConversation(conversationId, dealershipId, updates);
+      
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+      
+      // Sync metadata to GHL if conversation is linked and GHL sync is enabled
+      if (conversation.ghlContactId) {
+        try {
+          const ghlMessengerSyncEnabled = await isFeatureEnabled(FEATURE_FLAGS.ENABLE_GHL_MESSENGER_SYNC, dealershipId);
+          if (ghlMessengerSyncEnabled) {
+            const ghlMessageSyncService = createGhlMessageSyncService(dealershipId);
+            await ghlMessageSyncService.syncMetadataToGhl(conversation);
+          }
+        } catch (syncError) {
+          console.error(`[Metadata] Error syncing metadata to GHL:`, syncError);
+          // Don't fail the request, just log the error
+        }
+      }
+      
+      res.json({ success: true, conversation });
+    } catch (error) {
+      logError('Error updating conversation metadata:', error instanceof Error ? error : new Error(String(error)), { route: 'api-messenger-conversations-id-metadata' });
+      res.status(500).json({ error: "Failed to update conversation metadata" });
+    }
+  });
+
   // ===== TRAINING MODE ROUTES =====
 
   // Update AI prompt for a message (Training Mode)
@@ -10019,6 +10067,21 @@ Format your response in clear sections with actionable recommendations.`;
       });
     }
     
+    // Sync contact metadata to Messenger conversation (tags, phone, email)
+    try {
+      const ghlMessageSyncService = createGhlMessageSyncService(dealershipId);
+      await ghlMessageSyncService.handleGhlContactUpdate({
+        contactId,
+        locationId: payload?.locationId || '',
+        tags: payload?.contact?.tags || payload?.tags,
+        phone: payload?.contact?.phone || payload?.phone,
+        email: payload?.contact?.email || payload?.email,
+        customFields: payload?.contact?.customFields || payload?.customFields,
+      });
+    } catch (syncError) {
+      console.error(`[GHL Contact] Error syncing contact metadata to conversation:`, syncError);
+    }
+    
     // If bidirectional sync is enabled, also sync to PBS
     const config = await storage.getGhlConfig(dealershipId);
     if (config?.bidirectionalSync && config?.syncContacts) {
@@ -10067,8 +10130,27 @@ Format your response in clear sections with actionable recommendations.`;
   }
   
   async function handleGhlOpportunityEvent(dealershipId: number, payload: any, _ghlService: any) {
-    // Log opportunity events for now - full sync implementation to come
-    console.log(`GHL opportunity event for dealership ${dealershipId}:`, payload?.opportunity?.id);
+    const opportunityId = payload?.opportunity?.id || payload?.opportunityId;
+    const contactId = payload?.opportunity?.contactId || payload?.contactId;
+    
+    console.log(`GHL opportunity event for dealership ${dealershipId}:`, opportunityId);
+    
+    if (!contactId) return;
+    
+    // Sync opportunity metadata (pipeline stage, status) to Messenger conversation
+    try {
+      const ghlMessageSyncService = createGhlMessageSyncService(dealershipId);
+      await ghlMessageSyncService.handleGhlOpportunityUpdate({
+        opportunityId: opportunityId || '',
+        contactId,
+        locationId: payload?.locationId || '',
+        pipelineStageId: payload?.opportunity?.pipelineStageId || payload?.pipelineStageId,
+        pipelineStageName: payload?.opportunity?.pipelineStageName || payload?.stageName || payload?.stage?.name,
+        status: payload?.opportunity?.status || payload?.status,
+      });
+    } catch (syncError) {
+      console.error(`[GHL Opportunity] Error syncing opportunity metadata to conversation:`, syncError);
+    }
   }
   
   async function handleGhlCallEvent(dealershipId: number, payload: any, storageInstance: typeof storage) {
