@@ -969,10 +969,6 @@ export default function Manager() {
       compositeScore
     };
   };
-  
-  // Pass quotedPrice as acquisition cost for profit calculation
-  const acquisitionCost = quotedPrice ? parseFloat(quotedPrice) : undefined;
-  const investmentTier = livePricing ? calculateInvestmentTier(livePricing, acquisitionCost) : null;
 
   // Autocomplete data
   const [makes, setMakes] = useState<string[]>([]);
@@ -1016,6 +1012,10 @@ export default function Manager() {
   const [priceTrends, setPriceTrends] = useState<{ date: string; averagePrice: number; medianPrice: number; listingCount: number }[]>([]);
   const [isLoadingPriceTrends, setIsLoadingPriceTrends] = useState(false);
   const [showHistoricalAnalytics, setShowHistoricalAnalytics] = useState(false);
+
+  // Pass quotedPrice as acquisition cost for profit calculation
+  const acquisitionCost = quotedPrice ? parseFloat(quotedPrice) : undefined;
+  const investmentTier = livePricing ? calculateInvestmentTier(livePricing, acquisitionCost) : null;
 
   useEffect(() => {
     checkAuth();
@@ -2579,7 +2579,7 @@ export default function Manager() {
                           </div>
 
                           {/* Competitor Analysis Section - vRank Equivalent */}
-                          {livePricing.competitorAnalysis && livePricing.competitorAnalysis.topCompetitors.length > 0 && (
+                          {livePricing.competitorAnalysis && livePricing.competitorAnalysis.topCompetitors?.length > 0 && (
                             <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-blue-200 dark:border-blue-800" data-testid="section-competitor-analysis">
                               <h4 className="font-semibold text-blue-700 dark:text-blue-300 mb-4 flex items-center gap-2">
                                 <Users className="w-4 h-4" />
@@ -3422,12 +3422,12 @@ export default function Manager() {
                                 variant="outline"
                                 size="sm"
                                 className="h-auto py-3 px-3 flex flex-col items-start gap-1 border-blue-300 hover:bg-blue-100 dark:border-blue-700 dark:hover:bg-blue-900/50 text-left"
-                                onClick={() => setTargetRetailPrice(String(Math.round((livePricing.retailPrice?.belowAvg || livePricing.retailPrice?.average * 0.95))))}
+                                onClick={() => setTargetRetailPrice(String(Math.round(livePricing.retailPrice?.belowAvg || (livePricing.retailPrice?.average || 0) * 0.95)))}
                                 data-testid="button-apply-below-market"
                               >
                                 <span className="text-xs font-bold text-blue-700 dark:text-blue-300">Below Market</span>
                                 <span className="text-lg font-bold text-blue-600 dark:text-blue-400">
-                                  ${(livePricing.retailPrice?.belowAvg || Math.round(livePricing.retailPrice?.average * 0.95)).toLocaleString()}
+                                  ${(livePricing.retailPrice?.belowAvg || Math.round((livePricing.retailPrice?.average || 0) * 0.95)).toLocaleString()}
                                 </span>
                                 <span className="text-xs text-muted-foreground">Quick sale</span>
                               </Button>
@@ -3452,12 +3452,12 @@ export default function Manager() {
                                 variant="outline"
                                 size="sm"
                                 className="h-auto py-3 px-3 flex flex-col items-start gap-1 border-amber-300 hover:bg-amber-100 dark:border-amber-700 dark:hover:bg-amber-900/50 text-left"
-                                onClick={() => setTargetRetailPrice(String(livePricing.retailPrice?.aboveAvg || Math.round(livePricing.retailPrice?.average * 1.05)))}
+                                onClick={() => setTargetRetailPrice(String(livePricing.retailPrice?.aboveAvg || Math.round((livePricing.retailPrice?.average || 0) * 1.05)))}
                                 data-testid="button-apply-above-market"
                               >
                                 <span className="text-xs font-bold text-amber-700 dark:text-amber-300">Above Market</span>
                                 <span className="text-lg font-bold text-amber-600 dark:text-amber-400">
-                                  ${(livePricing.retailPrice?.aboveAvg || Math.round(livePricing.retailPrice?.average * 1.05)).toLocaleString()}
+                                  ${(livePricing.retailPrice?.aboveAvg || Math.round((livePricing.retailPrice?.average || 0) * 1.05)).toLocaleString()}
                                 </span>
                                 <span className="text-xs text-muted-foreground">Max profit</span>
                               </Button>
@@ -3585,7 +3585,7 @@ export default function Manager() {
                               <div data-testid="days-to-sell">
                                 {(() => {
                                   const avgDOM = livePricing?.competitorAnalysis?.avgCompetitorDOM || livePricing?.marketDemand?.daysSupply || 30;
-                                  const velocity = livePricing?.marketDemand?.marketVelocity || 'average';
+                                  const velocity = String(livePricing?.marketDemand?.marketVelocity || 'average');
                                   const target = parseFloat(targetRetailPrice) || livePricing?.retailPrice?.average || 0;
                                   const avgPrice = livePricing?.retailPrice?.average || target;
                                   
