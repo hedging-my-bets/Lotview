@@ -2507,6 +2507,112 @@ export default function Manager() {
                             )}
                           </div>
 
+                          {/* Competitor Analysis Section - vRank Equivalent */}
+                          {livePricing.competitorAnalysis && livePricing.competitorAnalysis.topCompetitors.length > 0 && (
+                            <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-blue-200 dark:border-blue-800" data-testid="section-competitor-analysis">
+                              <h4 className="font-semibold text-blue-700 dark:text-blue-300 mb-4 flex items-center gap-2">
+                                <Users className="w-4 h-4" />
+                                Competitor Analysis
+                                <span className="text-xs font-normal px-2 py-0.5 bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded-full">
+                                  vRank
+                                </span>
+                              </h4>
+                              
+                              {/* Market Position Summary */}
+                              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
+                                <div data-testid="price-rank">
+                                  <div className="text-xs text-muted-foreground">Market Rank</div>
+                                  <div className={`text-2xl font-bold ${
+                                    livePricing.competitorAnalysis.priceRank <= Math.ceil(livePricing.competitorAnalysis.totalCompetitors * 0.25) ? 'text-green-600 dark:text-green-400' :
+                                    livePricing.competitorAnalysis.priceRank <= Math.ceil(livePricing.competitorAnalysis.totalCompetitors * 0.5) ? 'text-amber-600 dark:text-amber-400' :
+                                    'text-red-600 dark:text-red-400'
+                                  }`}>
+                                    #{livePricing.competitorAnalysis.priceRank}
+                                    <span className="text-xs font-normal text-muted-foreground ml-1">
+                                      of {livePricing.competitorAnalysis.totalCompetitors}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div data-testid="total-competitors">
+                                  <div className="text-xs text-muted-foreground">Total Competitors</div>
+                                  <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                                    {livePricing.competitorAnalysis.totalCompetitors}
+                                  </div>
+                                </div>
+                                <div data-testid="avg-competitor-price">
+                                  <div className="text-xs text-muted-foreground">Avg. Competitor Price</div>
+                                  <div className="text-lg font-bold text-foreground">
+                                    ${livePricing.competitorAnalysis.avgCompetitorPrice?.toLocaleString()}
+                                  </div>
+                                </div>
+                                <div data-testid="avg-competitor-mileage">
+                                  <div className="text-xs text-muted-foreground">Avg. Mileage (km)</div>
+                                  <div className="text-lg font-bold text-foreground">
+                                    {livePricing.competitorAnalysis.avgCompetitorMileage?.toLocaleString()}
+                                  </div>
+                                </div>
+                                <div data-testid="avg-competitor-dom">
+                                  <div className="text-xs text-muted-foreground">Avg. Days on Market</div>
+                                  <div className={`text-lg font-bold ${
+                                    livePricing.competitorAnalysis.avgCompetitorDOM < 30 ? 'text-green-600 dark:text-green-400' :
+                                    livePricing.competitorAnalysis.avgCompetitorDOM < 60 ? 'text-amber-600 dark:text-amber-400' :
+                                    'text-red-600 dark:text-red-400'
+                                  }`}>
+                                    {livePricing.competitorAnalysis.avgCompetitorDOM} days
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Top Competitors List */}
+                              <div className="mt-4">
+                                <h5 className="text-sm font-medium text-muted-foreground mb-2">
+                                  Top 10 Lowest-Priced Competitors
+                                </h5>
+                                <div className="space-y-2 max-h-60 overflow-y-auto">
+                                  {livePricing.competitorAnalysis.topCompetitors.map((competitor: any, index: number) => (
+                                    <div
+                                      key={competitor.id}
+                                      className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 rounded-lg text-sm"
+                                      data-testid={`competitor-row-${index}`}
+                                    >
+                                      <div className="flex items-center gap-3">
+                                        <span className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold ${
+                                          index === 0 ? 'bg-yellow-400 text-yellow-900' :
+                                          index === 1 ? 'bg-gray-300 text-gray-700' :
+                                          index === 2 ? 'bg-amber-600 text-white' :
+                                          'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                                        }`}>
+                                          {index + 1}
+                                        </span>
+                                        <div>
+                                          <div className="font-medium text-foreground truncate max-w-[180px]">
+                                            {competitor.dealerName}
+                                          </div>
+                                          <div className="text-xs text-muted-foreground">
+                                            {competitor.location} {competitor.trim && `· ${competitor.trim}`}
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div className="text-right">
+                                        <div className="font-bold text-green-600 dark:text-green-400">
+                                          ${competitor.price?.toLocaleString()}
+                                        </div>
+                                        <div className="text-xs text-muted-foreground">
+                                          {competitor.mileage?.toLocaleString()} km · {competitor.daysOnMarket}d
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Price Position Hint */}
+                              <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700 text-xs text-muted-foreground">
+                                Enter your target retail price above to see your market position rank
+                              </div>
+                            </div>
+                          )}
+
                           {/* Data Source & Confidence */}
                           <div className="flex items-center justify-between text-xs text-muted-foreground">
                             <span>Data: {livePricing.dataSource}</span>

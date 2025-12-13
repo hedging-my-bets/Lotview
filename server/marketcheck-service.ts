@@ -33,6 +33,30 @@ export interface MarketCheckListing {
   photo_url?: string;
 }
 
+export interface CompetitorListing {
+  id: string;
+  dealerName: string;
+  price: number;
+  mileage: number; // in km
+  daysOnMarket: number;
+  location: string;
+  trim?: string;
+  photoUrl?: string;
+  listingUrl?: string;
+}
+
+export interface CompetitorAnalysis {
+  priceRank: number; // 1-based rank (1 = cheapest)
+  totalCompetitors: number;
+  percentile: number; // Where this price falls (0-100, lower = cheaper)
+  priceVsAverage: number; // Difference from average price
+  pricePosition: 'below' | 'at' | 'above'; // Relative to market
+  topCompetitors: CompetitorListing[];
+  avgCompetitorPrice: number;
+  avgCompetitorMileage: number;
+  avgCompetitorDOM: number;
+}
+
 export interface VINPricingResult {
   vin: string;
   year: number;
@@ -58,6 +82,7 @@ export interface VINPricingResult {
     demandScore: number;
     listingCount: number;
   };
+  competitorAnalysis?: CompetitorAnalysis;
   mileageAdjustment: number;
   confidence: 'high' | 'medium' | 'low';
   dataSource: string;
@@ -321,6 +346,9 @@ export class MarketCheckService {
 
       const confidence = listings.length >= 20 ? 'high' : listings.length >= 10 ? 'medium' : 'low';
 
+      // Build competitor analysis
+      const competitorAnalysis = this.buildCompetitorAnalysis(listings, avgPrice);
+
       return {
         vin,
         year,
@@ -346,6 +374,7 @@ export class MarketCheckService {
           demandScore,
           listingCount: listings.length
         },
+        competitorAnalysis,
         mileageAdjustment,
         confidence,
         dataSource: 'MarketCheck (53K+ dealers)',
@@ -421,6 +450,82 @@ export class MarketCheckService {
       console.error('[MarketCheck] Live market stats error:', error);
       return null;
     }
+  }
+
+  private buildCompetitorAnalysis(listings: MarketCheckListing[], avgPrice: number): CompetitorAnalysis | undefined {
+    // Sort listings by price for ranking
+    const sortedByPrice = [...listings]
+      .filter(l => l.price > 0)
+      .sort((a, b) => a.price - b.price);
+    
+    const totalCompetitors = sortedByPrice.length;
+    
+    // Guard against empty competitor list
+    if (totalCompetitors === 0) {
+      return undefined;
+    }
+    
+    // Calculate average competitor metrics with guards
+    const avgCompetitorPrice = avgPrice;
+    const totalMileage = sortedByPrice.reduce((sum, l) => sum + (l.miles || 0), 0);
+    const avgCompetitorMileage = Math.round((totalMileage / totalCompetitors) * 1.60934); // Convert to km
+    
+    const totalDOM = sortedByPrice.reduce((sum, l) => sum + (l.dom || 0), 0);
+    const avgCompetitorDOM = Math.round(totalDOM / totalCompetitors);
+    
+    // Build top competitors list (top 10 by price - lowest first)
+    const topCompetitors: CompetitorListing[] = sortedByPrice.slice(0, 10).map(l => ({
+      id: l.id,
+      dealerName: l.dealer_name || 'Unknown Dealer',
+      price: l.price,
+      mileage: Math.round((l.miles || 0) * 1.60934), // Convert to km
+      daysOnMarket: l.dom || 0,
+      location: l.city && l.state ? `${l.city}, ${l.state}` : (l.city || l.state || 'Unknown'),
+      trim: l.trim,
+      photoUrl: l.photo_url,
+      listingUrl: l.vdp_url
+    }));
+    
+    // Store sorted prices for later rank calculation
+    const sortedPrices = sortedByPrice.map(l => l.price);
+    
+    // Calculate rank based on average retail price as default target
+    const targetPrice = avgPrice;
+    let priceRank = 1;
+    for (const price of sortedPrices) {
+      if (targetPrice > price) {
+        priceRank++;
+      } else {
+        break;
+      }
+    }
+    
+    // Calculate percentile (0 = cheapest, 100 = most expensive)
+    const percentile = Math.round((priceRank / totalCompetitors) * 100);
+    
+    // Calculate price vs average
+    const priceVsAverage = targetPrice - avgPrice;
+    
+    // Determine price position
+    let pricePosition: 'below' | 'at' | 'above' = 'at';
+    const threshold = avgPrice * 0.05; // 5% threshold
+    if (priceVsAverage < -threshold) {
+      pricePosition = 'below';
+    } else if (priceVsAverage > threshold) {
+      pricePosition = 'above';
+    }
+    
+    return {
+      priceRank,
+      totalCompetitors,
+      percentile,
+      priceVsAverage,
+      pricePosition,
+      topCompetitors,
+      avgCompetitorPrice,
+      avgCompetitorMileage,
+      avgCompetitorDOM
+    };
   }
 
   private createEmptyPricingResult(vin: string, year: number, make: string, model: string, trim: string): VINPricingResult {
