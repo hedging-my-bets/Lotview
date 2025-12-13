@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck, ClipboardCheck, BarChart3, Bot, Clock, Sparkles, Pencil, Save, TrendingDown, Minus, ArrowUp, ArrowDown, PackageOpen, ExternalLink, Eye, User, Send, Plus, Trash2, Copy } from "lucide-react";
+import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck, ClipboardCheck, BarChart3, Bot, Clock, Sparkles, Pencil, Save, TrendingDown, Minus, ArrowUp, ArrowDown, PackageOpen, ExternalLink, Eye, User, Send, Plus, Trash2, Copy, Building, DollarSign } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CompetitorAlertsWidget } from "@/components/CompetitorAlertsWidget";
@@ -836,6 +836,10 @@ export default function Manager() {
   const [isScraping, setIsScraping] = useState(false);
   const [showEnhancedView, setShowEnhancedView] = useState(true);
 
+  // Live market pricing state (MarketCheck real-time data)
+  const [livePricing, setLivePricing] = useState<any>(null);
+  const [isLoadingLivePricing, setIsLoadingLivePricing] = useState(false);
+
   // Autocomplete data
   const [makes, setMakes] = useState<string[]>([]);
   const [models, setModels] = useState<string[]>([]);
@@ -1424,12 +1428,15 @@ export default function Manager() {
           description: `${result.year || ''} ${result.make || ''} ${result.model || ''}`.trim(),
         });
 
-        // Auto-trigger market analysis
+        // Auto-trigger market analysis and live pricing
         setTimeout(() => {
           if (result.make && result.model) {
             handleMarketSearch();
           }
         }, 500);
+
+        // Fetch live market pricing from MarketCheck
+        fetchLivePricing(vin);
       }
     } catch (error) {
       console.error("VIN decode error:", error);
@@ -1440,6 +1447,30 @@ export default function Manager() {
       });
     } finally {
       setIsDecoding(false);
+    }
+  };
+
+  const fetchLivePricing = async (vinNumber: string) => {
+    setIsLoadingLivePricing(true);
+    setLivePricing(null);
+    
+    try {
+      const token = localStorage.getItem('auth_token');
+      const result = await apiPost<any>('/api/manager/vin-pricing', {
+        vin: vinNumber,
+        mileage: pricingForm.mileage || undefined,
+        postalCode: settings.postalCode || undefined
+      }, {
+        'Authorization': `Bearer ${token}`
+      });
+      
+      if (result && !result.error) {
+        setLivePricing(result);
+      }
+    } catch (error) {
+      console.error("Live pricing error:", error);
+    } finally {
+      setIsLoadingLivePricing(false);
     }
   };
 
@@ -2135,6 +2166,172 @@ export default function Manager() {
                           </div>
                         )}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Live Market Pricing Section (MarketCheck Real-time Data) */}
+                  {(livePricing || isLoadingLivePricing) && (
+                    <div className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-6" data-testid="section-live-pricing">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                          <TrendingUp className="w-5 h-5 text-emerald-600" />
+                          Live Market Pricing
+                          <span className="text-xs font-normal px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 rounded-full">
+                            53K+ Dealers
+                          </span>
+                        </h3>
+                        {livePricing?.lastUpdated && (
+                          <span className="text-xs text-muted-foreground">
+                            Updated: {new Date(livePricing.lastUpdated).toLocaleTimeString()}
+                          </span>
+                        )}
+                      </div>
+                      
+                      {isLoadingLivePricing ? (
+                        <div className="flex items-center justify-center py-8">
+                          <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mr-3" />
+                          <span className="text-muted-foreground">Fetching live market data...</span>
+                        </div>
+                      ) : livePricing ? (
+                        <div className="space-y-6">
+                          {/* Retail Pricing */}
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-emerald-200 dark:border-emerald-800">
+                              <h4 className="font-semibold text-emerald-700 dark:text-emerald-300 mb-3 flex items-center gap-2">
+                                <DollarSign className="w-4 h-4" />
+                                Retail Pricing
+                              </h4>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div data-testid="retail-average">
+                                  <div className="text-xs text-muted-foreground">Average</div>
+                                  <div className="text-lg font-bold text-green-600 dark:text-green-400">
+                                    ${livePricing.retailPrice?.average?.toLocaleString() || 'N/A'}
+                                  </div>
+                                </div>
+                                <div data-testid="retail-range">
+                                  <div className="text-xs text-muted-foreground">Range</div>
+                                  <div className="text-sm font-semibold">
+                                    ${livePricing.retailPrice?.min?.toLocaleString() || '0'} - ${livePricing.retailPrice?.max?.toLocaleString() || '0'}
+                                  </div>
+                                </div>
+                                <div data-testid="retail-above-avg">
+                                  <div className="text-xs text-muted-foreground">Above Avg</div>
+                                  <div className="text-sm font-semibold text-amber-600 dark:text-amber-400">
+                                    ${livePricing.retailPrice?.aboveAvg?.toLocaleString() || 'N/A'}
+                                  </div>
+                                </div>
+                                <div data-testid="retail-below-avg">
+                                  <div className="text-xs text-muted-foreground">Below Avg</div>
+                                  <div className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+                                    ${livePricing.retailPrice?.belowAvg?.toLocaleString() || 'N/A'}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-emerald-200 dark:border-emerald-800">
+                              <h4 className="font-semibold text-purple-700 dark:text-purple-300 mb-3 flex items-center gap-2">
+                                <Building className="w-4 h-4" />
+                                Wholesale / Auction
+                              </h4>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div data-testid="wholesale-mmr">
+                                  <div className="text-xs text-muted-foreground">MMR Estimate</div>
+                                  <div className="text-lg font-bold text-purple-600 dark:text-purple-400">
+                                    ${livePricing.wholesalePrice?.average_mmr?.toLocaleString() || 'N/A'}
+                                  </div>
+                                </div>
+                                <div data-testid="wholesale-clean">
+                                  <div className="text-xs text-muted-foreground">Clean</div>
+                                  <div className="text-sm font-semibold">
+                                    ${livePricing.wholesalePrice?.clean?.toLocaleString() || 'N/A'}
+                                  </div>
+                                </div>
+                                <div data-testid="wholesale-average">
+                                  <div className="text-xs text-muted-foreground">Average</div>
+                                  <div className="text-sm font-semibold">
+                                    ${livePricing.wholesalePrice?.average?.toLocaleString() || 'N/A'}
+                                  </div>
+                                </div>
+                                <div data-testid="wholesale-rough">
+                                  <div className="text-xs text-muted-foreground">Rough</div>
+                                  <div className="text-sm font-semibold text-orange-600 dark:text-orange-400">
+                                    ${livePricing.wholesalePrice?.rough?.toLocaleString() || 'N/A'}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Market Demand Metrics */}
+                          <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-emerald-200 dark:border-emerald-800">
+                            <h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
+                              <BarChart3 className="w-4 h-4" />
+                              Market Demand
+                            </h4>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                              <div data-testid="demand-score">
+                                <div className="text-xs text-muted-foreground">Demand Score</div>
+                                <div className="flex items-center gap-2">
+                                  <div className={`text-2xl font-bold ${
+                                    (livePricing.marketDemand?.demandScore || 0) >= 70 ? 'text-green-600' :
+                                    (livePricing.marketDemand?.demandScore || 0) >= 40 ? 'text-amber-600' : 'text-red-600'
+                                  }`}>
+                                    {livePricing.marketDemand?.demandScore || 0}
+                                  </div>
+                                  <span className="text-xs text-muted-foreground">/100</span>
+                                </div>
+                              </div>
+                              <div data-testid="days-supply">
+                                <div className="text-xs text-muted-foreground">Days Supply</div>
+                                <div className={`text-2xl font-bold ${
+                                  (livePricing.marketDemand?.daysSupply || 0) < 30 ? 'text-green-600' :
+                                  (livePricing.marketDemand?.daysSupply || 0) < 60 ? 'text-amber-600' : 'text-red-600'
+                                }`}>
+                                  {livePricing.marketDemand?.daysSupply || 'N/A'}
+                                </div>
+                              </div>
+                              <div data-testid="market-velocity">
+                                <div className="text-xs text-muted-foreground">Market Velocity</div>
+                                <span className={`inline-flex px-2 py-1 rounded text-sm font-semibold ${
+                                  livePricing.marketDemand?.marketVelocity === 'fast' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' :
+                                  livePricing.marketDemand?.marketVelocity === 'average' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' :
+                                  'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                                }`}>
+                                  {livePricing.marketDemand?.marketVelocity?.toUpperCase() || 'N/A'}
+                                </span>
+                              </div>
+                              <div data-testid="listing-count">
+                                <div className="text-xs text-muted-foreground">Active Listings</div>
+                                <div className="text-2xl font-bold text-foreground">
+                                  {livePricing.marketDemand?.listingCount || 0}
+                                </div>
+                              </div>
+                            </div>
+                            
+                            {livePricing.mileageAdjustment !== 0 && (
+                              <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                                <span className="text-xs text-muted-foreground">Mileage Adjustment: </span>
+                                <span className={`text-sm font-semibold ${livePricing.mileageAdjustment > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                  {livePricing.mileageAdjustment > 0 ? '+' : ''}${livePricing.mileageAdjustment?.toLocaleString()}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Data Source & Confidence */}
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+                            <span>Data: {livePricing.dataSource}</span>
+                            <span className={`px-2 py-0.5 rounded ${
+                              livePricing.confidence === 'high' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' :
+                              livePricing.confidence === 'medium' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' :
+                              'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                            }`}>
+                              {livePricing.confidence?.toUpperCase()} confidence
+                            </span>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   )}
 

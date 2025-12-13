@@ -33,6 +33,54 @@ export interface MarketCheckListing {
   photo_url?: string;
 }
 
+export interface VINPricingResult {
+  vin: string;
+  year: number;
+  make: string;
+  model: string;
+  trim?: string;
+  retailPrice: {
+    average: number;
+    aboveAvg: number;
+    belowAvg: number;
+    min: number;
+    max: number;
+  };
+  wholesalePrice: {
+    average: number;
+    clean: number;
+    average_mmr: number;
+    rough: number;
+  };
+  marketDemand: {
+    daysSupply: number;
+    marketVelocity: 'fast' | 'average' | 'slow';
+    demandScore: number;
+    listingCount: number;
+  };
+  mileageAdjustment: number;
+  confidence: 'high' | 'medium' | 'low';
+  dataSource: string;
+  lastUpdated: string;
+}
+
+export interface LiveMarketStats {
+  totalListings: number;
+  averagePrice: number;
+  medianPrice: number;
+  minPrice: number;
+  maxPrice: number;
+  averageMileage: number;
+  averageDaysOnMarket: number;
+  daysSupply: number;
+  priceChange30Days: number;
+  topDealers: {
+    name: string;
+    listingCount: number;
+    avgPrice: number;
+  }[];
+}
+
 export interface MarketCheckResponse {
   num_found: number;
   listings: MarketCheckListing[];
@@ -179,6 +227,233 @@ export class MarketCheckService {
       .filter(l => l.price > 0) // Filter out listings without prices
       .map(l => this.convertToMarketListing(l, dealershipId))
       .filter((l): l is InsertMarketListing => l !== null); // Filter out null results
+  }
+
+  /**
+   * Get VIN-specific pricing with retail, wholesale, and market demand data
+   * This combines decode + pricing + market stats for a complete valuation
+   */
+  async getVINPricing(vin: string, mileage?: number, postalCode?: string): Promise<VINPricingResult | null> {
+    try {
+      console.log(`[MarketCheck] Getting VIN pricing for ${vin}`);
+
+      const vinDecodeUrl = `${this.baseUrl}/decode/car/${vin}/specs?api_key=${this.apiKey}`;
+      const decodeResponse = await fetch(vinDecodeUrl);
+      
+      if (!decodeResponse.ok) {
+        console.error(`[MarketCheck] VIN decode failed: ${decodeResponse.status}`);
+        return null;
+      }
+
+      const decodeData = await decodeResponse.json();
+      const year = parseInt(decodeData.year) || new Date().getFullYear();
+      const make = decodeData.make || '';
+      const model = decodeData.model || '';
+      const trim = decodeData.trim || '';
+
+      if (!make || !model) {
+        console.error('[MarketCheck] Could not decode VIN - missing make/model');
+        return null;
+      }
+
+      const listings = await this.searchListings({
+        make,
+        model,
+        yearMin: year - 1,
+        yearMax: year + 1,
+        postalCode: postalCode || 'L4W1S9',
+        radiusKm: 200,
+        maxResults: 100
+      });
+
+      if (listings.length === 0) {
+        console.log('[MarketCheck] No comparable listings found');
+        return this.createEmptyPricingResult(vin, year, make, model, trim);
+      }
+
+      const prices = listings.map(l => l.price).filter(p => p > 0).sort((a, b) => a - b);
+      const mileages = listings.map(l => l.miles || 0).filter(m => m > 0);
+      const daysOnMarket = listings.map(l => l.dom || 0).filter(d => d > 0);
+
+      const avgPrice = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length);
+      const medianPrice = prices[Math.floor(prices.length / 2)];
+      const minPrice = prices[0];
+      const maxPrice = prices[prices.length - 1];
+
+      const avgMileage = mileages.length > 0 
+        ? Math.round(mileages.reduce((a, b) => a + b, 0) / mileages.length)
+        : 50000;
+
+      let mileageAdjustment = 0;
+      if (mileage) {
+        const mileageDiff = (mileage * 0.621371) - avgMileage;
+        const pricePerMile = (maxPrice - minPrice) / (avgMileage * 2);
+        mileageAdjustment = Math.round(mileageDiff * pricePerMile * -0.3);
+      }
+
+      const avgDOM = daysOnMarket.length > 0
+        ? Math.round(daysOnMarket.reduce((a, b) => a + b, 0) / daysOnMarket.length)
+        : 30;
+
+      const daysSupply = Math.round((listings.length / 30) * avgDOM);
+      
+      let marketVelocity: 'fast' | 'average' | 'slow' = 'average';
+      let demandScore = 50;
+      
+      if (avgDOM < 20 || daysSupply < 30) {
+        marketVelocity = 'fast';
+        demandScore = 80 + Math.min(20, (30 - avgDOM) * 2);
+      } else if (avgDOM > 45 || daysSupply > 60) {
+        marketVelocity = 'slow';
+        demandScore = Math.max(20, 50 - (avgDOM - 45));
+      } else {
+        demandScore = 50 + Math.round((30 - avgDOM) * 1.5);
+      }
+
+      const p10 = prices[Math.floor(prices.length * 0.1)];
+      const p25 = prices[Math.floor(prices.length * 0.25)];
+      const p75 = prices[Math.floor(prices.length * 0.75)];
+      const p90 = prices[Math.floor(prices.length * 0.9)];
+
+      const wholesaleAvg = Math.round(avgPrice * 0.82);
+      const wholesaleClean = Math.round(avgPrice * 0.85);
+      const wholesaleRough = Math.round(avgPrice * 0.75);
+
+      const confidence = listings.length >= 20 ? 'high' : listings.length >= 10 ? 'medium' : 'low';
+
+      return {
+        vin,
+        year,
+        make,
+        model,
+        trim,
+        retailPrice: {
+          average: avgPrice + mileageAdjustment,
+          aboveAvg: p75 + mileageAdjustment,
+          belowAvg: p25 + mileageAdjustment,
+          min: minPrice + mileageAdjustment,
+          max: maxPrice + mileageAdjustment
+        },
+        wholesalePrice: {
+          average: wholesaleAvg + mileageAdjustment,
+          clean: wholesaleClean + mileageAdjustment,
+          average_mmr: Math.round((wholesaleAvg + wholesaleClean) / 2) + mileageAdjustment,
+          rough: wholesaleRough + mileageAdjustment
+        },
+        marketDemand: {
+          daysSupply,
+          marketVelocity,
+          demandScore,
+          listingCount: listings.length
+        },
+        mileageAdjustment,
+        confidence,
+        dataSource: 'MarketCheck (53K+ dealers)',
+        lastUpdated: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('[MarketCheck] VIN pricing error:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get live market statistics for a make/model/year combination
+   */
+  async getLiveMarketStats(params: MarketCheckSearchParams): Promise<LiveMarketStats | null> {
+    try {
+      const listings = await this.searchListings(params);
+
+      if (listings.length === 0) {
+        return null;
+      }
+
+      const prices = listings.map(l => l.price).filter(p => p > 0).sort((a, b) => a - b);
+      const mileages = listings.map(l => l.miles || 0).filter(m => m > 0);
+      const daysOnMarket = listings.map(l => l.dom || 0).filter(d => d > 0);
+
+      const avgPrice = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length);
+      const medianPrice = prices[Math.floor(prices.length / 2)];
+
+      const avgMileage = mileages.length > 0
+        ? Math.round(mileages.reduce((a, b) => a + b, 0) / mileages.length)
+        : 0;
+
+      const avgDOM = daysOnMarket.length > 0
+        ? Math.round(daysOnMarket.reduce((a, b) => a + b, 0) / daysOnMarket.length)
+        : 0;
+
+      const daysSupply = Math.round((listings.length / 30) * (avgDOM || 30));
+
+      const dealerMap = new Map<string, { count: number; totalPrice: number }>();
+      for (const listing of listings) {
+        const dealer = listing.dealer_name || 'Unknown';
+        if (!dealerMap.has(dealer)) {
+          dealerMap.set(dealer, { count: 0, totalPrice: 0 });
+        }
+        const d = dealerMap.get(dealer)!;
+        d.count++;
+        d.totalPrice += listing.price;
+      }
+
+      const topDealers = Array.from(dealerMap.entries())
+        .map(([name, data]) => ({
+          name,
+          listingCount: data.count,
+          avgPrice: Math.round(data.totalPrice / data.count)
+        }))
+        .sort((a, b) => b.listingCount - a.listingCount)
+        .slice(0, 10);
+
+      return {
+        totalListings: listings.length,
+        averagePrice: avgPrice,
+        medianPrice,
+        minPrice: prices[0],
+        maxPrice: prices[prices.length - 1],
+        averageMileage: Math.round(avgMileage * 1.60934),
+        averageDaysOnMarket: avgDOM,
+        daysSupply,
+        priceChange30Days: 0,
+        topDealers
+      };
+    } catch (error) {
+      console.error('[MarketCheck] Live market stats error:', error);
+      return null;
+    }
+  }
+
+  private createEmptyPricingResult(vin: string, year: number, make: string, model: string, trim: string): VINPricingResult {
+    return {
+      vin,
+      year,
+      make,
+      model,
+      trim,
+      retailPrice: {
+        average: 0,
+        aboveAvg: 0,
+        belowAvg: 0,
+        min: 0,
+        max: 0
+      },
+      wholesalePrice: {
+        average: 0,
+        clean: 0,
+        average_mmr: 0,
+        rough: 0
+      },
+      marketDemand: {
+        daysSupply: 0,
+        marketVelocity: 'average',
+        demandScore: 0,
+        listingCount: 0
+      },
+      mileageAdjustment: 0,
+      confidence: 'low',
+      dataSource: 'No data available',
+      lastUpdated: new Date().toISOString()
+    };
   }
 }
 

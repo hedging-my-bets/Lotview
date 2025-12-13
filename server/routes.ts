@@ -7339,6 +7339,107 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
 
+  // Get VIN-specific live market pricing (retail, wholesale, demand)
+  app.post("/api/manager/vin-pricing", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const { vin, mileage, postalCode } = req.body;
+      
+      if (!vin || vin.length !== 17) {
+        return res.status(400).json({
+          error: 'INVALID_VIN',
+          message: 'A valid 17-character VIN is required'
+        });
+      }
+
+      const dealershipId = (req as AuthRequest).dealershipId || 1;
+      
+      const { getMarketCheckServiceForDealership } = await import('./marketcheck-service');
+      const service = await getMarketCheckServiceForDealership(dealershipId);
+      
+      if (!service) {
+        return res.status(503).json({
+          error: 'SERVICE_UNAVAILABLE',
+          message: 'MarketCheck API not configured. Please add your MarketCheck API key in Settings.'
+        });
+      }
+
+      const result = await service.getVINPricing(
+        vin.toUpperCase(),
+        mileage ? parseInt(mileage) : undefined,
+        postalCode
+      );
+
+      if (!result) {
+        return res.status(404).json({
+          error: 'NOT_FOUND',
+          message: 'Could not find pricing data for this VIN'
+        });
+      }
+
+      res.json(result);
+    } catch (error) {
+      logError('Error getting VIN pricing:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-vin-pricing' });
+      res.status(500).json({
+        error: 'PRICING_ERROR',
+        message: error instanceof Error ? error.message : 'Failed to get VIN pricing'
+      });
+    }
+  });
+
+  // Get live market statistics for make/model/year
+  app.post("/api/manager/live-market-stats", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const { make, model, yearMin, yearMax, postalCode, radiusKm } = req.body;
+      
+      if (!make || !model) {
+        return res.status(400).json({
+          error: 'MISSING_FIELDS',
+          message: 'Make and model are required'
+        });
+      }
+
+      const dealershipId = (req as AuthRequest).dealershipId || 1;
+      const authReq = req as AuthRequest;
+      const settings = authReq.user ? await storage.getManagerSettings(authReq.user.id, dealershipId) : null;
+      
+      const { getMarketCheckServiceForDealership } = await import('./marketcheck-service');
+      const service = await getMarketCheckServiceForDealership(dealershipId);
+      
+      if (!service) {
+        return res.status(503).json({
+          error: 'SERVICE_UNAVAILABLE',
+          message: 'MarketCheck API not configured. Please add your MarketCheck API key in Settings.'
+        });
+      }
+
+      const result = await service.getLiveMarketStats({
+        make,
+        model,
+        yearMin: yearMin ? parseInt(yearMin) : undefined,
+        yearMax: yearMax ? parseInt(yearMax) : undefined,
+        postalCode: postalCode || settings?.postalCode || 'L4W1S9',
+        radiusKm: radiusKm ? parseInt(radiusKm) : (settings?.defaultRadiusKm || 100),
+        maxResults: 100,
+        dealershipId
+      });
+
+      if (!result) {
+        return res.status(404).json({
+          error: 'NOT_FOUND',
+          message: 'No market data found for this vehicle'
+        });
+      }
+
+      res.json(result);
+    } catch (error) {
+      logError('Error getting live market stats:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-live-market-stats' });
+      res.status(500).json({
+        error: 'STATS_ERROR',
+        message: error instanceof Error ? error.message : 'Failed to get live market stats'
+      });
+    }
+  });
+
   // Get competitor dealers
   app.get("/api/manager/competitors", authMiddleware, requireRole("manager"), async (req, res) => {
     try {
