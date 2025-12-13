@@ -2375,56 +2375,81 @@ export default function Manager() {
                         <div className="space-y-6">
                           {/* Investment Tier Badge - vAuto ProfitTime GPS Equivalent */}
                           {investmentTier && (
-                            <div className={`${investmentTier.bgColor} border-2 ${investmentTier.borderColor} rounded-xl p-4`} data-testid="investment-tier">
-                              <div className="flex items-center justify-between flex-wrap gap-4">
-                                <div className="flex items-center gap-3">
-                                  <span className="text-3xl">{investmentTier.icon}</span>
-                                  <div>
-                                    <div className={`text-xl font-bold ${investmentTier.color}`}>
-                                      {investmentTier.label} Investment
-                                    </div>
-                                    <div className="text-sm text-muted-foreground">
-                                      {investmentTier.recommendation}
-                                    </div>
+                            <div className={`${investmentTier.bgColor} border-2 ${investmentTier.borderColor} rounded-xl overflow-hidden`} data-testid="investment-tier">
+                              {/* Decision Banner - Color-coded recommendation */}
+                              <div className={`px-4 py-2 ${
+                                investmentTier.tier === 'platinum' ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white' :
+                                investmentTier.tier === 'gold' ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-black' :
+                                investmentTier.tier === 'silver' ? 'bg-gradient-to-r from-gray-400 to-slate-400 text-white' :
+                                'bg-gradient-to-r from-orange-500 to-red-500 text-white'
+                              }`} data-testid="decision-banner">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-lg">{investmentTier.icon}</span>
+                                    <span className="font-bold uppercase tracking-wide text-sm">
+                                      {investmentTier.tier === 'platinum' ? '✓ STRONG BUY' :
+                                       investmentTier.tier === 'gold' ? '✓ BUY' :
+                                       investmentTier.tier === 'silver' ? '⚠ CAUTION' :
+                                       '✗ PASS / WHOLESALE'}
+                                    </span>
                                   </div>
-                                </div>
-                                <div className="flex gap-4 md:gap-6 flex-wrap">
-                                  {investmentTier.profitPotential !== undefined && (
-                                    <div className="text-right" data-testid="profit-potential">
-                                      <div className="text-xs text-muted-foreground mb-1">Profit Potential</div>
-                                      <div className={`text-lg font-bold ${investmentTier.profitPotential >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                        {investmentTier.profitPotential >= 0 ? '+' : '-'}${Math.abs(investmentTier.profitPotential).toLocaleString()}
-                                      </div>
-                                      {investmentTier.profitMargin !== undefined && (
-                                        <div className="text-xs text-muted-foreground">
-                                          {investmentTier.profitMargin >= 0 ? '+' : ''}{investmentTier.profitMargin.toFixed(1)}% margin
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                  <div className="text-right" data-testid="demand-score">
-                                    <div className="text-xs text-muted-foreground mb-1">Demand Score</div>
-                                    <div className={`text-lg font-bold ${
-                                      (livePricing.marketDemand?.demandScore || 0) >= 70 ? 'text-green-600 dark:text-green-400' :
-                                      (livePricing.marketDemand?.demandScore || 0) >= 40 ? 'text-amber-600 dark:text-amber-400' : 
-                                      'text-red-600 dark:text-red-400'
-                                    }`}>
-                                      {livePricing.marketDemand?.demandScore || 0}/100
-                                    </div>
-                                  </div>
-                                  <div className="text-right" data-testid="composite-score">
-                                    <div className="text-xs text-muted-foreground mb-1">Investment Score</div>
-                                    <div className={`text-lg font-bold ${investmentTier.color}`}>
-                                      {investmentTier.compositeScore}/100
-                                    </div>
-                                  </div>
+                                  <span className="text-sm font-medium opacity-90">
+                                    Score: {investmentTier.compositeScore}/100
+                                  </span>
                                 </div>
                               </div>
-                              {!acquisitionCost && (
-                                <div className="mt-3 pt-3 border-t border-current/10 text-xs text-muted-foreground" data-testid="acquisition-hint">
-                                  Enter a quoted price below to see profit potential analysis
+                              
+                              <div className="p-4">
+                                <div className="flex items-center justify-between flex-wrap gap-4">
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-3xl">{investmentTier.icon}</span>
+                                    <div>
+                                      <div className={`text-xl font-bold ${investmentTier.color}`}>
+                                        {investmentTier.label} Investment
+                                      </div>
+                                      <div className="text-sm text-muted-foreground">
+                                        {investmentTier.recommendation}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="flex gap-4 md:gap-6 flex-wrap">
+                                    {investmentTier.profitPotential !== undefined && (
+                                      <div className="text-right" data-testid="profit-potential">
+                                        <div className="text-xs text-muted-foreground mb-1">Profit Potential</div>
+                                        <div className={`text-lg font-bold ${investmentTier.profitPotential >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                          {investmentTier.profitPotential >= 0 ? '+' : '-'}${Math.abs(investmentTier.profitPotential).toLocaleString()}
+                                        </div>
+                                        {investmentTier.profitMargin !== undefined && (
+                                          <div className="text-xs text-muted-foreground">
+                                            {investmentTier.profitMargin >= 0 ? '+' : ''}{investmentTier.profitMargin.toFixed(1)}% margin
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                    <div className="text-right" data-testid="demand-score">
+                                      <div className="text-xs text-muted-foreground mb-1">Demand Score</div>
+                                      <div className={`text-lg font-bold ${
+                                        (livePricing.marketDemand?.demandScore || 0) >= 70 ? 'text-green-600 dark:text-green-400' :
+                                        (livePricing.marketDemand?.demandScore || 0) >= 40 ? 'text-amber-600 dark:text-amber-400' : 
+                                        'text-red-600 dark:text-red-400'
+                                      }`}>
+                                        {livePricing.marketDemand?.demandScore || 0}/100
+                                      </div>
+                                    </div>
+                                    <div className="text-right" data-testid="composite-score">
+                                      <div className="text-xs text-muted-foreground mb-1">Investment Score</div>
+                                      <div className={`text-lg font-bold ${investmentTier.color}`}>
+                                        {investmentTier.compositeScore}/100
+                                      </div>
+                                    </div>
+                                  </div>
                                 </div>
-                              )}
+                                {!acquisitionCost && (
+                                  <div className="mt-3 pt-3 border-t border-current/10 text-xs text-muted-foreground" data-testid="acquisition-hint">
+                                    Enter a quoted price below to see profit potential analysis
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           )}
 
@@ -3381,148 +3406,281 @@ export default function Manager() {
                           </div>
                         </div>
 
-                        {/* Appraisal Intelligence Metrics */}
+                        {/* One-Click Pricing Actions */}
+                        {livePricing?.retailPrice && (
+                          <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 rounded-lg border border-blue-200 dark:border-blue-800" data-testid="quick-pricing-actions">
+                            <div className="flex items-center justify-between mb-3">
+                              <h5 className="text-sm font-semibold text-blue-800 dark:text-blue-200 flex items-center gap-2">
+                                <DollarSign className="w-4 h-4" />
+                                Quick Price Actions
+                              </h5>
+                              <span className="text-xs text-muted-foreground">Click to apply</span>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                              {/* Below Market - Quick Sale */}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-auto py-3 px-3 flex flex-col items-start gap-1 border-blue-300 hover:bg-blue-100 dark:border-blue-700 dark:hover:bg-blue-900/50 text-left"
+                                onClick={() => setTargetRetailPrice(String(Math.round((livePricing.retailPrice?.belowAvg || livePricing.retailPrice?.average * 0.95))))}
+                                data-testid="button-apply-below-market"
+                              >
+                                <span className="text-xs font-bold text-blue-700 dark:text-blue-300">Below Market</span>
+                                <span className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                                  ${(livePricing.retailPrice?.belowAvg || Math.round(livePricing.retailPrice?.average * 0.95)).toLocaleString()}
+                                </span>
+                                <span className="text-xs text-muted-foreground">Quick sale</span>
+                              </Button>
+                              
+                              {/* At Market */}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-auto py-3 px-3 flex flex-col items-start gap-1 border-green-300 hover:bg-green-100 dark:border-green-700 dark:hover:bg-green-900/50 text-left"
+                                onClick={() => setTargetRetailPrice(String(livePricing.retailPrice?.average))}
+                                data-testid="button-apply-market-avg"
+                              >
+                                <span className="text-xs font-bold text-green-700 dark:text-green-300">Market Average</span>
+                                <span className="text-lg font-bold text-green-600 dark:text-green-400">
+                                  ${livePricing.retailPrice?.average?.toLocaleString()}
+                                </span>
+                                <span className="text-xs text-muted-foreground">Recommended</span>
+                              </Button>
+                              
+                              {/* Above Market - Max Profit */}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-auto py-3 px-3 flex flex-col items-start gap-1 border-amber-300 hover:bg-amber-100 dark:border-amber-700 dark:hover:bg-amber-900/50 text-left"
+                                onClick={() => setTargetRetailPrice(String(livePricing.retailPrice?.aboveAvg || Math.round(livePricing.retailPrice?.average * 1.05)))}
+                                data-testid="button-apply-above-market"
+                              >
+                                <span className="text-xs font-bold text-amber-700 dark:text-amber-300">Above Market</span>
+                                <span className="text-lg font-bold text-amber-600 dark:text-amber-400">
+                                  ${(livePricing.retailPrice?.aboveAvg || Math.round(livePricing.retailPrice?.average * 1.05)).toLocaleString()}
+                                </span>
+                                <span className="text-xs text-muted-foreground">Max profit</span>
+                              </Button>
+                              
+                              {/* Wholesale */}
+                              {livePricing.wholesalePrice?.average_mmr && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-auto py-3 px-3 flex flex-col items-start gap-1 border-purple-300 hover:bg-purple-100 dark:border-purple-700 dark:hover:bg-purple-900/50 text-left"
+                                  onClick={() => setTargetRetailPrice(String(livePricing.wholesalePrice?.average_mmr))}
+                                  data-testid="button-apply-wholesale"
+                                >
+                                  <span className="text-xs font-bold text-purple-700 dark:text-purple-300">Wholesale/MMR</span>
+                                  <span className="text-lg font-bold text-purple-600 dark:text-purple-400">
+                                    ${livePricing.wholesalePrice?.average_mmr?.toLocaleString()}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground">Auction value</span>
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Appraisal Intelligence Metrics - vAuto Style Dashboard */}
                         {quotedPrice && (
-                          <div className="mt-6 p-4 bg-white dark:bg-gray-900 rounded-lg border border-green-200 dark:border-green-800" data-testid="appraisal-intelligence">
+                          <div className="mt-6" data-testid="appraisal-intelligence">
                             <h5 className="font-semibold text-foreground mb-4 flex items-center gap-2">
                               <Sparkles className="w-4 h-4 text-amber-500" />
-                              Profit Projection
+                              Profit Projection Dashboard
                             </h5>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                              {/* Total Investment */}
-                              <div data-testid="total-investment">
-                                <div className="text-xs text-muted-foreground">Total Investment</div>
-                                <div className="text-lg font-bold text-foreground">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                              {/* Total Investment - Card Style */}
+                              <div className="bg-gradient-to-br from-slate-50 to-gray-100 dark:from-slate-900 dark:to-gray-900 rounded-xl p-4 border border-slate-200 dark:border-slate-700 shadow-sm" data-testid="total-investment">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-700 flex items-center justify-center">
+                                    <DollarSign className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+                                  </div>
+                                  <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Investment</div>
+                                </div>
+                                <div className="text-2xl font-bold text-foreground">
                                   ${((parseFloat(quotedPrice) || 0) + (parseFloat(reconCost) || 0)).toLocaleString()}
                                 </div>
-                                <div className="text-xs text-muted-foreground">
-                                  Acq + Recon
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  Acq ${(parseFloat(quotedPrice) || 0).toLocaleString()} + Recon ${(parseFloat(reconCost) || 0).toLocaleString()}
                                 </div>
                               </div>
                               
-                              {/* Gross Profit */}
+                              {/* Gross Profit - Card Style */}
                               <div data-testid="gross-profit">
-                                <div className="text-xs text-muted-foreground">Gross Profit</div>
                                 {(() => {
                                   const acquisition = parseFloat(quotedPrice) || 0;
                                   const recon = parseFloat(reconCost) || 0;
                                   const target = parseFloat(targetRetailPrice) || livePricing?.retailPrice?.average || 0;
                                   const grossProfit = target - acquisition - recon;
                                   const margin = target > 0 ? (grossProfit / target) * 100 : 0;
+                                  const isPositive = grossProfit >= 0;
                                   return (
-                                    <>
-                                      <div className={`text-lg font-bold ${grossProfit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                        {grossProfit >= 0 ? '+' : '-'}${Math.abs(grossProfit).toLocaleString()}
+                                    <div className={`rounded-xl p-4 border shadow-sm ${
+                                      isPositive 
+                                        ? 'bg-gradient-to-br from-green-50 to-emerald-100 dark:from-green-950 dark:to-emerald-900 border-green-200 dark:border-green-700'
+                                        : 'bg-gradient-to-br from-red-50 to-rose-100 dark:from-red-950 dark:to-rose-900 border-red-200 dark:border-red-700'
+                                    }`}>
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                                          isPositive ? 'bg-green-200 dark:bg-green-800' : 'bg-red-200 dark:bg-red-800'
+                                        }`}>
+                                          {isPositive ? <TrendingUp className="w-4 h-4 text-green-600 dark:text-green-300" /> : <TrendingDown className="w-4 h-4 text-red-600 dark:text-red-300" />}
+                                        </div>
+                                        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Gross Profit</div>
                                       </div>
-                                      <div className={`text-xs ${margin >= 10 ? 'text-green-600' : margin >= 5 ? 'text-amber-600' : 'text-red-600'}`}>
-                                        {margin.toFixed(1)}% margin
+                                      <div className={`text-2xl font-bold ${isPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                        {isPositive ? '+' : '-'}${Math.abs(grossProfit).toLocaleString()}
                                       </div>
-                                    </>
+                                      <div className="flex items-center gap-2 mt-1">
+                                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                                          margin >= 10 ? 'bg-green-200 text-green-800 dark:bg-green-800 dark:text-green-200' : 
+                                          margin >= 5 ? 'bg-amber-200 text-amber-800 dark:bg-amber-800 dark:text-amber-200' : 
+                                          'bg-red-200 text-red-800 dark:bg-red-800 dark:text-red-200'
+                                        }`}>
+                                          {margin.toFixed(1)}% margin
+                                        </span>
+                                      </div>
+                                    </div>
                                   );
                                 })()}
                               </div>
 
-                              {/* Equity Position */}
+                              {/* Equity Position - Card Style */}
                               <div data-testid="equity-position">
-                                <div className="text-xs text-muted-foreground">Trade Equity</div>
                                 {(() => {
                                   const acquisition = parseFloat(quotedPrice) || 0;
                                   const payoff = parseFloat(tradePayoff) || 0;
                                   const equity = acquisition - payoff;
-                                  if (!tradePayoff) {
-                                    return (
-                                      <div className="text-lg font-bold text-muted-foreground">
-                                        N/A
-                                      </div>
-                                    );
-                                  }
+                                  const hasPayoff = !!tradePayoff;
+                                  const isPositive = equity >= 0;
                                   return (
-                                    <>
-                                      <div className={`text-lg font-bold ${equity >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                        {equity >= 0 ? '+' : '-'}${Math.abs(equity).toLocaleString()}
+                                    <div className={`rounded-xl p-4 border shadow-sm ${
+                                      !hasPayoff 
+                                        ? 'bg-gradient-to-br from-gray-50 to-slate-100 dark:from-gray-900 dark:to-slate-900 border-gray-200 dark:border-gray-700'
+                                        : isPositive 
+                                          ? 'bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-blue-950 dark:to-indigo-900 border-blue-200 dark:border-blue-700'
+                                          : 'bg-gradient-to-br from-orange-50 to-amber-100 dark:from-orange-950 dark:to-amber-900 border-orange-200 dark:border-orange-700'
+                                    }`}>
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                                          !hasPayoff ? 'bg-gray-200 dark:bg-gray-700' : isPositive ? 'bg-blue-200 dark:bg-blue-800' : 'bg-orange-200 dark:bg-orange-800'
+                                        }`}>
+                                          <ArrowUp className={`w-4 h-4 ${!hasPayoff ? 'text-gray-500' : isPositive ? 'text-blue-600 dark:text-blue-300' : 'text-orange-600 dark:text-orange-300'}`} />
+                                        </div>
+                                        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Trade Equity</div>
                                       </div>
-                                      <div className="text-xs text-muted-foreground">
-                                        {equity >= 0 ? 'Positive equity' : 'Negative equity'}
+                                      <div className={`text-2xl font-bold ${!hasPayoff ? 'text-muted-foreground' : isPositive ? 'text-blue-600 dark:text-blue-400' : 'text-orange-600 dark:text-orange-400'}`}>
+                                        {!hasPayoff ? 'N/A' : `${isPositive ? '+' : '-'}$${Math.abs(equity).toLocaleString()}`}
                                       </div>
-                                    </>
+                                      <div className="text-xs text-muted-foreground mt-1">
+                                        {!hasPayoff ? 'Enter trade payoff' : isPositive ? 'Positive equity' : 'Negative equity'}
+                                      </div>
+                                    </div>
                                   );
                                 })()}
                               </div>
 
-                              {/* Days to Sell Prediction */}
+                              {/* Days to Sell Prediction - Card Style */}
                               <div data-testid="days-to-sell">
-                                <div className="text-xs text-muted-foreground">Est. Days to Sell</div>
                                 {(() => {
                                   const avgDOM = livePricing?.competitorAnalysis?.avgCompetitorDOM || livePricing?.marketDemand?.daysSupply || 30;
                                   const velocity = livePricing?.marketDemand?.marketVelocity || 'average';
                                   const target = parseFloat(targetRetailPrice) || livePricing?.retailPrice?.average || 0;
                                   const avgPrice = livePricing?.retailPrice?.average || target;
                                   
-                                  // Adjust DOM based on price position
                                   let priceAdjustment = 1;
-                                  if (target < avgPrice * 0.95) priceAdjustment = 0.7; // Below market = faster
-                                  else if (target > avgPrice * 1.05) priceAdjustment = 1.3; // Above market = slower
+                                  if (target < avgPrice * 0.95) priceAdjustment = 0.7;
+                                  else if (target > avgPrice * 1.05) priceAdjustment = 1.3;
                                   
                                   const predictedDays = Math.round(avgDOM * priceAdjustment);
+                                  const isFast = predictedDays < 30;
+                                  const isSlow = predictedDays >= 60;
                                   
                                   return (
-                                    <>
-                                      <div className={`text-lg font-bold ${
-                                        predictedDays < 30 ? 'text-green-600 dark:text-green-400' :
-                                        predictedDays < 60 ? 'text-amber-600 dark:text-amber-400' :
-                                        'text-red-600 dark:text-red-400'
+                                    <div className={`rounded-xl p-4 border shadow-sm ${
+                                      isFast 
+                                        ? 'bg-gradient-to-br from-emerald-50 to-teal-100 dark:from-emerald-950 dark:to-teal-900 border-emerald-200 dark:border-emerald-700'
+                                        : isSlow 
+                                          ? 'bg-gradient-to-br from-rose-50 to-pink-100 dark:from-rose-950 dark:to-pink-900 border-rose-200 dark:border-rose-700'
+                                          : 'bg-gradient-to-br from-amber-50 to-yellow-100 dark:from-amber-950 dark:to-yellow-900 border-amber-200 dark:border-amber-700'
+                                    }`}>
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                                          isFast ? 'bg-emerald-200 dark:bg-emerald-800' : isSlow ? 'bg-rose-200 dark:bg-rose-800' : 'bg-amber-200 dark:bg-amber-800'
+                                        }`}>
+                                          <Clock className={`w-4 h-4 ${isFast ? 'text-emerald-600 dark:text-emerald-300' : isSlow ? 'text-rose-600 dark:text-rose-300' : 'text-amber-600 dark:text-amber-300'}`} />
+                                        </div>
+                                        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Days to Sell</div>
+                                      </div>
+                                      <div className={`text-2xl font-bold ${
+                                        isFast ? 'text-emerald-600 dark:text-emerald-400' :
+                                        isSlow ? 'text-rose-600 dark:text-rose-400' :
+                                        'text-amber-600 dark:text-amber-400'
                                       }`}>
                                         {predictedDays} days
                                       </div>
-                                      <div className="text-xs text-muted-foreground">
-                                        Based on {velocity} market
+                                      <div className="flex items-center gap-1 mt-1">
+                                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                                          isFast ? 'bg-emerald-200 text-emerald-800 dark:bg-emerald-800 dark:text-emerald-200' :
+                                          isSlow ? 'bg-rose-200 text-rose-800 dark:bg-rose-800 dark:text-rose-200' :
+                                          'bg-amber-200 text-amber-800 dark:bg-amber-800 dark:text-amber-200'
+                                        }`}>
+                                          {velocity.charAt(0).toUpperCase() + velocity.slice(1)} Market
+                                        </span>
                                       </div>
-                                    </>
+                                    </div>
                                   );
                                 })()}
                               </div>
                             </div>
 
-                            {/* Pricing Recommendation */}
+                            {/* Pricing Recommendation Banner */}
                             {livePricing && (
-                              <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700" data-testid="pricing-recommendation">
-                                <div className="flex items-center gap-2 text-sm">
-                                  {(() => {
-                                    const target = parseFloat(targetRetailPrice) || livePricing?.retailPrice?.average || 0;
-                                    const avgPrice = livePricing?.retailPrice?.average || 0;
-                                    const diff = target - avgPrice;
-                                    const pctDiff = avgPrice > 0 ? (diff / avgPrice) * 100 : 0;
-                                    
-                                    if (Math.abs(pctDiff) < 5) {
-                                      return (
-                                        <>
-                                          <span className="w-3 h-3 rounded-full bg-green-500" />
-                                          <span className="text-green-700 dark:text-green-300 font-medium">
-                                            Priced at market - good positioning
-                                          </span>
-                                        </>
-                                      );
-                                    } else if (pctDiff < 0) {
-                                      return (
-                                        <>
-                                          <span className="w-3 h-3 rounded-full bg-blue-500" />
-                                          <span className="text-blue-700 dark:text-blue-300 font-medium">
-                                            {Math.abs(pctDiff).toFixed(0)}% below market - expect quick sale
-                                          </span>
-                                        </>
-                                      );
-                                    } else {
-                                      return (
-                                        <>
-                                          <span className="w-3 h-3 rounded-full bg-amber-500" />
-                                          <span className="text-amber-700 dark:text-amber-300 font-medium">
-                                            {pctDiff.toFixed(0)}% above market - may take longer to sell
-                                          </span>
-                                        </>
-                                      );
-                                    }
-                                  })()}
-                                </div>
+                              <div className="mt-4" data-testid="pricing-recommendation">
+                                {(() => {
+                                  const target = parseFloat(targetRetailPrice) || livePricing?.retailPrice?.average || 0;
+                                  const avgPrice = livePricing?.retailPrice?.average || 0;
+                                  const diff = target - avgPrice;
+                                  const pctDiff = avgPrice > 0 ? (diff / avgPrice) * 100 : 0;
+                                  
+                                  const getBannerStyle = () => {
+                                    if (Math.abs(pctDiff) < 5) return {
+                                      bg: 'bg-gradient-to-r from-green-100 to-emerald-100 dark:from-green-900/40 dark:to-emerald-900/40',
+                                      border: 'border-green-300 dark:border-green-700',
+                                      icon: <Check className="w-5 h-5 text-green-600 dark:text-green-400" />,
+                                      text: 'text-green-800 dark:text-green-200',
+                                      message: 'Priced at market - good positioning for steady sales'
+                                    };
+                                    if (pctDiff < 0) return {
+                                      bg: 'bg-gradient-to-r from-blue-100 to-indigo-100 dark:from-blue-900/40 dark:to-indigo-900/40',
+                                      border: 'border-blue-300 dark:border-blue-700',
+                                      icon: <TrendingDown className="w-5 h-5 text-blue-600 dark:text-blue-400" />,
+                                      text: 'text-blue-800 dark:text-blue-200',
+                                      message: `${Math.abs(pctDiff).toFixed(0)}% below market - expect quick sale within ${Math.round(15 * (1 + Math.abs(pctDiff)/100))} days`
+                                    };
+                                    return {
+                                      bg: 'bg-gradient-to-r from-amber-100 to-orange-100 dark:from-amber-900/40 dark:to-orange-900/40',
+                                      border: 'border-amber-300 dark:border-amber-700',
+                                      icon: <TrendingUp className="w-5 h-5 text-amber-600 dark:text-amber-400" />,
+                                      text: 'text-amber-800 dark:text-amber-200',
+                                      message: `${pctDiff.toFixed(0)}% above market - may require ${Math.round(45 * (1 + pctDiff/100))}+ days or price reduction`
+                                    };
+                                  };
+                                  
+                                  const style = getBannerStyle();
+                                  
+                                  return (
+                                    <div className={`${style.bg} ${style.border} border rounded-xl p-4 flex items-center gap-3`}>
+                                      <div className="flex-shrink-0">
+                                        {style.icon}
+                                      </div>
+                                      <div className={`${style.text} font-medium text-sm`}>
+                                        {style.message}
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
                               </div>
                             )}
                           </div>
