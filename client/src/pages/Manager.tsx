@@ -2042,7 +2042,98 @@ export default function Manager() {
                               <div className="text-sm font-semibold">{vinResults.interiorColor}</div>
                             </div>
                           )}
+                          {vinResults.engineCylinders && (
+                            <div data-testid="result-engine-cylinders">
+                              <div className="text-xs text-muted-foreground font-medium">Engine</div>
+                              <div className="text-sm font-semibold">
+                                {vinResults.engineCylinders} cyl
+                                {vinResults.engineHP && ` / ${vinResults.engineHP} HP`}
+                              </div>
+                            </div>
+                          )}
+                          {vinResults.msrp && (
+                            <div data-testid="result-msrp">
+                              <div className="text-xs text-muted-foreground font-medium">Original MSRP</div>
+                              <div className="text-sm font-semibold text-green-600 dark:text-green-400">
+                                ${vinResults.msrp.toLocaleString()}
+                              </div>
+                            </div>
+                          )}
                         </div>
+                        
+                        {/* CARFAX Link */}
+                        {vinResults.carfaxUrl && (
+                          <div className="mt-4 pt-4 border-t border-blue-200 dark:border-blue-800">
+                            <a 
+                              href={vinResults.carfaxUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-2 px-4 py-2 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 rounded-lg hover:bg-orange-200 dark:hover:bg-orange-900/50 transition-colors font-medium text-sm"
+                              data-testid="link-carfax"
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                              View CARFAX Report
+                            </a>
+                          </div>
+                        )}
+
+                        {/* Equipment & Options Section */}
+                        {(vinResults.installedOptions?.length > 0 || vinResults.standardEquipment?.length > 0 || vinResults.packages?.length > 0 || vinResults.safetyFeatures?.length > 0) && (
+                          <div className="mt-4 pt-4 border-t border-blue-200 dark:border-blue-800">
+                            <h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
+                              <Settings className="w-4 h-4" />
+                              Equipment & Options
+                            </h4>
+                            <div className="grid gap-4 md:grid-cols-2">
+                              {vinResults.packages?.length > 0 && (
+                                <div data-testid="result-packages">
+                                  <div className="text-xs text-muted-foreground font-medium mb-2">Packages</div>
+                                  <div className="flex flex-wrap gap-1">
+                                    {vinResults.packages.map((pkg: string, idx: number) => (
+                                      <span key={idx} className="px-2 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded text-xs">
+                                        {pkg}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {vinResults.installedOptions?.length > 0 && (
+                                <div data-testid="result-options">
+                                  <div className="text-xs text-muted-foreground font-medium mb-2">Installed Options</div>
+                                  <div className="flex flex-wrap gap-1">
+                                    {vinResults.installedOptions.slice(0, 8).map((opt: string, idx: number) => (
+                                      <span key={idx} className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded text-xs">
+                                        {opt}
+                                      </span>
+                                    ))}
+                                    {vinResults.installedOptions.length > 8 && (
+                                      <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded text-xs">
+                                        +{vinResults.installedOptions.length - 8} more
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                              {vinResults.safetyFeatures?.length > 0 && (
+                                <div data-testid="result-safety">
+                                  <div className="text-xs text-muted-foreground font-medium mb-2">Safety Features</div>
+                                  <div className="flex flex-wrap gap-1">
+                                    {vinResults.safetyFeatures.slice(0, 6).map((feat: string, idx: number) => (
+                                      <span key={idx} className="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded text-xs">
+                                        {feat}
+                                      </span>
+                                    ))}
+                                    {vinResults.safetyFeatures.length > 6 && (
+                                      <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded text-xs">
+                                        +{vinResults.safetyFeatures.length - 6} more
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}

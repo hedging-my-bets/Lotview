@@ -9,6 +9,7 @@ export interface VINDecodeResult {
   bodyClass?: string;
   engineCylinders?: string;
   engineHP?: string;
+  engineDisplacement?: string;
   fuelType?: string;
   driveType?: string;
   transmission?: string;
@@ -18,10 +19,37 @@ export interface VINDecodeResult {
   vehicleType?: string;
   interiorColor?: string;
   exteriorColor?: string;
+  // Enhanced OEM build data
+  msrp?: number;
+  invoicePrice?: number;
+  installedOptions?: string[];
+  standardEquipment?: string[];
+  packages?: string[];
+  safetyFeatures?: string[];
+  warranties?: {
+    basic?: string;
+    powertrain?: string;
+    corrosion?: string;
+    roadside?: string;
+  };
+  // External links
+  carfaxUrl?: string;
+  windowStickerUrl?: string;
+  // Error handling
   errorCode?: string;
   errorMessage?: string;
   source?: 'marketcheck' | 'api_ninjas' | 'nhtsa';
   responseTimeMs?: number;
+}
+
+// Generate CARFAX report URL for a VIN
+export function generateCarfaxUrl(vin: string): string {
+  return `https://www.carfax.com/VehicleHistory/p/Report.cfx?vin=${vin}`;
+}
+
+// Generate AutoCheck report URL for a VIN (alternative to CARFAX)
+export function generateAutoCheckUrl(vin: string): string {
+  return `https://www.autocheck.com/vehiclehistory/autocheck/en/search-results?vin=${vin}`;
 }
 
 async function sleep(ms: number): Promise<void> {
@@ -63,6 +91,51 @@ async function decodeVINWithMarketCheck(vin: string, apiKey: string): Promise<VI
       return null;
     }
     
+    // Helper to extract string from MarketCheck item (may be string or object)
+    const extractString = (item: unknown): string | null => {
+      if (typeof item === 'string') return item;
+      if (item && typeof item === 'object') {
+        const obj = item as Record<string, unknown>;
+        // Try common field names for display value
+        return String(obj.name || obj.description || obj.label || obj.value || obj.option || '');
+      }
+      return null;
+    };
+    
+    // Extract equipment and options from MarketCheck response
+    const installedOptions: string[] = [];
+    const standardEquipment: string[] = [];
+    const safetyFeatures: string[] = [];
+    
+    // MarketCheck may return options/equipment as strings or objects
+    if (data.options && Array.isArray(data.options)) {
+      data.options.forEach((opt: unknown) => {
+        const str = extractString(opt);
+        if (str && str.trim()) installedOptions.push(str.trim());
+      });
+    }
+    if (data.standard_equipment && Array.isArray(data.standard_equipment)) {
+      data.standard_equipment.forEach((eq: unknown) => {
+        const str = extractString(eq);
+        if (str && str.trim()) standardEquipment.push(str.trim());
+      });
+    }
+    if (data.safety_features && Array.isArray(data.safety_features)) {
+      data.safety_features.forEach((feat: unknown) => {
+        const str = extractString(feat);
+        if (str && str.trim()) safetyFeatures.push(str.trim());
+      });
+    }
+    
+    // Extract packages if available
+    const packages: string[] = [];
+    if (data.packages && Array.isArray(data.packages)) {
+      data.packages.forEach((pkg: unknown) => {
+        const str = extractString(pkg);
+        if (str && str.trim()) packages.push(str.trim());
+      });
+    }
+    
     return {
       vin,
       year: data.year?.toString() || undefined,
@@ -72,6 +145,7 @@ async function decodeVINWithMarketCheck(vin: string, apiKey: string): Promise<VI
       bodyClass: data.body_type || data.body_style || undefined,
       engineCylinders: data.cylinders?.toString() || undefined,
       engineHP: data.horsepower?.toString() || undefined,
+      engineDisplacement: data.engine_displacement || data.displacement || undefined,
       fuelType: data.fuel_type || undefined,
       driveType: data.drivetrain || undefined,
       transmission: data.transmission || undefined,
@@ -80,6 +154,13 @@ async function decodeVINWithMarketCheck(vin: string, apiKey: string): Promise<VI
       vehicleType: data.vehicle_type || undefined,
       interiorColor: data.interior_color || undefined,
       exteriorColor: data.exterior_color || data.color || undefined,
+      // OEM build data
+      msrp: data.msrp || data.base_msrp || undefined,
+      invoicePrice: data.invoice || data.base_invoice || undefined,
+      installedOptions: installedOptions.length > 0 ? installedOptions : undefined,
+      standardEquipment: standardEquipment.length > 0 ? standardEquipment : undefined,
+      packages: packages.length > 0 ? packages : undefined,
+      safetyFeatures: safetyFeatures.length > 0 ? safetyFeatures : undefined,
       source: 'marketcheck',
       responseTimeMs: responseTime
     };
@@ -318,6 +399,9 @@ export async function decodeVIN(vin: string, dealershipId?: number): Promise<VIN
   
   const totalTime = Date.now() - startTime;
   decodeResult.responseTimeMs = totalTime;
+  
+  // Always add CARFAX URL for valid VINs
+  decodeResult.carfaxUrl = generateCarfaxUrl(cleanVIN);
   
   return decodeResult;
 }
