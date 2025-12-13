@@ -840,6 +840,139 @@ export default function Manager() {
   const [livePricing, setLivePricing] = useState<any>(null);
   const [isLoadingLivePricing, setIsLoadingLivePricing] = useState(false);
 
+  // Investment tier calculation (vAuto ProfitTime GPS equivalent)
+  // Factors: demand score, days supply, market velocity, AND profit potential
+  const calculateInvestmentTier = (pricing: any, acquisitionPrice?: number): { 
+    tier: 'platinum' | 'gold' | 'silver' | 'bronze'; 
+    label: string; 
+    color: string; 
+    bgColor: string; 
+    borderColor: string; 
+    recommendation: string; 
+    icon: string;
+    profitPotential?: number;
+    profitMargin?: number;
+    compositeScore: number;
+  } => {
+    if (!pricing?.marketDemand) {
+      return { tier: 'bronze', label: 'Bronze', color: 'text-orange-700 dark:text-orange-300', bgColor: 'bg-orange-100 dark:bg-orange-900/30', borderColor: 'border-orange-400', recommendation: 'Consider wholesale options', icon: '🥉', compositeScore: 0 };
+    }
+    
+    const { demandScore, daysSupply, marketVelocity } = pricing.marketDemand;
+    const retailAvg = pricing.retailPrice?.average || 0;
+    
+    // Calculate profit potential if acquisition price is available
+    let profitPotential: number | undefined;
+    let profitMargin: number | undefined;
+    let profitScore = 50; // Default neutral score when no acquisition price
+    
+    if (acquisitionPrice && acquisitionPrice > 0 && retailAvg > 0) {
+      profitPotential = retailAvg - acquisitionPrice;
+      profitMargin = (profitPotential / retailAvg) * 100;
+      // High profit = >20% margin, Good = 12-20%, Average = 5-12%, Low = <5%
+      if (profitMargin >= 20) profitScore = 100;
+      else if (profitMargin >= 12) profitScore = 75;
+      else if (profitMargin >= 5) profitScore = 50;
+      else if (profitMargin >= 0) profitScore = 25;
+      else profitScore = 0; // Negative margin
+    }
+    
+    // Convert supply/velocity into a 0-100 normalized score
+    // Days supply: <30 = excellent (100), 30-45 = good (75), 45-60 = average (50), 60-75 = poor (25), >75 = bad (0)
+    let supplyScore = 50;
+    if (daysSupply < 30) supplyScore = 100;
+    else if (daysSupply < 45) supplyScore = 75;
+    else if (daysSupply < 60) supplyScore = 50;
+    else if (daysSupply < 75) supplyScore = 25;
+    else supplyScore = 0;
+    
+    // Velocity: fast = 100, average = 50, slow = 0
+    const velocityScore = marketVelocity === 'fast' ? 100 : marketVelocity === 'slow' ? 0 : 50;
+    
+    // Blend supply and velocity into a single supply/velocity score
+    const supplyVelocityScore = (supplyScore * 0.7) + (velocityScore * 0.3);
+    
+    // Composite score: demand (50%) + profit potential (35%) + supply/velocity (15%)
+    const compositeScore = Math.round(
+      (demandScore * 0.50) + (profitScore * 0.35) + (supplyVelocityScore * 0.15)
+    );
+    
+    // Tier based primarily on composite score
+    // Platinum: compositeScore >= 75 (high demand + good profit + favorable supply)
+    if (compositeScore >= 75) {
+      return { 
+        tier: 'platinum', 
+        label: 'Platinum', 
+        color: 'text-purple-700 dark:text-purple-200', 
+        bgColor: 'bg-gradient-to-r from-purple-100 to-indigo-100 dark:from-purple-900/40 dark:to-indigo-900/40', 
+        borderColor: 'border-purple-400',
+        recommendation: profitPotential !== undefined 
+          ? `Price aggressively - $${profitPotential.toLocaleString()} profit potential` 
+          : 'Price aggressively - high demand vehicle',
+        icon: '💎',
+        profitPotential,
+        profitMargin,
+        compositeScore
+      };
+    }
+    
+    // Gold: compositeScore >= 55
+    if (compositeScore >= 55) {
+      return { 
+        tier: 'gold', 
+        label: 'Gold', 
+        color: 'text-yellow-700 dark:text-yellow-200', 
+        bgColor: 'bg-gradient-to-r from-yellow-100 to-amber-100 dark:from-yellow-900/40 dark:to-amber-900/40', 
+        borderColor: 'border-yellow-500',
+        recommendation: profitPotential !== undefined 
+          ? `Strong investment - $${profitPotential.toLocaleString()} profit potential`
+          : 'Strong investment - price competitively',
+        icon: '🥇',
+        profitPotential,
+        profitMargin,
+        compositeScore
+      };
+    }
+    
+    // Silver: compositeScore >= 35
+    if (compositeScore >= 35) {
+      return { 
+        tier: 'silver', 
+        label: 'Silver', 
+        color: 'text-gray-600 dark:text-gray-300', 
+        bgColor: 'bg-gradient-to-r from-gray-100 to-slate-100 dark:from-gray-800/50 dark:to-slate-800/50', 
+        borderColor: 'border-gray-400',
+        recommendation: profitPotential !== undefined 
+          ? `Standard pricing - $${profitPotential.toLocaleString()} margin`
+          : 'Standard pricing - monitor market',
+        icon: '🥈',
+        profitPotential,
+        profitMargin,
+        compositeScore
+      };
+    }
+    
+    // Bronze: compositeScore < 35 = wholesale consideration
+    return { 
+      tier: 'bronze', 
+      label: 'Bronze', 
+      color: 'text-orange-700 dark:text-orange-300', 
+      bgColor: 'bg-gradient-to-r from-orange-100 to-amber-100 dark:from-orange-900/30 dark:to-amber-900/30', 
+      borderColor: 'border-orange-400',
+      recommendation: profitPotential !== undefined && profitPotential < 0
+        ? `Wholesale recommended - $${Math.abs(profitPotential).toLocaleString()} loss at market`
+        : 'Consider wholesale or aggressive pricing',
+      icon: '🥉',
+      profitPotential,
+      profitMargin,
+      compositeScore
+    };
+  };
+  
+  // Pass quotedPrice as acquisition cost for profit calculation
+  const acquisitionCost = quotedPrice ? parseFloat(quotedPrice) : undefined;
+  const investmentTier = livePricing ? calculateInvestmentTier(livePricing, acquisitionCost) : null;
+
   // Autocomplete data
   const [makes, setMakes] = useState<string[]>([]);
   const [models, setModels] = useState<string[]>([]);
@@ -2194,6 +2327,61 @@ export default function Manager() {
                         </div>
                       ) : livePricing ? (
                         <div className="space-y-6">
+                          {/* Investment Tier Badge - vAuto ProfitTime GPS Equivalent */}
+                          {investmentTier && (
+                            <div className={`${investmentTier.bgColor} border-2 ${investmentTier.borderColor} rounded-xl p-4`} data-testid="investment-tier">
+                              <div className="flex items-center justify-between flex-wrap gap-4">
+                                <div className="flex items-center gap-3">
+                                  <span className="text-3xl">{investmentTier.icon}</span>
+                                  <div>
+                                    <div className={`text-xl font-bold ${investmentTier.color}`}>
+                                      {investmentTier.label} Investment
+                                    </div>
+                                    <div className="text-sm text-muted-foreground">
+                                      {investmentTier.recommendation}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="flex gap-4 md:gap-6 flex-wrap">
+                                  {investmentTier.profitPotential !== undefined && (
+                                    <div className="text-right" data-testid="profit-potential">
+                                      <div className="text-xs text-muted-foreground mb-1">Profit Potential</div>
+                                      <div className={`text-lg font-bold ${investmentTier.profitPotential >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                        {investmentTier.profitPotential >= 0 ? '+' : '-'}${Math.abs(investmentTier.profitPotential).toLocaleString()}
+                                      </div>
+                                      {investmentTier.profitMargin !== undefined && (
+                                        <div className="text-xs text-muted-foreground">
+                                          {investmentTier.profitMargin >= 0 ? '+' : ''}{investmentTier.profitMargin.toFixed(1)}% margin
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                  <div className="text-right" data-testid="demand-score">
+                                    <div className="text-xs text-muted-foreground mb-1">Demand Score</div>
+                                    <div className={`text-lg font-bold ${
+                                      (livePricing.marketDemand?.demandScore || 0) >= 70 ? 'text-green-600 dark:text-green-400' :
+                                      (livePricing.marketDemand?.demandScore || 0) >= 40 ? 'text-amber-600 dark:text-amber-400' : 
+                                      'text-red-600 dark:text-red-400'
+                                    }`}>
+                                      {livePricing.marketDemand?.demandScore || 0}/100
+                                    </div>
+                                  </div>
+                                  <div className="text-right" data-testid="composite-score">
+                                    <div className="text-xs text-muted-foreground mb-1">Investment Score</div>
+                                    <div className={`text-lg font-bold ${investmentTier.color}`}>
+                                      {investmentTier.compositeScore}/100
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              {!acquisitionCost && (
+                                <div className="mt-3 pt-3 border-t border-current/10 text-xs text-muted-foreground" data-testid="acquisition-hint">
+                                  Enter a quoted price below to see profit potential analysis
+                                </div>
+                              )}
+                            </div>
+                          )}
+
                           {/* Retail Pricing */}
                           <div className="grid gap-4 md:grid-cols-2">
                             <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-emerald-200 dark:border-emerald-800">
