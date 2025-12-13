@@ -11,7 +11,7 @@ export interface MarketPricingRequest {
 }
 
 // Calculate color match score (0-100) between two color strings
-function calculateColorMatchScore(targetColor?: string, compColor?: string): number {
+export function calculateColorMatchScore(targetColor?: string, compColor?: string): number {
   if (!targetColor || !compColor) return 50; // Neutral score if colors unknown
   
   const normalize = (c: string) => c.toLowerCase().trim().replace(/[^a-z]/g, '');
