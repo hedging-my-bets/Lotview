@@ -4,6 +4,8 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -26,6 +28,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
   ChevronLeft,
   Search,
   MoreVertical,
@@ -34,6 +45,12 @@ import {
   Loader2,
   FileText,
   ChevronRight,
+  DollarSign,
+  TrendingUp,
+  TrendingDown,
+  AlertCircle,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -49,6 +66,13 @@ type Appraisal = {
   status: string;
   averageMarketPrice?: number;
   suggestedBuyPrice?: number;
+  quotedPrice?: number;
+  actualSalePrice?: number;
+  missedReason?: string;
+  missedNotes?: string;
+  tradeinValue?: number;
+  wholesaleValue?: number;
+  retailValue?: number;
   createdAt: string;
   createdBy?: number;
 };
@@ -75,10 +99,26 @@ const STATUS_OPTIONS = [
   { value: "passed", label: "Passed" },
 ];
 
+const MISSED_REASON_OPTIONS = [
+  { value: "lost_to_competitor", label: "Lost to Competitor" },
+  { value: "customer_declined", label: "Customer Declined" },
+  { value: "price_too_high", label: "Price Too High" },
+  { value: "wholesaled", label: "Sent to Wholesale" },
+  { value: "other", label: "Other" },
+];
+
 export default function SavedAppraisals() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [page, setPage] = useState(0);
+  const [activeTab, setActiveTab] = useState("appraisals");
+  const [purchaseDialogOpen, setPurchaseDialogOpen] = useState(false);
+  const [passedDialogOpen, setPassedDialogOpen] = useState(false);
+  const [selectedAppraisal, setSelectedAppraisal] = useState<Appraisal | null>(null);
+  const [actualSalePrice, setActualSalePrice] = useState("");
+  const [priceError, setPriceError] = useState("");
+  const [missedReason, setMissedReason] = useState("customer_declined");
+  const [missedNotes, setMissedNotes] = useState("");
   const limit = 20;
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -101,8 +141,29 @@ export default function SavedAppraisals() {
     },
   });
 
-  const updateStatusMutation = useMutation({
-    mutationFn: async ({ id, newStatus }: { id: number; newStatus: string }) => {
+  type StatsResponse = {
+    purchased: number;
+    passed: number;
+    lookToBookRatio: string;
+    totalQuoted: number;
+    totalActual: number;
+    accuracyVariance: number;
+  };
+
+  const { data: stats } = useQuery<StatsResponse>({
+    queryKey: ["appraisal-stats"],
+    queryFn: async () => {
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch("/api/manager/appraisals/stats", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to fetch stats");
+      return res.json();
+    },
+  });
+
+  const updateAppraisalMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: number; updates: Record<string, any> }) => {
       const token = localStorage.getItem("auth_token");
       const res = await fetch(`/api/manager/appraisals/${id}`, {
         method: "PATCH",
@@ -110,17 +171,18 @@ export default function SavedAppraisals() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify(updates),
       });
-      if (!res.ok) throw new Error("Failed to update status");
+      if (!res.ok) throw new Error("Failed to update appraisal");
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["appraisals"] });
-      toast({ title: "Status updated" });
+      queryClient.invalidateQueries({ queryKey: ["appraisal-stats"] });
+      toast({ title: "Appraisal updated" });
     },
     onError: () => {
-      toast({ title: "Failed to update status", variant: "destructive" });
+      toast({ title: "Failed to update appraisal", variant: "destructive" });
     },
   });
 
@@ -148,12 +210,79 @@ export default function SavedAppraisals() {
     }
   };
 
+  const handleStatusChange = (appraisal: Appraisal, newStatus: string) => {
+    if (newStatus === "purchased") {
+      setSelectedAppraisal(appraisal);
+      setActualSalePrice(appraisal.quotedPrice ? (appraisal.quotedPrice / 100).toString() : "");
+      setPriceError("");
+      setPurchaseDialogOpen(true);
+    } else if (newStatus === "passed") {
+      setSelectedAppraisal(appraisal);
+      setMissedReason("customer_declined");
+      setMissedNotes("");
+      setPassedDialogOpen(true);
+    } else {
+      updateAppraisalMutation.mutate({ id: appraisal.id, updates: { status: newStatus } });
+    }
+  };
+
+  const handleConfirmPurchase = () => {
+    if (!selectedAppraisal) return;
+    
+    const priceValue = parseFloat(actualSalePrice);
+    if (!actualSalePrice.trim() || isNaN(priceValue) || priceValue <= 0) {
+      setPriceError("Please enter a valid price greater than $0");
+      return;
+    }
+    
+    setPriceError("");
+    const priceInCents = Math.round(priceValue * 100);
+    updateAppraisalMutation.mutate({
+      id: selectedAppraisal.id,
+      updates: {
+        status: "purchased",
+        actualSalePrice: priceInCents,
+      },
+    });
+    setPurchaseDialogOpen(false);
+    setSelectedAppraisal(null);
+  };
+
+  const handleConfirmPassed = () => {
+    if (!selectedAppraisal) return;
+    updateAppraisalMutation.mutate({
+      id: selectedAppraisal.id,
+      updates: {
+        status: "passed",
+        missedReason,
+        missedNotes,
+      },
+    });
+    setPassedDialogOpen(false);
+    setSelectedAppraisal(null);
+  };
+
   const appraisals = data?.appraisals || [];
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / limit);
 
+  const lookToBookRatio = stats?.lookToBookRatio || "0";
+  const purchasedCount = stats?.purchased || 0;
+  const passedCount = stats?.passed || 0;
+  const totalActual = stats?.totalActual || 0;
+  const accuracyVariance = stats?.accuracyVariance || 0;
+
   const formatPrice = (price?: number) => {
     if (!price) return "-";
+    return new Intl.NumberFormat("en-CA", {
+      style: "currency",
+      currency: "CAD",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(price / 100);
+  };
+
+  const formatPriceDollars = (price: number) => {
     return new Intl.NumberFormat("en-CA", {
       style: "currency",
       currency: "CAD",
@@ -192,6 +321,77 @@ export default function SavedAppraisals() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Look-to-Book Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <Card data-testid="card-look-to-book">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                <TrendingUp className="w-4 h-4" />
+                Look-to-Book Ratio
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-slate-900 dark:text-white">
+                {lookToBookRatio}%
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                {purchasedCount} purchased / {purchasedCount + passedCount} decided
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-purchased">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-green-500" />
+                Purchased
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                {purchasedCount}
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                {formatPrice(totalActual)} total
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-passed">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                <XCircle className="w-4 h-4 text-red-500" />
+                Passed/Missed
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600 dark:text-red-400">
+                {passedCount}
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Missed opportunities
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-accuracy">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                <DollarSign className="w-4 h-4" />
+                Pricing Accuracy
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className={`text-2xl font-bold ${accuracyVariance >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                {accuracyVariance >= 0 ? '+' : ''}{accuracyVariance.toFixed(1)}%
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Actual vs quoted variance
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
         <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
           <div className="p-4 border-b border-slate-200 dark:border-slate-700">
             <div className="flex flex-col sm:flex-row gap-4">
@@ -291,12 +491,7 @@ export default function SavedAppraisals() {
                         <TableCell>
                           <Select
                             value={appraisal.status}
-                            onValueChange={(value) =>
-                              updateStatusMutation.mutate({
-                                id: appraisal.id,
-                                newStatus: value,
-                              })
-                            }
+                            onValueChange={(value) => handleStatusChange(appraisal, value)}
                           >
                             <SelectTrigger
                               className="w-[120px] h-8"
@@ -394,6 +589,134 @@ export default function SavedAppraisals() {
           )}
         </div>
       </main>
+
+      {/* Purchase Confirmation Dialog */}
+      <Dialog open={purchaseDialogOpen} onOpenChange={setPurchaseDialogOpen}>
+        <DialogContent data-testid="dialog-purchase">
+          <DialogHeader>
+            <DialogTitle>Confirm Purchase</DialogTitle>
+          </DialogHeader>
+          {selectedAppraisal && (
+            <div className="space-y-4">
+              <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-lg">
+                <p className="font-medium">
+                  {selectedAppraisal.year} {selectedAppraisal.make} {selectedAppraisal.model}
+                </p>
+                <p className="text-sm text-slate-500">{selectedAppraisal.vin}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-slate-500">Quoted Price:</span>
+                  <p className="font-medium">{formatPrice(selectedAppraisal.quotedPrice)}</p>
+                </div>
+                <div>
+                  <span className="text-slate-500">Suggested Buy:</span>
+                  <p className="font-medium text-green-600">{formatPrice(selectedAppraisal.suggestedBuyPrice)}</p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="actualSalePrice">Actual Purchase Price</Label>
+                <div className="relative">
+                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Input
+                    id="actualSalePrice"
+                    type="number"
+                    placeholder="Enter actual price paid"
+                    value={actualSalePrice}
+                    onChange={(e) => {
+                      setActualSalePrice(e.target.value);
+                      if (priceError) setPriceError("");
+                    }}
+                    className={`pl-10 ${priceError ? 'border-red-500' : ''}`}
+                    data-testid="input-actual-price"
+                  />
+                </div>
+                {priceError && (
+                  <p className="text-sm text-red-500 flex items-center gap-1" data-testid="text-price-error">
+                    <AlertCircle className="w-4 h-4" />
+                    {priceError}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPurchaseDialogOpen(false)} data-testid="button-cancel-purchase">
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleConfirmPurchase} 
+              disabled={!actualSalePrice}
+              data-testid="button-confirm-purchase"
+            >
+              <CheckCircle2 className="w-4 h-4 mr-2" />
+              Confirm Purchase
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Passed/Missed Confirmation Dialog */}
+      <Dialog open={passedDialogOpen} onOpenChange={setPassedDialogOpen}>
+        <DialogContent data-testid="dialog-passed">
+          <DialogHeader>
+            <DialogTitle>Record Missed Trade</DialogTitle>
+          </DialogHeader>
+          {selectedAppraisal && (
+            <div className="space-y-4">
+              <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-lg">
+                <p className="font-medium">
+                  {selectedAppraisal.year} {selectedAppraisal.make} {selectedAppraisal.model}
+                </p>
+                <p className="text-sm text-slate-500">{selectedAppraisal.vin}</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="missedReason">Reason for Missing</Label>
+                <Select value={missedReason} onValueChange={setMissedReason}>
+                  <SelectTrigger data-testid="select-missed-reason">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MISSED_REASON_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="missedNotes">Additional Notes (Optional)</Label>
+                <Textarea
+                  id="missedNotes"
+                  placeholder="Enter any additional details..."
+                  value={missedNotes}
+                  onChange={(e) => setMissedNotes(e.target.value)}
+                  rows={3}
+                  data-testid="textarea-missed-notes"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPassedDialogOpen(false)} data-testid="button-cancel-passed">
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleConfirmPassed}
+              variant="destructive"
+              data-testid="button-confirm-passed"
+            >
+              <XCircle className="w-4 h-4 mr-2" />
+              Mark as Missed
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

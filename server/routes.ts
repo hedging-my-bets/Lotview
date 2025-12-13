@@ -8112,6 +8112,18 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
   
+  // Get look-to-book stats for dealership
+  app.get("/api/manager/appraisals/stats", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const stats = await storage.getAppraisalStats(dealershipId);
+      res.json(stats);
+    } catch (error) {
+      logError('Error fetching appraisal stats:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-appraisals-stats' });
+      res.status(500).json({ error: "Failed to fetch appraisal stats" });
+    }
+  });
+  
   // Get single appraisal by ID
   app.get("/api/manager/appraisals/:id", authMiddleware, requireRole("manager"), async (req, res) => {
     try {

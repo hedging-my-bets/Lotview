@@ -255,7 +255,7 @@ import {
   type ScrapeQueue,
   type InsertScrapeQueue
 } from "@shared/schema";
-import { eq, desc, asc, sql, and, gte, lte, lt, gt, inArray, or, ilike } from "drizzle-orm";
+import { eq, desc, asc, sql, and, gte, lte, lt, gt, inArray, or, ilike, type SQL } from "drizzle-orm";
 
 export interface IStorage {
   // ====== SUPER ADMIN - GLOBAL SETTINGS ======
@@ -813,6 +813,7 @@ export interface IStorage {
   
   // ====== VEHICLE APPRAISALS ======
   getVehicleAppraisals(dealershipId: number, filters?: { status?: string; search?: string; createdBy?: number }, limit?: number, offset?: number): Promise<{ appraisals: VehicleAppraisal[]; total: number }>;
+  getAppraisalStats(dealershipId: number): Promise<{ purchased: number; passed: number; lookToBookRatio: string; totalQuoted: number; totalActual: number; accuracyVariance: number }>;
   getVehicleAppraisalById(id: number, dealershipId: number): Promise<VehicleAppraisal | undefined>;
   getVehicleAppraisalByVin(vin: string, dealershipId: number): Promise<VehicleAppraisal | undefined>;
   searchVehicleAppraisals(dealershipId: number, query: string, limit?: number): Promise<VehicleAppraisal[]>;
@@ -5413,6 +5414,28 @@ export class DatabaseStorage implements IStorage {
       .offset(offset);
     
     return { appraisals, total: Number(countResult[0]?.count || 0) };
+  }
+  
+  async getAppraisalStats(dealershipId: number): Promise<{ purchased: number; passed: number; lookToBookRatio: string; totalQuoted: number; totalActual: number; accuracyVariance: number }> {
+    const result = await db.select({
+      purchased: sql<number>`COUNT(*) FILTER (WHERE ${vehicleAppraisals.status} = 'purchased')`,
+      passed: sql<number>`COUNT(*) FILTER (WHERE ${vehicleAppraisals.status} = 'passed')`,
+      totalQuoted: sql<number>`COALESCE(SUM(${vehicleAppraisals.quotedPrice}), 0)`,
+      totalActual: sql<number>`COALESCE(SUM(${vehicleAppraisals.actualSalePrice}) FILTER (WHERE ${vehicleAppraisals.status} = 'purchased'), 0)`,
+    })
+    .from(vehicleAppraisals)
+    .where(eq(vehicleAppraisals.dealershipId, dealershipId));
+    
+    const stats = result[0];
+    const purchased = Number(stats?.purchased || 0);
+    const passed = Number(stats?.passed || 0);
+    const totalDecided = purchased + passed;
+    const lookToBookRatio = totalDecided > 0 ? ((purchased / totalDecided) * 100).toFixed(1) : "0";
+    const totalQuoted = Number(stats?.totalQuoted || 0);
+    const totalActual = Number(stats?.totalActual || 0);
+    const accuracyVariance = totalQuoted > 0 ? ((totalActual - totalQuoted) / totalQuoted * 100) : 0;
+    
+    return { purchased, passed, lookToBookRatio, totalQuoted, totalActual, accuracyVariance };
   }
   
   async getVehicleAppraisalById(id: number, dealershipId: number): Promise<VehicleAppraisal | undefined> {
