@@ -255,7 +255,7 @@ import {
   type ScrapeQueue,
   type InsertScrapeQueue
 } from "@shared/schema";
-import { eq, desc, asc, sql, and, gte, lte, lt, gt, inArray, or, ilike, type SQL } from "drizzle-orm";
+import { eq, desc, asc, sql, and, gte, lte, lt, gt, inArray, or, ilike, isNotNull, type SQL } from "drizzle-orm";
 
 export interface IStorage {
   // ====== SUPER ADMIN - GLOBAL SETTINGS ======
@@ -814,6 +814,23 @@ export interface IStorage {
   // ====== VEHICLE APPRAISALS ======
   getVehicleAppraisals(dealershipId: number, filters?: { status?: string; search?: string; createdBy?: number }, limit?: number, offset?: number): Promise<{ appraisals: VehicleAppraisal[]; total: number }>;
   getAppraisalStats(dealershipId: number): Promise<{ purchased: number; passed: number; lookToBookRatio: string; totalQuoted: number; totalActual: number; accuracyVariance: number }>;
+  getMissedTradesStats(dealershipId: number): Promise<{ 
+    totalMissed: number; 
+    totalLostValue: number;
+    byReason: { reason: string; count: number; totalValue: number }[];
+    recentMissed: { id: number; vin: string; year: number; make: string; model: string; quotedPrice: number; missedReason: string; missedNotes: string | null; createdAt: Date }[];
+  }>;
+  getAppraisalAccuracyReport(dealershipId: number): Promise<{
+    totalPurchased: number;
+    averageVariance: number;
+    overPaidCount: number;
+    underPaidCount: number;
+    exactCount: number;
+    totalOverpaid: number;
+    totalUnderpaid: number;
+    monthlyTrend: { month: string; avgVariance: number; count: number }[];
+    recentPurchases: { id: number; vin: string; year: number; make: string; model: string; quotedPrice: number; actualSalePrice: number; variance: number; createdAt: Date }[];
+  }>;
   getVehicleAppraisalById(id: number, dealershipId: number): Promise<VehicleAppraisal | undefined>;
   getVehicleAppraisalByVin(vin: string, dealershipId: number): Promise<VehicleAppraisal | undefined>;
   searchVehicleAppraisals(dealershipId: number, query: string, limit?: number): Promise<VehicleAppraisal[]>;
@@ -5436,6 +5453,150 @@ export class DatabaseStorage implements IStorage {
     const accuracyVariance = totalQuoted > 0 ? ((totalActual - totalQuoted) / totalQuoted * 100) : 0;
     
     return { purchased, passed, lookToBookRatio, totalQuoted, totalActual, accuracyVariance };
+  }
+  
+  async getMissedTradesStats(dealershipId: number): Promise<{ 
+    totalMissed: number; 
+    totalLostValue: number;
+    byReason: { reason: string; count: number; totalValue: number }[];
+    recentMissed: { id: number; vin: string; year: number; make: string; model: string; quotedPrice: number; missedReason: string; missedNotes: string | null; createdAt: Date }[];
+  }> {
+    const missedAppraisals = await db.select()
+      .from(vehicleAppraisals)
+      .where(and(
+        eq(vehicleAppraisals.dealershipId, dealershipId),
+        eq(vehicleAppraisals.status, 'passed')
+      ))
+      .orderBy(desc(vehicleAppraisals.createdAt));
+    
+    const totalMissed = missedAppraisals.length;
+    const totalLostValue = missedAppraisals.reduce((sum, a) => sum + (a.quotedPrice || 0), 0);
+    
+    const reasonCounts: Record<string, { count: number; totalValue: number }> = {};
+    for (const appraisal of missedAppraisals) {
+      const reason = appraisal.missedReason || 'other';
+      if (!reasonCounts[reason]) {
+        reasonCounts[reason] = { count: 0, totalValue: 0 };
+      }
+      reasonCounts[reason].count++;
+      reasonCounts[reason].totalValue += appraisal.quotedPrice || 0;
+    }
+    
+    const byReason = Object.entries(reasonCounts).map(([reason, data]) => ({
+      reason,
+      count: data.count,
+      totalValue: data.totalValue,
+    })).sort((a, b) => b.count - a.count);
+    
+    const recentMissed = missedAppraisals.slice(0, 10).map(a => ({
+      id: a.id,
+      vin: a.vin,
+      year: a.year,
+      make: a.make,
+      model: a.model,
+      quotedPrice: a.quotedPrice || 0,
+      missedReason: a.missedReason || 'other',
+      missedNotes: a.missedNotes,
+      createdAt: a.createdAt,
+    }));
+    
+    return { totalMissed, totalLostValue, byReason, recentMissed };
+  }
+  
+  async getAppraisalAccuracyReport(dealershipId: number): Promise<{
+    totalPurchased: number;
+    averageVariance: number;
+    overPaidCount: number;
+    underPaidCount: number;
+    exactCount: number;
+    totalOverpaid: number;
+    totalUnderpaid: number;
+    monthlyTrend: { month: string; avgVariance: number; count: number }[];
+    recentPurchases: { id: number; vin: string; year: number; make: string; model: string; quotedPrice: number; actualSalePrice: number; variance: number; createdAt: Date }[];
+  }> {
+    const purchasedAppraisals = await db.select()
+      .from(vehicleAppraisals)
+      .where(and(
+        eq(vehicleAppraisals.dealershipId, dealershipId),
+        eq(vehicleAppraisals.status, 'purchased'),
+        isNotNull(vehicleAppraisals.actualSalePrice),
+        isNotNull(vehicleAppraisals.quotedPrice)
+      ))
+      .orderBy(desc(vehicleAppraisals.createdAt));
+    
+    const totalPurchased = purchasedAppraisals.length;
+    
+    let totalVariance = 0;
+    let overPaidCount = 0;
+    let underPaidCount = 0;
+    let exactCount = 0;
+    let totalOverpaid = 0;
+    let totalUnderpaid = 0;
+    
+    const monthlyData: Record<string, { totalVariance: number; count: number }> = {};
+    
+    for (const appraisal of purchasedAppraisals) {
+      const quoted = appraisal.quotedPrice || 0;
+      const actual = appraisal.actualSalePrice || 0;
+      const variance = quoted > 0 ? ((actual - quoted) / quoted) * 100 : 0;
+      const diff = actual - quoted;
+      
+      totalVariance += variance;
+      
+      if (diff > 100) { // More than $1 overpaid (in cents)
+        overPaidCount++;
+        totalOverpaid += diff;
+      } else if (diff < -100) { // More than $1 underpaid (in cents)
+        underPaidCount++;
+        totalUnderpaid += Math.abs(diff);
+      } else {
+        exactCount++;
+      }
+      
+      const monthKey = appraisal.createdAt.toISOString().slice(0, 7); // YYYY-MM
+      if (!monthlyData[monthKey]) {
+        monthlyData[monthKey] = { totalVariance: 0, count: 0 };
+      }
+      monthlyData[monthKey].totalVariance += variance;
+      monthlyData[monthKey].count++;
+    }
+    
+    const averageVariance = totalPurchased > 0 ? totalVariance / totalPurchased : 0;
+    
+    const monthlyTrend = Object.entries(monthlyData)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-12) // Last 12 months
+      .map(([month, data]) => ({
+        month,
+        avgVariance: data.count > 0 ? data.totalVariance / data.count : 0,
+        count: data.count,
+      }));
+    
+    const recentPurchases = purchasedAppraisals.slice(0, 10).map(a => ({
+      id: a.id,
+      vin: a.vin,
+      year: a.year,
+      make: a.make,
+      model: a.model,
+      quotedPrice: a.quotedPrice || 0,
+      actualSalePrice: a.actualSalePrice || 0,
+      variance: a.quotedPrice && a.quotedPrice > 0 
+        ? (((a.actualSalePrice || 0) - a.quotedPrice) / a.quotedPrice) * 100 
+        : 0,
+      createdAt: a.createdAt,
+    }));
+    
+    return {
+      totalPurchased,
+      averageVariance,
+      overPaidCount,
+      underPaidCount,
+      exactCount,
+      totalOverpaid,
+      totalUnderpaid,
+      monthlyTrend,
+      recentPurchases,
+    };
   }
   
   async getVehicleAppraisalById(id: number, dealershipId: number): Promise<VehicleAppraisal | undefined> {

@@ -8124,6 +8124,30 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
   
+  // Get missed trades stats for dealership
+  app.get("/api/manager/appraisals/missed-stats", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const stats = await storage.getMissedTradesStats(dealershipId);
+      res.json(stats);
+    } catch (error) {
+      logError('Error fetching missed trades stats:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-appraisals-missed-stats' });
+      res.status(500).json({ error: "Failed to fetch missed trades stats" });
+    }
+  });
+  
+  // Get appraisal accuracy report for dealership
+  app.get("/api/manager/appraisals/accuracy-report", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const report = await storage.getAppraisalAccuracyReport(dealershipId);
+      res.json(report);
+    } catch (error) {
+      logError('Error fetching accuracy report:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-appraisals-accuracy-report' });
+      res.status(500).json({ error: "Failed to fetch accuracy report" });
+    }
+  });
+  
   // Get single appraisal by ID
   app.get("/api/manager/appraisals/:id", authMiddleware, requireRole("manager"), async (req, res) => {
     try {
