@@ -3317,6 +3317,20 @@ export default function Manager() {
                                           <span className="ml-1">• {comp.listingType === 'dealer' ? 'Dealer' : 'Private'}</span>
                                         )}
                                       </div>
+                                      {(comp.exteriorColor || comp.interiorColor) && (
+                                        <div className="flex gap-3 mt-1.5 text-xs">
+                                          {comp.exteriorColor && (
+                                            <span className="inline-flex items-center gap-1 text-muted-foreground">
+                                              <span className="font-medium">Ext:</span> {comp.exteriorColor}
+                                            </span>
+                                          )}
+                                          {comp.interiorColor && (
+                                            <span className="inline-flex items-center gap-1 text-muted-foreground">
+                                              <span className="font-medium">Int:</span> {comp.interiorColor}
+                                            </span>
+                                          )}
+                                        </div>
+                                      )}
                                     </div>
                                     <div className="text-right ml-4">
                                       <div className="font-bold text-lg">${comp.price.toLocaleString()}</div>

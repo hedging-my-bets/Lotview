@@ -7155,7 +7155,9 @@ Format your response in clear sections with actionable recommendations.`;
         listingType: listing.listingType,
         listingUrl: listing.listingUrl,
         postedDate: listing.postedDate,
-        scrapedAt: listing.scrapedAt
+        scrapedAt: listing.scrapedAt,
+        interiorColor: listing.interiorColor,
+        exteriorColor: listing.exteriorColor
       }));
       
       // Import market pricing service
