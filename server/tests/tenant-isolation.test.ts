@@ -1,3 +1,18 @@
+import {
+  BASE_URL,
+  fetchWithTimeout,
+  authenticatedFetch,
+  runTest,
+  assert,
+  printTestResults,
+  seedTestData,
+  seedVehicleForDealership,
+  loginAs,
+  logout,
+  TestUser,
+  TestDealership
+} from './test-helpers';
+
 interface TestResult {
   name: string;
   passed: boolean;
@@ -5,90 +20,15 @@ interface TestResult {
   duration: number;
 }
 
-const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:5000';
-
-// Test user credentials - these should be seeded in the database
-const TEST_DEALERSHIP_1 = {
-  dealershipId: 1,
-  username: 'test_tenant1@test.com',
-  password: 'TestPassword123!',
-  role: 'manager'
-};
-
-const TEST_DEALERSHIP_2 = {
-  dealershipId: 2,
-  username: 'test_tenant2@test.com', 
-  password: 'TestPassword456!',
-  role: 'manager'
-};
-
-async function fetchWithTimeout(url: string, options?: RequestInit, timeout = 10000): Promise<{ status: number; body: string; headers: Headers }> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-  try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
-    const body = await response.text();
-    clearTimeout(timeoutId);
-    return { status: response.status, body, headers: response.headers };
-  } catch (error) {
-    clearTimeout(timeoutId);
-    throw error;
-  }
-}
-
-// Cookie/session management for authenticated tests
-async function loginAndGetCookie(username: string, password: string): Promise<string | null> {
-  const { status, body, headers } = await fetchWithTimeout(`${BASE_URL}/api/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
-    credentials: 'include'
-  });
-  
-  if (status !== 200) {
-    return null;
-  }
-  
-  // Extract session cookie from Set-Cookie header
-  const setCookie = headers.get('set-cookie');
-  if (setCookie) {
-    // Parse the connect.sid or session cookie
-    const match = setCookie.match(/connect\.sid=[^;]+/);
-    return match ? match[0] : null;
-  }
-  
-  return null;
-}
-
-async function authenticatedFetch(url: string, cookie: string, options?: RequestInit): Promise<{ status: number; body: string }> {
-  const { status, body } = await fetchWithTimeout(url, {
-    ...options,
-    headers: {
-      ...options?.headers,
-      'Cookie': cookie
-    }
-  });
-  return { status, body };
-}
-
-async function runTest(name: string, testFn: () => Promise<void>): Promise<TestResult> {
-  const start = Date.now();
-  try {
-    await testFn();
-    return { name, passed: true, duration: Date.now() - start };
-  } catch (error) {
-    return { 
-      name, 
-      passed: false, 
-      error: error instanceof Error ? error.message : String(error),
-      duration: Date.now() - start 
-    };
-  }
-}
-
-function assert(condition: boolean, message: string): void {
-  if (!condition) throw new Error(message);
+interface TestContext {
+  dealership1: TestDealership;
+  dealership2: TestDealership;
+  user1: TestUser;
+  user2: TestUser;
+  cookie1: string | null;
+  cookie2: string | null;
+  vehicle1Id: number | null;
+  vehicle2Id: number | null;
 }
 
 async function runTenantIsolationTests(): Promise<TestResult[]> {
@@ -150,7 +90,7 @@ async function runTenantIsolationTests(): Promise<TestResult[]> {
   // ====== INVALID TOKEN TESTS ======
 
   results.push(await runTest('Malformed JWT token is rejected', async () => {
-    const { status, body } = await fetchWithTimeout(`${BASE_URL}/api/messenger-conversations`, {
+    const { status } = await fetchWithTimeout(`${BASE_URL}/api/messenger-conversations`, {
       headers: { 'Authorization': 'Bearer invalid-token-here' }
     });
     assert(status === 401 || status === 403, `Expected 401/403 for invalid token, got ${status}`);
@@ -167,7 +107,6 @@ async function runTenantIsolationTests(): Promise<TestResult[]> {
     const { status } = await fetchWithTimeout(`${BASE_URL}/api/messenger-conversations`, {
       headers: { 'Authorization': 'Bearer ' }
     });
-    // 400 is acceptable for malformed auth header
     assert(status === 400 || status === 401 || status === 403, `Expected 400/401/403 for empty Bearer token, got ${status}`);
   }));
 
@@ -175,7 +114,6 @@ async function runTenantIsolationTests(): Promise<TestResult[]> {
     const { status } = await fetchWithTimeout(`${BASE_URL}/api/messenger-conversations`, {
       headers: { 'Authorization': 'Basic dGVzdDp0ZXN0' }
     });
-    // 400 is acceptable when only Bearer auth is supported
     assert(status === 400 || status === 401 || status === 403, `Expected 400/401/403 for Basic auth, got ${status}`);
   }));
 
@@ -237,7 +175,7 @@ async function runTenantIsolationTests(): Promise<TestResult[]> {
   // ====== WEBHOOK ENDPOINT TESTS ======
 
   results.push(await runTest('PBS webhook endpoint accepts POST and validates', async () => {
-    const { status, body } = await fetchWithTimeout(`${BASE_URL}/api/pbs/webhook`, {
+    const { status } = await fetchWithTimeout(`${BASE_URL}/api/pbs/webhook`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'test' })
@@ -247,7 +185,7 @@ async function runTenantIsolationTests(): Promise<TestResult[]> {
   }));
 
   results.push(await runTest('GHL webhook endpoint accepts POST and validates', async () => {
-    const { status, body } = await fetchWithTimeout(`${BASE_URL}/api/ghl/webhook`, {
+    const { status } = await fetchWithTimeout(`${BASE_URL}/api/ghl/webhook`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'test' })
@@ -278,24 +216,20 @@ async function runTenantIsolationTests(): Promise<TestResult[]> {
     assert(status === 401 || status === 403, `Expected 401/403 for super admin dealerships, got ${status}`);
   }));
 
-  // ====== AUTHENTICATED CROSS-TENANT ISOLATION TESTS ======
-  // Attempt to login as dealership 1 user and access dealership 2 data
-  
+  // ====== UNAUTHENTICATED SESSION TESTS ======
+
   results.push(await runTest('AUTH: Login endpoint accepts valid credentials format', async () => {
-    const { status, body } = await fetchWithTimeout(`${BASE_URL}/api/login`, {
+    const { status } = await fetchWithTimeout(`${BASE_URL}/api/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: 'nonexistent@test.com', password: 'wrong' })
     });
-    // Should not be 404 (endpoint exists), not 500 (no server error)
     assert(status !== 404, 'Login endpoint should exist');
     assert(status < 500, `Login should not cause server error, got ${status}`);
-    // 401/400 for invalid credentials is expected
     assert(status === 401 || status === 400 || status === 200, `Login should return 401/400/200, got ${status}`);
   }));
 
   results.push(await runTest('AUTH: Session cookie is required for protected endpoints', async () => {
-    // Try to access with fake/expired session cookie
     const { status } = await authenticatedFetch(
       `${BASE_URL}/api/messenger-conversations`,
       'connect.sid=s%3Afake-session-id.invalid-signature'
@@ -304,7 +238,6 @@ async function runTenantIsolationTests(): Promise<TestResult[]> {
   }));
 
   results.push(await runTest('AUTH: Tampered session cookie is rejected for protected endpoints', async () => {
-    // Use a truly protected endpoint that requires auth (manager appraisals)
     const { status } = await authenticatedFetch(
       `${BASE_URL}/api/manager/appraisals`,
       'connect.sid=s%3Amodified.tampered-signature-here'
@@ -313,7 +246,6 @@ async function runTenantIsolationTests(): Promise<TestResult[]> {
   }));
 
   // ====== UNAUTHENTICATED CROSS-TENANT ACCESS TESTS ======
-  // These tests verify that unauthenticated users cannot access any tenant's data
 
   results.push(await runTest('Cross-tenant: Vehicle access with mismatched dealership is rejected', async () => {
     const { status } = await fetchWithTimeout(`${BASE_URL}/api/vehicles/999999999`, {
@@ -391,7 +323,6 @@ async function runTenantIsolationTests(): Promise<TestResult[]> {
   }));
 
   // ====== REQUEST BODY TAMPERING TESTS ======
-  // Tests that verify dealershipId in request body cannot override session tenant
 
   results.push(await runTest('Body tampering: dealershipId in body cannot bypass tenant isolation', async () => {
     const { status } = await fetchWithTimeout(`${BASE_URL}/api/vehicles`, {
@@ -419,69 +350,7 @@ async function runTenantIsolationTests(): Promise<TestResult[]> {
       `Appraisal creation with wrong tenant should be rejected, got ${status}`);
   }));
 
-  // ====== AUTHENTICATED CROSS-TENANT TESTS WITH REAL SESSIONS ======
-  // These tests attempt to seed test users and verify cross-tenant isolation
-  // Note: Requires test users to be pre-seeded in the database
-
-  results.push(await runTest('AUTH CROSS-TENANT: Login endpoint handles requests gracefully', async () => {
-    // Try to login - test user may not exist
-    const { status, body, headers } = await fetchWithTimeout(`${BASE_URL}/api/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        username: TEST_DEALERSHIP_1.username, 
-        password: TEST_DEALERSHIP_1.password 
-      })
-    });
-    
-    // Login should not cause server error
-    assert(status < 500, `Login should not cause server error, got ${status}`);
-    
-    // If login succeeded (200), verify response has user data or session
-    // If login failed (401/400), that's also valid for non-existent users
-    assert(status === 200 || status === 401 || status === 400, 
-      `Login should return 200/401/400, got ${status}`);
-  }));
-
-  results.push(await runTest('AUTH CROSS-TENANT: Login response structure is valid', async () => {
-    const { status, body } = await fetchWithTimeout(`${BASE_URL}/api/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        username: 'definitely-not-a-user@fake.com',
-        password: 'wrong-password-123'
-      })
-    });
-    
-    // Should not be server error
-    assert(status < 500, `Login should not error, got ${status}`);
-    
-    // Response should be valid JSON
-    if (body && !body.startsWith('<!DOCTYPE')) {
-      try {
-        JSON.parse(body);
-      } catch (e) {
-        // Non-JSON is acceptable for some auth flows
-      }
-    }
-  }));
-
-  results.push(await runTest('AUTH CROSS-TENANT: Session validation prevents tenant hopping', async () => {
-    // Create a fake session that claims to be from a different dealership
-    const fakeSession = 'connect.sid=s%3Afake-dealership-2-session.invalid';
-    
-    const { status } = await authenticatedFetch(
-      `${BASE_URL}/api/messenger-conversations`,
-      fakeSession
-    );
-    
-    // Should be rejected - either invalid session or unauthorized
-    assert(status === 401 || status === 403, 
-      `Fake cross-tenant session should be rejected, got ${status}`);
-  }));
-
   results.push(await runTest('AUTH CROSS-TENANT: Forged session cannot access protected manager endpoints', async () => {
-    // Attempt to access protected endpoint with forged session
     const forgedSession = 'connect.sid=s%3Aforged-session-with-wrong-tenant.bad-sig';
     
     const { status } = await authenticatedFetch(
@@ -494,12 +363,10 @@ async function runTenantIsolationTests(): Promise<TestResult[]> {
   }));
 
   results.push(await runTest('AUTH CROSS-TENANT: Query param cannot override tenant for protected endpoints', async () => {
-    // Try to override tenant via query param on protected endpoint
     const { status } = await fetchWithTimeout(
       `${BASE_URL}/api/manager/appraisals?dealershipId=99999`
     );
     
-    // Should require auth first - tenant param should not bypass auth
     assert(status === 401 || status === 403, 
       `Query param tenant override should be rejected without auth, got ${status}`);
   }));
@@ -507,29 +374,297 @@ async function runTenantIsolationTests(): Promise<TestResult[]> {
   return results;
 }
 
+async function runAuthenticatedCrossTenantTests(): Promise<TestResult[]> {
+  const results: TestResult[] = [];
+  
+  console.log('\n🔐 Setting up test data for authenticated cross-tenant tests...\n');
+  
+  let ctx: TestContext;
+  
+  try {
+    const { dealership1, dealership2, user1, user2 } = await seedTestData();
+    
+    console.log(`  ✓ Dealership 1: ${dealership1.name} (ID: ${dealership1.id})`);
+    console.log(`  ✓ Dealership 2: ${dealership2.name} (ID: ${dealership2.id})`);
+    console.log(`  ✓ User 1: ${user1.email} (Dealership: ${user1.dealershipId})`);
+    console.log(`  ✓ User 2: ${user2.email} (Dealership: ${user2.dealershipId})`);
+    
+    const vehicle1 = await seedVehicleForDealership(dealership1.id, 'ALPHA001');
+    const vehicle2 = await seedVehicleForDealership(dealership2.id, 'BETA001');
+    
+    console.log(`  ✓ Vehicle 1 created: ID ${vehicle1.id} (Dealership: ${dealership1.id})`);
+    console.log(`  ✓ Vehicle 2 created: ID ${vehicle2.id} (Dealership: ${dealership2.id})`);
+    
+    const cookie1 = await loginAs(user1.email, user1.password);
+    const cookie2 = await loginAs(user2.email, user2.password);
+    
+    console.log(`  ✓ User 1 login: ${cookie1 ? 'SUCCESS' : 'FAILED'}`);
+    console.log(`  ✓ User 2 login: ${cookie2 ? 'SUCCESS' : 'FAILED'}`);
+    
+    ctx = {
+      dealership1,
+      dealership2,
+      user1,
+      user2,
+      cookie1,
+      cookie2,
+      vehicle1Id: vehicle1.id,
+      vehicle2Id: vehicle2.id
+    };
+  } catch (error) {
+    console.error('  ✗ Failed to set up test data:', error);
+    results.push({
+      name: 'Setup: Seed test data for cross-tenant tests',
+      passed: false,
+      error: error instanceof Error ? error.message : String(error),
+      duration: 0
+    });
+    return results;
+  }
+  
+  results.push({
+    name: 'Setup: Seed test data for cross-tenant tests',
+    passed: true,
+    duration: 0
+  });
+  
+  // ====== REAL AUTHENTICATED CROSS-TENANT TESTS ======
+  
+  if (ctx.cookie1) {
+    results.push(await runTest('AUTH REAL: User1 can access their own vehicles list', async () => {
+      const { status, body } = await authenticatedFetch(
+        `${BASE_URL}/api/vehicles`,
+        ctx.cookie1!
+      );
+      assert(status === 200, `User1 should access their vehicles, got ${status}`);
+      const data = JSON.parse(body);
+      assert(Array.isArray(data) || (data.vehicles && Array.isArray(data.vehicles)), 
+        'Should return array of vehicles or paginated object');
+    }));
+    
+    results.push(await runTest('AUTH REAL: User1 can access their own vehicle by ID', async () => {
+      const { status, body } = await authenticatedFetch(
+        `${BASE_URL}/api/vehicles/${ctx.vehicle1Id}`,
+        ctx.cookie1!
+      );
+      assert(status === 200, `User1 should access their own vehicle with 200, got ${status}`);
+      const data = JSON.parse(body);
+      assert(data && data.id === ctx.vehicle1Id, `Should return vehicle with correct ID`);
+    }));
+    
+    results.push(await runTest('AUTH REAL: User1 CANNOT access User2 vehicle by ID', async () => {
+      const { status, body } = await authenticatedFetch(
+        `${BASE_URL}/api/vehicles/${ctx.vehicle2Id}`,
+        ctx.cookie1!
+      );
+      assert(status === 403 || status === 404, 
+        `User1 should NOT access User2 vehicle, got ${status}`);
+    }));
+    
+    results.push(await runTest('AUTH REAL: User1 vehicles list only shows their dealership', async () => {
+      const { status, body } = await authenticatedFetch(
+        `${BASE_URL}/api/vehicles`,
+        ctx.cookie1!
+      );
+      if (status === 200) {
+        const data = JSON.parse(body);
+        const vehicles = data.vehicles || data;
+        if (Array.isArray(vehicles) && vehicles.length > 0) {
+          for (const v of vehicles) {
+            assert(v.dealershipId === ctx.dealership1.id || v.dealershipId === undefined,
+              `User1 should only see dealership1 vehicles, found dealershipId: ${v.dealershipId}`);
+          }
+        }
+      }
+    }));
+    
+    results.push(await runTest('AUTH REAL: User1 cannot create vehicle for different dealership via body tampering', async () => {
+      const { status, body } = await authenticatedFetch(
+        `${BASE_URL}/api/vehicles`,
+        ctx.cookie1!,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            stockNumber: 'TAMPER-ALPHA',
+            dealershipId: ctx.dealership2.id,
+            year: 2024,
+            make: 'TamperMake',
+            model: 'TamperModel',
+            vin: 'TAMPERVIN123456789'
+          })
+        }
+      );
+      if (status === 200 || status === 201) {
+        const data = JSON.parse(body);
+        assert(data.dealershipId === ctx.dealership1.id,
+          `Body tampering CRITICAL FAILURE: Vehicle created with wrong dealershipId ${data.dealershipId}, expected ${ctx.dealership1.id}`);
+      } else {
+        assert(status === 400 || status === 403, 
+          `Body tampering should be rejected with 400/403, got ${status}`);
+      }
+    }));
+    
+    results.push(await runTest('AUTH REAL: User1 cannot delete User2 vehicle', async () => {
+      const { status } = await authenticatedFetch(
+        `${BASE_URL}/api/vehicles/${ctx.vehicle2Id}`,
+        ctx.cookie1!,
+        { method: 'DELETE' }
+      );
+      assert(status === 403 || status === 404 || status === 405, 
+        `User1 should NOT delete User2 vehicle, got ${status}`);
+    }));
+    
+    results.push(await runTest('AUTH REAL: User1 cannot update User2 vehicle', async () => {
+      const { status } = await authenticatedFetch(
+        `${BASE_URL}/api/vehicles/${ctx.vehicle2Id}`,
+        ctx.cookie1!,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ price: 1 })
+        }
+      );
+      assert(status === 403 || status === 404 || status === 405, 
+        `User1 should NOT update User2 vehicle, got ${status}`);
+    }));
+    
+    results.push(await runTest('AUTH REAL: User1 query param dealershipId override is ignored', async () => {
+      const { status, body } = await authenticatedFetch(
+        `${BASE_URL}/api/vehicles?dealershipId=${ctx.dealership2.id}`,
+        ctx.cookie1!
+      );
+      if (status === 200) {
+        const data = JSON.parse(body);
+        const vehicles = data.vehicles || data;
+        if (Array.isArray(vehicles) && vehicles.length > 0) {
+          for (const v of vehicles) {
+            assert(v.dealershipId === ctx.dealership1.id || v.dealershipId === undefined,
+              `Query param dealershipId should be ignored, found ${v.dealershipId}`);
+          }
+        }
+      }
+    }));
+    
+    results.push(await runTest('AUTH REAL: User1 cannot access User2 messenger conversations', async () => {
+      const { status, body } = await authenticatedFetch(
+        `${BASE_URL}/api/messenger-conversations`,
+        ctx.cookie1!
+      );
+      assert(status === 200 || status === 403, `Messenger endpoint access, got ${status}`);
+      if (status === 200) {
+        const data = JSON.parse(body);
+        const convos = Array.isArray(data) ? data : (data.conversations || []);
+        for (const c of convos) {
+          if (c.dealershipId) {
+            assert(c.dealershipId === ctx.dealership1.id,
+              `User1 should only see their conversations, found dealershipId: ${c.dealershipId}`);
+          }
+        }
+      }
+    }));
+    
+    results.push(await runTest('AUTH REAL: User1 cannot access User2 facebook accounts', async () => {
+      const { status, body } = await authenticatedFetch(
+        `${BASE_URL}/api/facebook-accounts`,
+        ctx.cookie1!
+      );
+      assert(status === 200 || status === 403, `Facebook accounts access, got ${status}`);
+      if (status === 200) {
+        const data = JSON.parse(body);
+        const accounts = Array.isArray(data) ? data : [];
+        for (const a of accounts) {
+          if (a.dealershipId) {
+            assert(a.dealershipId === ctx.dealership1.id,
+              `User1 should only see their fb accounts, found dealershipId: ${a.dealershipId}`);
+          }
+        }
+      }
+    }));
+    
+    results.push(await runTest('AUTH REAL: User1 cannot access User2 call recordings', async () => {
+      const { status, body } = await authenticatedFetch(
+        `${BASE_URL}/api/call-recordings`,
+        ctx.cookie1!
+      );
+      assert(status === 200 || status === 403, `Call recordings access, got ${status}`);
+      if (status === 200) {
+        const data = JSON.parse(body);
+        const recordings = Array.isArray(data) ? data : (data.recordings || []);
+        for (const r of recordings) {
+          if (r.dealershipId) {
+            assert(r.dealershipId === ctx.dealership1.id,
+              `User1 should only see their call recordings, found dealershipId: ${r.dealershipId}`);
+          }
+        }
+      }
+    }));
+  } else {
+    results.push({
+      name: 'AUTH REAL: User1 login failed - skipping authenticated tests',
+      passed: false,
+      error: 'Could not obtain session cookie for User1',
+      duration: 0
+    });
+  }
+  
+  if (ctx.cookie2) {
+    results.push(await runTest('AUTH REAL: User2 can access their own vehicles', async () => {
+      const { status } = await authenticatedFetch(
+        `${BASE_URL}/api/vehicles`,
+        ctx.cookie2!
+      );
+      assert(status === 200, `User2 should access their vehicles, got ${status}`);
+    }));
+    
+    results.push(await runTest('AUTH REAL: User2 CANNOT access User1 vehicle by ID', async () => {
+      const { status } = await authenticatedFetch(
+        `${BASE_URL}/api/vehicles/${ctx.vehicle1Id}`,
+        ctx.cookie2!
+      );
+      assert(status === 403 || status === 404, 
+        `User2 should NOT access User1 vehicle, got ${status}`);
+    }));
+    
+    results.push(await runTest('AUTH REAL: User2 cannot delete User1 vehicle', async () => {
+      const { status } = await authenticatedFetch(
+        `${BASE_URL}/api/vehicles/${ctx.vehicle1Id}`,
+        ctx.cookie2!,
+        { method: 'DELETE' }
+      );
+      assert(status === 403 || status === 404 || status === 405, 
+        `User2 should NOT delete User1 vehicle, got ${status}`);
+    }));
+  } else {
+    results.push({
+      name: 'AUTH REAL: User2 login failed - skipping authenticated tests',
+      passed: false,
+      error: 'Could not obtain session cookie for User2',
+      duration: 0
+    });
+  }
+  
+  // Cleanup: logout sessions
+  if (ctx.cookie1) {
+    await logout(ctx.cookie1);
+  }
+  if (ctx.cookie2) {
+    await logout(ctx.cookie2);
+  }
+  
+  return results;
+}
+
 async function main() {
   console.log('🔒 Running Tenant Isolation & Security Tests\n');
   console.log(`Base URL: ${BASE_URL}\n`);
 
-  const results = await runTenantIsolationTests();
+  const unauthResults = await runTenantIsolationTests();
+  const authResults = await runAuthenticatedCrossTenantTests();
+  
+  const allResults = [...unauthResults, ...authResults];
 
-  console.log('\n📊 Test Results:\n');
-  console.log('─'.repeat(80));
-
-  let passed = 0;
-  let failed = 0;
-
-  for (const result of results) {
-    const status = result.passed ? '✅' : '❌';
-    console.log(`${status} ${result.name} (${result.duration}ms)`);
-    if (!result.passed && result.error) {
-      console.log(`   └─ Error: ${result.error}`);
-    }
-    result.passed ? passed++ : failed++;
-  }
-
-  console.log('─'.repeat(80));
-  console.log(`\n📈 Summary: ${passed} passed, ${failed} failed out of ${results.length} tests`);
+  const { passed, failed } = printTestResults(allResults);
 
   process.exit(failed > 0 ? 1 : 0);
 }

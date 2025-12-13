@@ -31,15 +31,23 @@ export async function fetchWithTimeout(
 
 export async function authenticatedFetch(
   url: string, 
-  cookie: string, 
+  authToken: string, 
   options?: RequestInit
 ): Promise<{ status: number; body: string }> {
+  const isJwt = authToken.startsWith('Bearer ');
+  const headers: Record<string, string> = {
+    ...options?.headers as Record<string, string>
+  };
+  
+  if (isJwt) {
+    headers['Authorization'] = authToken;
+  } else {
+    headers['Cookie'] = authToken;
+  }
+  
   const { status, body } = await fetchWithTimeout(url, {
     ...options,
-    headers: {
-      ...options?.headers,
-      'Cookie': cookie
-    }
+    headers
   });
   return { status, body };
 }
@@ -160,16 +168,25 @@ export async function seedTestUser(
 }
 
 export async function loginAs(email: string, password: string): Promise<string | null> {
-  const { status, body, headers } = await fetchWithTimeout(`${BASE_URL}/api/login`, {
+  const { status, body, headers } = await fetchWithTimeout(`${BASE_URL}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: email, password }),
+    body: JSON.stringify({ email, password }),
     credentials: 'include'
   });
   
   if (status !== 200) {
     console.error(`Login failed for ${email}: ${status} - ${body}`);
     return null;
+  }
+  
+  try {
+    const data = JSON.parse(body);
+    if (data.token) {
+      return `Bearer ${data.token}`;
+    }
+  } catch (e) {
+    console.error(`Failed to parse login response: ${e}`);
   }
   
   const setCookie = headers.get('set-cookie');
