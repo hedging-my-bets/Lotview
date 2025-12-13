@@ -759,6 +759,14 @@ export const messengerConversations = pgTable("messenger_conversations", {
   ghlConversationId: text("ghl_conversation_id"), // GoHighLevel conversation ID for sync
   ghlContactId: text("ghl_contact_id"), // GoHighLevel contact ID for sync
   lastGhlSyncAt: timestamp("last_ghl_sync_at"), // When last synced with GHL
+  // Sales pipeline metadata (synced with GHL)
+  leadStatus: text("lead_status").default('new'), // 'new', 'hot', 'warm', 'cold', 'pending', 'sold', 'lost'
+  pipelineStage: text("pipeline_stage").default('inquiry'), // 'inquiry', 'qualified', 'test_drive', 'negotiation', 'closed'
+  tags: text("tags").array(), // Tags array e.g. ['Facebook Lead', 'Trade-In Interest']
+  vehicleOfInterest: text("vehicle_of_interest"), // Stock # or description of vehicle customer is interested in
+  assignedToUserId: integer("assigned_to_user_id").references(() => users.id, { onDelete: 'set null' }), // Direct assignment field
+  customerPhone: text("customer_phone"), // Phone if collected during conversation
+  customerEmail: text("customer_email"), // Email if collected during conversation
   // AI Agent settings
   aiEnabled: boolean("ai_enabled").notNull().default(true), // Whether AI can respond
   aiDisabledReason: text("ai_disabled_reason"), // 'stop_request', 'rudeness', 'manual'

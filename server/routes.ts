@@ -43,6 +43,7 @@ import { decodeVIN } from "./vin-decoder";
 import { createPbsApiService } from "./pbs-api-service";
 import { ObjectStorageService } from "./objectStorage";
 import { createGhlMessageSyncService } from "./ghl-message-sync-service";
+import { isFeatureEnabled, FEATURE_FLAGS } from "./feature-flags";
 
 // Configure multer for in-memory logo uploads (for object storage)
 const logoUpload = multer({
@@ -3647,23 +3648,26 @@ Provide a single, concise, friendly message that continues the conversation natu
 
       // Sync message to GoHighLevel - MUST await to store ghlMessageId before webhook arrives
       // This prevents duplicate messages when GHL webhook fires before ghlMessageId is persisted
-      const ghlSyncService = createGhlMessageSyncService(dealershipId);
-      try {
-        const syncResult = await ghlSyncService.syncMessageToGhl(
-          conversation as any,
-          message.trim(),
-          req.user?.name || 'Sales Team'
-        );
-        
-        // Store the GHL message ID on our record for deduplication
-        if (syncResult.success && syncResult.ghlMessageId) {
-          await storage.updateMessengerMessage(messengerMessage.id, dealershipId, {
-            ghlMessageId: syncResult.ghlMessageId
-          });
+      const ghlSyncEnabled = await isFeatureEnabled(FEATURE_FLAGS.ENABLE_GHL_MESSENGER_SYNC, dealershipId);
+      if (ghlSyncEnabled) {
+        const ghlSyncService = createGhlMessageSyncService(dealershipId);
+        try {
+          const syncResult = await ghlSyncService.syncMessageToGhl(
+            conversation as any,
+            message.trim(),
+            req.user?.name || 'Sales Team'
+          );
+          
+          // Store the GHL message ID on our record for deduplication
+          if (syncResult.success && syncResult.ghlMessageId) {
+            await storage.updateMessengerMessage(messengerMessage.id, dealershipId, {
+              ghlMessageId: syncResult.ghlMessageId
+            });
+          }
+        } catch (err) {
+          logError('[GHL Sync] Sync to GHL failed', err instanceof Error ? err : new Error(String(err)), { route: 'api-messenger-conversations-id-reply' });
+          // Don't fail the request - FB message was sent successfully
         }
-      } catch (err) {
-        logError('[GHL Sync] Sync to GHL failed', err instanceof Error ? err : new Error(String(err)), { route: 'api-messenger-conversations-id-reply' });
-        // Don't fail the request - FB message was sent successfully
       }
 
       res.json({ 
@@ -6902,9 +6906,10 @@ Format your response in clear sections with actionable recommendations.`;
       
       const result = await decodeVIN(vin, dealershipId);
       
-      // Auto-save appraisal if decode was successful and autoSave is enabled
+      // Auto-save appraisal if decode was successful, autoSave is enabled, and feature flag is on
       let appraisalId: number | undefined;
-      if (autoSave && !result.errorCode && result.vin) {
+      const appraisalAutoSaveEnabled = await isFeatureEnabled(FEATURE_FLAGS.ENABLE_APPRAISAL_AUTOSAVE, dealershipId);
+      if (autoSave && appraisalAutoSaveEnabled && !result.errorCode && result.vin) {
         try {
           // Check if appraisal already exists for this VIN
           const existing = await storage.getVehicleAppraisalByVin(result.vin, dealershipId);
@@ -7048,9 +7053,10 @@ Format your response in clear sections with actionable recommendations.`;
           }
         };
         
-        // Auto-save appraisal even with no listings if VIN provided
+        // Auto-save appraisal even with no listings if VIN provided and feature flag enabled
         let appraisalId: number | undefined;
-        if (autoSave && vin && typeof vin === 'string' && vin.length >= 11) {
+        const appraisalFlagEnabled = await isFeatureEnabled(FEATURE_FLAGS.ENABLE_APPRAISAL_AUTOSAVE, req.dealershipId);
+        if (autoSave && appraisalFlagEnabled && vin && typeof vin === 'string' && vin.length >= 11) {
           try {
             const dealershipId = req.dealershipId || 1;
             const existing = await storage.getVehicleAppraisalByVin(vin, dealershipId);
@@ -7143,9 +7149,10 @@ Format your response in clear sections with actionable recommendations.`;
         }
       };
       
-      // Auto-save market analysis to appraisal if VIN is provided
+      // Auto-save market analysis to appraisal if VIN is provided and feature flag enabled
       let appraisalId: number | undefined;
-      if (autoSave && vin && typeof vin === 'string' && vin.length >= 11) {
+      const appraisalFlagEnabled2 = await isFeatureEnabled(FEATURE_FLAGS.ENABLE_APPRAISAL_AUTOSAVE, req.dealershipId);
+      if (autoSave && appraisalFlagEnabled2 && vin && typeof vin === 'string' && vin.length >= 11) {
         try {
           const dealershipId = req.dealershipId || 1;
           const existing = await storage.getVehicleAppraisalByVin(vin, dealershipId);
@@ -9501,37 +9508,42 @@ Format your response in clear sections with actionable recommendations.`;
               // Handle call recording from GHL
               await handleGhlCallEvent(dealershipId, req.body, storage);
             } else {
-              // Message received or sent - sync to Lotview conversations
-              const ghlMessageSyncService = createGhlMessageSyncService(dealershipId);
-              
-              // Determine direction - FWC workflow may send "null" strings
-              let direction = normalizeNull(req.body.direction);
-              if (!direction) {
-                // Infer from type string or default to inbound (customer reply)
-                direction = typeStr.includes('outbound') ? 'outbound' : 'inbound';
+              // Message received or sent - sync to Lotview conversations (if feature flag enabled)
+              const ghlMessengerSyncEnabled = await isFeatureEnabled(FEATURE_FLAGS.ENABLE_GHL_MESSENGER_SYNC, dealershipId);
+              if (ghlMessengerSyncEnabled) {
+                const ghlMessageSyncService = createGhlMessageSyncService(dealershipId);
+                
+                // Determine direction - FWC workflow may send "null" strings
+                let direction = normalizeNull(req.body.direction);
+                if (!direction) {
+                  // Infer from type string or default to inbound (customer reply)
+                  direction = typeStr.includes('outbound') ? 'outbound' : 'inbound';
+                }
+                
+                // Map numeric types to string types for downstream handlers
+                const numericType = String(req.body.type);
+                let messageTypeStr = 'SMS'; // Default to SMS
+                if (numericType === '1' || type === '1') {
+                  messageTypeStr = 'Email';
+                } else if (numericType === '2' || type === '2' || numericType.toLowerCase().includes('sms')) {
+                  messageTypeStr = 'SMS';
+                } else if (typeof req.body.type === 'string' && !['1', '2', '3'].includes(req.body.type)) {
+                  messageTypeStr = req.body.type; // Use original string type if it's not numeric
+                }
+                
+                await ghlMessageSyncService.handleInboundGhlMessage({
+                  conversationId: normalizeNull(req.body.conversationId) || normalizeNull(req.body.conversation?.id),
+                  contactId: normalizeNull(req.body.contactId) || normalizeNull(req.body.contact?.id),
+                  locationId: locationId,
+                  body: req.body.body || req.body.message || '',
+                  messageId: normalizeNull(req.body.messageId) || req.body.id || `fwc-${Date.now()}`,
+                  direction: direction,
+                  dateAdded: normalizeNull(req.body.dateAdded) || normalizeNull(req.body.createdAt) || new Date().toISOString(),
+                  type: messageTypeStr,
+                });
+              } else {
+                console.log(`[GHL Webhook] Messenger sync disabled for dealership ${dealershipId}, skipping message sync`);
               }
-              
-              // Map numeric types to string types for downstream handlers
-              const numericType = String(req.body.type);
-              let messageTypeStr = 'SMS'; // Default to SMS
-              if (numericType === '1' || type === '1') {
-                messageTypeStr = 'Email';
-              } else if (numericType === '2' || type === '2' || numericType.toLowerCase().includes('sms')) {
-                messageTypeStr = 'SMS';
-              } else if (typeof req.body.type === 'string' && !['1', '2', '3'].includes(req.body.type)) {
-                messageTypeStr = req.body.type; // Use original string type if it's not numeric
-              }
-              
-              await ghlMessageSyncService.handleInboundGhlMessage({
-                conversationId: normalizeNull(req.body.conversationId) || normalizeNull(req.body.conversation?.id),
-                contactId: normalizeNull(req.body.contactId) || normalizeNull(req.body.contact?.id),
-                locationId: locationId,
-                body: req.body.body || req.body.message || '',
-                messageId: normalizeNull(req.body.messageId) || req.body.id || `fwc-${Date.now()}`,
-                direction: direction,
-                dateAdded: normalizeNull(req.body.dateAdded) || normalizeNull(req.body.createdAt) || new Date().toISOString(),
-                type: messageTypeStr,
-              });
             }
           } else if (typeStr.includes('call') || type === '3') {
             // Direct call event
