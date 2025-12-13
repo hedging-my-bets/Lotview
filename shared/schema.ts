@@ -2178,6 +2178,11 @@ export const vehicleAppraisals = pgTable("vehicle_appraisals", {
   // Notes and status
   notes: text("notes"),
   status: text("status").notNull().default('draft'), // 'draft', 'quoted', 'purchased', 'passed'
+  // Look-to-Book tracking fields
+  quotedPrice: integer("quoted_price"), // Price offered to customer (cents) - may differ from tradeinValue
+  actualSalePrice: integer("actual_sale_price"), // What we actually bought for if purchased (cents)
+  missedReason: text("missed_reason"), // 'lost_to_competitor', 'customer_declined', 'price_too_high', 'wholesaled', 'other'
+  missedNotes: text("missed_notes"), // Additional notes about why trade was missed
   // Timestamps
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
