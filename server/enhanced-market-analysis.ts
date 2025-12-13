@@ -31,6 +31,9 @@ export interface CompetitorListing {
   price: number;
   mileage?: number;
   listingUrl: string;
+  daysOnLot?: number;
+  interiorColor?: string;
+  exteriorColor?: string;
 }
 
 export interface CompetitorInfo {
@@ -313,16 +316,30 @@ export class EnhancedMarketAnalysisService {
       const avgPrice = Math.round(prices.reduce((a: number, b: number) => a + b, 0) / prices.length);
       
       const competitorListings: CompetitorListing[] = sellerListings
-        .slice(0, 5)
-        .map((l: MarketListing) => ({
-          year: l.year,
-          make: l.make,
-          model: l.model,
-          trim: l.trim || undefined,
-          price: l.price,
-          mileage: l.mileage || undefined,
-          listingUrl: l.listingUrl
-        }));
+        .slice(0, 10)
+        .map((l: MarketListing) => {
+          // Calculate days on lot from postedDate
+          let daysOnLot: number | undefined;
+          if (l.postedDate) {
+            const posted = new Date(l.postedDate);
+            const now = new Date();
+            daysOnLot = Math.floor((now.getTime() - posted.getTime()) / (1000 * 60 * 60 * 24));
+            if (daysOnLot < 0) daysOnLot = undefined;
+          }
+          
+          return {
+            year: l.year,
+            make: l.make,
+            model: l.model,
+            trim: l.trim || undefined,
+            price: l.price,
+            mileage: l.mileage || undefined,
+            listingUrl: l.listingUrl,
+            daysOnLot,
+            interiorColor: l.interiorColor || undefined,
+            exteriorColor: l.exteriorColor || undefined
+          };
+        });
       
       competitors.push({
         sellerName,

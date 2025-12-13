@@ -1544,14 +1544,16 @@ export default function Manager() {
 
         // Check for previous appraisal with this VIN
         try {
-          const appraisalData = await apiGet<any>(`/api/manager/appraisals/vin/${vin}`, {
+          const response = await apiGet<any>(`/api/manager/appraisals/vin/${vin}`, {
             'Authorization': `Bearer ${token}`
           });
-          if (appraisalData) {
-            setPreviousAppraisal(appraisalData);
+          // API returns { exists: boolean, appraisal: object | null }
+          // Only show popup if there's an actual saved appraisal with an id
+          if (response?.appraisal?.id) {
+            setPreviousAppraisal(response.appraisal);
             toast({
               title: "Previous Appraisal Found",
-              description: `This vehicle was appraised on ${new Date(appraisalData.createdAt).toLocaleDateString()}`,
+              description: `This vehicle was appraised on ${new Date(response.appraisal.createdAt).toLocaleDateString()}`,
             });
           } else {
             setPreviousAppraisal(null);
@@ -1752,9 +1754,10 @@ export default function Manager() {
     try {
       const token = localStorage.getItem('auth_token');
       
+      const parsedYear = vinResults.year ? parseInt(String(vinResults.year), 10) : NaN;
       const appraisalData = {
         vin: vin.toUpperCase(),
-        year: vinResults.year,
+        year: !isNaN(parsedYear) ? parsedYear : new Date().getFullYear(),
         make: vinResults.make,
         model: vinResults.model,
         trim: vinResults.trim,
@@ -3189,7 +3192,7 @@ export default function Manager() {
                                   Competitor Dealer Radar ({enhancedResults.competitors.length} dealers)
                                 </h4>
                                 <Accordion type="multiple" className="space-y-2">
-                                  {enhancedResults.competitors.slice(0, 5).map((comp: any, idx: number) => (
+                                  {enhancedResults.competitors.slice(0, 10).map((comp: any, idx: number) => (
                                     <AccordionItem key={idx} value={`dealer-${idx}`} className="border border-orange-200 dark:border-orange-800 rounded-lg overflow-hidden">
                                       <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-orange-100/50 dark:hover:bg-orange-900/20">
                                         <div className="flex items-center justify-between w-full pr-4">
@@ -3219,11 +3222,20 @@ export default function Manager() {
                                                     {listing.trim && <span className="text-muted-foreground">({listing.trim})</span>}
                                                     <ExternalLink className="w-3 h-3 text-muted-foreground" />
                                                   </div>
-                                                  {listing.mileage && (
-                                                    <div className="text-sm text-muted-foreground">
-                                                      {listing.mileage.toLocaleString()} km
-                                                    </div>
-                                                  )}
+                                                  <div className="text-sm text-muted-foreground flex flex-wrap gap-x-2">
+                                                    {listing.mileage && (
+                                                      <span>{listing.mileage.toLocaleString()} km</span>
+                                                    )}
+                                                    {typeof listing.daysOnLot === 'number' && (
+                                                      <span>• {listing.daysOnLot} days</span>
+                                                    )}
+                                                    {listing.exteriorColor && (
+                                                      <span>• Ext: {listing.exteriorColor}</span>
+                                                    )}
+                                                    {listing.interiorColor && (
+                                                      <span>• Int: {listing.interiorColor}</span>
+                                                    )}
+                                                  </div>
                                                 </div>
                                                 <div className="font-bold text-lg">
                                                   ${listing.price?.toLocaleString()}
@@ -3312,9 +3324,12 @@ export default function Manager() {
                                       </div>
                                       <div className="text-sm text-muted-foreground mt-1">
                                         {comp.stockNumber && `Stock #${comp.stockNumber} • `}{comp.location} • {comp.dealership}
-                                        {comp.mileage && ` • ${comp.mileage.toLocaleString()} mi`}
+                                        {comp.mileage && ` • ${comp.mileage.toLocaleString()} km`}
                                         {comp.listingType && (
                                           <span className="ml-1">• {comp.listingType === 'dealer' ? 'Dealer' : 'Private'}</span>
+                                        )}
+                                        {typeof comp.daysOnLot === 'number' && (
+                                          <span className="ml-1">• {comp.daysOnLot} days on lot</span>
                                         )}
                                       </div>
                                       {(comp.exteriorColor || comp.interiorColor) && (

@@ -61,6 +61,7 @@ export interface PricingComparison {
   listingUrl?: string;
   listingType?: string;
   postedDate?: Date | null;
+  daysOnLot?: number; // Days since posted
   interiorColor?: string;
   exteriorColor?: string;
   colorMatchScore?: number; // 0-100 score for how well colors match target vehicle
@@ -181,6 +182,15 @@ export function analyzeMarketPricing(
     const exteriorScore = calculateColorMatchScore(targetVehicle.exteriorColor, v.exteriorColor);
     const colorMatchScore = Math.round(interiorScore * 0.6 + exteriorScore * 0.4);
     
+    // Calculate days on lot from postedDate
+    let daysOnLot: number | undefined;
+    if (v.postedDate) {
+      const posted = new Date(v.postedDate);
+      const now = new Date();
+      daysOnLot = Math.floor((now.getTime() - posted.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysOnLot < 0) daysOnLot = undefined; // Future dates are invalid
+    }
+    
     return {
       stockNumber: v.stockNumber || `ID-${v.id}`,
       year: v.year,
@@ -197,6 +207,7 @@ export function analyzeMarketPricing(
       listingUrl: v.listingUrl,
       listingType: v.listingType,
       postedDate: v.postedDate,
+      daysOnLot,
       interiorColor: v.interiorColor,
       exteriorColor: v.exteriorColor,
       colorMatchScore
