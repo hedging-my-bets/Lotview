@@ -1005,6 +1005,9 @@ export default function Manager() {
   const [isSavingAppraisal, setIsSavingAppraisal] = useState(false);
   const [appraisalNotes, setAppraisalNotes] = useState("");
   const [quotedPrice, setQuotedPrice] = useState("");
+  const [reconCost, setReconCost] = useState("");
+  const [tradePayoff, setTradePayoff] = useState("");
+  const [targetRetailPrice, setTargetRetailPrice] = useState("");
   const [appraisalHistory, setAppraisalHistory] = useState<any[]>([]);
   const [isLoadingAppraisalHistory, setIsLoadingAppraisalHistory] = useState(false);
 
@@ -3274,21 +3277,23 @@ export default function Manager() {
                     </div>
                   )}
 
-                  {/* Save Appraisal Section */}
+                  {/* Save Appraisal Section with Appraisal Intelligence */}
                   {vinResults && (
                     <div className="border-t pt-6" data-testid="save-appraisal-section">
                       <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900 rounded-lg p-6">
                         <h4 className="font-semibold text-foreground mb-4 flex items-center gap-2">
                           <Save className="w-5 h-5" />
-                          Save Appraisal
+                          Appraisal Intelligence
                         </h4>
-                        <div className="grid gap-4 md:grid-cols-2">
+                        
+                        {/* Input Fields Grid */}
+                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                           <div>
-                            <Label htmlFor="quotedPrice">Quoted Price ($)</Label>
+                            <Label htmlFor="quotedPrice">Acquisition Cost ($)</Label>
                             <Input
                               id="quotedPrice"
                               type="number"
-                              placeholder="Enter your quoted price"
+                              placeholder="What you'll pay"
                               value={quotedPrice}
                               onChange={(e) => setQuotedPrice(e.target.value)}
                               data-testid="input-quoted-price"
@@ -3296,17 +3301,203 @@ export default function Manager() {
                             />
                           </div>
                           <div>
-                            <Label htmlFor="appraisalNotes">Notes</Label>
+                            <Label htmlFor="reconCost">Est. Recon Cost ($)</Label>
                             <Input
-                              id="appraisalNotes"
-                              placeholder="Vehicle condition, customer info, etc."
-                              value={appraisalNotes}
-                              onChange={(e) => setAppraisalNotes(e.target.value)}
-                              data-testid="input-appraisal-notes"
+                              id="reconCost"
+                              type="number"
+                              placeholder="Reconditioning"
+                              value={reconCost}
+                              onChange={(e) => setReconCost(e.target.value)}
+                              data-testid="input-recon-cost"
+                              className="mt-2"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="targetRetailPrice">Target Retail ($)</Label>
+                            <Input
+                              id="targetRetailPrice"
+                              type="number"
+                              placeholder={livePricing?.retailPrice?.average ? `Avg: $${livePricing.retailPrice.average.toLocaleString()}` : "Your asking price"}
+                              value={targetRetailPrice}
+                              onChange={(e) => setTargetRetailPrice(e.target.value)}
+                              data-testid="input-target-retail"
+                              className="mt-2"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="tradePayoff">Trade Payoff ($)</Label>
+                            <Input
+                              id="tradePayoff"
+                              type="number"
+                              placeholder="Loan balance (optional)"
+                              value={tradePayoff}
+                              onChange={(e) => setTradePayoff(e.target.value)}
+                              data-testid="input-trade-payoff"
                               className="mt-2"
                             />
                           </div>
                         </div>
+
+                        {/* Appraisal Intelligence Metrics */}
+                        {quotedPrice && (
+                          <div className="mt-6 p-4 bg-white dark:bg-gray-900 rounded-lg border border-green-200 dark:border-green-800" data-testid="appraisal-intelligence">
+                            <h5 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+                              <Sparkles className="w-4 h-4 text-amber-500" />
+                              Profit Projection
+                            </h5>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                              {/* Total Investment */}
+                              <div data-testid="total-investment">
+                                <div className="text-xs text-muted-foreground">Total Investment</div>
+                                <div className="text-lg font-bold text-foreground">
+                                  ${((parseFloat(quotedPrice) || 0) + (parseFloat(reconCost) || 0)).toLocaleString()}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  Acq + Recon
+                                </div>
+                              </div>
+                              
+                              {/* Gross Profit */}
+                              <div data-testid="gross-profit">
+                                <div className="text-xs text-muted-foreground">Gross Profit</div>
+                                {(() => {
+                                  const acquisition = parseFloat(quotedPrice) || 0;
+                                  const recon = parseFloat(reconCost) || 0;
+                                  const target = parseFloat(targetRetailPrice) || livePricing?.retailPrice?.average || 0;
+                                  const grossProfit = target - acquisition - recon;
+                                  const margin = target > 0 ? (grossProfit / target) * 100 : 0;
+                                  return (
+                                    <>
+                                      <div className={`text-lg font-bold ${grossProfit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                        {grossProfit >= 0 ? '+' : '-'}${Math.abs(grossProfit).toLocaleString()}
+                                      </div>
+                                      <div className={`text-xs ${margin >= 10 ? 'text-green-600' : margin >= 5 ? 'text-amber-600' : 'text-red-600'}`}>
+                                        {margin.toFixed(1)}% margin
+                                      </div>
+                                    </>
+                                  );
+                                })()}
+                              </div>
+
+                              {/* Equity Position */}
+                              <div data-testid="equity-position">
+                                <div className="text-xs text-muted-foreground">Trade Equity</div>
+                                {(() => {
+                                  const acquisition = parseFloat(quotedPrice) || 0;
+                                  const payoff = parseFloat(tradePayoff) || 0;
+                                  const equity = acquisition - payoff;
+                                  if (!tradePayoff) {
+                                    return (
+                                      <div className="text-lg font-bold text-muted-foreground">
+                                        N/A
+                                      </div>
+                                    );
+                                  }
+                                  return (
+                                    <>
+                                      <div className={`text-lg font-bold ${equity >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                        {equity >= 0 ? '+' : '-'}${Math.abs(equity).toLocaleString()}
+                                      </div>
+                                      <div className="text-xs text-muted-foreground">
+                                        {equity >= 0 ? 'Positive equity' : 'Negative equity'}
+                                      </div>
+                                    </>
+                                  );
+                                })()}
+                              </div>
+
+                              {/* Days to Sell Prediction */}
+                              <div data-testid="days-to-sell">
+                                <div className="text-xs text-muted-foreground">Est. Days to Sell</div>
+                                {(() => {
+                                  const avgDOM = livePricing?.competitorAnalysis?.avgCompetitorDOM || livePricing?.marketDemand?.daysSupply || 30;
+                                  const velocity = livePricing?.marketDemand?.marketVelocity || 'average';
+                                  const target = parseFloat(targetRetailPrice) || livePricing?.retailPrice?.average || 0;
+                                  const avgPrice = livePricing?.retailPrice?.average || target;
+                                  
+                                  // Adjust DOM based on price position
+                                  let priceAdjustment = 1;
+                                  if (target < avgPrice * 0.95) priceAdjustment = 0.7; // Below market = faster
+                                  else if (target > avgPrice * 1.05) priceAdjustment = 1.3; // Above market = slower
+                                  
+                                  const predictedDays = Math.round(avgDOM * priceAdjustment);
+                                  
+                                  return (
+                                    <>
+                                      <div className={`text-lg font-bold ${
+                                        predictedDays < 30 ? 'text-green-600 dark:text-green-400' :
+                                        predictedDays < 60 ? 'text-amber-600 dark:text-amber-400' :
+                                        'text-red-600 dark:text-red-400'
+                                      }`}>
+                                        {predictedDays} days
+                                      </div>
+                                      <div className="text-xs text-muted-foreground">
+                                        Based on {velocity} market
+                                      </div>
+                                    </>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+
+                            {/* Pricing Recommendation */}
+                            {livePricing && (
+                              <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700" data-testid="pricing-recommendation">
+                                <div className="flex items-center gap-2 text-sm">
+                                  {(() => {
+                                    const target = parseFloat(targetRetailPrice) || livePricing?.retailPrice?.average || 0;
+                                    const avgPrice = livePricing?.retailPrice?.average || 0;
+                                    const diff = target - avgPrice;
+                                    const pctDiff = avgPrice > 0 ? (diff / avgPrice) * 100 : 0;
+                                    
+                                    if (Math.abs(pctDiff) < 5) {
+                                      return (
+                                        <>
+                                          <span className="w-3 h-3 rounded-full bg-green-500" />
+                                          <span className="text-green-700 dark:text-green-300 font-medium">
+                                            Priced at market - good positioning
+                                          </span>
+                                        </>
+                                      );
+                                    } else if (pctDiff < 0) {
+                                      return (
+                                        <>
+                                          <span className="w-3 h-3 rounded-full bg-blue-500" />
+                                          <span className="text-blue-700 dark:text-blue-300 font-medium">
+                                            {Math.abs(pctDiff).toFixed(0)}% below market - expect quick sale
+                                          </span>
+                                        </>
+                                      );
+                                    } else {
+                                      return (
+                                        <>
+                                          <span className="w-3 h-3 rounded-full bg-amber-500" />
+                                          <span className="text-amber-700 dark:text-amber-300 font-medium">
+                                            {pctDiff.toFixed(0)}% above market - may take longer to sell
+                                          </span>
+                                        </>
+                                      );
+                                    }
+                                  })()}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Notes */}
+                        <div className="mt-4">
+                          <Label htmlFor="appraisalNotes">Notes</Label>
+                          <Input
+                            id="appraisalNotes"
+                            placeholder="Vehicle condition, customer info, etc."
+                            value={appraisalNotes}
+                            onChange={(e) => setAppraisalNotes(e.target.value)}
+                            data-testid="input-appraisal-notes"
+                            className="mt-2"
+                          />
+                        </div>
+
                         <Button
                           onClick={handleSaveAppraisal}
                           disabled={isSavingAppraisal}
