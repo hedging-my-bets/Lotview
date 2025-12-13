@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck, ClipboardCheck, BarChart3, Bot, Clock, Sparkles, Pencil, Save, TrendingDown, Minus, ArrowUp, ArrowDown, PackageOpen, ExternalLink, Eye, User, Send, Plus, Trash2, Copy, Building, DollarSign } from "lucide-react";
+import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck, ClipboardCheck, BarChart3, Bot, Clock, Sparkles, Pencil, Save, TrendingDown, Minus, ArrowUp, ArrowDown, PackageOpen, ExternalLink, Eye, User, Send, Plus, Trash2, Copy, Building, DollarSign, Activity } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CompetitorAlertsWidget } from "@/components/CompetitorAlertsWidget";
@@ -1011,6 +1012,11 @@ export default function Manager() {
   const [appraisalHistory, setAppraisalHistory] = useState<any[]>([]);
   const [isLoadingAppraisalHistory, setIsLoadingAppraisalHistory] = useState(false);
 
+  // Historical analytics state
+  const [priceTrends, setPriceTrends] = useState<{ date: string; averagePrice: number; medianPrice: number; listingCount: number }[]>([]);
+  const [isLoadingPriceTrends, setIsLoadingPriceTrends] = useState(false);
+  const [showHistoricalAnalytics, setShowHistoricalAnalytics] = useState(false);
+
   useEffect(() => {
     checkAuth();
   }, []);
@@ -1573,6 +1579,11 @@ export default function Manager() {
 
         // Fetch live market pricing from MarketCheck
         fetchLivePricing(vin);
+        
+        // Fetch historical price trends for this vehicle type
+        if (result.make && result.model) {
+          loadPriceTrends(result.make, result.model);
+        }
       }
     } catch (error) {
       console.error("VIN decode error:", error);
@@ -1818,6 +1829,38 @@ export default function Manager() {
       setAppraisalHistory([]);
     } finally {
       setIsLoadingAppraisalHistory(false);
+    }
+  };
+
+  const loadPriceTrends = async (make: string, model: string) => {
+    if (!make || !model) return;
+    
+    setIsLoadingPriceTrends(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const data = await apiGet<any[]>(`/api/manager/market-snapshots?make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}&limit=30`, {
+        'Authorization': `Bearer ${token}`
+      });
+      
+      if (Array.isArray(data) && data.length > 0) {
+        const formattedData = data
+          .map(s => ({
+            date: new Date(s.snapshotDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            averagePrice: s.averagePrice,
+            medianPrice: s.medianPrice,
+            listingCount: s.totalListings
+          }))
+          .reverse();
+        setPriceTrends(formattedData);
+        setShowHistoricalAnalytics(true);
+      } else {
+        setPriceTrends([]);
+      }
+    } catch (error) {
+      console.error('Error loading price trends:', error);
+      setPriceTrends([]);
+    } finally {
+      setIsLoadingPriceTrends(false);
     }
   };
 
@@ -3516,6 +3559,154 @@ export default function Manager() {
                             </>
                           )}
                         </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Historical Analytics Section */}
+                  {vinResults && showHistoricalAnalytics && (
+                    <div className="border-t pt-6" data-testid="historical-analytics-section">
+                      <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-lg p-6">
+                        <h4 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+                          <Activity className="w-5 h-5 text-blue-600" />
+                          Historical Market Analytics
+                          <span className="text-sm font-normal text-muted-foreground ml-2">
+                            {vinResults.make} {vinResults.model}
+                          </span>
+                        </h4>
+
+                        {isLoadingPriceTrends ? (
+                          <div className="flex items-center justify-center py-12">
+                            <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                          </div>
+                        ) : priceTrends.length > 0 ? (
+                          <div className="space-y-6">
+                            {/* Price Trend Chart */}
+                            <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
+                              <h5 className="text-sm font-medium text-muted-foreground mb-4">Price Trends (Last 30 Days)</h5>
+                              <div className="h-64" data-testid="price-trend-chart">
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <AreaChart data={priceTrends} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                                    <defs>
+                                      <linearGradient id="colorAvg" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                                      </linearGradient>
+                                      <linearGradient id="colorMedian" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3}/>
+                                        <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
+                                      </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                                    <XAxis 
+                                      dataKey="date" 
+                                      tick={{ fontSize: 12 }} 
+                                      className="text-muted-foreground"
+                                    />
+                                    <YAxis 
+                                      tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+                                      tick={{ fontSize: 12 }}
+                                      className="text-muted-foreground"
+                                    />
+                                    <Tooltip 
+                                      formatter={(value: number) => [`$${value.toLocaleString()}`, '']}
+                                      labelStyle={{ color: 'var(--foreground)' }}
+                                      contentStyle={{ 
+                                        backgroundColor: 'var(--background)', 
+                                        border: '1px solid var(--border)',
+                                        borderRadius: '8px'
+                                      }}
+                                    />
+                                    <Legend />
+                                    <Area 
+                                      type="monotone" 
+                                      dataKey="averagePrice" 
+                                      name="Average Price"
+                                      stroke="#3b82f6" 
+                                      fillOpacity={1} 
+                                      fill="url(#colorAvg)" 
+                                    />
+                                    <Area 
+                                      type="monotone" 
+                                      dataKey="medianPrice" 
+                                      name="Median Price"
+                                      stroke="#22c55e" 
+                                      fillOpacity={1} 
+                                      fill="url(#colorMedian)" 
+                                    />
+                                  </AreaChart>
+                                </ResponsiveContainer>
+                              </div>
+                            </div>
+
+                            {/* Market Velocity Metrics */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                              {/* Price Change */}
+                              <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-blue-200 dark:border-blue-800" data-testid="metric-price-change">
+                                <div className="text-xs text-muted-foreground">Price Change</div>
+                                {(() => {
+                                  if (priceTrends.length < 2) return <div className="text-lg font-bold">N/A</div>;
+                                  const first = priceTrends[0].averagePrice;
+                                  const last = priceTrends[priceTrends.length - 1].averagePrice;
+                                  const change = last - first;
+                                  const pct = first > 0 ? ((change / first) * 100).toFixed(1) : '0';
+                                  return (
+                                    <>
+                                      <div className={`text-lg font-bold ${change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                        {change >= 0 ? '+' : ''}{pct}%
+                                      </div>
+                                      <div className="text-xs text-muted-foreground">
+                                        {change >= 0 ? '+' : '-'}${Math.abs(change).toLocaleString()}
+                                      </div>
+                                    </>
+                                  );
+                                })()}
+                              </div>
+
+                              {/* Current Avg */}
+                              <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-blue-200 dark:border-blue-800" data-testid="metric-current-avg">
+                                <div className="text-xs text-muted-foreground">Current Average</div>
+                                <div className="text-lg font-bold text-foreground">
+                                  ${priceTrends[priceTrends.length - 1]?.averagePrice?.toLocaleString() || 'N/A'}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  Latest snapshot
+                                </div>
+                              </div>
+
+                              {/* Listing Volume */}
+                              <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-blue-200 dark:border-blue-800" data-testid="metric-listing-volume">
+                                <div className="text-xs text-muted-foreground">Avg Listings</div>
+                                <div className="text-lg font-bold text-foreground">
+                                  {Math.round(priceTrends.reduce((sum, t) => sum + t.listingCount, 0) / priceTrends.length)}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  Per snapshot
+                                </div>
+                              </div>
+
+                              {/* Market Trend */}
+                              <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-blue-200 dark:border-blue-800" data-testid="metric-market-trend">
+                                <div className="text-xs text-muted-foreground">Market Trend</div>
+                                {(() => {
+                                  if (priceTrends.length < 2) return <div className="text-lg font-bold">Stable</div>;
+                                  const first = priceTrends[0].averagePrice;
+                                  const last = priceTrends[priceTrends.length - 1].averagePrice;
+                                  const pctChange = first > 0 ? ((last - first) / first) * 100 : 0;
+                                  if (pctChange > 3) return <div className="text-lg font-bold text-green-600 flex items-center gap-1"><TrendingUp className="w-4 h-4" /> Rising</div>;
+                                  if (pctChange < -3) return <div className="text-lg font-bold text-red-600 flex items-center gap-1"><TrendingDown className="w-4 h-4" /> Falling</div>;
+                                  return <div className="text-lg font-bold text-amber-600 flex items-center gap-1"><Minus className="w-4 h-4" /> Stable</div>;
+                                })()}
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-center py-8 text-muted-foreground">
+                            <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                            <p className="text-sm">No historical data available yet.</p>
+                            <p className="text-xs mt-1">Historical trends will appear after market analysis runs.</p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
