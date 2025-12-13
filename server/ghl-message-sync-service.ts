@@ -1,13 +1,43 @@
-import { storage } from "./storage";
-import { createGhlApiService } from "./ghl-api-service";
-import { facebookService } from "./facebook-service";
+import { storage as defaultStorage } from "./storage";
+import { createGhlApiService as defaultCreateGhlApiService } from "./ghl-api-service";
+import { facebookService as defaultFacebookService } from "./facebook-service";
 import type { MessengerConversation, MessengerMessage } from "@shared/schema";
+import type { IStorage } from "./storage";
+
+// Type for GHL API service methods used by this service
+export interface IGhlApiService {
+  searchContacts(params: { query: string; limit?: number }): Promise<{ success: boolean; data?: { contacts?: { id: string; name?: string; firstName?: string }[] }; error?: string }>;
+  createContact(params: { name: string; firstName?: string; lastName?: string; source?: string; tags?: string[] }): Promise<{ success: boolean; data?: { id: string }; error?: string }>;
+  getOrCreateConversation(contactId: string, type: string): Promise<{ success: boolean; data?: { id: string }; error?: string }>;
+  sendMessage(conversationId: string, params: { type: string; message: string }): Promise<{ success: boolean; data?: { id: string }; error?: string }>;
+  getContact(contactId: string): Promise<{ success: boolean; data?: { id: string; name?: string; firstName?: string }; error?: string }>;
+  addTagsToContact(contactId: string, tags: string[]): Promise<{ success: boolean; error?: string }>;
+  updateContact(contactId: string, updates: Record<string, any>): Promise<{ success: boolean; error?: string }>;
+}
+
+// Type for Facebook service methods used by this service
+export interface IFacebookService {
+  sendMessengerMessage(pageAccessToken: string, recipientId: string, message: string): Promise<{ messageId: string }>;
+}
+
+// Dependencies interface for constructor injection
+export interface GhlMessageSyncServiceDeps {
+  storage?: IStorage;
+  createGhlApiService?: (dealershipId: number) => IGhlApiService;
+  facebookService?: IFacebookService;
+}
 
 export class GhlMessageSyncService {
   private dealershipId: number;
+  private storage: IStorage;
+  private createGhlApiService: (dealershipId: number) => IGhlApiService;
+  private facebookService: IFacebookService;
 
-  constructor(dealershipId: number) {
+  constructor(dealershipId: number, deps?: GhlMessageSyncServiceDeps) {
     this.dealershipId = dealershipId;
+    this.storage = deps?.storage ?? defaultStorage;
+    this.createGhlApiService = deps?.createGhlApiService ?? (defaultCreateGhlApiService as any);
+    this.facebookService = deps?.facebookService ?? (defaultFacebookService as any);
   }
 
   async syncMessageToGhl(
@@ -16,7 +46,7 @@ export class GhlMessageSyncService {
     senderName: string
   ): Promise<{ success: boolean; ghlMessageId?: string; error?: string }> {
     try {
-      const ghlService = createGhlApiService(this.dealershipId);
+      const ghlService = this.createGhlApiService(this.dealershipId);
 
       if (!conversation.ghlConversationId || !conversation.ghlContactId) {
         const linkResult = await this.linkConversationToGhl(conversation);
@@ -50,7 +80,7 @@ export class GhlMessageSyncService {
     conversation: MessengerConversation
   ): Promise<{ success: boolean; ghlConversationId?: string; ghlContactId?: string; error?: string }> {
     try {
-      const ghlService = createGhlApiService(this.dealershipId);
+      const ghlService = this.createGhlApiService(this.dealershipId);
 
       const searchResult = await ghlService.searchContacts({
         query: conversation.participantName,
@@ -83,7 +113,7 @@ export class GhlMessageSyncService {
         return { success: false, error: conversationResult.error || 'Failed to create GHL conversation' };
       }
 
-      await storage.updateMessengerConversation(conversation.id, this.dealershipId, {
+      await this.storage.updateMessengerConversation(conversation.id, this.dealershipId, {
         ghlConversationId: conversationResult.data.id,
         ghlContactId: ghlContactId,
         lastGhlSyncAt: new Date(),
@@ -112,7 +142,7 @@ export class GhlMessageSyncService {
   }): Promise<{ success: boolean; synced: boolean; error?: string }> {
     try {
       // Find chat conversation by GHL contact ID
-      const chatConversation = await storage.getConversationByGhlContactId(
+      const chatConversation = await this.storage.getConversationByGhlContactId(
         this.dealershipId,
         webhookData.contactId
       );
@@ -136,7 +166,7 @@ export class GhlMessageSyncService {
                       webhookData.type === 'Email' || webhookData.type === 'TYPE_EMAIL' ? 'email' : 'sms';
 
       // Append the message to the conversation
-      await storage.appendMessageToConversation(chatConversation.id, this.dealershipId, {
+      await this.storage.appendMessageToConversation(chatConversation.id, this.dealershipId, {
         role,
         content: webhookData.body,
         timestamp: webhookData.dateAdded || new Date().toISOString(),
@@ -164,7 +194,7 @@ export class GhlMessageSyncService {
     type: string;
   }): Promise<{ success: boolean; error?: string }> {
     try {
-      const existingMessage = await storage.getMessengerMessageByGhlId(this.dealershipId, webhookData.messageId);
+      const existingMessage = await this.storage.getMessengerMessageByGhlId(this.dealershipId, webhookData.messageId);
       if (existingMessage) {
         console.log(`[GHL Sync] Message ${webhookData.messageId} already exists, skipping`);
         return { success: true };
@@ -176,7 +206,7 @@ export class GhlMessageSyncService {
       }
 
       // Get conversation with page access token for potential Facebook forwarding
-      const conversationWithToken = await storage.getMessengerConversationWithTokenByGhlId(
+      const conversationWithToken = await this.storage.getMessengerConversationWithTokenByGhlId(
         this.dealershipId,
         webhookData.conversationId
       );
@@ -187,7 +217,7 @@ export class GhlMessageSyncService {
         return { success: true };
       }
 
-      const ghlService = createGhlApiService(this.dealershipId);
+      const ghlService = this.createGhlApiService(this.dealershipId);
       let senderName = 'Unknown';
 
       if (webhookData.direction === 'inbound') {
@@ -200,7 +230,7 @@ export class GhlMessageSyncService {
         
         // For outbound messages from GHL, check if this message originated from Lotview
         // by looking for an existing message with this ghlMessageId (deterministic check)
-        const existingByGhlId = await storage.getMessengerMessageByGhlId(this.dealershipId, webhookData.messageId);
+        const existingByGhlId = await this.storage.getMessengerMessageByGhlId(this.dealershipId, webhookData.messageId);
         
         if (existingByGhlId) {
           console.log(`[GHL Sync] Skipping - message already exists with ghlMessageId ${webhookData.messageId}`);
@@ -212,7 +242,7 @@ export class GhlMessageSyncService {
         if (conversationWithToken.pageAccessToken && conversationWithToken.participantId) {
           try {
             console.log(`[GHL Sync] Forwarding outbound GHL message to Facebook Messenger for conversation ${conversationWithToken.id}`);
-            const fbResult = await facebookService.sendMessengerMessage(
+            const fbResult = await this.facebookService.sendMessengerMessage(
               conversationWithToken.pageAccessToken,
               conversationWithToken.participantId,
               webhookData.body
@@ -227,7 +257,7 @@ export class GhlMessageSyncService {
         }
       }
 
-      const newMessage = await storage.createMessengerMessage({
+      const newMessage = await this.storage.createMessengerMessage({
         dealershipId: this.dealershipId,
         conversationId: conversationWithToken.id,
         facebookMessageId: `ghl_${webhookData.messageId}`,
@@ -241,7 +271,7 @@ export class GhlMessageSyncService {
         syncSource: 'ghl',
       });
 
-      await storage.updateMessengerConversation(conversationWithToken.id, this.dealershipId, {
+      await this.storage.updateMessengerConversation(conversationWithToken.id, this.dealershipId, {
         lastMessage: webhookData.direction === 'inbound'
           ? webhookData.body.substring(0, 200)
           : `You: ${webhookData.body.substring(0, 200)}`,
@@ -286,7 +316,7 @@ export class GhlMessageSyncService {
         return { success: false, error: 'No GHL contact linked' };
       }
 
-      const ghlService = createGhlApiService(this.dealershipId);
+      const ghlService = this.createGhlApiService(this.dealershipId);
 
       // Sync tags to GHL contact
       if (conversation.tags && conversation.tags.length > 0) {
@@ -322,7 +352,7 @@ export class GhlMessageSyncService {
       }
 
       // Update last sync timestamp
-      await storage.updateMessengerConversation(conversation.id, this.dealershipId, {
+      await this.storage.updateMessengerConversation(conversation.id, this.dealershipId, {
         lastGhlSyncAt: new Date(),
       } as any);
 
@@ -343,7 +373,7 @@ export class GhlMessageSyncService {
   }): Promise<{ success: boolean; error?: string }> {
     try {
       // Find conversation by GHL contact ID
-      const conversation = await storage.getMessengerConversationByGhlContactId(
+      const conversation = await this.storage.getMessengerConversationByGhlContactId(
         this.dealershipId,
         webhookData.contactId
       );
@@ -381,7 +411,7 @@ export class GhlMessageSyncService {
 
       if (Object.keys(updates).length > 0) {
         updates.lastGhlSyncAt = new Date();
-        await storage.updateMessengerConversation(conversation.id, this.dealershipId, updates as any);
+        await this.storage.updateMessengerConversation(conversation.id, this.dealershipId, updates as any);
         console.log(`[GHL Sync] Updated conversation ${conversation.id} from GHL contact update`);
       }
 
@@ -402,7 +432,7 @@ export class GhlMessageSyncService {
   }): Promise<{ success: boolean; error?: string }> {
     try {
       // Find conversation by GHL contact ID
-      const conversation = await storage.getMessengerConversationByGhlContactId(
+      const conversation = await this.storage.getMessengerConversationByGhlContactId(
         this.dealershipId,
         webhookData.contactId
       );
@@ -449,7 +479,7 @@ export class GhlMessageSyncService {
 
       if (Object.keys(updates).length > 0) {
         updates.lastGhlSyncAt = new Date();
-        await storage.updateMessengerConversation(conversation.id, this.dealershipId, updates as any);
+        await this.storage.updateMessengerConversation(conversation.id, this.dealershipId, updates as any);
         console.log(`[GHL Sync] Updated conversation ${conversation.id} from GHL opportunity update`);
       }
 

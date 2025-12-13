@@ -422,6 +422,156 @@ async function runGhlSyncTests(): Promise<TestResult[]> {
     }
   }));
 
+  // ===== DEPENDENCY INJECTION TESTS =====
+  // These tests verify that the service accepts and uses injected dependencies
+
+  results.push(await runTest('DI: Service accepts injected mock storage', async () => {
+    const mockStorage = createMockStorage();
+    const mockGhlService = createMockGhlApiService();
+    
+    const service = new GhlMessageSyncService(1, {
+      storage: mockStorage as any,
+      createGhlApiService: () => mockGhlService as any
+    });
+    
+    await service.syncToChatConversation({
+      contactId: 'di-test-contact',
+      body: 'DI test message',
+      messageId: 'di-test-msg-1',
+      direction: 'inbound',
+      dateAdded: new Date().toISOString(),
+      type: 'SMS'
+    });
+    
+    assert(mockStorage.calls.some(c => c.method === 'getConversationByGhlContactId'), 
+      'Should have called storage.getConversationByGhlContactId');
+    assert(mockStorage.calls[0].args[1] === 'di-test-contact', 
+      'Should pass correct contactId to storage');
+  }));
+
+  results.push(await runTest('DI: Service uses injected GHL API service factory', async () => {
+    const mockStorage = createMockStorage();
+    const mockGhlService = createMockGhlApiService();
+    let factoryCalled = false;
+    let factoryDealershipId: number | undefined;
+    
+    const service = new GhlMessageSyncService(42, {
+      storage: mockStorage as any,
+      createGhlApiService: (dealershipId) => {
+        factoryCalled = true;
+        factoryDealershipId = dealershipId;
+        return mockGhlService as any;
+      }
+    });
+    
+    await service.linkConversationToGhl({
+      id: 100,
+      participantId: 'test-participant',
+      participantName: 'Test Customer Name',
+      pageId: 'test-page',
+      dealershipId: 42
+    } as any);
+    
+    assert(factoryCalled, 'Should call createGhlApiService factory');
+    assert(factoryDealershipId === 42, `Factory should receive dealershipId 42, got ${factoryDealershipId}`);
+    assert(mockGhlService.calls.some(c => c.method === 'searchContacts'), 
+      'Should call GHL service searchContacts');
+  }));
+
+  results.push(await runTest('DI: linkConversationToGhl creates contact when not found', async () => {
+    const mockStorage = createMockStorage();
+    const mockGhlService = createMockGhlApiService();
+    
+    const service = new GhlMessageSyncService(1, {
+      storage: mockStorage as any,
+      createGhlApiService: () => mockGhlService as any
+    });
+    
+    const result = await service.linkConversationToGhl({
+      id: 200,
+      participantId: 'new-customer-id',
+      participantName: 'John Doe',
+      pageId: 'fb-page',
+      dealershipId: 1
+    } as any);
+    
+    assert(mockGhlService.calls.some(c => c.method === 'searchContacts'), 
+      'Should search for existing contact');
+    assert(mockGhlService.calls.some(c => c.method === 'createContact'), 
+      'Should create new contact when not found');
+    
+    const createCall = mockGhlService.calls.find(c => c.method === 'createContact');
+    assert(createCall?.args[0].name === 'John Doe', 'Contact name should match');
+    assert(createCall?.args[0].firstName === 'John', 'First name should be extracted');
+    
+    assert(mockGhlService.calls.some(c => c.method === 'getOrCreateConversation'), 
+      'Should create GHL conversation');
+    
+    assert(result.success === true, 'Should succeed');
+    assert(result.ghlContactId === 'mock-contact-123', 'Should return mock contact ID');
+    assert(result.ghlConversationId === 'mock-conv-456', 'Should return mock conversation ID');
+  }));
+
+  results.push(await runTest('DI: handleInboundGhlMessage uses storage to check duplicates', async () => {
+    const mockStorage = createMockStorage();
+    const mockGhlService = createMockGhlApiService();
+    
+    const service = new GhlMessageSyncService(5, {
+      storage: mockStorage as any,
+      createGhlApiService: () => mockGhlService as any
+    });
+    
+    await service.handleInboundGhlMessage({
+      conversationId: 'conv-123',
+      contactId: 'contact-456',
+      locationId: 'loc-789',
+      body: 'Test inbound message',
+      messageId: 'msg-xyz',
+      direction: 'inbound',
+      dateAdded: new Date().toISOString(),
+      type: 'TYPE_SMS'
+    });
+    
+    assert(mockStorage.calls.some(c => c.method === 'getMessengerMessageByGhlId'), 
+      'Should check for duplicate message');
+    assert(mockStorage.calls.some(c => c.method === 'getConversationByGhlContactId'), 
+      'Should look up conversation by contact ID');
+  }));
+
+  results.push(await runTest('DI: syncMessageToGhl uses injected services', async () => {
+    const mockStorage = createMockStorage();
+    const mockGhlService = createMockGhlApiService();
+    
+    const service = new GhlMessageSyncService(10, {
+      storage: mockStorage as any,
+      createGhlApiService: () => mockGhlService as any
+    });
+    
+    const result = await service.syncMessageToGhl(
+      { 
+        id: 300, 
+        participantId: 'p1', 
+        participantName: 'Jane Smith',
+        pageId: 'page-1',
+        dealershipId: 10,
+        ghlConversationId: 'existing-ghl-conv',
+        ghlContactId: 'existing-ghl-contact'
+      } as any,
+      'Hello from dealership',
+      'Sales Team'
+    );
+    
+    assert(mockGhlService.calls.some(c => c.method === 'sendMessage'), 
+      'Should call GHL sendMessage');
+    
+    const sendCall = mockGhlService.calls.find(c => c.method === 'sendMessage');
+    assert(sendCall?.args[0] === 'existing-ghl-conv', 'Should use existing GHL conversation ID');
+    assert(sendCall?.args[1].message === 'Hello from dealership', 'Message content should match');
+    
+    assert(result.success === true, 'Should succeed');
+    assert(result.ghlMessageId === 'mock-msg-789', 'Should return mock message ID');
+  }));
+
   return results;
 }
 
