@@ -3082,6 +3082,37 @@ export default function Manager() {
                           </div>
                         </div>
 
+                        {/* Trim Breakdown Section */}
+                        {pricingResults.trimBreakdown && Object.keys(pricingResults.trimBreakdown).length > 0 && (
+                          <div className="bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 border border-emerald-200 dark:border-emerald-900 rounded-lg p-6" data-testid="trim-breakdown">
+                            <h4 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+                              <Car className="w-5 h-5" />
+                              Pricing by Trim Level
+                            </h4>
+                            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                              {Object.entries(pricingResults.trimBreakdown)
+                                .sort((a: any, b: any) => b[1].avgPrice - a[1].avgPrice)
+                                .map(([trimName, stats]: [string, any]) => (
+                                  <div key={trimName} className="bg-white/60 dark:bg-black/20 rounded-lg p-4 border border-emerald-100 dark:border-emerald-800">
+                                    <div className="flex items-center justify-between mb-2">
+                                      <span className="font-semibold text-foreground">{trimName}</span>
+                                      <Badge variant="secondary" className="text-xs">{stats.count} listings</Badge>
+                                    </div>
+                                    <div className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
+                                      ${stats.avgPrice.toLocaleString()}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground mt-1">
+                                      Range: ${stats.minPrice.toLocaleString()} - ${stats.maxPrice.toLocaleString()}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                      Median: ${stats.medianPrice.toLocaleString()}
+                                    </div>
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+                        )}
+
                         {/* Enhanced Analysis Section */}
                         {enhancedResults && showEnhancedView && (
                           <>

@@ -7184,9 +7184,42 @@ Format your response in clear sections with actionable recommendations.`;
         autotrader_scraper: marketListings.filter(l => l.source === 'autotrader_scraper').length
       };
       
+      // Calculate trim breakdown - group comparisons by trim level (excluding unknown trims)
+      const trimBreakdown: Record<string, { count: number; avgPrice: number; minPrice: number; maxPrice: number; medianPrice: number }> = {};
+      if (result.comparisons && result.comparisons.length > 0) {
+        const trimGroups: Record<string, number[]> = {};
+        
+        for (const comp of result.comparisons) {
+          // Skip listings without a trim - they would skew the breakdown
+          if (!comp.trim || comp.trim.trim() === '') continue;
+          const trimKey = comp.trim;
+          if (!trimGroups[trimKey]) {
+            trimGroups[trimKey] = [];
+          }
+          trimGroups[trimKey].push(comp.price);
+        }
+        
+        for (const [trimName, prices] of Object.entries(trimGroups)) {
+          const sortedPrices = [...prices].sort((a, b) => a - b);
+          const sum = prices.reduce((acc, p) => acc + p, 0);
+          const median = sortedPrices.length % 2 === 0
+            ? Math.round((sortedPrices[sortedPrices.length / 2 - 1] + sortedPrices[sortedPrices.length / 2]) / 2)
+            : sortedPrices[Math.floor(sortedPrices.length / 2)];
+          
+          trimBreakdown[trimName] = {
+            count: prices.length,
+            avgPrice: Math.round(sum / prices.length),
+            minPrice: sortedPrices[0],
+            maxPrice: sortedPrices[sortedPrices.length - 1],
+            medianPrice: median
+          };
+        }
+      }
+      
       // Add meta information about data sources
       const responseWithMeta = {
         ...result,
+        trimBreakdown,
         meta: {
           dataSource: 'external_market',
           totalListings: marketListings.length,
