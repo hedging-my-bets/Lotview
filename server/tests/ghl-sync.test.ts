@@ -43,7 +43,79 @@ function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
 }
 
-// Test helper functions that mirror production logic for validation
+// ===== MOCK INFRASTRUCTURE =====
+// Storage mock that tracks calls and provides controlled responses
+interface MockCall {
+  method: string;
+  args: any[];
+}
+
+function createMockStorage() {
+  const calls: MockCall[] = [];
+  
+  return {
+    calls,
+    reset() { calls.length = 0; },
+    getConversationByGhlContactId: async (dealershipId: number, contactId: string) => {
+      calls.push({ method: 'getConversationByGhlContactId', args: [dealershipId, contactId] });
+      return null; // Simulate no existing conversation
+    },
+    getMessengerMessageByGhlId: async (dealershipId: number, messageId: string) => {
+      calls.push({ method: 'getMessengerMessageByGhlId', args: [dealershipId, messageId] });
+      return null; // Simulate no existing message
+    },
+    getMessengerConversationWithTokenByGhlId: async (dealershipId: number, conversationId: string) => {
+      calls.push({ method: 'getMessengerConversationWithTokenByGhlId', args: [dealershipId, conversationId] });
+      return null; // Simulate no matching conversation
+    },
+    updateMessengerConversation: async (id: number, dealershipId: number, updates: any) => {
+      calls.push({ method: 'updateMessengerConversation', args: [id, dealershipId, updates] });
+      return { id, ...updates };
+    },
+    appendMessageToConversation: async (id: number, dealershipId: number, message: any) => {
+      calls.push({ method: 'appendMessageToConversation', args: [id, dealershipId, message] });
+      return true;
+    },
+    createMessengerMessage: async (data: any) => {
+      calls.push({ method: 'createMessengerMessage', args: [data] });
+      return { id: 1, ...data };
+    }
+  };
+}
+
+// GHL API service mock
+function createMockGhlApiService() {
+  const calls: MockCall[] = [];
+  
+  return {
+    calls,
+    reset() { calls.length = 0; },
+    searchContacts: async (params: any) => {
+      calls.push({ method: 'searchContacts', args: [params] });
+      return { success: false, data: { contacts: [] } };
+    },
+    createContact: async (params: any) => {
+      calls.push({ method: 'createContact', args: [params] });
+      return { success: true, data: { id: 'mock-contact-123' } };
+    },
+    getOrCreateConversation: async (contactId: string, type: string) => {
+      calls.push({ method: 'getOrCreateConversation', args: [contactId, type] });
+      return { success: true, data: { id: 'mock-conv-456' } };
+    },
+    sendMessage: async (conversationId: string, params: any) => {
+      calls.push({ method: 'sendMessage', args: [conversationId, params] });
+      return { success: true, data: { id: 'mock-msg-789' } };
+    },
+    getContact: async (contactId: string) => {
+      calls.push({ method: 'getContact', args: [contactId] });
+      return { success: true, data: { id: contactId, name: 'Test Customer', firstName: 'Test' } };
+    }
+  };
+}
+
+// Business logic validation helpers
+// These functions define the EXPECTED behavior of GHL pipeline/status mappings
+// Tests validate that these mappings are correct for automotive CRM workflows
 function mapGhlPipelineStage(stageName: string): { pipelineStage?: string; leadStatus?: string } {
   const updates: { pipelineStage?: string; leadStatus?: string } = {};
   const lowerStageName = stageName.toLowerCase();
@@ -243,6 +315,111 @@ async function runGhlSyncTests(): Promise<TestResult[]> {
       })
     });
     assert(status < 500, `Webhook should handle OpportunityUpdate without server error, got ${status}`);
+  }));
+
+  // ===== SERVICE INTERFACE AND BEHAVIOR TESTS =====
+  // These tests verify that service methods behave correctly and return proper structures
+
+  results.push(await runTest('syncToChatConversation returns proper structure for unknown contact', async () => {
+    const service = createGhlMessageSyncService(1);
+    
+    // Call with a non-existent contact - should return success:true, synced:false
+    const result = await service.syncToChatConversation({
+      contactId: 'nonexistent-contact-xyz-' + Date.now(),
+      body: 'Test sync message',
+      messageId: 'sync-test-' + Date.now(),
+      direction: 'inbound',
+      dateAdded: new Date().toISOString(),
+      type: 'SMS'
+    });
+    
+    // Verify return structure
+    assert(typeof result.success === 'boolean', 'Result should have success boolean');
+    assert(typeof result.synced === 'boolean', 'Result should have synced boolean');
+    // For unknown contact, should return success but not synced
+    assert(result.success === true, 'Should succeed even for unknown contact');
+    assert(result.synced === false, 'Should not sync for unknown contact');
+  }));
+
+  results.push(await runTest('handleInboundGhlMessage returns success for non-matching conversation', async () => {
+    const service = createGhlMessageSyncService(1);
+    
+    // Call with non-matching GHL conversation ID
+    const result = await service.handleInboundGhlMessage({
+      conversationId: 'nonexistent-ghl-conv-' + Date.now(),
+      contactId: 'nonexistent-contact-' + Date.now(),
+      locationId: 'test-location',
+      body: 'Test message body',
+      messageId: 'unique-test-msg-' + Date.now(),
+      direction: 'inbound',
+      dateAdded: new Date().toISOString(),
+      type: 'SMS'
+    });
+    
+    // Should return success even if no matching conversation found
+    assert(typeof result.success === 'boolean', 'Result should have success boolean');
+    assert(result.success === true, 'Should succeed even for unmatched conversation');
+  }));
+
+  results.push(await runTest('handleInboundGhlMessage handles duplicate messageId gracefully', async () => {
+    const service = createGhlMessageSyncService(1);
+    const messageId = 'duplicate-test-' + Date.now();
+    
+    // First call
+    const result1 = await service.handleInboundGhlMessage({
+      conversationId: 'dup-test-conv',
+      contactId: 'dup-test-contact',
+      locationId: 'test-location',
+      body: 'First message',
+      messageId: messageId,
+      direction: 'inbound',
+      dateAdded: new Date().toISOString(),
+      type: 'SMS'
+    });
+    
+    // Second call with same messageId - should be deduplicated
+    const result2 = await service.handleInboundGhlMessage({
+      conversationId: 'dup-test-conv',
+      contactId: 'dup-test-contact',
+      locationId: 'test-location',
+      body: 'Duplicate message',
+      messageId: messageId,
+      direction: 'inbound',
+      dateAdded: new Date().toISOString(),
+      type: 'SMS'
+    });
+    
+    assert(result1.success === true, 'First call should succeed');
+    assert(result2.success === true, 'Second call should also succeed (dedup)');
+  }));
+
+  results.push(await runTest('GhlMessageSyncService.syncMessageToGhl returns proper structure', async () => {
+    const service = createGhlMessageSyncService(1);
+    const result = await service.syncMessageToGhl(
+      { id: -1, participantId: 'test', participantName: 'Test User', pageId: 'test', dealershipId: 1 } as any,
+      'Test message',
+      'Test Sender'
+    );
+    assert(typeof result.success === 'boolean', 'Result should have success boolean');
+    if (!result.success) {
+      assert(typeof result.error === 'string' || result.error === undefined, 'Error should be string or undefined');
+    }
+  }));
+
+  results.push(await runTest('GhlMessageSyncService.linkConversationToGhl returns proper structure', async () => {
+    const service = createGhlMessageSyncService(1);
+    const result = await service.linkConversationToGhl(
+      { id: -1, participantId: 'test', participantName: 'Test User', pageId: 'test', dealershipId: 1 } as any
+    );
+    assert(typeof result.success === 'boolean', 'Result should have success boolean');
+    if (result.success) {
+      assert(result.ghlConversationId === undefined || typeof result.ghlConversationId === 'string', 
+        'ghlConversationId should be string or undefined');
+      assert(result.ghlContactId === undefined || typeof result.ghlContactId === 'string',
+        'ghlContactId should be string or undefined');
+    } else {
+      assert(typeof result.error === 'string' || result.error === undefined, 'Error should be string or undefined');
+    }
   }));
 
   return results;

@@ -9,6 +9,38 @@ interface TestResult {
 
 const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:5000';
 
+// Mock fetch infrastructure for deterministic API fallback testing
+const originalFetch = globalThis.fetch;
+type MockFetchHandler = (url: string, options?: RequestInit) => Promise<Response>;
+
+function createMockFetch(handlers: Map<string, MockFetchHandler>): typeof fetch {
+  return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = typeof input === 'string' ? input : input.toString();
+    
+    for (const [pattern, handler] of handlers) {
+      if (url.includes(pattern)) {
+        return handler(url, init);
+      }
+    }
+    // Fall through to real fetch for non-mocked URLs
+    return originalFetch(input, init);
+  };
+}
+
+function mockResponse(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json' }
+  });
+}
+
+function withMockedFetch<T>(handlers: Map<string, MockFetchHandler>, fn: () => Promise<T>): Promise<T> {
+  globalThis.fetch = createMockFetch(handlers);
+  return fn().finally(() => {
+    globalThis.fetch = originalFetch;
+  });
+}
+
 async function fetchWithTimeout(url: string, options?: RequestInit, timeout = 10000): Promise<{ status: number; body: string }> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -79,9 +111,9 @@ async function runVinAppraisalTests(): Promise<TestResult[]> {
     assert(typeof result.vin === 'string', 'Result should have vin field');
     assert(result.vin === '2HGFC2F59LH555555', 'VIN should match input');
     // Either has decoded data or error info
-    const hasData = result.year || result.make || result.model;
-    const hasError = result.errorCode;
-    assert(hasData || hasError !== undefined, 'Result should have decoded data or error info');
+    const hasData = Boolean(result.year || result.make || result.model);
+    const hasError = result.errorCode !== undefined;
+    assert(hasData || hasError, 'Result should have decoded data or error info');
   }));
 
   results.push(await runTest('decodeVIN result includes source field when successful', async () => {
@@ -160,6 +192,116 @@ async function runVinAppraisalTests(): Promise<TestResult[]> {
       method: 'DELETE'
     });
     assert(status === 401 || status === 403, `Expected 401/403 without auth, got ${status}`);
+  }));
+
+  // ===== MOCKED FALLBACK PATH TESTS =====
+  // These tests use mocked fetch to verify fallback behavior deterministically
+
+  results.push(await runTest('MOCK: NHTSA success returns decoded vehicle data', async () => {
+    const handlers = new Map<string, MockFetchHandler>([
+      ['vpic.nhtsa.dot.gov', async () => mockResponse({
+        Results: [{
+          ModelYear: '2020',
+          Make: 'Honda',
+          Model: 'Civic',
+          Trim: 'EX',
+          BodyClass: 'Sedan',
+          EngineCylinders: '4',
+          ErrorCode: '0'
+        }]
+      })]
+    ]);
+
+    await withMockedFetch(handlers, async () => {
+      const result = await decodeVIN('1HGBH41JXMN109186');
+      assert(!result.errorCode, `Expected success, got error: ${result.errorCode}`);
+      assertEquals(result.source, 'nhtsa', 'Source should be nhtsa');
+      assertEquals(result.year, '2020', 'Year should be 2020');
+      assertEquals(result.make, 'Honda', 'Make should be Honda');
+      assertEquals(result.model, 'Civic', 'Model should be Civic');
+    });
+  }));
+
+  results.push(await runTest('MOCK: NHTSA error code returns error result', async () => {
+    const handlers = new Map<string, MockFetchHandler>([
+      ['vpic.nhtsa.dot.gov', async () => mockResponse({
+        Results: [{
+          ErrorCode: '5',
+          ErrorText: 'VIN not found in NHTSA database'
+        }]
+      })]
+    ]);
+
+    await withMockedFetch(handlers, async () => {
+      const result = await decodeVIN('1HGBH41JXMN109186');
+      assertEquals(result.errorCode, '5', 'Should return NHTSA error code');
+      const hasNotFoundMessage = result.errorMessage?.includes('not found') || result.errorMessage?.includes('VIN not found') || false;
+      assert(hasNotFoundMessage, `Error message should indicate not found: ${result.errorMessage}`);
+    });
+  }));
+
+  results.push(await runTest('MOCK: NHTSA network failure returns DECODE_ERROR', async () => {
+    const handlers = new Map<string, MockFetchHandler>([
+      ['vpic.nhtsa.dot.gov', async () => {
+        throw new Error('Network connection failed');
+      }]
+    ]);
+
+    await withMockedFetch(handlers, async () => {
+      const result = await decodeVIN('1HGBH41JXMN109186');
+      assert(result.errorCode === 'DECODE_ERROR' || result.errorCode === 'TIMEOUT', 
+        `Expected DECODE_ERROR or TIMEOUT, got ${result.errorCode}`);
+      assert(result.errorMessage !== undefined, 'Should have error message');
+    });
+  }));
+
+  results.push(await runTest('MOCK: NHTSA 500 error returns error result after retries', async () => {
+    let attempts = 0;
+    const handlers = new Map<string, MockFetchHandler>([
+      ['vpic.nhtsa.dot.gov', async () => {
+        attempts++;
+        return mockResponse({ error: 'Server error' }, 500);
+      }]
+    ]);
+
+    await withMockedFetch(handlers, async () => {
+      const result = await decodeVIN('1HGBH41JXMN109186');
+      assert(result.errorCode !== undefined, 'Should return error for 500 responses');
+      assert(attempts >= 1, `Should have made at least 1 attempt, made ${attempts}`);
+    });
+  }));
+
+  results.push(await runTest('MOCK: Empty NHTSA results handled gracefully', async () => {
+    const handlers = new Map<string, MockFetchHandler>([
+      ['vpic.nhtsa.dot.gov', async () => mockResponse({ Results: [] })]
+    ]);
+
+    await withMockedFetch(handlers, async () => {
+      const result = await decodeVIN('1HGBH41JXMN109186');
+      assert(result.errorCode !== undefined, 'Should return error for empty results');
+    });
+  }));
+
+  results.push(await runTest('MOCK: Response includes responseTimeMs metric', async () => {
+    const handlers = new Map<string, MockFetchHandler>([
+      ['vpic.nhtsa.dot.gov', async () => {
+        await new Promise(r => setTimeout(r, 50)); // Simulate 50ms latency
+        return mockResponse({
+          Results: [{
+            ModelYear: '2021',
+            Make: 'Toyota',
+            Model: 'Camry',
+            ErrorCode: '0'
+          }]
+        });
+      }]
+    ]);
+
+    await withMockedFetch(handlers, async () => {
+      const result = await decodeVIN('4T1BF1FK5CU123456');
+      assert(typeof result.responseTimeMs === 'number', 'Should have responseTimeMs');
+      assert((result.responseTimeMs ?? 0) >= 50, `Response time should be >= 50ms, was ${result.responseTimeMs}ms`);
+    });
   }));
 
   return results;
