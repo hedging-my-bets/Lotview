@@ -8119,10 +8119,50 @@ Format your response in clear sections with actionable recommendations.`;
         }
       }
       
+      // Auto-enrich colors for listings without them (limit to 10 per refresh)
+      let colorsEnriched = 0;
+      try {
+        // Get listings missing color data
+        const { listings: allListings } = await storage.getMarketListings(dealershipId, {}, 200, 0);
+        const listingsWithoutColors = allListings.filter(l => 
+          l.isActive && l.year && l.make && l.model && !l.exteriorColor && !l.interiorColor
+        ).slice(0, 10);
+        
+        if (listingsWithoutColors.length > 0) {
+          const { lookupCargurusColorsByYearMakeModel } = await import("./cargurus-color-service");
+          
+          for (const listing of listingsWithoutColors) {
+            try {
+              const colorResults = await lookupCargurusColorsByYearMakeModel(
+                listing.year!,
+                listing.make!,
+                listing.model!,
+                listing.trim || undefined
+              );
+              
+              const match = colorResults.find(r => r.found);
+              if (match && (match.exteriorColor || match.interiorColor)) {
+                await storage.updateMarketListing(listing.id, dealershipId, {
+                  exteriorColor: match.exteriorColor || null,
+                  interiorColor: match.interiorColor || null
+                });
+                colorsEnriched++;
+              }
+            } catch (colorError) {
+              // Silently continue on individual color lookup failures
+              console.log(`[ColorEnrich] Failed for ${listing.year} ${listing.make} ${listing.model}`);
+            }
+          }
+        }
+      } catch (colorError) {
+        logWarn('Color enrichment failed:', { error: colorError instanceof Error ? colorError.message : String(colorError) });
+      }
+      
       res.json({
         success: true,
         vehiclesAnalyzed: uniqueVehicles.size,
         newListingsFound: totalNewListings,
+        colorsEnriched,
         errors: errors.slice(0, 10), // Limit errors returned
         updatedAt: new Date().toISOString()
       });
