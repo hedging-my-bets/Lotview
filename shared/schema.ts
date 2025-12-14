@@ -1097,7 +1097,37 @@ export const marketListings = pgTable("market_listings", {
   exteriorColor: text("exterior_color"), // Exterior color from CarGurus
   vin: text("vin"), // Vehicle VIN for color lookup
   colorScrapedAt: timestamp("color_scraped_at"), // When colors were last scraped
+  // Extended CarGurus data fields
+  sourceConfidence: integer("source_confidence"), // Quality score 0-100 based on data completeness
+  specsJson: text("specs_json"), // JSON string with vehicle specs (engine, transmission, etc.)
+  featuresJson: text("features_json"), // JSON string with vehicle features list
+  marketAvailabilityCount: integer("market_availability_count"), // How many similar vehicles on market
+  dataSourceRank: integer("data_source_rank"), // Priority: 1=MarketCheck, 2=CarGurus, 3=Apify, 4=AutoTrader scraper
+  vehicleHash: text("vehicle_hash"), // Normalized hash for deduplication (make/model/year/trim/dealer/mileage)
+  dealerRating: text("dealer_rating"), // Dealer rating from source
+  historyBadges: text("history_badges"), // JSON array of history badges (accident-free, one-owner, etc.)
 });
+
+// Market Listing Sources - Tracks when same vehicle appears on multiple platforms
+export const marketListingSources = pgTable("market_listing_sources", {
+  id: serial("id").primaryKey(),
+  primaryListingId: integer("primary_listing_id").notNull().references(() => marketListings.id, { onDelete: 'cascade' }),
+  source: text("source").notNull(), // 'cargurus', 'autotrader', 'kijiji', etc.
+  externalId: text("external_id").notNull(),
+  listingUrl: text("listing_url").notNull(),
+  price: integer("price"),
+  sourceConfidence: integer("source_confidence"), // Quality score for this source
+  rawDataJson: text("raw_data_json"), // Full scraped data for reference
+  scrapedAt: timestamp("scraped_at").defaultNow().notNull(),
+});
+
+export const insertMarketListingSourcesSchema = createInsertSchema(marketListingSources).omit({
+  id: true,
+  scrapedAt: true,
+});
+
+export type InsertMarketListingSource = z.infer<typeof insertMarketListingSourcesSchema>;
+export type MarketListingSource = typeof marketListingSources.$inferSelect;
 
 // CarGurus Color Cache - Stores scraped color data by VIN with TTL
 export const cargurusColorCache = pgTable("cargurus_color_cache", {
