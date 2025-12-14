@@ -7008,7 +7008,67 @@ Format your response in clear sections with actionable recommendations.`;
         }
       }
       
-      res.json({ ...result, appraisalId });
+      // Fetch competitor vehicles if we have make/model/year
+      let competitors: Array<{
+        id: number;
+        year: number | null;
+        make: string | null;
+        model: string | null;
+        trim: string | null;
+        price: number | null;
+        mileage: number | null;
+        sellerName: string | null;
+        location: string | null;
+        listingUrl: string | null;
+        interiorColor: string | null;
+        exteriorColor: string | null;
+        daysOnMarket: number | null;
+      }> = [];
+      
+      if (!result.errorCode && result.year && result.make && result.model) {
+        try {
+          const vehicleYear = parseInt(result.year);
+          const { listings: marketListings } = await storage.getMarketListings(dealershipId, {
+            make: result.make,
+            model: result.model,
+            yearMin: vehicleYear - 1,
+            yearMax: vehicleYear + 1
+          }, 100, 0);
+          
+          const now = new Date();
+          competitors = marketListings
+            .filter(l => l.isActive && l.price && l.price > 0)
+            .sort((a, b) => (a.price || 0) - (b.price || 0))
+            .slice(0, 10)
+            .map(l => {
+              let daysOnMarket: number | null = null;
+              if (l.postedDate) {
+                const posted = new Date(l.postedDate);
+                daysOnMarket = Math.floor((now.getTime() - posted.getTime()) / (1000 * 60 * 60 * 24));
+              }
+              
+              return {
+                id: l.id,
+                year: l.year,
+                make: l.make,
+                model: l.model,
+                trim: l.trim,
+                price: l.price,
+                mileage: l.mileage,
+                sellerName: l.sellerName,
+                location: l.location,
+                listingUrl: l.listingUrl,
+                interiorColor: l.interiorColor || null,
+                exteriorColor: l.exteriorColor || null,
+                daysOnMarket
+              };
+            });
+        } catch (competitorError) {
+          logWarn('Failed to fetch competitor vehicles:', { error: competitorError instanceof Error ? competitorError.message : String(competitorError) });
+        }
+      }
+      
+      res.json({ ...result, appraisalId, competitors });
     } catch (error) {
       logError('Error decoding VIN:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-decode-vin' });
       res.json({
@@ -7935,6 +7995,7 @@ Format your response in clear sections with actionable recommendations.`;
         }
         
         // Get top comparable listings (up to 10, sorted by price proximity to vehicle)
+        const now = new Date();
         const comparableListings = relevantListings
           .filter(l => l.price && l.price > 0)
           .sort((a, b) => {
@@ -7943,18 +8004,30 @@ Format your response in clear sections with actionable recommendations.`;
             return diffA - diffB;
           })
           .slice(0, 10)
-          .map(l => ({
-            id: l.id,
-            year: l.year,
-            make: l.make,
-            model: l.model,
-            trim: l.trim,
-            price: l.price,
-            mileage: l.mileage,
-            sellerName: l.sellerName,
-            location: l.location,
-            listingUrl: l.listingUrl
-          }));
+          .map(l => {
+            // Calculate days on market from posted date
+            let daysOnMarket: number | null = null;
+            if (l.postedDate) {
+              const posted = new Date(l.postedDate);
+              daysOnMarket = Math.floor((now.getTime() - posted.getTime()) / (1000 * 60 * 60 * 24));
+            }
+            
+            return {
+              id: l.id,
+              year: l.year,
+              make: l.make,
+              model: l.model,
+              trim: l.trim,
+              price: l.price,
+              mileage: l.mileage,
+              sellerName: l.sellerName,
+              location: l.location,
+              listingUrl: l.listingUrl,
+              interiorColor: l.interiorColor || null,
+              exteriorColor: l.exteriorColor || null,
+              daysOnMarket
+            };
+          });
 
         return {
           ...vehicle,

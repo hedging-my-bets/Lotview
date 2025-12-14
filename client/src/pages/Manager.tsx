@@ -437,6 +437,90 @@ function InventoryAnalysisTab() {
                       View Similar on AutoTrader (Vancouver, 500km)
                     </a>
                   </div>
+                  
+                  {/* Competitor Vehicles Section */}
+                  {vehicle.comparableListings && vehicle.comparableListings.length > 0 && (
+                    <Accordion type="single" collapsible className="mt-3">
+                      <AccordionItem value="competitors" className="border-t">
+                        <AccordionTrigger className="py-2 text-sm">
+                          <span className="flex items-center gap-2">
+                            <Car className="w-4 h-4" />
+                            View {vehicle.comparableListings.length} Competitor Vehicles
+                          </span>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                          <div className="space-y-2 pt-2">
+                            {vehicle.comparableListings.map((comp: any, idx: number) => (
+                              <div 
+                                key={comp.id || idx} 
+                                className="bg-muted/50 rounded-lg p-3 text-sm"
+                                data-testid={`competitor-${vehicle.id}-${idx}`}
+                              >
+                                <div className="flex justify-between items-start gap-4">
+                                  <div className="flex-1">
+                                    <div className="font-medium">
+                                      {comp.year} {comp.make} {comp.model} {comp.trim || ''}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground mt-1">
+                                      {comp.sellerName || 'Unknown Dealer'} • {comp.location || 'Unknown Location'}
+                                    </div>
+                                    {/* Color info */}
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                      {comp.exteriorColor && (
+                                        <Badge variant="outline" className="text-xs">
+                                          Ext: {comp.exteriorColor}
+                                        </Badge>
+                                      )}
+                                      {comp.interiorColor && (
+                                        <Badge variant="outline" className="text-xs">
+                                          Int: {comp.interiorColor}
+                                        </Badge>
+                                      )}
+                                      {comp.daysOnMarket !== null && comp.daysOnMarket !== undefined && (
+                                        <Badge 
+                                          variant="outline" 
+                                          className={cn(
+                                            "text-xs",
+                                            comp.daysOnMarket > 60 ? "border-red-300 text-red-600" :
+                                            comp.daysOnMarket > 30 ? "border-yellow-300 text-yellow-600" :
+                                            "border-green-300 text-green-600"
+                                          )}
+                                        >
+                                          <Clock className="w-3 h-3 mr-1" />
+                                          {comp.daysOnMarket} days
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="font-bold">
+                                      {formatCurrency(comp.price)}
+                                    </div>
+                                    {comp.mileage && (
+                                      <div className="text-xs text-muted-foreground">
+                                        {comp.mileage.toLocaleString()} km
+                                      </div>
+                                    )}
+                                    {comp.listingUrl && (
+                                      <a
+                                        href={comp.listingUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-1"
+                                      >
+                                        <ExternalLink className="w-3 h-3" />
+                                        View
+                                      </a>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    </Accordion>
+                  )}
                 </CardContent>
               </Card>
             ))}
@@ -2379,6 +2463,89 @@ export default function Manager() {
                               )}
                             </div>
                           </div>
+                        )}
+                        
+                        {/* Competitor Vehicles from VIN Decode */}
+                        {vinResults.competitors && vinResults.competitors.length > 0 && (
+                          <Accordion type="single" collapsible className="mt-4 pt-4 border-t border-blue-200 dark:border-blue-800">
+                            <AccordionItem value="competitors" className="border-0">
+                              <AccordionTrigger className="py-2 text-sm hover:no-underline">
+                                <span className="flex items-center gap-2 font-semibold text-foreground">
+                                  <Car className="w-4 h-4" />
+                                  View {vinResults.competitors.length} Similar Vehicles on Market
+                                </span>
+                              </AccordionTrigger>
+                              <AccordionContent>
+                                <div className="space-y-2 pt-2">
+                                  {vinResults.competitors.map((comp: any, idx: number) => (
+                                    <div 
+                                      key={comp.id || idx} 
+                                      className="bg-white dark:bg-gray-800 rounded-lg p-3 text-sm border"
+                                      data-testid={`vin-competitor-${idx}`}
+                                    >
+                                      <div className="flex justify-between items-start gap-4">
+                                        <div className="flex-1">
+                                          <div className="font-medium">
+                                            {comp.year} {comp.make} {comp.model} {comp.trim || ''}
+                                          </div>
+                                          <div className="text-xs text-muted-foreground mt-1">
+                                            {comp.sellerName || 'Unknown Dealer'} • {comp.location || 'Unknown Location'}
+                                          </div>
+                                          {comp.mileage && (
+                                            <div className="text-xs text-muted-foreground">
+                                              {comp.mileage.toLocaleString()} km
+                                            </div>
+                                          )}
+                                          <div className="flex flex-wrap gap-2 mt-2">
+                                            {comp.exteriorColor && (
+                                              <Badge variant="outline" className="text-xs">
+                                                Ext: {comp.exteriorColor}
+                                              </Badge>
+                                            )}
+                                            {comp.interiorColor && (
+                                              <Badge variant="outline" className="text-xs">
+                                                Int: {comp.interiorColor}
+                                              </Badge>
+                                            )}
+                                            {comp.daysOnMarket !== null && comp.daysOnMarket !== undefined && (
+                                              <Badge 
+                                                variant="outline" 
+                                                className={cn(
+                                                  "text-xs",
+                                                  comp.daysOnMarket > 60 ? "border-red-300 text-red-600" :
+                                                  comp.daysOnMarket > 30 ? "border-yellow-300 text-yellow-600" :
+                                                  "border-green-300 text-green-600"
+                                                )}
+                                              >
+                                                <Clock className="w-3 h-3 mr-1" />
+                                                {comp.daysOnMarket} days
+                                              </Badge>
+                                            )}
+                                          </div>
+                                        </div>
+                                        <div className="text-right">
+                                          <div className="font-bold text-lg">
+                                            ${comp.price?.toLocaleString() || 'N/A'}
+                                          </div>
+                                          {comp.listingUrl && (
+                                            <a
+                                              href={comp.listingUrl}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-1"
+                                            >
+                                              <ExternalLink className="w-3 h-3" />
+                                              View Listing
+                                            </a>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </AccordionContent>
+                            </AccordionItem>
+                          </Accordion>
                         )}
                       </div>
                     </div>
