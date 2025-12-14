@@ -7216,10 +7216,95 @@ Format your response in clear sections with actionable recommendations.`;
         }
       }
       
+      // Calculate mileage adjustment - uses $0.12/km depreciation rate (industry standard)
+      const DEPRECIATION_RATE_PER_KM = 0.12; // CAD per km
+      let mileageAdjustment: { 
+        targetMileage: number | null;
+        marketAvgMileage: number;
+        mileageDifference: number;
+        priceAdjustment: number;
+        adjustedPrice: number;
+        adjustmentDirection: 'add' | 'subtract' | 'none';
+      } | null = null;
+      
+      if (result.comparisons && result.comparisons.length > 0) {
+        const mileages = result.comparisons.filter(c => c.mileage && c.mileage > 0).map(c => c.mileage!);
+        if (mileages.length > 0) {
+          const marketAvgMileage = Math.round(mileages.reduce((a, b) => a + b, 0) / mileages.length);
+          const targetMileage = mileage ? parseInt(mileage) : null;
+          
+          if (targetMileage && targetMileage > 0) {
+            const mileageDifference = marketAvgMileage - targetMileage; // Positive = target has fewer miles
+            const priceAdjustment = Math.round(Math.abs(mileageDifference) * DEPRECIATION_RATE_PER_KM);
+            const adjustedPrice = mileageDifference > 0 
+              ? result.averagePrice + priceAdjustment  // Fewer miles = worth more
+              : result.averagePrice - priceAdjustment; // More miles = worth less
+            
+            mileageAdjustment = {
+              targetMileage,
+              marketAvgMileage,
+              mileageDifference,
+              priceAdjustment,
+              adjustedPrice: Math.max(0, adjustedPrice),
+              adjustmentDirection: mileageDifference > 0 ? 'add' : mileageDifference < 0 ? 'subtract' : 'none'
+            };
+          } else {
+            mileageAdjustment = {
+              targetMileage: null,
+              marketAvgMileage,
+              mileageDifference: 0,
+              priceAdjustment: 0,
+              adjustedPrice: result.averagePrice,
+              adjustmentDirection: 'none'
+            };
+          }
+        }
+      }
+      
+      // Calculate market velocity indicator (Hot/Warm/Cold based on days on market and supply)
+      let marketVelocity: {
+        indicator: 'hot' | 'warm' | 'cold';
+        avgDaysOnMarket: number;
+        supplyLevel: 'low' | 'moderate' | 'high';
+        demandSignal: string;
+      } | null = null;
+      
+      if (result.comparisons && result.comparisons.length > 0) {
+        const daysOnMarket = result.comparisons
+          .filter(c => c.daysOnLot !== undefined && c.daysOnLot >= 0)
+          .map(c => c.daysOnLot!);
+        
+        const avgDays = daysOnMarket.length > 0 
+          ? Math.round(daysOnMarket.reduce((a, b) => a + b, 0) / daysOnMarket.length)
+          : 45; // Default assumption
+        
+        // Supply level based on total listings
+        const supplyLevel = result.totalComps <= 10 ? 'low' : result.totalComps <= 30 ? 'moderate' : 'high';
+        
+        // Determine market velocity
+        let indicator: 'hot' | 'warm' | 'cold';
+        let demandSignal: string;
+        
+        if (avgDays < 21 && supplyLevel !== 'high') {
+          indicator = 'hot';
+          demandSignal = 'High demand - vehicles selling quickly. Price aggressively.';
+        } else if (avgDays < 45 || (avgDays < 60 && supplyLevel === 'low')) {
+          indicator = 'warm';
+          demandSignal = 'Moderate demand - normal market conditions. Price competitively.';
+        } else {
+          indicator = 'cold';
+          demandSignal = 'Low demand - vehicles sitting longer. Consider pricing below market.';
+        }
+        
+        marketVelocity = { indicator, avgDaysOnMarket: avgDays, supplyLevel, demandSignal };
+      }
+      
       // Add meta information about data sources
       const responseWithMeta = {
         ...result,
         trimBreakdown,
+        mileageAdjustment,
+        marketVelocity,
         meta: {
           dataSource: 'external_market',
           totalListings: marketListings.length,

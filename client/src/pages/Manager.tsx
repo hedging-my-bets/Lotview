@@ -235,7 +235,7 @@ function InventoryAnalysisTab() {
       ) : inventoryData?.vehicles?.length > 0 ? (
         <div className="space-y-4">
           {/* Summary stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
             <Card>
               <CardContent className="p-4">
                 <div className="text-2xl font-bold">{inventoryData.totalVehicles}</div>
@@ -264,6 +264,18 @@ function InventoryAnalysisTab() {
                   {inventoryData.vehicles.filter((v: any) => v.priceComparison === 'above_market').length}
                 </div>
                 <div className="text-xs text-muted-foreground">Above Market</div>
+              </CardContent>
+            </Card>
+            <Card className="border-orange-200 bg-orange-50/50">
+              <CardContent className="p-4">
+                <div className="text-2xl font-bold text-orange-600">
+                  {inventoryData.vehicles.filter((v: any) => {
+                    if (!v.marketData || !v.price || !v.marketData.avgPrice) return false;
+                    const priceDiffPercent = ((v.price - v.marketData.avgPrice) / v.marketData.avgPrice) * 100;
+                    return Number.isFinite(priceDiffPercent) && Math.abs(priceDiffPercent) > 10;
+                  }).length}
+                </div>
+                <div className="text-xs text-muted-foreground">Price Alerts</div>
               </CardContent>
             </Card>
           </div>
@@ -349,6 +361,42 @@ function InventoryAnalysisTab() {
                       <Badge className={cn("text-xs", getPriceComparisonColor(vehicle.priceComparison))}>
                         {getPriceComparisonLabel(vehicle.priceComparison)}
                       </Badge>
+                      
+                      {/* Price Alert Badge - Shows when vehicle is >10% above/below market */}
+                      {vehicle.marketData && vehicle.price && vehicle.marketData.avgPrice > 0 && (() => {
+                        const priceDiff = vehicle.price - vehicle.marketData.avgPrice;
+                        const priceDiffPercent = (priceDiff / vehicle.marketData.avgPrice) * 100;
+                        if (!Number.isFinite(priceDiffPercent)) return null;
+                        const showAlert = Math.abs(priceDiffPercent) > 10;
+                        
+                        if (showAlert) {
+                          const isOverpriced = priceDiffPercent > 0;
+                          return (
+                            <div 
+                              className={cn(
+                                "flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium",
+                                isOverpriced 
+                                  ? "bg-red-100 text-red-700 border border-red-200" 
+                                  : "bg-green-100 text-green-700 border border-green-200"
+                              )}
+                              data-testid={`price-alert-${vehicle.id}`}
+                            >
+                              {isOverpriced ? (
+                                <>
+                                  <ArrowUp className="w-3 h-3" />
+                                  <span>OVERPRICED {Math.abs(priceDiffPercent).toFixed(0)}%</span>
+                                </>
+                              ) : (
+                                <>
+                                  <ArrowDown className="w-3 h-3" />
+                                  <span>UNDERPRICED {Math.abs(priceDiffPercent).toFixed(0)}%</span>
+                                </>
+                              )}
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                       
                       {vehicle.marketData ? (
                         <div className="text-right">
@@ -3040,6 +3088,44 @@ export default function Manager() {
                           </div>
                         )}
 
+                        {/* Market Velocity Indicator */}
+                        {pricingResults.marketVelocity && (
+                          <div className={cn(
+                            "rounded-lg p-4 border flex items-center justify-between",
+                            pricingResults.marketVelocity.indicator === 'hot' 
+                              ? "bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900" 
+                              : pricingResults.marketVelocity.indicator === 'warm'
+                              ? "bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900"
+                              : "bg-sky-50 dark:bg-sky-950/20 border-sky-200 dark:border-sky-900"
+                          )} data-testid="market-velocity">
+                            <div className="flex items-center gap-3">
+                              <div className={cn(
+                                "w-12 h-12 rounded-full flex items-center justify-center text-2xl",
+                                pricingResults.marketVelocity.indicator === 'hot' 
+                                  ? "bg-red-100 dark:bg-red-900/40" 
+                                  : pricingResults.marketVelocity.indicator === 'warm'
+                                  ? "bg-amber-100 dark:bg-amber-900/40"
+                                  : "bg-sky-100 dark:bg-sky-900/40"
+                              )}>
+                                {pricingResults.marketVelocity.indicator === 'hot' ? '🔥' : pricingResults.marketVelocity.indicator === 'warm' ? '☀️' : '❄️'}
+                              </div>
+                              <div>
+                                <div className="font-bold text-lg capitalize">
+                                  {pricingResults.marketVelocity.indicator} Market
+                                </div>
+                                <div className="text-sm text-muted-foreground">
+                                  {pricingResults.marketVelocity.demandSignal}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-sm text-muted-foreground">Avg Days on Market</div>
+                              <div className="text-2xl font-bold">{pricingResults.marketVelocity.avgDaysOnMarket}</div>
+                              <Badge variant="outline" className="mt-1 capitalize">{pricingResults.marketVelocity.supplyLevel} Supply</Badge>
+                            </div>
+                          </div>
+                        )}
+
                         {/* Market Statistics */}
                         <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-lg p-6">
                           <h3 className="text-xl font-bold text-foreground mb-4">
@@ -3081,6 +3167,58 @@ export default function Manager() {
                             </span>
                           </div>
                         </div>
+
+                        {/* Mileage Adjustment Section */}
+                        {pricingResults.mileageAdjustment && pricingResults.mileageAdjustment.targetMileage && (
+                          <div className="bg-gradient-to-r from-violet-50 to-purple-50 dark:from-violet-950/20 dark:to-purple-950/20 border border-violet-200 dark:border-violet-900 rounded-lg p-6" data-testid="mileage-adjustment">
+                            <h4 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+                              <TrendingUp className="w-5 h-5" />
+                              Mileage-Adjusted Price
+                            </h4>
+                            <div className="grid gap-4 md:grid-cols-3">
+                              <div>
+                                <div className="text-xs text-muted-foreground font-medium">Your Vehicle</div>
+                                <div className="text-xl font-bold">{pricingResults.mileageAdjustment.targetMileage.toLocaleString()} km</div>
+                              </div>
+                              <div>
+                                <div className="text-xs text-muted-foreground font-medium">Market Average</div>
+                                <div className="text-xl font-bold">{pricingResults.mileageAdjustment.marketAvgMileage.toLocaleString()} km</div>
+                              </div>
+                              <div>
+                                <div className="text-xs text-muted-foreground font-medium">Mileage Difference</div>
+                                <div className={cn(
+                                  "text-xl font-bold",
+                                  pricingResults.mileageAdjustment.adjustmentDirection === 'add' ? "text-green-600" : 
+                                  pricingResults.mileageAdjustment.adjustmentDirection === 'subtract' ? "text-red-600" : ""
+                                )}>
+                                  {pricingResults.mileageAdjustment.mileageDifference > 0 ? '-' : '+'}
+                                  {Math.abs(pricingResults.mileageAdjustment.mileageDifference).toLocaleString()} km
+                                </div>
+                              </div>
+                            </div>
+                            <div className="mt-4 pt-4 border-t border-violet-200 dark:border-violet-800">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <div className="text-sm text-muted-foreground">Price Adjustment (@$0.12/km)</div>
+                                  <div className={cn(
+                                    "text-lg font-semibold",
+                                    pricingResults.mileageAdjustment.adjustmentDirection === 'add' ? "text-green-600" : 
+                                    pricingResults.mileageAdjustment.adjustmentDirection === 'subtract' ? "text-red-600" : ""
+                                  )}>
+                                    {pricingResults.mileageAdjustment.adjustmentDirection === 'add' ? '+' : '-'}
+                                    ${pricingResults.mileageAdjustment.priceAdjustment.toLocaleString()}
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <div className="text-sm text-muted-foreground">Mileage-Adjusted Value</div>
+                                  <div className="text-3xl font-bold text-violet-600 dark:text-violet-400">
+                                    ${pricingResults.mileageAdjustment.adjustedPrice.toLocaleString()}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Trim Breakdown Section */}
                         {pricingResults.trimBreakdown && Object.keys(pricingResults.trimBreakdown).length > 0 && (
