@@ -1275,8 +1275,8 @@ async function scrapeDealerListings(
     console.log(`  Extracting VDP URLs...`);
     
     const vdpUrls = await page.evaluate(function(baseUrl) {
-      var results = [];
-      var processedUrls = {};
+      var results: Array<{vdpUrl: string; year: number; make: string; model: string}> = [];
+      var processedUrls: Record<string, boolean> = {};
       
       // Find all vehicle detail page links
       var links = document.querySelectorAll('a[href*="/vehicles/2"]');
