@@ -3447,7 +3447,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ====== MARKET LISTINGS (Multi-Tenant) ======
-  async getMarketListings(dealershipId: number, filters: { make?: string; model?: string; yearMin?: number; yearMax?: number; source?: string }, limit: number = 50, offset: number = 0): Promise<{ listings: MarketListing[]; total: number }> {
+  async getMarketListings(dealershipId: number, filters: { make?: string; model?: string; yearMin?: number; yearMax?: number; source?: string; trim?: string }, limit: number = 50, offset: number = 0): Promise<{ listings: MarketListing[]; total: number }> {
     const conditions = [];
     
     // REQUIRED: Always filter by dealership
@@ -3471,6 +3471,10 @@ export class DatabaseStorage implements IStorage {
     }
     if (filters.source) {
       conditions.push(eq(marketListings.source, filters.source));
+    }
+    if (filters.trim) {
+      // Case-insensitive partial match for trim level
+      conditions.push(sql`LOWER(${marketListings.trim}) LIKE LOWER(${'%' + filters.trim + '%'})`);
     }
     
     const whereClause = and(...conditions);

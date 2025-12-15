@@ -92,6 +92,14 @@ export interface SourceBreakdown {
   reliability: 'high' | 'medium' | 'low';
 }
 
+export interface TrimCoverageStats {
+  totalListings: number;
+  listingsWithTrim: number;
+  trimMatchedListings: number;
+  trimMismatchedListings: number;
+  noTrimListings: number;
+}
+
 export interface EnhancedMarketAnalysisResult {
   success: boolean;
   dataSource: string;
@@ -101,6 +109,7 @@ export interface EnhancedMarketAnalysisResult {
     years: number[];
     location: string;
     radiusKm: number;
+    trims?: string[];
   };
   summary: {
     totalListings: number;
@@ -112,6 +121,7 @@ export interface EnhancedMarketAnalysisResult {
     averageQualityScore?: number;
     highQualityListings?: number;
   };
+  trimCoverage?: TrimCoverageStats;
   percentiles: PercentileBreakdown;
   daysOnMarket: DaysOnMarketInfo;
   competitors: CompetitorInfo[];
@@ -241,15 +251,59 @@ export class EnhancedMarketAnalysisService {
       yearMax
     }, 500);
 
+    // Track trim coverage statistics
+    let trimCoverage = {
+      totalListings: listings.length,
+      listingsWithTrim: listings.filter(l => l.trim).length,
+      trimMatchedListings: 0,
+      trimMismatchedListings: 0,
+      noTrimListings: 0
+    };
+    
     let filteredListings = listings;
     if (params.trims && params.trims.length > 0) {
-      filteredListings = listings.filter(l => {
-        if (!l.trim) return true;
-        return params.trims!.some(t => 
-          l.trim!.toLowerCase().includes(t.toLowerCase()) ||
-          t.toLowerCase().includes(l.trim!.toLowerCase())
-        );
-      });
+      // STRICT trim filtering - only include listings that match the specified trim
+      // This prevents mixing Long Range with Plaid trim which can differ by $30k+
+      const trimMatched: typeof listings = [];
+      const trimMismatched: typeof listings = [];
+      const noTrim: typeof listings = [];
+      
+      for (const l of listings) {
+        if (!l.trim) {
+          noTrim.push(l);
+        } else {
+          const matches = params.trims!.some(t => 
+            l.trim!.toLowerCase().includes(t.toLowerCase()) ||
+            t.toLowerCase().includes(l.trim!.toLowerCase())
+          );
+          if (matches) {
+            trimMatched.push(l);
+          } else {
+            trimMismatched.push(l);
+          }
+        }
+      }
+      
+      trimCoverage.trimMatchedListings = trimMatched.length;
+      trimCoverage.trimMismatchedListings = trimMismatched.length;
+      trimCoverage.noTrimListings = noTrim.length;
+      
+      // Use only trim-matched listings for accurate pricing
+      // If too few trim matches, fall back to include no-trim listings with a warning
+      if (trimMatched.length >= 5) {
+        filteredListings = trimMatched;
+        console.log(`[EnhancedMarketAnalysis] Strict trim filter: ${trimMatched.length} exact matches for "${params.trims.join(', ')}"`);
+      } else if (trimMatched.length + noTrim.length >= 3) {
+        // Include listings without trim data as fallback
+        filteredListings = [...trimMatched, ...noTrim];
+        errors.push(`Limited trim data: Only ${trimMatched.length} exact trim matches, including ${noTrim.length} listings without trim info`);
+        console.log(`[EnhancedMarketAnalysis] Trim fallback: ${trimMatched.length} matches + ${noTrim.length} without trim = ${filteredListings.length} total`);
+      } else {
+        // Very limited data - use all listings but warn strongly
+        filteredListings = listings;
+        errors.push(`Warning: Insufficient trim data for accurate comparison. Only ${trimMatched.length} of ${listings.length} listings match trim "${params.trims.join(', ')}". Results may include different trim levels.`);
+        console.log(`[EnhancedMarketAnalysis] Trim data insufficient: using all ${listings.length} listings with warning`);
+      }
     }
 
     if (filteredListings.length === 0) {
@@ -343,9 +397,11 @@ export class EnhancedMarketAnalysisService {
         model: params.model,
         years: params.years,
         location: params.postalCode,
-        radiusKm: params.radiusKm
+        radiusKm: params.radiusKm,
+        trims: params.trims
       },
       summary,
+      trimCoverage: params.trims && params.trims.length > 0 ? trimCoverage : undefined,
       percentiles,
       daysOnMarket,
       competitors,
