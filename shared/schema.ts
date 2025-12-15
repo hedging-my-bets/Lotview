@@ -416,6 +416,24 @@ export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
 export type AuditLog = typeof auditLogs.$inferSelect;
 
+// Password reset tokens for self-service password recovery
+export const passwordResetTokens = pgTable("password_reset_tokens", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  tokenHash: text("token_hash").notNull(), // bcrypt hash of the reset token
+  expiresAt: timestamp("expires_at").notNull(), // Token expiration (1 hour default)
+  usedAt: timestamp("used_at"), // When token was used (null if unused)
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertPasswordResetTokenSchema = createInsertSchema(passwordResetTokens).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertPasswordResetToken = z.infer<typeof insertPasswordResetTokenSchema>;
+export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+
 // Financing rules - Credit score tiers
 export const creditScoreTiers = pgTable("credit_score_tiers", {
   id: serial("id").primaryKey(),

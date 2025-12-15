@@ -22,9 +22,11 @@ import {
   ghlAppointmentSync,
   dealershipContacts,
   callScoringResponses,
-  dealershipApiKeys
+  dealershipApiKeys,
+  passwordResetTokens,
+  users
 } from "@shared/schema";
-import { eq, desc, sql, and } from "drizzle-orm";
+import { eq, desc, sql, and, gt, isNull } from "drizzle-orm";
 import { fromZodError } from "zod-validation-error";
 import { triggerManualSync } from "./scheduler";
 import { testBadgeDetection } from "./scraper";
@@ -100,6 +102,43 @@ setInterval(() => {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
+  // ===== HEALTH CHECK ENDPOINTS (Enterprise Monitoring) =====
+  
+  // Basic health check - server is running
+  app.get("/health", (_req, res) => {
+    res.status(200).json({
+      status: "healthy",
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+    });
+  });
+  
+  // Ready check - server and all dependencies are ready to accept traffic
+  app.get("/ready", async (_req, res) => {
+    const checks: Record<string, { status: string; latency?: number; error?: string }> = {};
+    
+    // Check database connectivity
+    const dbStart = Date.now();
+    try {
+      await db.execute(sql`SELECT 1`);
+      checks.database = { status: "healthy", latency: Date.now() - dbStart };
+    } catch (error) {
+      checks.database = { 
+        status: "unhealthy", 
+        latency: Date.now() - dbStart,
+        error: error instanceof Error ? error.message : "Database connection failed"
+      };
+    }
+    
+    const allHealthy = Object.values(checks).every(c => c.status === "healthy");
+    
+    res.status(allHealthy ? 200 : 503).json({
+      status: allHealthy ? "ready" : "not_ready",
+      timestamp: new Date().toISOString(),
+      checks,
+    });
+  });
+
   // ===== PUBLIC OBJECT STORAGE (Persistent file serving) =====
   
   // Serve public objects from object storage (logos, etc.)
@@ -238,6 +277,133 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       logError('Error during logout:', error instanceof Error ? error : new Error(String(error)), { route: 'api-auth-logout' });
       res.status(500).json({ error: "Logout failed" });
+    }
+  });
+  
+  // ===== PASSWORD RESET ROUTES (Self-Service) =====
+  
+  // Request password reset - sends email with reset link
+  app.post("/api/auth/forgot-password", sensitiveLimiter, async (req, res) => {
+    try {
+      const { email } = req.body;
+      
+      if (!email || typeof email !== 'string') {
+        return res.status(400).json({ error: "Email is required" });
+      }
+      
+      const user = await storage.getUserByEmail(email.trim().toLowerCase());
+      
+      // Always return success to prevent email enumeration attacks
+      if (!user || !user.isActive) {
+        console.log(`[Auth] Password reset requested for unknown email: ${email}`);
+        return res.json({ success: true, message: "If that email exists, a reset link has been sent" });
+      }
+      
+      // Generate secure token (32 bytes = 256 bits)
+      const token = crypto.randomBytes(32).toString('hex');
+      const tokenHash = await bcrypt.hash(token, 10);
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour expiry
+      
+      await storage.createPasswordResetToken(user.id, tokenHash, expiresAt);
+      
+      // Send password reset email
+      const { sendPasswordResetEmail } = await import('./email-service');
+      const emailResult = await sendPasswordResetEmail({
+        email: user.email,
+        name: user.name,
+        resetToken: token,
+        expiresIn: '1 hour'
+      });
+      
+      if (!emailResult.success) {
+        console.error(`[Auth] Failed to send password reset email to ${email}:`, emailResult.error);
+        // Still return success to prevent enumeration
+      }
+      
+      console.log(`[Auth] Password reset token created for user: ${user.email}`);
+      res.json({ success: true, message: "If that email exists, a reset link has been sent" });
+    } catch (error) {
+      logError('Error requesting password reset:', error instanceof Error ? error : new Error(String(error)), { route: 'api-auth-forgot-password' });
+      res.status(500).json({ error: "Failed to process password reset request" });
+    }
+  });
+  
+  // Validate password reset token (check if token is valid before showing form)
+  app.get("/api/auth/reset-password/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      
+      if (!token || token.length < 32) {
+        return res.json({ valid: false });
+      }
+      
+      // Check all unexpired tokens for this hash match
+      const allTokens = await storage.getAllValidPasswordResetTokens();
+      
+      // Find matching token (bcrypt compare)
+      for (const storedToken of allTokens) {
+        const isMatch = await bcrypt.compare(token, storedToken.tokenHash);
+        if (isMatch) {
+          return res.json({ valid: true });
+        }
+      }
+      
+      res.json({ valid: false });
+    } catch (error) {
+      logError('Error validating reset token:', error instanceof Error ? error : new Error(String(error)), { route: 'api-auth-reset-password-token' });
+      res.json({ valid: false });
+    }
+  });
+  
+  // Complete password reset - set new password
+  app.post("/api/auth/reset-password", sensitiveLimiter, async (req, res) => {
+    try {
+      const { token, newPassword } = req.body;
+      
+      if (!token || typeof token !== 'string' || token.length < 32) {
+        return res.status(400).json({ error: "Invalid reset token" });
+      }
+      
+      if (!newPassword || newPassword.length < 8) {
+        return res.status(400).json({ error: "Password must be at least 8 characters" });
+      }
+      
+      // Find matching valid token
+      const allTokens = await storage.getAllValidPasswordResetTokens();
+      
+      let matchedToken = null;
+      for (const storedToken of allTokens) {
+        const isMatch = await bcrypt.compare(token, storedToken.tokenHash);
+        if (isMatch) {
+          matchedToken = storedToken;
+          break;
+        }
+      }
+      
+      if (!matchedToken) {
+        return res.status(400).json({ error: "Invalid or expired reset token" });
+      }
+      
+      // Get user and update password
+      const user = await storage.getUserById(matchedToken.userId);
+      if (!user) {
+        return res.status(400).json({ error: "User not found" });
+      }
+      
+      // Hash new password and update user
+      const newPasswordHash = await hashPassword(newPassword);
+      await db.update(users)
+        .set({ passwordHash: newPasswordHash, updatedAt: new Date() })
+        .where(eq(users.id, user.id));
+      
+      // Mark token as used
+      await storage.markPasswordResetTokenUsed(matchedToken.id);
+      
+      console.log(`[Auth] Password successfully reset for user: ${user.email}`);
+      res.json({ success: true, message: "Password has been reset successfully" });
+    } catch (error) {
+      logError('Error resetting password:', error instanceof Error ? error : new Error(String(error)), { route: 'api-auth-reset-password' });
+      res.status(500).json({ error: "Failed to reset password" });
     }
   });
   

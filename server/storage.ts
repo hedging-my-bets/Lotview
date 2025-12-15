@@ -128,6 +128,8 @@ import {
   type ExternalApiToken,
   type InsertExternalApiToken,
   staffInvites,
+  passwordResetTokens,
+  type PasswordResetToken,
   type StaffInvite,
   launchChecklist,
   type LaunchChecklist,
@@ -255,7 +257,7 @@ import {
   type ScrapeQueue,
   type InsertScrapeQueue
 } from "@shared/schema";
-import { eq, desc, asc, sql, and, gte, lte, lt, gt, inArray, or, ilike, isNotNull, type SQL } from "drizzle-orm";
+import { eq, desc, asc, sql, and, gte, lte, lt, gt, inArray, or, ilike, isNotNull, isNull, type SQL } from "drizzle-orm";
 
 export interface IStorage {
   // ====== SUPER ADMIN - GLOBAL SETTINGS ======
@@ -623,6 +625,12 @@ export interface IStorage {
   getStaffInviteByToken(token: string): Promise<StaffInvite | undefined>;
   acceptStaffInvite(id: number): Promise<void>;
   getDealershipById(id: number): Promise<Dealership | undefined>;
+  
+  // Password Reset Tokens
+  createPasswordResetToken(userId: number, tokenHash: string, expiresAt: Date): Promise<PasswordResetToken>;
+  getAllValidPasswordResetTokens(): Promise<PasswordResetToken[]>;
+  markPasswordResetTokenUsed(id: number): Promise<void>;
+  deleteExpiredPasswordResetTokens(): Promise<number>;
   
   // Launch Checklist (Multi-Tenant)
   getLaunchChecklist(dealershipId: number): Promise<LaunchChecklist[]>;
@@ -4004,6 +4012,35 @@ export class DatabaseStorage implements IStorage {
       .where(eq(dealerships.id, id))
       .limit(1);
     return result[0];
+  }
+  
+  // ====== PASSWORD RESET TOKENS ======
+  async createPasswordResetToken(userId: number, tokenHash: string, expiresAt: Date): Promise<PasswordResetToken> {
+    const result = await db.insert(passwordResetTokens)
+      .values({ userId, tokenHash, expiresAt })
+      .returning();
+    return result[0];
+  }
+  
+  async getAllValidPasswordResetTokens(): Promise<PasswordResetToken[]> {
+    return await db.select().from(passwordResetTokens)
+      .where(and(
+        gt(passwordResetTokens.expiresAt, new Date()),
+        isNull(passwordResetTokens.usedAt)
+      ));
+  }
+  
+  async markPasswordResetTokenUsed(id: number): Promise<void> {
+    await db.update(passwordResetTokens)
+      .set({ usedAt: new Date() })
+      .where(eq(passwordResetTokens.id, id));
+  }
+  
+  async deleteExpiredPasswordResetTokens(): Promise<number> {
+    const result = await db.delete(passwordResetTokens)
+      .where(lt(passwordResetTokens.expiresAt, new Date()))
+      .returning();
+    return result.length;
   }
   
   // ====== LAUNCH CHECKLIST ======

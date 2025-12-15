@@ -297,6 +297,94 @@ Lotview.ai - AI-Powered Dealership Platform
   });
 }
 
+export async function sendPasswordResetEmail(params: {
+  email: string;
+  name: string;
+  resetToken: string;
+  expiresIn: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const resetUrl = `${getDashboardUrl()}/reset-password?token=${params.resetToken}`;
+  
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f5;">
+  <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+    <div style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); padding: 24px; text-align: center;">
+      <h1 style="color: white; margin: 0; font-size: 24px;">🔐 Password Reset Request</h1>
+    </div>
+    
+    <div style="padding: 24px;">
+      <p style="color: #374151; font-size: 16px; margin: 0 0 16px;">
+        Hi ${params.name},
+      </p>
+      
+      <p style="color: #374151; font-size: 16px; margin: 0 0 24px;">
+        We received a request to reset your password. Click the button below to create a new password.
+      </p>
+      
+      <div style="text-align: center; margin-bottom: 24px;">
+        <a href="${resetUrl}" 
+           style="display: inline-block; background: #3b82f6; color: white; padding: 14px 36px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 16px;">
+          Reset Password
+        </a>
+      </div>
+      
+      <p style="color: #6b7280; font-size: 14px; margin: 0 0 16px;">
+        This link will expire in <strong>${params.expiresIn}</strong>.
+      </p>
+      
+      <p style="color: #6b7280; font-size: 14px; margin: 0;">
+        If you didn't request a password reset, you can safely ignore this email. Your password won't be changed.
+      </p>
+      
+      <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+      
+      <p style="color: #9ca3af; font-size: 12px; margin: 0;">
+        If the button doesn't work, copy and paste this link into your browser:
+        <br />
+        <a href="${resetUrl}" style="color: #3b82f6; word-break: break-all;">${resetUrl}</a>
+      </p>
+    </div>
+    
+    <div style="background: #f9fafb; padding: 16px 24px; text-align: center; border-top: 1px solid #e5e7eb;">
+      <p style="color: #9ca3af; font-size: 12px; margin: 0;">
+        Lotview.ai - AI-Powered Dealership Platform
+      </p>
+    </div>
+  </div>
+</body>
+</html>
+  `;
+
+  const text = `
+Password Reset Request
+
+Hi ${params.name},
+
+We received a request to reset your password.
+
+Reset your password: ${resetUrl}
+
+This link will expire in ${params.expiresIn}.
+
+If you didn't request a password reset, you can safely ignore this email.
+
+Lotview.ai - AI-Powered Dealership Platform
+  `;
+
+  return sendEmail({
+    to: params.email,
+    subject: '🔐 Reset Your Password - Lotview.ai',
+    html,
+    text
+  });
+}
+
 export async function sendDailyDigest(params: {
   managerEmail: string;
   managerName: string;
