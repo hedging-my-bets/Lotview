@@ -1,7 +1,6 @@
 import { storage } from './storage';
 import { marketAggregationService, MarketAggregationParams } from './market-aggregation-service';
 import type { MarketListing, InsertMarketSnapshot, InsertPriceHistory } from '@shared/schema';
-import OpenAI from 'openai';
 
 export interface EnhancedMarketAnalysisParams {
   make: string;
@@ -142,18 +141,6 @@ const SOURCE_RELIABILITY: Record<string, { rank: number; reliability: 'high' | '
 };
 
 export class EnhancedMarketAnalysisService {
-  private openai: OpenAI | null = null;
-
-  constructor() {
-    const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
-    if (apiKey) {
-      this.openai = new OpenAI({ 
-        apiKey,
-        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined
-      });
-    }
-  }
-
   private calculateListingQualityScore(listing: MarketListing): ListingQualityScore {
     const breakdown = {
       hasVin: !!listing.vin,
@@ -269,6 +256,29 @@ export class EnhancedMarketAnalysisService {
       return this.createEmptyResult(params, sources, errors);
     }
 
+    // Filter out price outliers using two-pass approach:
+    // 1. Calculate initial median to establish baseline
+    // 2. Remove prices > 3x median (likely parsing errors like $500k for a $30k car)
+    const allPrices = filteredListings.map(l => l.price).sort((a, b) => a - b);
+    const initialMedian = this.calculateMedian(allPrices);
+    const outlierThreshold = initialMedian * 3;
+    
+    // Filter listings to exclude outliers
+    const validListings = filteredListings.filter(l => l.price <= outlierThreshold);
+    const outlierCount = filteredListings.length - validListings.length;
+    
+    if (outlierCount > 0) {
+      console.log(`[EnhancedMarketAnalysis] Filtered ${outlierCount} price outliers (threshold: $${outlierThreshold.toLocaleString()})`);
+      errors.push(`Filtered ${outlierCount} listings with outlier prices above $${outlierThreshold.toLocaleString()}`);
+    }
+    
+    // Use valid listings for analysis
+    filteredListings = validListings;
+    
+    if (filteredListings.length === 0) {
+      return this.createEmptyResult(params, sources, errors);
+    }
+
     const prices = filteredListings.map(l => l.price).sort((a, b) => a - b);
     const mileages = filteredListings.filter(l => l.mileage).map(l => l.mileage!);
 
@@ -311,15 +321,6 @@ export class EnhancedMarketAnalysisService {
 
     await this.createSnapshot(params.dealershipId, params, summary, percentiles, daysOnMarket, sources);
 
-    let aiInsights: string | undefined;
-    if (this.openai && filteredListings.length >= 5) {
-      try {
-        aiInsights = await this.generateAIInsights(params, summary, percentiles, competitors);
-      } catch (error) {
-        console.error('[EnhancedMarketAnalysis] AI insights error:', error);
-      }
-    }
-
     const elapsed = Date.now() - startTime;
     console.log(`[EnhancedMarketAnalysis] Complete in ${elapsed}ms - ${filteredListings.length} listings analyzed`);
 
@@ -339,7 +340,6 @@ export class EnhancedMarketAnalysisService {
       competitors,
       priceTrends,
       priceRecommendation,
-      aiInsights,
       sources,
       sourceBreakdown,
       scrapedAt: new Date().toISOString(),
@@ -370,14 +370,24 @@ export class EnhancedMarketAnalysisService {
   }
 
   private calculateDaysOnMarket(listings: MarketListing[]): DaysOnMarketInfo {
+    // Use daysOnLot field from scraper (CarGurus provides this directly)
+    // Fall back to calculating from postedDate if daysOnLot not available
     const now = new Date();
     const daysOnMarket = listings
-      .filter(l => l.postedDate)
       .map(l => {
-        const posted = new Date(l.postedDate!);
-        return Math.floor((now.getTime() - posted.getTime()) / (1000 * 60 * 60 * 24));
+        // Prefer scraped daysOnLot field
+        if (typeof l.daysOnLot === 'number' && l.daysOnLot >= 0) {
+          return l.daysOnLot;
+        }
+        // Fallback to postedDate calculation
+        if (l.postedDate) {
+          const posted = new Date(l.postedDate);
+          const days = Math.floor((now.getTime() - posted.getTime()) / (1000 * 60 * 60 * 24));
+          if (days >= 0 && days < 365) return days;
+        }
+        return null;
       })
-      .filter(d => d >= 0 && d < 365);
+      .filter((d): d is number => d !== null);
 
     if (daysOnMarket.length === 0) {
       return {
@@ -425,12 +435,15 @@ export class EnhancedMarketAnalysisService {
       const competitorListings: CompetitorListing[] = sellerListings
         .slice(0, 10)
         .map((l: MarketListing) => {
-          let daysOnLot: number | undefined;
-          if (l.postedDate) {
+          // Use scraped daysOnLot field from listing (CarGurus provides this directly)
+          let daysOnLot: number | undefined = l.daysOnLot ?? undefined;
+          
+          // Fallback to postedDate calculation only if daysOnLot not available
+          if (daysOnLot === undefined && l.postedDate) {
             const posted = new Date(l.postedDate);
             const now = new Date();
-            daysOnLot = Math.floor((now.getTime() - posted.getTime()) / (1000 * 60 * 60 * 24));
-            if (daysOnLot < 0) daysOnLot = undefined;
+            const calculatedDays = Math.floor((now.getTime() - posted.getTime()) / (1000 * 60 * 60 * 24));
+            if (calculatedDays >= 0) daysOnLot = calculatedDays;
           }
           
           const qualityScore = this.calculateListingQualityScore(l);
@@ -600,52 +613,6 @@ export class EnhancedMarketAnalysisService {
       await storage.createMarketSnapshot(snapshot);
     } catch (error) {
       console.error('[EnhancedMarketAnalysis] Snapshot creation error:', error);
-    }
-  }
-
-  private async generateAIInsights(
-    params: EnhancedMarketAnalysisParams,
-    summary: any,
-    percentiles: PercentileBreakdown,
-    competitors: CompetitorInfo[]
-  ): Promise<string> {
-    if (!this.openai) return '';
-
-    const prompt = `You are an automotive market analyst. Analyze this market data and provide 2-3 brief, actionable insights for a car dealer:
-
-Vehicle: ${params.years.join('-')} ${params.make} ${params.model}
-Location: ${params.postalCode}, ${params.radiusKm}km radius
-
-Market Summary:
-- Total Listings: ${summary.totalListings}
-- Average Price: $${summary.averagePrice.toLocaleString()}
-- Median Price: $${summary.medianPrice.toLocaleString()}
-- Price Range: $${summary.minPrice.toLocaleString()} - $${summary.maxPrice.toLocaleString()}
-- Average Mileage: ${summary.averageMileage.toLocaleString()} km
-
-Price Distribution:
-- 10th Percentile: $${percentiles.p10.toLocaleString()}
-- 25th Percentile: $${percentiles.p25.toLocaleString()}
-- Median: $${percentiles.p50.toLocaleString()}
-- 75th Percentile: $${percentiles.p75.toLocaleString()}
-- 90th Percentile: $${percentiles.p90.toLocaleString()}
-
-Top Competitors: ${competitors.slice(0, 3).map(c => `${c.sellerName} (${c.listingCount} listings, avg $${c.averagePrice.toLocaleString()})`).join(', ')}
-
-Provide brief, professional insights focusing on pricing strategy and market positioning.`;
-
-    try {
-      const response = await this.openai.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 300,
-        temperature: 0.7
-      });
-
-      return response.choices[0]?.message?.content || '';
-    } catch (error) {
-      console.error('[EnhancedMarketAnalysis] OpenAI error:', error);
-      return '';
     }
   }
 
