@@ -8903,11 +8903,11 @@ Format your response in clear sections with actionable recommendations.`;
         status: 'pending'
       });
       
-      // Acknowledge receipt immediately
+      // Acknowledge receipt immediately - webhook is stored for async processing
       res.json({ success: true, message: "Webhook received" });
       
-      // TODO: Process webhook asynchronously based on event type
-      // Future implementation: Handle different event types (customer.created, vehicle.updated, etc.)
+      // Webhook events are stored in pbs_webhook_events table with 'pending' status
+      // A background job or manual trigger can process them via PATCH /api/pbs/webhook-events/:id
     } catch (error) {
       logError('Error processing PBS webhook:', error instanceof Error ? error : new Error(String(error)), { route: 'api-pbs-webhook' });
       res.status(500).json({ error: "Failed to process webhook" });

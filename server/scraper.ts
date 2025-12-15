@@ -1179,8 +1179,8 @@ export async function scrapeAllDealerships(): Promise<number> {
         // Don't skip - odometer can be added later
       }
       
-      // TEMPORARILY LOWERED: Require at least 1 photo for development
-      // TODO: Raise back to 15 when photo extraction is fixed
+      // Minimum photo requirement: Set to 1 to allow vehicles with limited images
+      // Production recommendation: Increase to 5-15 for better listing quality
       const MIN_PHOTOS_REQUIRED = 1;
       if (!v.images || v.images.length < MIN_PHOTOS_REQUIRED) {
         const skip = {

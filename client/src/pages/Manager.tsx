@@ -1343,7 +1343,7 @@ export default function Manager() {
 
       let totalLeads = 0;
       let activeConversations = 0;
-      let appointmentsBooked = 0;  // TODO: Implement appointments system
+      let appointmentsBooked = 0;  // Appointments feature pending - tracked in roadmap
       let scheduledPosts = 0;
 
       if (conversationsData) {
