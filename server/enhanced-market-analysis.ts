@@ -257,16 +257,27 @@ export class EnhancedMarketAnalysisService {
     }
 
     // Filter out price outliers using two-pass approach:
-    // 1. Calculate initial median to establish baseline
-    // 2. Remove prices > 3x median (likely parsing errors like $500k for a $30k car)
-    const allPrices = filteredListings.map(l => l.price).sort((a, b) => a - b);
-    const initialMedian = this.calculateMedian(allPrices);
+    // 1. First filter out non-positive prices (bad data)
+    // 2. Calculate median on valid positive prices only
+    // 3. Remove prices > 3x median (likely parsing errors like $500k for a $30k car)
+    const positiveListings = filteredListings.filter(l => l.price > 0);
+    
+    if (positiveListings.length === 0) {
+      return this.createEmptyResult(params, sources, errors);
+    }
+    
+    const positivePrices = positiveListings.map(l => l.price).sort((a, b) => a - b);
+    const initialMedian = this.calculateMedian(positivePrices);
     const outlierThreshold = initialMedian * 3;
     
-    // Filter listings to exclude outliers
-    const validListings = filteredListings.filter(l => l.price <= outlierThreshold);
-    const outlierCount = filteredListings.length - validListings.length;
+    // Filter listings to exclude high outliers (keep minimum at 1000 to catch data issues)
+    const validListings = positiveListings.filter(l => l.price <= outlierThreshold);
+    const zeroCount = filteredListings.length - positiveListings.length;
+    const outlierCount = positiveListings.length - validListings.length;
     
+    if (zeroCount > 0) {
+      console.log(`[EnhancedMarketAnalysis] Removed ${zeroCount} listings with zero/negative prices`);
+    }
     if (outlierCount > 0) {
       console.log(`[EnhancedMarketAnalysis] Filtered ${outlierCount} price outliers (threshold: $${outlierThreshold.toLocaleString()})`);
       errors.push(`Filtered ${outlierCount} listings with outlier prices above $${outlierThreshold.toLocaleString()}`);
