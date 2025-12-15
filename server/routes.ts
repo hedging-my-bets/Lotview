@@ -40,6 +40,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { decodeVIN } from "./vin-decoder";
+import { enrichVIN, toVINDecodeResult } from "./vin-enrichment-service";
 import { createPbsApiService } from "./pbs-api-service";
 import { ObjectStorageService } from "./objectStorage";
 import { createGhlMessageSyncService } from "./ghl-message-sync-service";
@@ -6952,7 +6953,9 @@ Format your response in clear sections with actionable recommendations.`;
         });
       }
       
-      const result = await decodeVIN(vin, dealershipId);
+      // Use enriched VIN decoder for comprehensive data with confidence scoring
+      const enrichedResult = await enrichVIN(vin, dealershipId);
+      const result = toVINDecodeResult(enrichedResult);
       
       // Auto-save appraisal if decode was successful, autoSave is enabled, and feature flag is on
       let appraisalId: number | undefined;
