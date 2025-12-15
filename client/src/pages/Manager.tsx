@@ -292,15 +292,7 @@ function InventoryAnalysisTab() {
                 <CardContent className="p-4">
                   <div className="flex flex-col sm:flex-row justify-between gap-4">
                     {/* Vehicle info */}
-                    <div className="flex gap-4">
-                      {vehicle.imageUrl && (
-                        <img 
-                          src={vehicle.imageUrl} 
-                          alt={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}
-                          className="w-24 h-18 object-cover rounded"
-                        />
-                      )}
-                      <div>
+                    <div>
                         <h4 className="font-semibold">
                           {vehicle.year} {vehicle.make} {vehicle.model}
                         </h4>
@@ -353,7 +345,6 @@ function InventoryAnalysisTab() {
                             )}
                           </Button>
                         )}
-                      </div>
                     </div>
 
                     {/* Market comparison */}
@@ -3455,53 +3446,6 @@ export default function Manager() {
                                     <div className="text-xs text-muted-foreground">High Range</div>
                                   </div>
                                 </div>
-                              </div>
-                            )}
-
-                            {/* Days on Market Analysis */}
-                            {enhancedResults.daysOnMarket && enhancedResults.daysOnMarket.average > 0 && (
-                              <div className="bg-gradient-to-r from-teal-50 to-cyan-50 dark:from-teal-950/20 dark:to-cyan-950/20 border border-teal-200 dark:border-teal-900 rounded-lg p-6">
-                                <h4 className="font-semibold text-foreground mb-4 flex items-center gap-2">
-                                  <Clock className="w-5 h-5" />
-                                  Days on Market Analysis
-                                </h4>
-                                <div className="grid gap-4 md:grid-cols-4">
-                                  <div className="text-center">
-                                    <div className="text-3xl font-bold text-teal-600">{enhancedResults.daysOnMarket.average}</div>
-                                    <div className="text-xs text-muted-foreground">Average Days</div>
-                                  </div>
-                                  <div className="text-center">
-                                    <div className="text-3xl font-bold">{enhancedResults.daysOnMarket.median}</div>
-                                    <div className="text-xs text-muted-foreground">Median Days</div>
-                                  </div>
-                                  <div className="text-center">
-                                    <div className="text-3xl font-bold text-green-600">{enhancedResults.daysOnMarket.fastest}</div>
-                                    <div className="text-xs text-muted-foreground">Fastest Sale</div>
-                                  </div>
-                                  <div className="text-center">
-                                    <div className="text-3xl font-bold text-red-600">{enhancedResults.daysOnMarket.slowest}</div>
-                                    <div className="text-xs text-muted-foreground">Slowest Sale</div>
-                                  </div>
-                                </div>
-                                {enhancedResults.daysOnMarket.distribution && (
-                                  <div className="mt-4 pt-4 border-t border-teal-200 dark:border-teal-800">
-                                    <div className="text-sm text-muted-foreground mb-2">Sell-Through Distribution:</div>
-                                    <div className="flex gap-4 flex-wrap text-sm">
-                                      <span className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 px-2 py-1 rounded">
-                                        &lt;7 days: {enhancedResults.daysOnMarket.distribution.under7Days}
-                                      </span>
-                                      <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 px-2 py-1 rounded">
-                                        &lt;14 days: {enhancedResults.daysOnMarket.distribution.under14Days}
-                                      </span>
-                                      <span className="bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 px-2 py-1 rounded">
-                                        &lt;30 days: {enhancedResults.daysOnMarket.distribution.under30Days}
-                                      </span>
-                                      <span className="bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 px-2 py-1 rounded">
-                                        30+ days: {enhancedResults.daysOnMarket.distribution.over30Days}
-                                      </span>
-                                    </div>
-                                  </div>
-                                )}
                               </div>
                             )}
 
