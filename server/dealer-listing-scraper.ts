@@ -1662,8 +1662,31 @@ async function extractVdpUrlsOnly(dealerConfig: DealerConfig): Promise<Array<{ v
     await humanLikeScroll(page);
     await randomDelay(500, 1000);
     
-    // Wait for vehicle links
-    await page.waitForSelector('a[href*="/vehicles/2"]', { timeout: 10000 });
+    // Wait for vehicle links - with enhanced logging
+    try {
+      await page.waitForSelector('a[href*="/vehicles/2"]', { timeout: 10000 });
+      console.log(`  ✓ Found vehicle links on page`);
+    } catch (selectorError) {
+      // Log page content for debugging
+      const pageTitle = await page.title();
+      const pageContent = await page.content();
+      const bodyText = await page.evaluate(() => document.body?.innerText?.substring(0, 500) || 'No body text');
+      console.error(`  ✗ No vehicle links found on page`);
+      console.error(`    Page title: ${pageTitle}`);
+      console.error(`    Body preview: ${bodyText}`);
+      console.error(`    Page HTML length: ${pageContent.length} chars`);
+      
+      // Check for common blocking patterns
+      const isBlocked = pageContent.includes('Access Denied') || 
+                        pageContent.includes('blocked') || 
+                        pageContent.includes('Cloudflare') ||
+                        pageContent.includes('Please Wait');
+      if (isBlocked) {
+        console.error(`    ⚠ Detected blocking pattern in page content`);
+      }
+      
+      throw new Error(`Vehicle selector timeout - no vehicles found. Title: ${pageTitle}`);
+    }
     
     // Infinite scroll to load ALL vehicles
     console.log(`  Scrolling to load all vehicles...`);
@@ -1771,10 +1794,17 @@ export async function scrapeDealerListingsCheckpointed(
       } else {
         // Fresh start - extract VDP URLs and populate queue
         console.log(`  📋 Fresh scrape - extracting VDP URLs first...`);
+        console.log(`  📍 Target URL: ${config.url}`);
+        console.log(`  🌐 Domain: ${config.domain}`);
+        
         const vdpUrls = await extractVdpUrlsOnly(config);
         
         if (vdpUrls.length === 0) {
-          console.log(`  ⚠ No VDP URLs found, skipping dealership`);
+          console.error(`  ✗ CRITICAL: No VDP URLs found for ${config.name}`);
+          console.error(`    This may indicate:`);
+          console.error(`    - Cloudflare blocking (check cf_clearance cookie)`);
+          console.error(`    - Website structure changed`);
+          console.error(`    - Network/connectivity issue`);
           continue;
         }
         
