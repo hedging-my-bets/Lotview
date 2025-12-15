@@ -39,10 +39,31 @@ export interface CargurusVehicleData {
     fuelType?: string;
     mpg?: string;
     bodyType?: string;
+    cylinders?: string;
+    horsepower?: string;
+    torque?: string;
   };
   features?: string[];
   historyBadges?: string[];
   marketAvailabilityCount?: number;
+  priceHistory?: Array<{ date: string; price: number }>;
+  dealerInfo?: {
+    name?: string;
+    rating?: number;
+    reviewCount?: number;
+    phone?: string;
+    address?: string;
+  };
+  vehicleDescription?: string;
+  carfaxUrl?: string;
+  detailsEnriched?: boolean;
+}
+
+export interface CargurusDetailResult {
+  success: boolean;
+  data?: Partial<CargurusVehicleData>;
+  error?: string;
+  responseTimeMs: number;
 }
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -267,6 +288,223 @@ export class CargurusScraper {
         await browser.close();
       }
     }
+  }
+
+  async getListingDetails(listingUrl: string): Promise<CargurusDetailResult> {
+    const startTime = Date.now();
+    let browser = null;
+    
+    try {
+      await this.throttle();
+      
+      console.log(`[CarGurus Detail] Fetching details from: ${listingUrl}`);
+      
+      browser = await puppeteer.launch({
+        headless: true,
+        args: PUPPETEER_ARGS
+      });
+      
+      const page = await browser.newPage();
+      await page.setUserAgent(USER_AGENT);
+      
+      await page.goto(listingUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+      await sleep(2000);
+      
+      const detailData = await page.evaluate(() => {
+        const result: any = {};
+        
+        try {
+          const nextDataScript = document.querySelector('script#__NEXT_DATA__');
+          if (nextDataScript && nextDataScript.textContent) {
+            const nextData = JSON.parse(nextDataScript.textContent);
+            const listing = nextData?.props?.pageProps?.listing ||
+                           nextData?.props?.pageProps?.vdp?.listing ||
+                           nextData?.props?.pageProps?.vehicleDetails ||
+                           nextData?.props?.pageProps;
+            
+            if (listing) {
+              result.vin = listing.vin;
+              result.year = listing.year;
+              result.make = listing.makeName || listing.make;
+              result.model = listing.modelName || listing.model;
+              result.trim = listing.trimName || listing.trim || listing.trimDescription;
+              result.price = listing.price || listing.listPrice;
+              result.mileage = listing.mileage || listing.miles;
+              
+              result.interiorColor = listing.interiorColor || listing.interiorColorName;
+              result.exteriorColor = listing.exteriorColor || listing.exteriorColorName || listing.color;
+              
+              result.daysOnLot = listing.daysOnLot || listing.daysAtDealer || listing.listingAge;
+              result.daysOnCarGurus = listing.daysOnCarGurus || listing.daysOnSite;
+              
+              result.specs = {
+                engine: listing.engine || listing.engineDescription,
+                transmission: listing.transmission || listing.transmissionDescription,
+                drivetrain: listing.drivetrain || listing.driveType,
+                fuelType: listing.fuelType || listing.fuelTypePrimary,
+                bodyType: listing.bodyType || listing.bodyStyle,
+                cylinders: listing.cylinders?.toString() || listing.engineCylinders?.toString(),
+                horsepower: listing.horsepower?.toString() || listing.engineHP?.toString(),
+                torque: listing.torque?.toString()
+              };
+              
+              if (listing.mpgCity && listing.mpgHighway) {
+                result.specs.mpg = `${listing.mpgCity}/${listing.mpgHighway}`;
+              }
+              
+              result.dealRating = listing.dealRating || listing.dealType;
+              
+              const features: string[] = [];
+              if (listing.features && Array.isArray(listing.features)) {
+                for (const f of listing.features) {
+                  if (typeof f === 'string') features.push(f);
+                  else if (f?.name) features.push(f.name);
+                  else if (f?.description) features.push(f.description);
+                }
+              }
+              if (listing.highlightedFeatures && Array.isArray(listing.highlightedFeatures)) {
+                for (const f of listing.highlightedFeatures) {
+                  if (typeof f === 'string') features.push(f);
+                  else if (f?.name) features.push(f.name);
+                }
+              }
+              result.features = features;
+              
+              const historyBadges: string[] = [];
+              if (listing.accidentFree === true) historyBadges.push('Accident-Free');
+              if (listing.oneOwner === true || listing.singleOwner === true) historyBadges.push('One-Owner');
+              if (listing.personalUse === true) historyBadges.push('Personal Use');
+              if (listing.serviceRecords === true) historyBadges.push('Service Records');
+              if (listing.cleanTitle === true) historyBadges.push('Clean Title');
+              result.historyBadges = historyBadges;
+              
+              if (listing.priceHistory && Array.isArray(listing.priceHistory)) {
+                result.priceHistory = listing.priceHistory.map((ph: any) => ({
+                  date: ph.date || ph.timestamp,
+                  price: ph.price || ph.amount
+                }));
+              }
+              
+              const dealer = listing.dealer || {};
+              result.dealerInfo = {
+                name: dealer.name || listing.dealerName,
+                rating: dealer.rating || listing.dealerRating,
+                reviewCount: dealer.reviewCount || dealer.numReviews,
+                phone: dealer.phone || dealer.phoneNumber,
+                address: dealer.address || (dealer.city ? `${dealer.city}, ${dealer.state || dealer.province}` : undefined)
+              };
+              
+              result.vehicleDescription = listing.description || listing.sellerComments;
+              result.carfaxUrl = listing.carfaxUrl || listing.carfaxReportUrl;
+              result.imageUrl = listing.mainPictureUrl || listing.pictureUrl;
+              result.sellerName = dealer.name || listing.dealerName;
+              result.location = dealer.city ? `${dealer.city}, ${dealer.state || dealer.province}` : undefined;
+            }
+          }
+        } catch (e) {
+          console.error('Error parsing detail page __NEXT_DATA__:', e);
+        }
+        
+        return result;
+      });
+      
+      const responseTimeMs = Date.now() - startTime;
+      
+      if (detailData && (detailData.vin || detailData.year)) {
+        console.log(`[CarGurus Detail] Successfully extracted details in ${responseTimeMs}ms`);
+        return {
+          success: true,
+          data: {
+            ...detailData,
+            specs: Object.keys(detailData.specs || {}).some((k: string) => detailData.specs[k]) ? detailData.specs : undefined,
+            features: detailData.features?.length > 0 ? detailData.features : undefined,
+            historyBadges: detailData.historyBadges?.length > 0 ? detailData.historyBadges : undefined,
+            detailsEnriched: true
+          },
+          responseTimeMs
+        };
+      }
+      
+      return {
+        success: false,
+        error: 'No listing data found on page',
+        responseTimeMs
+      };
+      
+    } catch (error) {
+      const responseTimeMs = Date.now() - startTime;
+      console.error(`[CarGurus Detail] Failed after ${responseTimeMs}ms:`, error instanceof Error ? error.message : 'Unknown error');
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        responseTimeMs
+      };
+    } finally {
+      if (browser) {
+        await browser.close();
+      }
+    }
+  }
+
+  async enrichWithDetails(vehicles: CargurusVehicleData[], maxEnrich: number = 10): Promise<CargurusVehicleData[]> {
+    const toEnrich = vehicles.slice(0, maxEnrich);
+    const enriched: CargurusVehicleData[] = [];
+    
+    console.log(`[CarGurus Enrichment] Enriching ${toEnrich.length} vehicles with detail data`);
+    
+    for (const vehicle of toEnrich) {
+      if (!vehicle.listingUrl) {
+        enriched.push(vehicle);
+        continue;
+      }
+      
+      const detailResult = await this.getListingDetails(vehicle.listingUrl);
+      
+      if (detailResult.success && detailResult.data) {
+        const mergedSpecs = {
+          ...vehicle.specs,
+          ...detailResult.data.specs
+        };
+        
+        const mergedFeatures = [
+          ...(vehicle.features || []),
+          ...(detailResult.data.features || [])
+        ];
+        const uniqueFeatures = [...new Set(mergedFeatures)];
+        
+        const mergedBadges = [
+          ...(vehicle.historyBadges || []),
+          ...(detailResult.data.historyBadges || [])
+        ];
+        const uniqueBadges = [...new Set(mergedBadges)];
+        
+        enriched.push({
+          ...vehicle,
+          vin: detailResult.data.vin || vehicle.vin,
+          trim: detailResult.data.trim || vehicle.trim,
+          interiorColor: detailResult.data.interiorColor || vehicle.interiorColor,
+          exteriorColor: detailResult.data.exteriorColor || vehicle.exteriorColor,
+          daysOnLot: detailResult.data.daysOnLot || vehicle.daysOnLot,
+          daysOnCarGurus: detailResult.data.daysOnCarGurus || vehicle.daysOnCarGurus,
+          specs: Object.keys(mergedSpecs).length > 0 ? mergedSpecs : undefined,
+          features: uniqueFeatures.length > 0 ? uniqueFeatures : undefined,
+          historyBadges: uniqueBadges.length > 0 ? uniqueBadges : undefined,
+          priceHistory: detailResult.data.priceHistory,
+          dealerInfo: detailResult.data.dealerInfo,
+          vehicleDescription: detailResult.data.vehicleDescription,
+          carfaxUrl: detailResult.data.carfaxUrl,
+          detailsEnriched: true
+        });
+      } else {
+        enriched.push(vehicle);
+      }
+    }
+    
+    const remaining = vehicles.slice(maxEnrich);
+    
+    console.log(`[CarGurus Enrichment] Enriched ${enriched.filter(v => v.detailsEnriched).length}/${toEnrich.length} vehicles successfully`);
+    
+    return [...enriched, ...remaining];
   }
 
   async searchAndConvert(params: CargurusSearchParams): Promise<InsertMarketListing[]> {

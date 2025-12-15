@@ -23,6 +23,20 @@ export interface PercentileBreakdown {
   p90: number;
 }
 
+export interface ListingQualityScore {
+  overall: number;
+  breakdown: {
+    hasVin: boolean;
+    hasTrim: boolean;
+    hasColors: boolean;
+    hasMileage: boolean;
+    hasSpecs: boolean;
+    hasHistoryBadges: boolean;
+    hasDealRating: boolean;
+  };
+  dataCompleteness: 'high' | 'medium' | 'low';
+}
+
 export interface CompetitorListing {
   year: number;
   make: string;
@@ -34,6 +48,11 @@ export interface CompetitorListing {
   daysOnLot?: number;
   interiorColor?: string;
   exteriorColor?: string;
+  source?: string;
+  qualityScore?: ListingQualityScore;
+  vin?: string;
+  historyBadges?: string[];
+  dealRating?: string;
 }
 
 export interface CompetitorInfo {
@@ -66,6 +85,14 @@ export interface PriceTrend {
   listingCount: number;
 }
 
+export interface SourceBreakdown {
+  name: string;
+  listingCount: number;
+  averageQualityScore: number;
+  dataRank: number;
+  reliability: 'high' | 'medium' | 'low';
+}
+
 export interface EnhancedMarketAnalysisResult {
   success: boolean;
   dataSource: string;
@@ -83,6 +110,8 @@ export interface EnhancedMarketAnalysisResult {
     minPrice: number;
     maxPrice: number;
     averageMileage: number;
+    averageQualityScore?: number;
+    highQualityListings?: number;
   };
   percentiles: PercentileBreakdown;
   daysOnMarket: DaysOnMarketInfo;
@@ -97,9 +126,20 @@ export interface EnhancedMarketAnalysisResult {
   };
   aiInsights?: string;
   sources: string[];
+  sourceBreakdown: SourceBreakdown[];
   scrapedAt: string;
   errors: string[];
 }
+
+const SOURCE_RELIABILITY: Record<string, { rank: number; reliability: 'high' | 'medium' | 'low' }> = {
+  'marketcheck': { rank: 1, reliability: 'high' },
+  'cargurus': { rank: 2, reliability: 'high' },
+  'apify': { rank: 3, reliability: 'medium' },
+  'autotrader_scraper': { rank: 4, reliability: 'medium' },
+  'kijiji': { rank: 5, reliability: 'medium' },
+  'craigslist': { rank: 6, reliability: 'low' },
+  'unknown': { rank: 10, reliability: 'low' }
+};
 
 export class EnhancedMarketAnalysisService {
   private openai: OpenAI | null = null;
@@ -112,6 +152,64 @@ export class EnhancedMarketAnalysisService {
         baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined
       });
     }
+  }
+
+  private calculateListingQualityScore(listing: MarketListing): ListingQualityScore {
+    const breakdown = {
+      hasVin: !!listing.vin,
+      hasTrim: !!listing.trim,
+      hasColors: !!(listing.interiorColor || listing.exteriorColor),
+      hasMileage: !!listing.mileage && listing.mileage > 0,
+      hasSpecs: !!listing.specsJson,
+      hasHistoryBadges: !!listing.historyBadges,
+      hasDealRating: !!listing.dealerRating
+    };
+
+    let score = 0;
+    if (breakdown.hasVin) score += 20;
+    if (breakdown.hasTrim) score += 15;
+    if (breakdown.hasColors) score += 10;
+    if (breakdown.hasMileage) score += 15;
+    if (breakdown.hasSpecs) score += 15;
+    if (breakdown.hasHistoryBadges) score += 15;
+    if (breakdown.hasDealRating) score += 10;
+
+    const sourceInfo = SOURCE_RELIABILITY[listing.source] || SOURCE_RELIABILITY['unknown'];
+    score = Math.min(100, score + (sourceInfo.rank <= 2 ? 10 : 0));
+
+    let dataCompleteness: 'high' | 'medium' | 'low' = 'low';
+    if (score >= 70) dataCompleteness = 'high';
+    else if (score >= 40) dataCompleteness = 'medium';
+
+    return { overall: score, breakdown, dataCompleteness };
+  }
+
+  private calculateSourceBreakdown(listings: MarketListing[]): SourceBreakdown[] {
+    const sourceMap = new Map<string, { listings: MarketListing[]; totalQuality: number }>();
+
+    for (const listing of listings) {
+      const source = listing.source || 'unknown';
+      if (!sourceMap.has(source)) {
+        sourceMap.set(source, { listings: [], totalQuality: 0 });
+      }
+      const entry = sourceMap.get(source)!;
+      entry.listings.push(listing);
+      entry.totalQuality += this.calculateListingQualityScore(listing).overall;
+    }
+
+    const breakdown: SourceBreakdown[] = [];
+    for (const [name, data] of sourceMap.entries()) {
+      const sourceInfo = SOURCE_RELIABILITY[name] || SOURCE_RELIABILITY['unknown'];
+      breakdown.push({
+        name,
+        listingCount: data.listings.length,
+        averageQualityScore: Math.round(data.totalQuality / data.listings.length),
+        dataRank: sourceInfo.rank,
+        reliability: sourceInfo.reliability
+      });
+    }
+
+    return breakdown.sort((a, b) => a.dataRank - b.dataRank);
   }
 
   async analyze(params: EnhancedMarketAnalysisParams): Promise<EnhancedMarketAnalysisResult> {
@@ -174,6 +272,12 @@ export class EnhancedMarketAnalysisService {
     const prices = filteredListings.map(l => l.price).sort((a, b) => a - b);
     const mileages = filteredListings.filter(l => l.mileage).map(l => l.mileage!);
 
+    const qualityScores = filteredListings.map(l => this.calculateListingQualityScore(l));
+    const avgQualityScore = Math.round(qualityScores.reduce((a, b) => a + b.overall, 0) / qualityScores.length);
+    const highQualityCount = qualityScores.filter(q => q.dataCompleteness === 'high').length;
+
+    const sourceBreakdown = this.calculateSourceBreakdown(filteredListings);
+
     const summary = {
       totalListings: filteredListings.length,
       averagePrice: Math.round(prices.reduce((a, b) => a + b, 0) / prices.length),
@@ -182,7 +286,9 @@ export class EnhancedMarketAnalysisService {
       maxPrice: prices[prices.length - 1],
       averageMileage: mileages.length > 0 
         ? Math.round(mileages.reduce((a, b) => a + b, 0) / mileages.length)
-        : 0
+        : 0,
+      averageQualityScore: avgQualityScore,
+      highQualityListings: highQualityCount
     };
 
     const percentiles = this.calculatePercentiles(prices);
@@ -235,6 +341,7 @@ export class EnhancedMarketAnalysisService {
       priceRecommendation,
       aiInsights,
       sources,
+      sourceBreakdown,
       scrapedAt: new Date().toISOString(),
       errors
     };
@@ -318,7 +425,6 @@ export class EnhancedMarketAnalysisService {
       const competitorListings: CompetitorListing[] = sellerListings
         .slice(0, 10)
         .map((l: MarketListing) => {
-          // Calculate days on lot from postedDate
           let daysOnLot: number | undefined;
           if (l.postedDate) {
             const posted = new Date(l.postedDate);
@@ -326,6 +432,14 @@ export class EnhancedMarketAnalysisService {
             daysOnLot = Math.floor((now.getTime() - posted.getTime()) / (1000 * 60 * 60 * 24));
             if (daysOnLot < 0) daysOnLot = undefined;
           }
+          
+          const qualityScore = this.calculateListingQualityScore(l);
+          let historyBadges: string[] | undefined;
+          try {
+            if (l.historyBadges) {
+              historyBadges = JSON.parse(l.historyBadges);
+            }
+          } catch {}
           
           return {
             year: l.year,
@@ -337,7 +451,12 @@ export class EnhancedMarketAnalysisService {
             listingUrl: l.listingUrl,
             daysOnLot,
             interiorColor: l.interiorColor || undefined,
-            exteriorColor: l.exteriorColor || undefined
+            exteriorColor: l.exteriorColor || undefined,
+            source: l.source,
+            qualityScore,
+            vin: l.vin || undefined,
+            historyBadges,
+            dealRating: l.dealerRating || undefined
           };
         });
       
@@ -547,7 +666,9 @@ Provide brief, professional insights focusing on pricing strategy and market pos
         medianPrice: 0,
         minPrice: 0,
         maxPrice: 0,
-        averageMileage: 0
+        averageMileage: 0,
+        averageQualityScore: 0,
+        highQualityListings: 0
       },
       percentiles: { p10: 0, p25: 0, p50: 0, p75: 0, p90: 0 },
       daysOnMarket: {
@@ -567,6 +688,7 @@ Provide brief, professional insights focusing on pricing strategy and market pos
         reasoning: 'No market data found. Please try refreshing market data first.'
       },
       sources,
+      sourceBreakdown: [],
       scrapedAt: new Date().toISOString(),
       errors: [...errors, 'No listings found matching your criteria']
     };
