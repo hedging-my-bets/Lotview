@@ -30,6 +30,8 @@ export interface CargurusVehicleData {
   exteriorColor?: string;
   dealRating?: string;
   dealerRating?: string;
+  daysOnLot?: number;
+  daysOnCarGurus?: number;
   specs?: {
     engine?: string;
     transmission?: string;
@@ -185,7 +187,9 @@ export class CargurusScraper {
                 oneOwner: listing.oneOwner || listing.singleOwner,
                 personalUse: listing.personalUse,
                 serviceRecords: listing.serviceRecords,
-                dealerInventoryCount: listing.dealerInventoryCount
+                dealerInventoryCount: listing.dealerInventoryCount,
+                daysOnLot: listing.daysOnLot || listing.days_on_lot || listing.daysAtDealer || listing.listingAge,
+                daysOnCarGurus: listing.daysOnCarGurus || listing.daysOnSite || listing.listingDuration
               });
             }
           }
@@ -239,6 +243,8 @@ export class CargurusScraper {
           exteriorColor: data.exteriorColor,
           dealRating: data.dealRating,
           dealerRating: data.dealerRating,
+          daysOnLot: data.daysOnLot ? parseInt(data.daysOnLot) : undefined,
+          daysOnCarGurus: data.daysOnCarGurus ? parseInt(data.daysOnCarGurus) : undefined,
           specs: Object.keys(specs).length > 0 ? specs : undefined,
           historyBadges: historyBadges.length > 0 ? historyBadges : undefined,
           marketAvailabilityCount: data.dealerInventoryCount
@@ -309,7 +315,8 @@ export class CargurusScraper {
         dataSourceRank: 2,
         vehicleHash: hash,
         dealerRating: vehicle.dealerRating || null,
-        historyBadges: vehicle.historyBadges ? JSON.stringify(vehicle.historyBadges) : null
+        historyBadges: vehicle.historyBadges ? JSON.stringify(vehicle.historyBadges) : null,
+        daysOnLot: vehicle.daysOnLot || null
       };
       
       return listing;

@@ -1695,10 +1695,15 @@ export default function Manager() {
           description: `${result.year || ''} ${result.make || ''} ${result.model || ''}`.trim(),
         });
 
-        // Auto-trigger market analysis and live pricing
+        // Auto-trigger market analysis and live pricing with decoded values
         setTimeout(() => {
           if (result.make && result.model) {
-            handleMarketSearch();
+            handleMarketSearch({
+              make: result.make,
+              model: result.model,
+              years: result.year ? [result.year] : [],
+              trims: result.trim ? [result.trim] : []
+            });
           }
         }, 500);
 
@@ -1746,8 +1751,13 @@ export default function Manager() {
     }
   };
 
-  const handleMarketSearch = async () => {
-    if (!pricingForm.make || !pricingForm.model) {
+  const handleMarketSearch = async (overrides?: { make?: string; model?: string; years?: number[]; trims?: string[] }) => {
+    const searchMake = overrides?.make || pricingForm.make;
+    const searchModel = overrides?.model || pricingForm.model;
+    const searchYears = overrides?.years || pricingForm.selectedYears;
+    const searchTrims = overrides?.trims || pricingForm.selectedTrims;
+    
+    if (!searchMake || !searchModel) {
       toast({
         title: "Missing Information",
         description: "Please select make and model to search",
@@ -1774,14 +1784,14 @@ export default function Manager() {
       const token = localStorage.getItem('auth_token');
       
       const currentYear = new Date().getFullYear();
-      const years = pricingForm.selectedYears.length > 0 ? pricingForm.selectedYears : [currentYear];
+      const years = searchYears.length > 0 ? searchYears : [currentYear];
       
       // Call enhanced market analysis API for comprehensive data
       const enhancedResult = await apiPost<any>('/api/manager/enhanced-market-analysis', {
-        make: pricingForm.make,
-        model: pricingForm.model,
+        make: searchMake,
+        model: searchModel,
         years,
-        trims: pricingForm.selectedTrims.length > 0 ? pricingForm.selectedTrims : undefined,
+        trims: searchTrims.length > 0 ? searchTrims : undefined,
         mileage: pricingForm.mileage ? parseInt(pricingForm.mileage) : undefined,
         radiusKm: parseInt(pricingForm.radiusKm) || settings.defaultRadiusKm,
         postalCode: settings.postalCode.trim(),

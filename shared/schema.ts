@@ -1106,6 +1106,7 @@ export const marketListings = pgTable("market_listings", {
   vehicleHash: text("vehicle_hash"), // Normalized hash for deduplication (make/model/year/trim/dealer/mileage)
   dealerRating: text("dealer_rating"), // Dealer rating from source
   historyBadges: text("history_badges"), // JSON array of history badges (accident-free, one-owner, etc.)
+  daysOnLot: integer("days_on_lot"), // Days listing has been on market from CarGurus
 });
 
 // Market Listing Sources - Tracks when same vehicle appears on multiple platforms
