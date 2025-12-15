@@ -5495,9 +5495,9 @@ export class DatabaseStorage implements IStorage {
     const recentMissed = missedAppraisals.slice(0, 10).map(a => ({
       id: a.id,
       vin: a.vin,
-      year: a.year,
-      make: a.make,
-      model: a.model,
+      year: a.year ?? 0,
+      make: a.make ?? 'Unknown',
+      model: a.model ?? 'Unknown',
       quotedPrice: a.quotedPrice || 0,
       missedReason: a.missedReason || 'other',
       missedNotes: a.missedNotes,
@@ -5579,9 +5579,9 @@ export class DatabaseStorage implements IStorage {
     const recentPurchases = purchasedAppraisals.slice(0, 10).map(a => ({
       id: a.id,
       vin: a.vin,
-      year: a.year,
-      make: a.make,
-      model: a.model,
+      year: a.year ?? 0,
+      make: a.make ?? 'Unknown',
+      model: a.model ?? 'Unknown',
       quotedPrice: a.quotedPrice || 0,
       actualSalePrice: a.actualSalePrice || 0,
       variance: a.quotedPrice && a.quotedPrice > 0 

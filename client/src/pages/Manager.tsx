@@ -3175,7 +3175,7 @@ export default function Manager() {
                     </div>
 
                     <Button
-                      onClick={handleMarketSearch}
+                      onClick={() => handleMarketSearch()}
                       disabled={isAnalyzing || !pricingForm.make || !pricingForm.model}
                       className="mt-4"
                       data-testid="button-analyze-pricing"
