@@ -70,6 +70,8 @@ interface CarGurusVehicle {
   cargurusPrice?: number;
   cargurusUrl?: string;
   dealerVdpUrl?: string; // Link to dealer's vehicle detail page
+  exteriorColor?: string;
+  interiorColor?: string;
 }
 
 // Determine body type from description or model name
@@ -250,6 +252,8 @@ async function scrapeCarGurusVehicleDetail(
         stockNumber: listing.stockNumber || listing.stock || null,
         dealRating: listing.dealRating || listing.dealBadge || null,
         description: listing.description || listing.sellerComments || "",
+        exteriorColor: listing.exteriorColor || listing.exteriorColorName || listing.color || null,
+        interiorColor: listing.interiorColor || listing.interiorColorName || null,
         images: [],
       };
 
@@ -347,6 +351,8 @@ async function scrapeCarGurusVehicleDetail(
         dealRating: vehicleData.dealRating,
         cargurusPrice: vehicleData.price,
         cargurusUrl: listingUrl,
+        exteriorColor: vehicleData.exteriorColor,
+        interiorColor: vehicleData.interiorColor,
       };
 
       return vehicle;
@@ -392,6 +398,10 @@ async function scrapeCarGurusVehicleDetail(
 
             // Extract deal rating
             data.dealRating = listing.dealRating || listing.dealBadge || null;
+
+            // Extract colors
+            data.exteriorColor = listing.exteriorColor || listing.exteriorColorName || listing.color || null;
+            data.interiorColor = listing.interiorColor || listing.interiorColorName || null;
 
             // Extract images from gallery (most reliable source)
             const images: string[] = [];
@@ -810,6 +820,8 @@ async function scrapeCarGurusVehicleDetail(
       dealRating: vehicleData.dealRating,
       cargurusPrice: vehicleData.price,
       cargurusUrl: listingUrl,
+      exteriorColor: vehicleData.exteriorColor,
+      interiorColor: vehicleData.interiorColor,
     };
 
     return vehicle;

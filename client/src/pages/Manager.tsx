@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AiPromptEnhancer } from "@/components/AiPromptEnhancer";
 import { FollowUpSequenceEditor } from "@/components/FollowUpSequenceEditor";
 import { ConversationsPanel } from "@/components/ConversationsPanel";
@@ -3560,89 +3561,277 @@ export default function Manager() {
                           </>
                         )}
 
-                        {/* Comparable Vehicles */}
+                        {/* Comparable Vehicles - Table Style */}
                         {pricingResults.comparisons && pricingResults.comparisons.length > 0 && (
-                          <div>
-                            <h4 className="font-semibold text-foreground mb-4">Comparable Vehicles</h4>
-                            <div className="space-y-3">
-                              {pricingResults.comparisons.slice(0, 10).map((comp: any, index: number) => (
-                                <div 
-                                  key={index}
-                                  className="border rounded-lg p-4 hover:bg-muted"
-                                  data-testid={`comparison-${index}`}
-                                >
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex-1">
-                                      <div className="font-medium flex items-center gap-2">
-                                        {comp.listingUrl ? (
-                                          <a 
-                                            href={comp.listingUrl} 
-                                            target="_blank" 
-                                            rel="noopener noreferrer"
-                                            className="text-primary hover:underline"
-                                            data-testid={`link-comparison-${index}`}
-                                          >
-                                            {comp.year} {comp.make} {comp.model}
-                                            {comp.trim && ` ${comp.trim}`}
-                                          </a>
-                                        ) : (
-                                          <span>
-                                            {comp.year} {comp.make} {comp.model}
-                                            {comp.trim && ` ${comp.trim}`}
-                                          </span>
-                                        )}
-                                        {comp.source && (
-                                          <Badge variant="outline" className="text-xs capitalize">
-                                            {comp.source.replace('_scraper', '').replace('_', ' ')}
-                                          </Badge>
-                                        )}
-                                      </div>
-                                      <div className="text-sm text-muted-foreground mt-1">
-                                        {comp.stockNumber && `Stock #${comp.stockNumber} • `}{comp.location} • {comp.dealership}
-                                        {comp.mileage && ` • ${comp.mileage.toLocaleString()} km`}
-                                        {comp.listingType && (
-                                          <span className="ml-1">• {comp.listingType === 'dealer' ? 'Dealer' : 'Private'}</span>
-                                        )}
-                                        {typeof comp.daysOnLot === 'number' && (
-                                          <span className="ml-1">• {comp.daysOnLot} days on lot</span>
-                                        )}
-                                      </div>
-                                      {(comp.exteriorColor || comp.interiorColor) && (
-                                        <div className="flex gap-3 mt-1.5 text-xs">
-                                          {comp.exteriorColor && (
-                                            <span className="inline-flex items-center gap-1 text-muted-foreground">
-                                              <span className="font-medium">Ext:</span> {comp.exteriorColor}
-                                            </span>
-                                          )}
-                                          {comp.interiorColor && (
-                                            <span className="inline-flex items-center gap-1 text-muted-foreground">
-                                              <span className="font-medium">Int:</span> {comp.interiorColor}
-                                            </span>
-                                          )}
-                                        </div>
+                          <div data-testid="comparable-vehicles-section">
+                            {/* Separate by seller type */}
+                            {(() => {
+                              const dealerListings = pricingResults.comparisons.filter((c: any) => c.listingType === 'dealer' || (!c.listingType && c.dealership));
+                              const privateListings = pricingResults.comparisons.filter((c: any) => c.listingType === 'private');
+                              const dealerAvg = dealerListings.length > 0 ? Math.round(dealerListings.reduce((sum: number, c: any) => sum + (c.price || 0), 0) / dealerListings.length) : 0;
+                              const privateAvg = privateListings.length > 0 ? Math.round(privateListings.reduce((sum: number, c: any) => sum + (c.price || 0), 0) / privateListings.length) : 0;
+                              
+                              return (
+                                <Tabs defaultValue="all" className="w-full">
+                                  <div className="flex items-center justify-between mb-4">
+                                    <h4 className="font-semibold text-foreground">Comparable Vehicles</h4>
+                                    <TabsList className="h-8">
+                                      <TabsTrigger value="all" className="text-xs px-3">
+                                        All ({pricingResults.comparisons.length})
+                                      </TabsTrigger>
+                                      {dealerListings.length > 0 && (
+                                        <TabsTrigger value="dealer" className="text-xs px-3">
+                                          Dealer ({dealerListings.length}, ${dealerAvg.toLocaleString()} avg)
+                                        </TabsTrigger>
                                       )}
-                                    </div>
-                                    <div className="text-right ml-4">
-                                      <div className="font-bold text-lg">${comp.price.toLocaleString()}</div>
-                                      <div className={`text-sm ${comp.priceDifference >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                        {comp.priceDifference >= 0 ? '+' : ''}{comp.percentageDifference}% vs avg
-                                      </div>
-                                      {comp.listingUrl && (
-                                        <a 
-                                          href={comp.listingUrl} 
-                                          target="_blank" 
-                                          rel="noopener noreferrer"
-                                          className="text-xs text-primary hover:underline flex items-center justify-end gap-1 mt-1"
-                                        >
-                                          <ExternalLink className="w-3 h-3" />
-                                          View Listing
-                                        </a>
+                                      {privateListings.length > 0 && (
+                                        <TabsTrigger value="private" className="text-xs px-3">
+                                          Private ({privateListings.length}, ${privateAvg.toLocaleString()} avg)
+                                        </TabsTrigger>
                                       )}
-                                    </div>
+                                    </TabsList>
                                   </div>
-                                </div>
-                              ))}
-                            </div>
+                                  
+                                  {/* All Listings */}
+                                  <TabsContent value="all" className="mt-0">
+                                    <div className="border rounded-lg overflow-hidden">
+                                      <div className="overflow-x-auto">
+                                        <table className="w-full text-sm">
+                                          <thead className="bg-muted/50 border-b">
+                                            <tr>
+                                              <th className="text-left p-3 font-medium text-muted-foreground">Vehicle Info</th>
+                                              <th className="text-left p-3 font-medium text-muted-foreground">Mileage</th>
+                                              <th className="text-left p-3 font-medium text-muted-foreground">Age</th>
+                                              <th className="text-left p-3 font-medium text-muted-foreground">Seller Type</th>
+                                              <th className="text-left p-3 font-medium text-muted-foreground">Ext Color</th>
+                                              <th className="text-left p-3 font-medium text-muted-foreground">Int Color</th>
+                                              <th className="text-right p-3 font-medium text-muted-foreground">Price</th>
+                                              <th className="text-center p-3 font-medium text-muted-foreground w-8"></th>
+                                            </tr>
+                                          </thead>
+                                          <tbody className="divide-y">
+                                            {pricingResults.comparisons.slice(0, 15).map((comp: any, index: number) => (
+                                              <tr key={index} className="hover:bg-muted/30" data-testid={`comparison-row-${index}`}>
+                                                <td className="p-3">
+                                                  <div className="font-medium text-foreground">
+                                                    {comp.year} {comp.make?.toUpperCase()} {comp.model?.toUpperCase()}
+                                                    {comp.trim && <span className="text-muted-foreground font-normal"> ({comp.trim})</span>}
+                                                  </div>
+                                                  <div className="text-xs text-muted-foreground mt-0.5">
+                                                    {comp.dealership || comp.location || 'Unknown'}
+                                                  </div>
+                                                </td>
+                                                <td className="p-3 text-muted-foreground">
+                                                  {comp.mileage ? `${comp.mileage.toLocaleString()} km` : '-'}
+                                                </td>
+                                                <td className="p-3">
+                                                  {typeof comp.daysOnLot === 'number' ? (
+                                                    <Badge 
+                                                      variant="outline" 
+                                                      className={cn(
+                                                        "text-xs",
+                                                        comp.daysOnLot > 60 ? "border-red-300 text-red-600 bg-red-50 dark:bg-red-950/30" :
+                                                        comp.daysOnLot > 30 ? "border-yellow-300 text-yellow-600 bg-yellow-50 dark:bg-yellow-950/30" :
+                                                        "border-green-300 text-green-600 bg-green-50 dark:bg-green-950/30"
+                                                      )}
+                                                    >
+                                                      {comp.daysOnLot} days
+                                                    </Badge>
+                                                  ) : '-'}
+                                                </td>
+                                                <td className="p-3">
+                                                  <Badge variant="outline" className="text-xs capitalize">
+                                                    {comp.listingType === 'private' ? 'Private' : 'Dealer'}
+                                                  </Badge>
+                                                </td>
+                                                <td className="p-3 text-muted-foreground">
+                                                  {comp.exteriorColor || '-'}
+                                                </td>
+                                                <td className="p-3 text-muted-foreground">
+                                                  {comp.interiorColor || '-'}
+                                                </td>
+                                                <td className="p-3 text-right">
+                                                  <div className="font-bold text-foreground">
+                                                    ${comp.price?.toLocaleString() || 'N/A'}
+                                                  </div>
+                                                </td>
+                                                <td className="p-3 text-center">
+                                                  {comp.listingUrl && (
+                                                    <a 
+                                                      href={comp.listingUrl} 
+                                                      target="_blank" 
+                                                      rel="noopener noreferrer"
+                                                      className="text-primary hover:text-primary/80"
+                                                      data-testid={`link-comparison-${index}`}
+                                                    >
+                                                      <ExternalLink className="w-4 h-4" />
+                                                    </a>
+                                                  )}
+                                                </td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </div>
+                                  </TabsContent>
+                                  
+                                  {/* Dealer Listings */}
+                                  <TabsContent value="dealer" className="mt-0">
+                                    <div className="border rounded-lg overflow-hidden">
+                                      <div className="overflow-x-auto">
+                                        <table className="w-full text-sm">
+                                          <thead className="bg-muted/50 border-b">
+                                            <tr>
+                                              <th className="text-left p-3 font-medium text-muted-foreground">Vehicle Info</th>
+                                              <th className="text-left p-3 font-medium text-muted-foreground">Mileage</th>
+                                              <th className="text-left p-3 font-medium text-muted-foreground">Age</th>
+                                              <th className="text-left p-3 font-medium text-muted-foreground">Ext Color</th>
+                                              <th className="text-left p-3 font-medium text-muted-foreground">Int Color</th>
+                                              <th className="text-right p-3 font-medium text-muted-foreground">Price</th>
+                                              <th className="text-center p-3 font-medium text-muted-foreground w-8"></th>
+                                            </tr>
+                                          </thead>
+                                          <tbody className="divide-y">
+                                            {dealerListings.slice(0, 15).map((comp: any, index: number) => (
+                                              <tr key={index} className="hover:bg-muted/30" data-testid={`dealer-row-${index}`}>
+                                                <td className="p-3">
+                                                  <div className="font-medium text-foreground">
+                                                    {comp.year} {comp.make?.toUpperCase()} {comp.model?.toUpperCase()}
+                                                    {comp.trim && <span className="text-muted-foreground font-normal"> ({comp.trim})</span>}
+                                                  </div>
+                                                  <div className="text-xs text-muted-foreground mt-0.5">
+                                                    {comp.dealership || comp.location || 'Unknown'}
+                                                  </div>
+                                                </td>
+                                                <td className="p-3 text-muted-foreground">
+                                                  {comp.mileage ? `${comp.mileage.toLocaleString()} km` : '-'}
+                                                </td>
+                                                <td className="p-3">
+                                                  {typeof comp.daysOnLot === 'number' ? (
+                                                    <Badge 
+                                                      variant="outline" 
+                                                      className={cn(
+                                                        "text-xs",
+                                                        comp.daysOnLot > 60 ? "border-red-300 text-red-600 bg-red-50 dark:bg-red-950/30" :
+                                                        comp.daysOnLot > 30 ? "border-yellow-300 text-yellow-600 bg-yellow-50 dark:bg-yellow-950/30" :
+                                                        "border-green-300 text-green-600 bg-green-50 dark:bg-green-950/30"
+                                                      )}
+                                                    >
+                                                      {comp.daysOnLot} days
+                                                    </Badge>
+                                                  ) : '-'}
+                                                </td>
+                                                <td className="p-3 text-muted-foreground">
+                                                  {comp.exteriorColor || '-'}
+                                                </td>
+                                                <td className="p-3 text-muted-foreground">
+                                                  {comp.interiorColor || '-'}
+                                                </td>
+                                                <td className="p-3 text-right">
+                                                  <div className="font-bold text-foreground">
+                                                    ${comp.price?.toLocaleString() || 'N/A'}
+                                                  </div>
+                                                </td>
+                                                <td className="p-3 text-center">
+                                                  {comp.listingUrl && (
+                                                    <a 
+                                                      href={comp.listingUrl} 
+                                                      target="_blank" 
+                                                      rel="noopener noreferrer"
+                                                      className="text-primary hover:text-primary/80"
+                                                    >
+                                                      <ExternalLink className="w-4 h-4" />
+                                                    </a>
+                                                  )}
+                                                </td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </div>
+                                  </TabsContent>
+                                  
+                                  {/* Private Listings */}
+                                  <TabsContent value="private" className="mt-0">
+                                    <div className="border rounded-lg overflow-hidden">
+                                      <div className="overflow-x-auto">
+                                        <table className="w-full text-sm">
+                                          <thead className="bg-muted/50 border-b">
+                                            <tr>
+                                              <th className="text-left p-3 font-medium text-muted-foreground">Vehicle Info</th>
+                                              <th className="text-left p-3 font-medium text-muted-foreground">Mileage</th>
+                                              <th className="text-left p-3 font-medium text-muted-foreground">Age</th>
+                                              <th className="text-left p-3 font-medium text-muted-foreground">Ext Color</th>
+                                              <th className="text-left p-3 font-medium text-muted-foreground">Int Color</th>
+                                              <th className="text-right p-3 font-medium text-muted-foreground">Price</th>
+                                              <th className="text-center p-3 font-medium text-muted-foreground w-8"></th>
+                                            </tr>
+                                          </thead>
+                                          <tbody className="divide-y">
+                                            {privateListings.slice(0, 15).map((comp: any, index: number) => (
+                                              <tr key={index} className="hover:bg-muted/30" data-testid={`private-row-${index}`}>
+                                                <td className="p-3">
+                                                  <div className="font-medium text-foreground">
+                                                    {comp.year} {comp.make?.toUpperCase()} {comp.model?.toUpperCase()}
+                                                    {comp.trim && <span className="text-muted-foreground font-normal"> ({comp.trim})</span>}
+                                                  </div>
+                                                  <div className="text-xs text-muted-foreground mt-0.5">
+                                                    {comp.location || 'Private Seller'}
+                                                  </div>
+                                                </td>
+                                                <td className="p-3 text-muted-foreground">
+                                                  {comp.mileage ? `${comp.mileage.toLocaleString()} km` : '-'}
+                                                </td>
+                                                <td className="p-3">
+                                                  {typeof comp.daysOnLot === 'number' ? (
+                                                    <Badge 
+                                                      variant="outline" 
+                                                      className={cn(
+                                                        "text-xs",
+                                                        comp.daysOnLot > 60 ? "border-red-300 text-red-600 bg-red-50 dark:bg-red-950/30" :
+                                                        comp.daysOnLot > 30 ? "border-yellow-300 text-yellow-600 bg-yellow-50 dark:bg-yellow-950/30" :
+                                                        "border-green-300 text-green-600 bg-green-50 dark:bg-green-950/30"
+                                                      )}
+                                                    >
+                                                      {comp.daysOnLot} days
+                                                    </Badge>
+                                                  ) : '-'}
+                                                </td>
+                                                <td className="p-3 text-muted-foreground">
+                                                  {comp.exteriorColor || '-'}
+                                                </td>
+                                                <td className="p-3 text-muted-foreground">
+                                                  {comp.interiorColor || '-'}
+                                                </td>
+                                                <td className="p-3 text-right">
+                                                  <div className="font-bold text-foreground">
+                                                    ${comp.price?.toLocaleString() || 'N/A'}
+                                                  </div>
+                                                </td>
+                                                <td className="p-3 text-center">
+                                                  {comp.listingUrl && (
+                                                    <a 
+                                                      href={comp.listingUrl} 
+                                                      target="_blank" 
+                                                      rel="noopener noreferrer"
+                                                      className="text-primary hover:text-primary/80"
+                                                    >
+                                                      <ExternalLink className="w-4 h-4" />
+                                                    </a>
+                                                  )}
+                                                </td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </div>
+                                  </TabsContent>
+                                </Tabs>
+                              );
+                            })()}
                           </div>
                         )}
                       </div>
