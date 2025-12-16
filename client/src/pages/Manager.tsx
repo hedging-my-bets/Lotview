@@ -3001,267 +3001,31 @@ export default function Manager() {
                     </div>
                   )}
 
-                  {/* Market Pricing Section */}
-                  <div className="border-t pt-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-semibold text-foreground">Market Pricing Analysis</h3>
-                      <Button
-                        onClick={handleRefreshMarketData}
-                        disabled={isScraping || !pricingForm.make || !pricingForm.model}
-                        variant="outline"
-                        size="sm"
-                        data-testid="button-refresh-market"
+                  {/* 3. Market Analysis Section - Clean Design */}
+                  <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6" data-testid="section-market-analysis">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                      <div>
+                        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Market Analysis</h3>
+                        <p className="text-sm text-slate-500">Real-time listing data for {pricingForm.make || 'your vehicle'} {pricingForm.model || ''}</p>
+                      </div>
+                      <Button 
+                        onClick={() => handleMarketSearch()} 
+                        disabled={isAnalyzing || !pricingForm.make || !pricingForm.model} 
+                        className="bg-blue-600 hover:bg-blue-700 text-white shadow-md"
+                        data-testid="button-analyze-pricing"
                       >
-                        {isScraping ? (
-                          <>
-                            <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin mr-2" />
-                            Refreshing...
-                          </>
-                        ) : (
-                          <>
-                            <RefreshCw className="w-3 h-3 mr-2" />
-                            Refresh Market Data
-                          </>
-                        )}
+                        {isAnalyzing ? "Analyzing..." : "Analyze Market Pricing"}
                       </Button>
                     </div>
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                      {/* Year Multi-Select */}
-                      <div>
-                        <Label>Year (Select Multiple)</Label>
-                        <div className="mt-2">
-                          <Popover open={yearOpen} onOpenChange={setYearOpen}>
-                            <PopoverTrigger asChild>
-                              <Button
-                                variant="outline"
-                                role="combobox"
-                                aria-expanded={yearOpen}
-                                className="w-full justify-between"
-                                data-testid="select-years"
-                              >
-                                {pricingForm.selectedYears.length > 0 
-                                  ? `${pricingForm.selectedYears.length} year(s) selected`
-                                  : "Select years"}
-                                <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-[200px] p-0">
-                              <Command>
-                                <CommandInput placeholder="Search year..." />
-                                <CommandList>
-                                  <CommandEmpty>No year found.</CommandEmpty>
-                                  <CommandGroup>
-                                    {Array.from({ length: 10 }, (_, i) => new Date().getFullYear() + 1 - i).map((year) => (
-                                      <CommandItem
-                                        key={year}
-                                        value={String(year)}
-                                        onSelect={() => {
-                                          setPricingForm(prev => ({
-                                            ...prev,
-                                            selectedYears: prev.selectedYears.includes(year)
-                                              ? prev.selectedYears.filter(y => y !== year)
-                                              : [...prev.selectedYears, year].sort((a, b) => b - a)
-                                          }));
-                                        }}
-                                      >
-                                        <Check
-                                          className={cn(
-                                            "mr-2 h-4 w-4",
-                                            pricingForm.selectedYears.includes(year) ? "opacity-100" : "opacity-0"
-                                          )}
-                                        />
-                                        {year}
-                                      </CommandItem>
-                                    ))}
-                                  </CommandGroup>
-                                </CommandList>
-                              </Command>
-                            </PopoverContent>
-                          </Popover>
-                        </div>
-                      </div>
 
-                      {/* Make Select */}
-                      <div>
-                        <Label>Make</Label>
-                        <div className="mt-2">
-                          <Popover open={makeOpen} onOpenChange={setMakeOpen}>
-                            <PopoverTrigger asChild>
-                              <Button
-                                variant="outline"
-                                role="combobox"
-                                aria-expanded={makeOpen}
-                                className="w-full justify-between"
-                                data-testid="select-make"
-                              >
-                                {pricingForm.make || "Select make"}
-                                <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-[200px] p-0">
-                              <Command>
-                                <CommandInput placeholder="Search make..." />
-                                <CommandList>
-                                  <CommandEmpty>No make found.</CommandEmpty>
-                                  <CommandGroup>
-                                    {makes.map((make) => (
-                                      <CommandItem
-                                        key={make}
-                                        value={make}
-                                        onSelect={(value) => {
-                                          setPricingForm(prev => ({ ...prev, make: value }));
-                                          setMakeOpen(false);
-                                        }}
-                                      >
-                                        <Check
-                                          className={cn(
-                                            "mr-2 h-4 w-4",
-                                            pricingForm.make === make ? "opacity-100" : "opacity-0"
-                                          )}
-                                        />
-                                        {make}
-                                      </CommandItem>
-                                    ))}
-                                  </CommandGroup>
-                                </CommandList>
-                              </Command>
-                            </PopoverContent>
-                          </Popover>
-                        </div>
-                      </div>
-
-                      {/* Model Select */}
-                      <div>
-                        <Label>Model</Label>
-                        <div className="mt-2">
-                          <Popover open={modelOpen} onOpenChange={setModelOpen}>
-                            <PopoverTrigger asChild>
-                              <Button
-                                variant="outline"
-                                role="combobox"
-                                aria-expanded={modelOpen}
-                                className="w-full justify-between"
-                                disabled={!pricingForm.make}
-                                data-testid="select-model"
-                              >
-                                {pricingForm.model || "Select model"}
-                                <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-[200px] p-0">
-                              <Command>
-                                <CommandInput placeholder="Search model..." />
-                                <CommandList>
-                                  <CommandEmpty>No model found.</CommandEmpty>
-                                  <CommandGroup>
-                                    {models.map((model) => (
-                                      <CommandItem
-                                        key={model}
-                                        value={model}
-                                        onSelect={(value) => {
-                                          setPricingForm(prev => ({ ...prev, model: value }));
-                                          setModelOpen(false);
-                                        }}
-                                      >
-                                        <Check
-                                          className={cn(
-                                            "mr-2 h-4 w-4",
-                                            pricingForm.model === model ? "opacity-100" : "opacity-0"
-                                          )}
-                                        />
-                                        {model}
-                                      </CommandItem>
-                                    ))}
-                                  </CommandGroup>
-                                </CommandList>
-                              </Command>
-                            </PopoverContent>
-                          </Popover>
-                        </div>
-                      </div>
-
-                      {/* Trim Multi-Select */}
-                      <div>
-                        <Label>Trim (Select Multiple)</Label>
-                        <div className="mt-2">
-                          <Popover open={trimOpen} onOpenChange={setTrimOpen}>
-                            <PopoverTrigger asChild>
-                              <Button
-                                variant="outline"
-                                role="combobox"
-                                aria-expanded={trimOpen}
-                                className="w-full justify-between"
-                                disabled={!pricingForm.model}
-                                data-testid="select-trims"
-                              >
-                                {pricingForm.selectedTrims.length > 0 
-                                  ? `${pricingForm.selectedTrims.length} trim(s) selected`
-                                  : "Select trims (optional)"}
-                                <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-[200px] p-0">
-                              <Command>
-                                <CommandInput placeholder="Search trim..." />
-                                <CommandList>
-                                  <CommandEmpty>No trim found.</CommandEmpty>
-                                  <CommandGroup>
-                                    {trims.map((trim) => (
-                                      <CommandItem
-                                        key={trim}
-                                        value={trim}
-                                        onSelect={() => {
-                                          setPricingForm(prev => ({
-                                            ...prev,
-                                            selectedTrims: prev.selectedTrims.includes(trim)
-                                              ? prev.selectedTrims.filter(t => t !== trim)
-                                              : [...prev.selectedTrims, trim]
-                                          }));
-                                        }}
-                                      >
-                                        <Check
-                                          className={cn(
-                                            "mr-2 h-4 w-4",
-                                            pricingForm.selectedTrims.includes(trim) ? "opacity-100" : "opacity-0"
-                                          )}
-                                        />
-                                        {trim}
-                                      </CommandItem>
-                                    ))}
-                                  </CommandGroup>
-                                </CommandList>
-                              </Command>
-                            </PopoverContent>
-                          </Popover>
-                        </div>
-                      </div>
-
-                      {/* Mileage */}
-                      <div>
-                        <Label htmlFor="mileage">Mileage (Optional)</Label>
-                        <Input
-                          id="mileage"
-                          type="number"
-                          placeholder="e.g., 50000"
-                          value={pricingForm.mileage}
-                          onChange={(e) => setPricingForm(prev => ({ ...prev, mileage: e.target.value }))}
-                          data-testid="input-mileage"
-                          className="mt-2"
-                        />
-                      </div>
-
-                      {/* Radius */}
-                      <div>
-                        <Label htmlFor="radius">Search Radius (KM)</Label>
-                        <Select
-                          value={pricingForm.radiusKm}
-                          onValueChange={(value) => setPricingForm(prev => ({ ...prev, radiusKm: value }))}
-                        >
-                          <SelectTrigger className="mt-2" data-testid="select-radius">
-                            <SelectValue />
+                    {/* Inline Filters */}
+                    <div className="flex flex-wrap gap-3 mb-6 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-800">
+                      <div className="w-32">
+                        <Select value={pricingForm.radiusKm} onValueChange={v => setPricingForm(p => ({...p, radiusKm: v}))}>
+                          <SelectTrigger className="bg-white dark:bg-slate-900 h-9 text-xs" data-testid="select-radius">
+                            <SelectValue placeholder="Radius" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="25">25 km</SelectItem>
                             <SelectItem value="50">50 km</SelectItem>
                             <SelectItem value="100">100 km</SelectItem>
                             <SelectItem value="200">200 km</SelectItem>
@@ -3269,26 +3033,138 @@ export default function Manager() {
                           </SelectContent>
                         </Select>
                       </div>
+                      <Popover open={makeOpen} onOpenChange={setMakeOpen}>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" className="h-9 text-xs bg-white dark:bg-slate-900 justify-between w-40" data-testid="select-make">
+                            {pricingForm.make || "Make"} <ChevronDown className="w-3 h-3 opacity-50"/>
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="p-0 w-40">
+                          <Command>
+                            <CommandInput placeholder="Search..." />
+                            <CommandList>
+                              <CommandGroup>
+                                {makes.map(m => (
+                                  <CommandItem key={m} onSelect={() => {setPricingForm(p=>({...p, make: m})); setMakeOpen(false);}}>
+                                    {m}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                      <Popover open={modelOpen} onOpenChange={setModelOpen}>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" disabled={!pricingForm.make} className="h-9 text-xs bg-white dark:bg-slate-900 justify-between w-40" data-testid="select-model">
+                            {pricingForm.model || "Model"} <ChevronDown className="w-3 h-3 opacity-50"/>
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="p-0 w-40">
+                          <Command>
+                            <CommandInput placeholder="Search..." />
+                            <CommandList>
+                              <CommandGroup>
+                                {models.map(m => (
+                                  <CommandItem key={m} onSelect={() => {setPricingForm(p=>({...p, model: m})); setModelOpen(false);}}>
+                                    {m}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                      <Input 
+                        placeholder="Mileage (Optional)" 
+                        className="w-36 h-9 text-xs bg-white dark:bg-slate-900" 
+                        value={pricingForm.mileage} 
+                        onChange={e => setPricingForm(p => ({...p, mileage: e.target.value}))}
+                        data-testid="input-mileage"
+                      />
                     </div>
 
-                    <Button
-                      onClick={() => handleMarketSearch()}
-                      disabled={isAnalyzing || !pricingForm.make || !pricingForm.model}
-                      className="mt-4"
-                      data-testid="button-analyze-pricing"
-                    >
-                      {isAnalyzing ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                          Analyzing...
-                        </>
-                      ) : (
-                        <>
-                          <TrendingUp className="w-4 h-4 mr-2" />
-                          Analyze Market Pricing
-                        </>
-                      )}
-                    </Button>
+                    {/* Stats and Recommendation Panels */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                      {/* Stats Panel */}
+                      <div className="flex justify-between items-center p-6 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-100 dark:border-slate-700">
+                        <div>
+                          <div className="text-xs text-slate-400 font-semibold uppercase mb-1">Average Price</div>
+                          <div className="text-2xl font-bold text-slate-900 dark:text-white" data-testid="stat-average-price">
+                            ${pricingResults?.averagePrice?.toLocaleString() || "---,---"}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-slate-400 font-semibold uppercase mb-1">Median Price</div>
+                          <div className="text-2xl font-bold text-slate-900 dark:text-white" data-testid="stat-median-price">
+                            ${pricingResults?.medianPrice?.toLocaleString() || "---,---"}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-slate-400 font-semibold uppercase mb-1">Comparables</div>
+                          <div className="text-2xl font-bold text-blue-600" data-testid="stat-total-comps">
+                            {pricingResults?.totalComps || 0}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Recommendation Panel */}
+                      <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900 rounded-lg p-5 flex flex-col justify-center">
+                        <div className="text-sm font-medium text-amber-800 dark:text-amber-500 mb-1">Strategic Recommendation</div>
+                        <div className="text-lg font-bold text-amber-900 dark:text-amber-400" data-testid="stat-price-range">
+                          ${pricingResults?.priceRange?.low?.toLocaleString() || "---"} — ${pricingResults?.priceRange?.high?.toLocaleString() || "---"}
+                        </div>
+                        <div className="text-xs text-amber-700/70 mt-1">
+                          Based on {pricingResults?.totalComps || 0} comparable listings in {pricingForm.radiusKm}km radius
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Modern Comparable Vehicles Table */}
+                    <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
+                      <table className="w-full text-sm text-left">
+                        <thead className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-xs uppercase text-slate-500 font-semibold">
+                          <tr>
+                            <th className="px-6 py-4">Vehicle Info</th>
+                            <th className="px-6 py-4">Mileage</th>
+                            <th className="px-6 py-4">Seller</th>
+                            <th className="px-6 py-4">Distance</th>
+                            <th className="px-6 py-4 text-right">Price</th>
+                            <th className="px-6 py-4 text-center">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                          {pricingResults?.comparisons?.slice(0, 5).map((comp: any, i: number) => (
+                            <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors" data-testid={`comp-row-${i}`}>
+                              <td className="px-6 py-4">
+                                <div className="font-bold text-slate-800 dark:text-slate-200">{comp.year} {comp.make} {comp.model}</div>
+                                <div className="text-xs text-slate-500">{comp.trim}</div>
+                              </td>
+                              <td className="px-6 py-4 font-mono text-slate-600 dark:text-slate-400">{comp.mileage?.toLocaleString()} km</td>
+                              <td className="px-6 py-4">
+                                <Badge variant="outline" className={cn("font-normal", comp.listingType === 'private' ? "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-800" : "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800")}>
+                                  {comp.listingType === 'private' ? 'Private' : 'Dealer'}
+                                </Badge>
+                              </td>
+                              <td className="px-6 py-4 text-slate-500">{comp.distance} km</td>
+                              <td className="px-6 py-4 text-right font-bold text-slate-900 dark:text-white">${comp.price?.toLocaleString()}</td>
+                              <td className="px-6 py-4 text-center">
+                                {comp.listingUrl && (
+                                  <a href={comp.listingUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 hover:bg-blue-100 dark:bg-slate-800 dark:hover:bg-blue-900/50 text-slate-500 hover:text-blue-600 transition-colors">
+                                    <ExternalLink className="w-4 h-4" />
+                                  </a>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                          {(!pricingResults?.comparisons || pricingResults.comparisons.length === 0) && (
+                            <tr>
+                              <td colSpan={6} className="px-6 py-12 text-center text-slate-400 italic">No comparable vehicles found. Run an analysis to see results.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
 
                   {/* Market Pricing Results */}
