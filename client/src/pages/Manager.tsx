@@ -3284,14 +3284,6 @@ export default function Manager() {
                           </div>
                         )}
 
-                  {/* Save Appraisal Section with Appraisal Intelligence */}
-                  {vinResults && (
-                    <div className="border-t pt-6" data-testid="save-appraisal-section">
-                      <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900 rounded-lg p-6">
-                        <h4 className="font-semibold text-foreground mb-4 flex items-center gap-2">
-                          <Save className="w-5 h-5" />
-                          Appraisal Intelligence
-                        </h4>
                         
                         {/* Input Fields Grid */}
                         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
