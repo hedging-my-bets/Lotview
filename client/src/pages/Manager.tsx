@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck, ClipboardCheck, BarChart3, Bot, Clock, Sparkles, Pencil, Save, TrendingDown, Minus, ArrowUp, ArrowDown, PackageOpen, ExternalLink, Eye, User, Send, Plus, Trash2, Copy, Building, DollarSign, Activity } from "lucide-react";
+import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck, ClipboardCheck, BarChart3, Bot, Clock, Sparkles, Pencil, Save, TrendingDown, Minus, ArrowUp, ArrowDown, PackageOpen, ExternalLink, Eye, User, Send, Plus, Trash2, Copy, Building, DollarSign, Activity, Image as ImageIcon } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -2239,160 +2239,339 @@ export default function Manager() {
             <CardContent>
               {/* Vehicle Appraisal Tab */}
               {activeManagerTab === 'appraisal' && (
-                <div className="space-y-8" data-testid="tab-content-appraisal">
-                  <div>
-                    <h3 className="text-lg font-semibold mb-4">VIN Decoder & Market Pricing Analysis</h3>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Decode VINs to get vehicle specifications and automatic market pricing analysis
-                    </p>
-                  </div>
+                <div className="space-y-6 animate-in fade-in duration-500" data-testid="tab-content-appraisal">
                   
-                  {/* VIN Decoder Section */}
-                  <div className="space-y-4">
-                    <div>
-                      <Label htmlFor="vin">Vehicle Identification Number (VIN)</Label>
-                      <div className="flex flex-col sm:flex-row gap-2 mt-2">
-                        <Input
-                          id="vin"
-                          placeholder="Enter 17-character VIN"
-                          value={vin}
-                          onChange={(e) => setVin(e.target.value.toUpperCase())}
-                          maxLength={17}
-                          className="font-mono flex-1"
-                          data-testid="input-vin"
-                        />
-                        <Button 
-                          onClick={handleVinDecode}
-                          disabled={vin.length !== 17 || isDecoding}
-                          data-testid="button-decode-vin"
-                          className="w-full sm:w-auto"
-                        >
-                          {isDecoding ? (
-                            <>
-                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                              Decoding...
-                            </>
-                          ) : (
-                            <>
-                              <Search className="w-4 h-4 mr-2" />
-                              Decode VIN
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Enter a valid 17-character VIN to decode and auto-populate market analysis
-                      </p>
+                  {/* 1. Vehicle Hero Card */}
+                  <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+                    <div className="p-6">
+                      {!vinResults ? (
+                        <div className="flex flex-col md:flex-row gap-6 items-center">
+                          <div className="flex-1 w-full">
+                            <label className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-2 block">
+                              Start New Appraisal
+                            </label>
+                            <div className="flex gap-2">
+                              <div className="relative flex-1">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                                <input 
+                                  className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-lg font-mono focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                  placeholder="Enter 17-Character VIN"
+                                  maxLength={17}
+                                  value={vin}
+                                  onChange={(e) => setVin(e.target.value.toUpperCase())}
+                                  onKeyDown={(e) => e.key === 'Enter' && vin.length === 17 && handleVinDecode()}
+                                  data-testid="input-vin"
+                                />
+                              </div>
+                              <Button 
+                                size="lg" 
+                                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8"
+                                onClick={handleVinDecode}
+                                disabled={isDecoding || vin.length !== 17}
+                                data-testid="button-decode-vin"
+                              >
+                                {isDecoding ? <RefreshCw className="w-5 h-5 animate-spin"/> : "Decode VIN"}
+                              </Button>
+                            </div>
+                            <div className="mt-3 flex gap-4 text-sm text-slate-500">
+                              <span className="flex items-center gap-1"><Check className="w-3 h-3 text-green-500"/> Market Pricing</span>
+                              <span className="flex items-center gap-1"><Check className="w-3 h-3 text-green-500"/> Specs Verification</span>
+                              <span className="flex items-center gap-1"><Check className="w-3 h-3 text-green-500"/> History Check</span>
+                            </div>
+                          </div>
+                          <div className="hidden md:block w-px h-24 bg-slate-100 dark:bg-slate-800 mx-4"></div>
+                          <div className="w-full md:w-1/3 opacity-50 grayscale hover:opacity-100 hover:grayscale-0 transition-all">
+                            <div className="h-32 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center border-2 border-dashed border-slate-200 dark:border-slate-700">
+                              <div className="text-center">
+                                <Car className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                                <span className="text-xs text-slate-400 font-medium">Vehicle Preview</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-[160px_1fr_auto] gap-6 items-start">
+                          {/* Image Placeholder */}
+                          <div className="w-full h-32 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center overflow-hidden border border-slate-200 dark:border-slate-700">
+                            <ImageIcon className="w-10 h-10 text-slate-300" />
+                          </div>
+                          
+                          {/* Details */}
+                          <div>
+                            {previousAppraisal && (
+                              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-semibold mb-2 border border-amber-200 dark:border-amber-800">
+                                <Clock className="w-3 h-3" />
+                                Previous Appraisal: ${previousAppraisal.quotedPrice?.toLocaleString() || 'N/A'} ({new Date(previousAppraisal.createdAt).toLocaleDateString()})
+                              </div>
+                            )}
+                            <h2 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white mb-2">
+                              {vinResults.year} {vinResults.make} {vinResults.model} <span className="text-slate-500 font-normal">{vinResults.trim}</span>
+                            </h2>
+                            <div className="flex flex-wrap gap-y-2 gap-x-6 text-sm text-slate-600 dark:text-slate-400">
+                              <span className="flex items-center gap-1.5"><Badge variant="outline" className="rounded-md font-mono">{vin}</Badge></span>
+                              {vinResults.engineCylinders && <span className="flex items-center gap-1.5"><strong>{vinResults.engineCylinders} Cyl</strong> {vinResults.engineHP && `(${vinResults.engineHP} HP)`}</span>}
+                              {vinResults.driveType && <span className="flex items-center gap-1.5"><strong>{vinResults.driveType}</strong></span>}
+                              {vinResults.transmission && <span className="flex items-center gap-1.5"><strong>{vinResults.transmission}</strong></span>}
+                              {vinResults.exteriorColor && <span className="flex items-center gap-1.5 px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-xs">Ext: {vinResults.exteriorColor}</span>}
+                            </div>
+                          </div>
+
+                          {/* Quick Market Context */}
+                          <div className="text-right">
+                            <div className="text-sm text-slate-500 font-medium mb-1">Market Average</div>
+                            <div className="text-3xl font-bold text-slate-900 dark:text-white">
+                              ${livePricing?.retailPrice?.average?.toLocaleString() || pricingResults?.averagePrice?.toLocaleString() || "---,---"}
+                            </div>
+                            <div className="text-xs text-slate-500 mt-1">
+                              Range: ${livePricing?.retailPrice?.min?.toLocaleString() || pricingResults?.minPrice?.toLocaleString() || "---"} - ${livePricing?.retailPrice?.max?.toLocaleString() || pricingResults?.maxPrice?.toLocaleString() || "---"}
+                            </div>
+                            <Button variant="ghost" size="sm" onClick={() => { setVin(""); setVinResults(null); setPricingResults(null); setLivePricing(null); }} className="mt-2 text-slate-400 hover:text-red-500">
+                              <X className="w-4 h-4 mr-1" /> Clear
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  {/* Previous Appraisal Banner */}
-                  {previousAppraisal && (
-                    <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 rounded-lg p-4" data-testid="previous-appraisal-banner">
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                        <div>
-                          <h4 className="font-semibold text-amber-800 dark:text-amber-200 flex items-center gap-2">
-                            <Clock className="w-4 h-4" />
-                            Previous Appraisal Found
-                          </h4>
-                          <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-                            This vehicle was appraised on {new Date(previousAppraisal.createdAt).toLocaleDateString()} 
-                            {previousAppraisal.quotedPrice && ` with a quote of $${previousAppraisal.quotedPrice.toLocaleString()}`}
-                          </p>
-                        </div>
-                        <Button 
-                          onClick={loadPreviousAppraisal}
-                          variant="outline"
-                          size="sm"
-                          className="border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/30"
-                          data-testid="button-load-previous-appraisal"
-                        >
-                          <RefreshCw className="w-3 h-3 mr-2" />
-                          Load Previous Data
+                  {/* 2. Appraisal Intelligence Workspace */}
+                  {vinResults && (
+                    <div className="bg-gradient-to-br from-teal-50 to-emerald-50 dark:from-teal-900/20 dark:to-emerald-900/20 rounded-xl shadow-sm border border-teal-200 dark:border-teal-800 p-6" data-testid="section-appraisal-intelligence">
+                      <div className="flex items-center justify-between mb-6">
+                        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                          <Sparkles className="w-5 h-5 text-teal-500" /> Appraisal Intelligence
+                        </h3>
+                        <Button size="sm" onClick={handleSaveAppraisal} disabled={isSavingAppraisal} className="bg-slate-900 text-white hover:bg-slate-800" data-testid="button-save-appraisal">
+                          {isSavingAppraisal ? "Saving..." : <><Save className="w-4 h-4 mr-2" /> Save Appraisal</>}
                         </Button>
+                      </div>
+
+                      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                        {/* Inputs Column */}
+                        <div className="lg:col-span-4 space-y-5">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                              <Label className="text-xs font-semibold text-slate-500 uppercase">Acquisition Cost</Label>
+                              <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
+                                <Input 
+                                  value={quotedPrice} 
+                                  onChange={e => setQuotedPrice(e.target.value)} 
+                                  className="pl-7 font-bold text-lg h-12 border-slate-200 focus:border-teal-500 focus:ring-teal-500 bg-white" 
+                                  data-testid="input-acquisition-cost"
+                                />
+                              </div>
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label className="text-xs font-semibold text-slate-500 uppercase">Est. Recon</Label>
+                              <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
+                                <Input 
+                                  value={reconCost} 
+                                  onChange={e => setReconCost(e.target.value)} 
+                                  className="pl-7 h-12 border-slate-200 bg-white" 
+                                  data-testid="input-recon-cost"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                          <div className="space-y-1.5">
+                            <div className="flex justify-between">
+                              <Label className="text-xs font-semibold text-slate-500 uppercase">Target Retail</Label>
+                              <span 
+                                className="text-xs text-teal-600 cursor-pointer hover:underline" 
+                                onClick={() => setTargetRetailPrice(String(livePricing?.retailPrice?.average || pricingResults?.averagePrice || 0))}
+                              >
+                                Use Market Avg
+                              </span>
+                            </div>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
+                              <Input 
+                                value={targetRetailPrice} 
+                                onChange={e => setTargetRetailPrice(e.target.value)} 
+                                className="pl-7 font-bold text-lg h-12 border-teal-200 bg-teal-50/50 focus:border-teal-500 focus:ring-teal-500" 
+                                data-testid="input-target-retail"
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-semibold text-slate-500 uppercase">Trade Payoff (Optional)</Label>
+                            <Input 
+                              value={tradePayoff} 
+                              onChange={e => setTradePayoff(e.target.value)} 
+                              placeholder="Loan Balance"
+                              className="h-10 border-slate-200 bg-white" 
+                              data-testid="input-trade-payoff"
+                            />
+                          </div>
+                          <div className="pt-2">
+                            <Label className="text-xs font-semibold text-slate-500 uppercase">Notes</Label>
+                            <Textarea 
+                              value={appraisalNotes} 
+                              onChange={e => setAppraisalNotes(e.target.value)} 
+                              placeholder="Condition, packages, damage..." 
+                              className="mt-1.5 min-h-[80px] text-sm resize-none bg-white" 
+                              data-testid="input-appraisal-notes"
+                            />
+                          </div>
+                        </div>
+
+                        {/* KPI Dashboard Column */}
+                        <div className="lg:col-span-8">
+                          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 h-full">
+                            {(() => {
+                              const acq = parseFloat(quotedPrice) || 0;
+                              const recon = parseFloat(reconCost) || 0;
+                              const retail = parseFloat(targetRetailPrice) || 0;
+                              const profit = retail - acq - recon;
+                              const margin = retail ? (profit / retail * 100) : 0;
+                              const investment = acq + recon;
+                              const equity = acq - (parseFloat(tradePayoff) || 0);
+
+                              return (
+                                <>
+                                  {/* Hero Metric: Gross Profit */}
+                                  <div className={cn(
+                                    "col-span-2 row-span-1 lg:row-span-2 rounded-xl p-5 flex flex-col justify-center border transition-all",
+                                    profit >= 0 
+                                      ? "bg-emerald-50 border-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-900" 
+                                      : "bg-red-50 border-red-100 dark:bg-red-900/20 dark:border-red-900"
+                                  )} data-testid="metric-gross-profit">
+                                    <div className="text-xs font-bold uppercase tracking-wider mb-1 opacity-70 flex items-center gap-2">
+                                      {profit >= 0 ? <TrendingUp className="w-4 h-4"/> : <TrendingDown className="w-4 h-4"/>}
+                                      Gross Profit
+                                    </div>
+                                    <div className={cn("text-4xl font-extrabold mb-2", profit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400")}>
+                                      {profit >= 0 ? '+' : ''}${Math.abs(profit).toLocaleString()}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <Badge variant="secondary" className={cn("font-bold", profit >= 0 ? "bg-emerald-200 text-emerald-800" : "bg-red-200 text-red-800")}>
+                                        {margin.toFixed(1)}% Margin
+                                      </Badge>
+                                    </div>
+                                  </div>
+
+                                  {/* Secondary Metrics */}
+                                  <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-4 border border-slate-100 dark:border-slate-700 flex flex-col justify-center" data-testid="metric-investment">
+                                    <div className="text-[10px] font-bold uppercase text-slate-400 mb-1">Total Investment</div>
+                                    <div className="text-xl font-bold text-slate-800 dark:text-slate-200">${investment.toLocaleString()}</div>
+                                    <div className="text-xs text-slate-400 mt-1">Acq ${acq.toLocaleString()} + Recon ${recon.toLocaleString()}</div>
+                                  </div>
+
+                                  <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-4 border border-slate-100 dark:border-slate-700 flex flex-col justify-center" data-testid="metric-trade-equity">
+                                    <div className="text-[10px] font-bold uppercase text-slate-400 mb-1">Trade Equity</div>
+                                    <div className={cn("text-xl font-bold", equity >= 0 ? "text-blue-600" : "text-amber-600")}>
+                                      {tradePayoff ? `$${equity.toLocaleString()}` : "N/A"}
+                                    </div>
+                                    <div className="text-xs text-slate-400 mt-1">{tradePayoff ? 'Acq - Payoff' : 'Enter trade payoff'}</div>
+                                  </div>
+
+                                  <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-4 border border-amber-100 dark:border-amber-900 flex flex-col justify-center col-span-2 lg:col-span-2" data-testid="metric-days-to-sell">
+                                    <div className="flex justify-between items-start">
+                                      <div>
+                                        <div className="text-[10px] font-bold uppercase text-amber-600/70 mb-1 flex items-center gap-1"><Clock className="w-3 h-3"/> Days to Sell</div>
+                                        <div className="text-2xl font-bold text-amber-700 dark:text-amber-400">
+                                          {livePricing?.marketDemand?.daysSupply || 30} Days
+                                        </div>
+                                      </div>
+                                      <div className="text-right">
+                                        <div className="text-xs font-semibold text-amber-700">Market Avg</div>
+                                        <div className="text-[10px] text-amber-600/70">Turn Rate</div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </>
+                              );
+                            })()}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}
 
-                  {/* VIN Results */}
+                  {/* Legacy VIN Details Accordion - Collapsed by default */}
                   {vinResults && (
-                    <div className="border-t pt-6" data-testid="vin-results">
-                      <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-lg p-6">
-                        <h3 className="text-xl font-bold text-foreground mb-4">
-                          {vinResults.year} {vinResults.make} {vinResults.model}
-                          {vinResults.trim && ` ${vinResults.trim}`}
-                        </h3>
-                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                          {vinResults.year && (
-                            <div data-testid="result-year">
-                              <div className="text-xs text-muted-foreground font-medium">Year</div>
-                              <div className="text-sm font-semibold">{vinResults.year}</div>
-                            </div>
-                          )}
-                          {vinResults.make && (
-                            <div data-testid="result-make">
-                              <div className="text-xs text-muted-foreground font-medium">Make</div>
-                              <div className="text-sm font-semibold">{vinResults.make}</div>
-                            </div>
-                          )}
-                          {vinResults.model && (
-                            <div data-testid="result-model">
-                              <div className="text-xs text-muted-foreground font-medium">Model</div>
-                              <div className="text-sm font-semibold">{vinResults.model}</div>
-                            </div>
-                          )}
-                          {vinResults.trim && (
-                            <div data-testid="result-trim">
-                              <div className="text-xs text-muted-foreground font-medium">Trim</div>
-                              <div className="text-sm font-semibold">{vinResults.trim}</div>
-                            </div>
-                          )}
-                          {vinResults.bodyClass && (
-                            <div data-testid="result-body-class">
-                              <div className="text-xs text-muted-foreground font-medium">Body Class</div>
-                              <div className="text-sm font-semibold">{vinResults.bodyClass}</div>
-                            </div>
-                          )}
-                          {vinResults.vehicleType && (
-                            <div data-testid="result-vehicle-type">
-                              <div className="text-xs text-muted-foreground font-medium">Vehicle Type</div>
-                              <div className="text-sm font-semibold">{vinResults.vehicleType}</div>
-                            </div>
-                          )}
-                          {vinResults.fuelType && (
-                            <div data-testid="result-fuel-type">
-                              <div className="text-xs text-muted-foreground font-medium">Fuel Type</div>
-                              <div className="text-sm font-semibold">{vinResults.fuelType}</div>
-                            </div>
-                          )}
-                          {vinResults.transmission && (
-                            <div data-testid="result-transmission">
-                              <div className="text-xs text-muted-foreground font-medium">Transmission</div>
-                              <div className="text-sm font-semibold">{vinResults.transmission}</div>
-                            </div>
-                          )}
-                          {vinResults.driveType && (
-                            <div data-testid="result-drive-type">
-                              <div className="text-xs text-muted-foreground font-medium">Drive Type</div>
-                              <div className="text-sm font-semibold">{vinResults.driveType}</div>
-                            </div>
-                          )}
-                          {vinResults.exteriorColor && (
-                            <div data-testid="result-exterior-color">
-                              <div className="text-xs text-muted-foreground font-medium">Exterior Color</div>
-                              <div className="text-sm font-semibold">{vinResults.exteriorColor}</div>
-                            </div>
-                          )}
-                          {vinResults.interiorColor && (
-                            <div data-testid="result-interior-color">
-                              <div className="text-xs text-muted-foreground font-medium">Interior Color</div>
-                              <div className="text-sm font-semibold">{vinResults.interiorColor}</div>
-                            </div>
-                          )}
-                          {vinResults.engineCylinders && (
-                            <div data-testid="result-engine-cylinders">
-                              <div className="text-xs text-muted-foreground font-medium">Engine</div>
-                              <div className="text-sm font-semibold">
+                    <Accordion type="single" collapsible className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
+                      <AccordionItem value="vin-details" className="border-0">
+                        <AccordionTrigger className="px-6 py-4 hover:no-underline">
+                          <span className="flex items-center gap-2 font-semibold text-foreground">
+                            <Settings className="w-4 h-4" />
+                            Vehicle Specifications & Equipment
+                          </span>
+                        </AccordionTrigger>
+                        <AccordionContent className="px-6 pb-6">
+                          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3" data-testid="vin-results">
+                            {vinResults.year && (
+                              <div data-testid="result-year">
+                                <div className="text-xs text-muted-foreground font-medium">Year</div>
+                                <div className="text-sm font-semibold">{vinResults.year}</div>
+                              </div>
+                            )}
+                            {vinResults.make && (
+                              <div data-testid="result-make">
+                                <div className="text-xs text-muted-foreground font-medium">Make</div>
+                                <div className="text-sm font-semibold">{vinResults.make}</div>
+                              </div>
+                            )}
+                            {vinResults.model && (
+                              <div data-testid="result-model">
+                                <div className="text-xs text-muted-foreground font-medium">Model</div>
+                                <div className="text-sm font-semibold">{vinResults.model}</div>
+                              </div>
+                            )}
+                            {vinResults.trim && (
+                              <div data-testid="result-trim">
+                                <div className="text-xs text-muted-foreground font-medium">Trim</div>
+                                <div className="text-sm font-semibold">{vinResults.trim}</div>
+                              </div>
+                            )}
+                            {vinResults.bodyClass && (
+                              <div data-testid="result-body-class">
+                                <div className="text-xs text-muted-foreground font-medium">Body Class</div>
+                                <div className="text-sm font-semibold">{vinResults.bodyClass}</div>
+                              </div>
+                            )}
+                            {vinResults.vehicleType && (
+                              <div data-testid="result-vehicle-type">
+                                <div className="text-xs text-muted-foreground font-medium">Vehicle Type</div>
+                                <div className="text-sm font-semibold">{vinResults.vehicleType}</div>
+                              </div>
+                            )}
+                            {vinResults.fuelType && (
+                              <div data-testid="result-fuel-type">
+                                <div className="text-xs text-muted-foreground font-medium">Fuel Type</div>
+                                <div className="text-sm font-semibold">{vinResults.fuelType}</div>
+                              </div>
+                            )}
+                            {vinResults.transmission && (
+                              <div data-testid="result-transmission">
+                                <div className="text-xs text-muted-foreground font-medium">Transmission</div>
+                                <div className="text-sm font-semibold">{vinResults.transmission}</div>
+                              </div>
+                            )}
+                            {vinResults.driveType && (
+                              <div data-testid="result-drive-type">
+                                <div className="text-xs text-muted-foreground font-medium">Drive Type</div>
+                                <div className="text-sm font-semibold">{vinResults.driveType}</div>
+                              </div>
+                            )}
+                            {vinResults.exteriorColor && (
+                              <div data-testid="result-exterior-color">
+                                <div className="text-xs text-muted-foreground font-medium">Exterior Color</div>
+                                <div className="text-sm font-semibold">{vinResults.exteriorColor}</div>
+                              </div>
+                            )}
+                            {vinResults.interiorColor && (
+                              <div data-testid="result-interior-color">
+                                <div className="text-xs text-muted-foreground font-medium">Interior Color</div>
+                                <div className="text-sm font-semibold">{vinResults.interiorColor}</div>
+                              </div>
+                            )}
+                            {vinResults.engineCylinders && (
+                              <div data-testid="result-engine-cylinders">
+                                <div className="text-xs text-muted-foreground font-medium">Engine</div>
+                                <div className="text-sm font-semibold">
                                 {vinResults.engineCylinders} cyl
                                 {vinResults.engineHP && ` / ${vinResults.engineHP} HP`}
                               </div>
