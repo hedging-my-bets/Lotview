@@ -268,14 +268,35 @@ export class EnhancedMarketAnalysisService {
       const trimMismatched: typeof listings = [];
       const noTrim: typeof listings = [];
       
+      // Normalize trim string for fuzzy matching (remove punctuation, extra spaces)
+      const normalizeTrim = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+      
+      // Check if two trims are a fuzzy match (handles variations like "Ultimate" vs "Ultimate Calligraphy")
+      const fuzzyTrimMatch = (listingTrim: string, targetTrim: string): boolean => {
+        const normListing = normalizeTrim(listingTrim);
+        const normTarget = normalizeTrim(targetTrim);
+        
+        // Direct contains check (either direction)
+        if (normListing.includes(normTarget) || normTarget.includes(normListing)) {
+          return true;
+        }
+        
+        // Check if all words from the shorter string appear in the longer one
+        const listingWords = normListing.split(' ').filter(w => w.length > 0);
+        const targetWords = normTarget.split(' ').filter(w => w.length > 0);
+        
+        // Target words should be found in listing (e.g., "Ultimate" found in "Ultimate Calligraphy")
+        const targetFoundInListing = targetWords.every(tw => listingWords.some(lw => lw.includes(tw) || tw.includes(lw)));
+        const listingFoundInTarget = listingWords.every(lw => targetWords.some(tw => tw.includes(lw) || lw.includes(tw)));
+        
+        return targetFoundInListing || listingFoundInTarget;
+      };
+      
       for (const l of listings) {
         if (!l.trim) {
           noTrim.push(l);
         } else {
-          const matches = params.trims!.some(t => 
-            l.trim!.toLowerCase().includes(t.toLowerCase()) ||
-            t.toLowerCase().includes(l.trim!.toLowerCase())
-          );
+          const matches = params.trims!.some(t => fuzzyTrimMatch(l.trim!, t));
           if (matches) {
             trimMatched.push(l);
           } else {

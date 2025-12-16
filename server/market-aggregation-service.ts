@@ -144,8 +144,9 @@ export class MarketAggregationService {
     }
 
     // 4. Try direct Puppeteer scraper (fallback - rank 4)
+    // Trigger fallback when: no listings at all, OR fewer than 20 premium listings
     const premiumListingsCount = result.marketCheckCount + result.cargurusCount + result.apifyCount;
-    if (premiumListingsCount < 20) {
+    if (allListings.length === 0 || premiumListingsCount < 20) {
       try {
         console.log('[MarketAggregation] Using fallback Puppeteer scraper...');
         const scraperParams = {

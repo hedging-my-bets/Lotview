@@ -173,9 +173,12 @@ export class MarketCheckService {
       // Search Canadian listings
       queryParams.append('country', 'CA');
 
+      // First try: used cars only (default)
+      queryParams.append('car_type', 'used');
+      
       const url = `${this.baseUrl}/search/car/active?${queryParams.toString()}`;
       
-      console.log(`[MarketCheck] Searching: ${make} ${model} ${yearMin}-${yearMax}`);
+      console.log(`[MarketCheck] Searching: ${make} ${model} ${yearMin}-${yearMax} (used only)`);
       
       const response = await fetch(url);
       
@@ -187,7 +190,25 @@ export class MarketCheckService {
 
       const data: MarketCheckResponse = await response.json();
       
-      console.log(`[MarketCheck] Found ${data.num_found} listings`);
+      console.log(`[MarketCheck] Found ${data.num_found} listings (used only)`);
+      
+      // If no results for newer model years (2024+), retry with all car types (new + used)
+      const currentYear = new Date().getFullYear();
+      if ((data.num_found === 0 || !data.listings?.length) && yearMin && yearMin >= currentYear - 1) {
+        console.log(`[MarketCheck] No used listings for ${yearMin}+ model year, retrying with all car types...`);
+        
+        // Remove car_type restriction and retry
+        queryParams.delete('car_type');
+        const retryUrl = `${this.baseUrl}/search/car/active?${queryParams.toString()}`;
+        
+        const retryResponse = await fetch(retryUrl);
+        
+        if (retryResponse.ok) {
+          const retryData: MarketCheckResponse = await retryResponse.json();
+          console.log(`[MarketCheck] Retry found ${retryData.num_found} listings (all types)`);
+          return retryData.listings || [];
+        }
+      }
       
       return data.listings || [];
     } catch (error) {

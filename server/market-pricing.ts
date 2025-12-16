@@ -107,6 +107,30 @@ export function analyzeMarketPricing(
   targetVehicle: MarketPricingRequest,
   inventoryVehicles: Vehicle[]
 ): MarketPricingResult {
+  // Normalize trim string for fuzzy matching (remove punctuation, extra spaces)
+  const normalizeTrim = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+  
+  // Check if two trims are a fuzzy match (handles variations like "Ultimate" vs "Ultimate Calligraphy")
+  const fuzzyTrimMatch = (listingTrim: string, targetTrim: string): boolean => {
+    const normListing = normalizeTrim(listingTrim);
+    const normTarget = normalizeTrim(targetTrim);
+    
+    // Direct contains check (either direction)
+    if (normListing.includes(normTarget) || normTarget.includes(normListing)) {
+      return true;
+    }
+    
+    // Check if all words from the shorter string appear in the longer one
+    const listingWords = normListing.split(' ').filter(w => w.length > 0);
+    const targetWords = normTarget.split(' ').filter(w => w.length > 0);
+    
+    // Target words should be found in listing (e.g., "Ultimate" found in "Ultimate Calligraphy")
+    const targetFoundInListing = targetWords.every(tw => listingWords.some(lw => lw.includes(tw) || tw.includes(lw)));
+    const listingFoundInTarget = listingWords.every(lw => targetWords.some(tw => tw.includes(lw) || lw.includes(tw)));
+    
+    return targetFoundInListing || listingFoundInTarget;
+  };
+  
   // Filter comparable vehicles
   const comparables = inventoryVehicles.filter(v => {
     // Match year within 2 years
@@ -116,19 +140,15 @@ export function analyzeMarketPricing(
     const makeMatch = v.make.toLowerCase() === targetVehicle.make.toLowerCase();
     const modelMatch = v.model.toLowerCase() === targetVehicle.model.toLowerCase();
     
-    // If trim(s) is specified, match against any selected trim
+    // If trim(s) is specified, use fuzzy matching
     let trimMatch = true;
     if (v.trim) {
       // Check if multiple trims are specified
       if (targetVehicle.trims && targetVehicle.trims.length > 0) {
-        trimMatch = targetVehicle.trims.some(targetTrim => 
-          v.trim!.toLowerCase().includes(targetTrim.toLowerCase()) ||
-          targetTrim.toLowerCase().includes(v.trim!.toLowerCase())
-        );
+        trimMatch = targetVehicle.trims.some(targetTrim => fuzzyTrimMatch(v.trim!, targetTrim));
       } else if (targetVehicle.trim) {
         // Legacy single trim support
-        trimMatch = v.trim.toLowerCase().includes(targetVehicle.trim.toLowerCase()) ||
-                    targetVehicle.trim.toLowerCase().includes(v.trim.toLowerCase());
+        trimMatch = fuzzyTrimMatch(v.trim, targetVehicle.trim);
       }
     }
     
