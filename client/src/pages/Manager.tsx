@@ -3168,7 +3168,7 @@ export default function Manager() {
                   </div>
 
                   {/* Comparable Vehicles - Reference Design Match */}
-                        {pricingResults.comparisons && pricingResults.comparisons.length > 0 && (
+                        {pricingResults?.comparisons && pricingResults.comparisons.length > 0 && (
                           <div data-testid="comparable-vehicles-section">
                             {(() => {
                               const dealerListings = pricingResults.comparisons.filter((c: any) => c.listingType === 'dealer' || (!c.listingType && c.dealership));
