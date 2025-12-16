@@ -2572,164 +2572,81 @@ export default function Manager() {
                               <div data-testid="result-engine-cylinders">
                                 <div className="text-xs text-muted-foreground font-medium">Engine</div>
                                 <div className="text-sm font-semibold">
-                                {vinResults.engineCylinders} cyl
-                                {vinResults.engineHP && ` / ${vinResults.engineHP} HP`}
+                                  {vinResults.engineCylinders} cyl
+                                  {vinResults.engineHP && ` / ${vinResults.engineHP} HP`}
+                                </div>
                               </div>
-                            </div>
-                          )}
-                          {vinResults.msrp && (
-                            <div data-testid="result-msrp">
-                              <div className="text-xs text-muted-foreground font-medium">Original MSRP</div>
-                              <div className="text-sm font-semibold text-green-600 dark:text-green-400">
-                                ${vinResults.msrp.toLocaleString()}
+                            )}
+                            {vinResults.msrp && (
+                              <div data-testid="result-msrp">
+                                <div className="text-xs text-muted-foreground font-medium">Original MSRP</div>
+                                <div className="text-sm font-semibold text-green-600 dark:text-green-400">
+                                  ${vinResults.msrp.toLocaleString()}
+                                </div>
                               </div>
-                            </div>
-                          )}
-                        </div>
-                        
-
-                        {/* Equipment & Options Section */}
-                        {(vinResults.installedOptions?.length > 0 || vinResults.standardEquipment?.length > 0 || vinResults.packages?.length > 0 || vinResults.safetyFeatures?.length > 0) && (
-                          <div className="mt-4 pt-4 border-t border-blue-200 dark:border-blue-800">
-                            <h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
-                              <Settings className="w-4 h-4" />
-                              Equipment & Options
-                            </h4>
-                            <div className="grid gap-4 md:grid-cols-2">
-                              {vinResults.packages?.length > 0 && (
-                                <div data-testid="result-packages">
-                                  <div className="text-xs text-muted-foreground font-medium mb-2">Packages</div>
-                                  <div className="flex flex-wrap gap-1">
-                                    {vinResults.packages.map((pkg: string, idx: number) => (
-                                      <span key={idx} className="px-2 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded text-xs">
-                                        {pkg}
-                                      </span>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                              {vinResults.installedOptions?.length > 0 && (
-                                <div data-testid="result-options">
-                                  <div className="text-xs text-muted-foreground font-medium mb-2">Installed Options</div>
-                                  <div className="flex flex-wrap gap-1">
-                                    {vinResults.installedOptions.slice(0, 8).map((opt: string, idx: number) => (
-                                      <span key={idx} className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded text-xs">
-                                        {opt}
-                                      </span>
-                                    ))}
-                                    {vinResults.installedOptions.length > 8 && (
-                                      <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded text-xs">
-                                        +{vinResults.installedOptions.length - 8} more
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-                              {vinResults.safetyFeatures?.length > 0 && (
-                                <div data-testid="result-safety">
-                                  <div className="text-xs text-muted-foreground font-medium mb-2">Safety Features</div>
-                                  <div className="flex flex-wrap gap-1">
-                                    {vinResults.safetyFeatures.slice(0, 6).map((feat: string, idx: number) => (
-                                      <span key={idx} className="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded text-xs">
-                                        {feat}
-                                      </span>
-                                    ))}
-                                    {vinResults.safetyFeatures.length > 6 && (
-                                      <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded text-xs">
-                                        +{vinResults.safetyFeatures.length - 6} more
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
+                            )}
                           </div>
-                        )}
-                        
-                        {/* Competitor Vehicles from VIN Decode */}
-                        {vinResults.competitors && vinResults.competitors.length > 0 && (
-                          <Accordion type="single" collapsible className="mt-4 pt-4 border-t border-blue-200 dark:border-blue-800">
-                            <AccordionItem value="competitors" className="border-0">
-                              <AccordionTrigger className="py-2 text-sm hover:no-underline">
-                                <span className="flex items-center gap-2 font-semibold text-foreground">
-                                  <Car className="w-4 h-4" />
-                                  View {vinResults.competitors.length} Similar Vehicles on Market
-                                </span>
-                              </AccordionTrigger>
-                              <AccordionContent>
-                                <div className="space-y-2 pt-2">
-                                  {vinResults.competitors.map((comp: any, idx: number) => (
-                                    <div 
-                                      key={comp.id || idx} 
-                                      className="bg-white dark:bg-gray-800 rounded-lg p-3 text-sm border"
-                                      data-testid={`vin-competitor-${idx}`}
-                                    >
-                                      <div className="flex justify-between items-start gap-4">
-                                        <div className="flex-1">
-                                          <div className="font-medium">
-                                            {comp.year} {comp.make} {comp.model} {comp.trim || ''}
-                                          </div>
-                                          <div className="text-xs text-muted-foreground mt-1">
-                                            {comp.sellerName || 'Unknown Dealer'} • {comp.location || 'Unknown Location'}
-                                          </div>
-                                          {comp.mileage && (
-                                            <div className="text-xs text-muted-foreground">
-                                              {comp.mileage.toLocaleString()} km
-                                            </div>
-                                          )}
-                                          <div className="flex flex-wrap gap-2 mt-2">
-                                            {comp.exteriorColor && (
-                                              <Badge variant="outline" className="text-xs">
-                                                Ext: {comp.exteriorColor}
-                                              </Badge>
-                                            )}
-                                            {comp.interiorColor && (
-                                              <Badge variant="outline" className="text-xs">
-                                                Int: {comp.interiorColor}
-                                              </Badge>
-                                            )}
-                                            {comp.daysOnMarket !== null && comp.daysOnMarket !== undefined && (
-                                              <Badge 
-                                                variant="outline" 
-                                                className={cn(
-                                                  "text-xs",
-                                                  comp.daysOnMarket > 60 ? "border-red-300 text-red-600" :
-                                                  comp.daysOnMarket > 30 ? "border-yellow-300 text-yellow-600" :
-                                                  "border-green-300 text-green-600"
-                                                )}
-                                              >
-                                                <Clock className="w-3 h-3 mr-1" />
-                                                {comp.daysOnMarket} days
-                                              </Badge>
-                                            )}
-                                          </div>
-                                        </div>
-                                        <div className="text-right">
-                                          <div className="font-bold text-lg">
-                                            ${comp.price?.toLocaleString() || 'N/A'}
-                                          </div>
-                                          {comp.listingUrl && (
-                                            <a
-                                              href={comp.listingUrl}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-1"
-                                            >
-                                              <ExternalLink className="w-3 h-3" />
-                                              View Listing
-                                            </a>
-                                          )}
-                                        </div>
-                                      </div>
+
+                          {/* Equipment & Options Section */}
+                          {(vinResults.installedOptions?.length > 0 || vinResults.standardEquipment?.length > 0 || vinResults.packages?.length > 0 || vinResults.safetyFeatures?.length > 0) && (
+                            <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                              <h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
+                                <Settings className="w-4 h-4" />
+                                Equipment & Options
+                              </h4>
+                              <div className="grid gap-4 md:grid-cols-2">
+                                {vinResults.packages?.length > 0 && (
+                                  <div data-testid="result-packages">
+                                    <div className="text-xs text-muted-foreground font-medium mb-2">Packages</div>
+                                    <div className="flex flex-wrap gap-1">
+                                      {vinResults.packages.map((pkg: string, idx: number) => (
+                                        <span key={idx} className="px-2 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded text-xs">
+                                          {pkg}
+                                        </span>
+                                      ))}
                                     </div>
-                                  ))}
-                                </div>
-                              </AccordionContent>
-                            </AccordionItem>
-                          </Accordion>
-                        )}
-                      </div>
-                    </div>
+                                  </div>
+                                )}
+                                {vinResults.installedOptions?.length > 0 && (
+                                  <div data-testid="result-options">
+                                    <div className="text-xs text-muted-foreground font-medium mb-2">Installed Options</div>
+                                    <div className="flex flex-wrap gap-1">
+                                      {vinResults.installedOptions.slice(0, 8).map((opt: string, idx: number) => (
+                                        <span key={idx} className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded text-xs">
+                                          {opt}
+                                        </span>
+                                      ))}
+                                      {vinResults.installedOptions.length > 8 && (
+                                        <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded text-xs">
+                                          +{vinResults.installedOptions.length - 8} more
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                                {vinResults.safetyFeatures?.length > 0 && (
+                                  <div data-testid="result-safety">
+                                    <div className="text-xs text-muted-foreground font-medium mb-2">Safety Features</div>
+                                    <div className="flex flex-wrap gap-1">
+                                      {vinResults.safetyFeatures.slice(0, 6).map((feat: string, idx: number) => (
+                                        <span key={idx} className="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded text-xs">
+                                          {feat}
+                                        </span>
+                                      ))}
+                                      {vinResults.safetyFeatures.length > 6 && (
+                                        <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded text-xs">
+                                          +{vinResults.safetyFeatures.length - 6} more
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </AccordionContent>
+                      </AccordionItem>
+                    </Accordion>
                   )}
 
                   {/* Live Market Pricing Section (MarketCheck Real-time Data) */}
