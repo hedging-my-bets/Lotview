@@ -28,6 +28,45 @@ import { FollowUpSequenceEditor } from "@/components/FollowUpSequenceEditor";
 import { ConversationsPanel } from "@/components/ConversationsPanel";
 import { AppointmentsWidget } from "@/components/AppointmentsWidget";
 
+// Helper function to generate AutoTrader.ca search URL for a vehicle
+function generateAutoTraderUrl(vehicle: { make?: string; model?: string; year?: number; trim?: string; location?: string; province?: string }): string {
+  const make = vehicle.make || '';
+  const model = vehicle.model || '';
+  const year = vehicle.year || new Date().getFullYear();
+  
+  // Map province/state to AutoTrader.ca province codes
+  const provinceMap: Record<string, string> = {
+    'BC': 'bc', 'British Columbia': 'bc',
+    'AB': 'ab', 'Alberta': 'ab',
+    'SK': 'sk', 'Saskatchewan': 'sk',
+    'MB': 'mb', 'Manitoba': 'mb',
+    'ON': 'on', 'Ontario': 'on',
+    'QC': 'qc', 'Quebec': 'qc',
+    'NB': 'nb', 'New Brunswick': 'nb',
+    'NS': 'ns', 'Nova Scotia': 'ns',
+    'PE': 'pe', 'Prince Edward Island': 'pe',
+    'NL': 'nl', 'Newfoundland': 'nl',
+    'YT': 'yt', 'Yukon': 'yt',
+    'NT': 'nt', 'Northwest Territories': 'nt',
+    'NU': 'nu', 'Nunavut': 'nu',
+  };
+  
+  // Try to extract province from location string (e.g., "Vancouver, BC" or "Toronto, ON")
+  let prov = 'bc'; // default
+  if (vehicle.province) {
+    prov = provinceMap[vehicle.province] || provinceMap[vehicle.province.toUpperCase()] || 'bc';
+  } else if (vehicle.location) {
+    const locationParts = vehicle.location.split(',').map(s => s.trim());
+    if (locationParts.length >= 2) {
+      const lastPart = locationParts[locationParts.length - 1].toUpperCase();
+      prov = provinceMap[lastPart] || 'bc';
+    }
+  }
+  
+  // Build national search URL (no specific city) for broader results
+  return `https://www.autotrader.ca/cars/?rcp=15&rcs=0&prx=500&make=${encodeURIComponent(make)}&mdl=${encodeURIComponent(model)}${vehicle.trim ? `&trim=${encodeURIComponent(vehicle.trim)}` : ''}&yRng=${year}%2C${year}`;
+}
+
 // Inventory Analysis Tab Component
 function InventoryAnalysisTab() {
   const { toast } = useToast();
@@ -3149,11 +3188,23 @@ export default function Manager() {
                               <td className="px-6 py-4 text-slate-500">{comp.distance} km</td>
                               <td className="px-6 py-4 text-right font-bold text-slate-900 dark:text-white">${comp.price?.toLocaleString()}</td>
                               <td className="px-6 py-4 text-center">
-                                {comp.listingUrl && (
-                                  <a href={comp.listingUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 hover:bg-blue-100 dark:bg-slate-800 dark:hover:bg-blue-900/50 text-slate-500 hover:text-blue-600 transition-colors">
-                                    <ExternalLink className="w-4 h-4" />
+                                <div className="flex items-center justify-center gap-2">
+                                  {comp.listingUrl && (
+                                    <a href={comp.listingUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 hover:bg-blue-100 dark:bg-slate-800 dark:hover:bg-blue-900/50 text-slate-500 hover:text-blue-600 transition-colors" title="View Original Listing">
+                                      <ExternalLink className="w-4 h-4" />
+                                    </a>
+                                  )}
+                                  <a 
+                                    href={generateAutoTraderUrl({ make: comp.make, model: comp.model, year: comp.year, trim: comp.trim, location: comp.location })} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 text-red-500 hover:text-red-600 transition-colors" 
+                                    title="Search on AutoTrader"
+                                    data-testid={`autotrader-link-${i}`}
+                                  >
+                                    <Search className="w-4 h-4" />
                                   </a>
-                                )}
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -3226,11 +3277,23 @@ export default function Manager() {
                                               {comp.price ? `$${comp.price.toLocaleString()}` : 'N/A'}
                                             </td>
                                             <td className="p-3 text-center">
-                                              {comp.listingUrl && (
-                                                <a href={comp.listingUrl} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground">
-                                                  <Copy className="w-4 h-4" />
+                                              <div className="flex items-center justify-center gap-2">
+                                                {comp.listingUrl && (
+                                                  <a href={comp.listingUrl} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground" title="View Original Listing">
+                                                    <ExternalLink className="w-4 h-4" />
+                                                  </a>
+                                                )}
+                                                <a 
+                                                  href={generateAutoTraderUrl({ make: comp.make, model: comp.model, year: comp.year, trim: comp.trim, location: comp.location })} 
+                                                  target="_blank" 
+                                                  rel="noopener noreferrer" 
+                                                  className="text-red-500 hover:text-red-600" 
+                                                  title="Search on AutoTrader"
+                                                  data-testid={`autotrader-dealer-${index}`}
+                                                >
+                                                  <Search className="w-4 h-4" />
                                                 </a>
-                                              )}
+                                              </div>
                                             </td>
                                           </tr>
                                         ))}
@@ -3267,11 +3330,23 @@ export default function Manager() {
                                               {comp.price ? `$${comp.price.toLocaleString()}` : 'N/A'}
                                             </td>
                                             <td className="p-3 text-center">
-                                              {comp.listingUrl && (
-                                                <a href={comp.listingUrl} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground">
-                                                  <Copy className="w-4 h-4" />
+                                              <div className="flex items-center justify-center gap-2">
+                                                {comp.listingUrl && (
+                                                  <a href={comp.listingUrl} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground" title="View Original Listing">
+                                                    <ExternalLink className="w-4 h-4" />
+                                                  </a>
+                                                )}
+                                                <a 
+                                                  href={generateAutoTraderUrl({ make: comp.make, model: comp.model, year: comp.year, trim: comp.trim, location: comp.location })} 
+                                                  target="_blank" 
+                                                  rel="noopener noreferrer" 
+                                                  className="text-red-500 hover:text-red-600" 
+                                                  title="Search on AutoTrader"
+                                                  data-testid={`autotrader-private-${index}`}
+                                                >
+                                                  <Search className="w-4 h-4" />
                                                 </a>
-                                              )}
+                                              </div>
                                             </td>
                                           </tr>
                                         ))}
@@ -3617,37 +3692,6 @@ export default function Manager() {
                           </div>
                         )}
 
-                        {/* Notes */}
-                        <div className="mt-4">
-                          <Label htmlFor="appraisalNotes">Notes</Label>
-                          <Input
-                            id="appraisalNotes"
-                            placeholder="Vehicle condition, customer info, etc."
-                            value={appraisalNotes}
-                            onChange={(e) => setAppraisalNotes(e.target.value)}
-                            data-testid="input-appraisal-notes"
-                            className="mt-2"
-                          />
-                        </div>
-
-                        <Button
-                          onClick={handleSaveAppraisal}
-                          disabled={isSavingAppraisal}
-                          className="mt-4"
-                          data-testid="button-save-appraisal"
-                        >
-                          {isSavingAppraisal ? (
-                            <>
-                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                              Saving...
-                            </>
-                          ) : (
-                            <>
-                              <Save className="w-4 h-4 mr-2" />
-                              Save Appraisal
-                            </>
-                          )}
-                        </Button>
                       </div>
                     </div>
                   )}

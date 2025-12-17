@@ -8550,6 +8550,24 @@ Format your response in clear sections with actionable recommendations.`;
     }
   });
   
+  // Check if VIN has previous appraisal (must be before /:id route to avoid matching)
+  app.get("/api/manager/appraisals/vin/:vin", authMiddleware, requireRole("manager"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const vin = req.params.vin.toUpperCase().trim();
+      
+      if (!vin || vin.length < 11) {
+        return res.status(400).json({ error: "Invalid VIN" });
+      }
+      
+      const appraisal = await storage.getVehicleAppraisalByVin(vin, dealershipId);
+      res.json({ exists: !!appraisal, appraisal: appraisal || null });
+    } catch (error) {
+      logError('Error checking VIN appraisal:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-appraisals-vin-vin' });
+      res.status(500).json({ error: "Failed to check VIN appraisal" });
+    }
+  });
+  
   // Get single appraisal by ID
   app.get("/api/manager/appraisals/:id", authMiddleware, requireRole("manager"), async (req, res) => {
     try {
@@ -8569,24 +8587,6 @@ Format your response in clear sections with actionable recommendations.`;
     } catch (error) {
       logError('Error fetching appraisal:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-appraisals-id' });
       res.status(500).json({ error: "Failed to fetch appraisal" });
-    }
-  });
-  
-  // Check if VIN has previous appraisal
-  app.get("/api/manager/appraisals/vin/:vin", authMiddleware, requireRole("manager"), async (req, res) => {
-    try {
-      const dealershipId = req.dealershipId!;
-      const vin = req.params.vin.toUpperCase().trim();
-      
-      if (!vin || vin.length < 11) {
-        return res.status(400).json({ error: "Invalid VIN" });
-      }
-      
-      const appraisal = await storage.getVehicleAppraisalByVin(vin, dealershipId);
-      res.json({ exists: !!appraisal, appraisal: appraisal || null });
-    } catch (error) {
-      logError('Error checking VIN appraisal:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-appraisals-vin-vin' });
-      res.status(500).json({ error: "Failed to check VIN appraisal" });
     }
   });
   
