@@ -100,6 +100,21 @@ export interface TrimCoverageStats {
   noTrimListings: number;
 }
 
+export interface ComparisonListing {
+  year: number;
+  make: string;
+  model: string;
+  trim?: string;
+  price: number;
+  mileage?: number;
+  distance?: number;
+  listingUrl?: string;
+  listingType: 'dealer' | 'private';
+  dealership?: string;
+  daysOnLot?: number;
+  source?: string;
+}
+
 export interface EnhancedMarketAnalysisResult {
   success: boolean;
   dataSource: string;
@@ -125,6 +140,7 @@ export interface EnhancedMarketAnalysisResult {
   percentiles: PercentileBreakdown;
   daysOnMarket: DaysOnMarketInfo;
   competitors: CompetitorInfo[];
+  comparisons: ComparisonListing[];
   priceTrends: PriceTrend[];
   priceRecommendation: {
     suggestedPrice: number;
@@ -410,6 +426,21 @@ export class EnhancedMarketAnalysisService {
     const elapsed = Date.now() - startTime;
     console.log(`[EnhancedMarketAnalysis] Complete in ${elapsed}ms - ${filteredListings.length} listings analyzed`);
 
+    const comparisons: ComparisonListing[] = filteredListings.map(l => ({
+      year: l.year,
+      make: l.make,
+      model: l.model,
+      trim: l.trim || undefined,
+      price: l.price,
+      mileage: l.mileage || undefined,
+      distance: typeof (l as any).distance === 'number' ? (l as any).distance : undefined,
+      listingUrl: l.listingUrl || undefined,
+      listingType: (l.listingType === 'private' ? 'private' : 'dealer') as 'dealer' | 'private',
+      dealership: l.sellerName || undefined,
+      daysOnLot: l.daysOnLot || undefined,
+      source: l.source || undefined
+    }));
+
     return {
       success: true,
       dataSource: sources.join(', ') || 'database',
@@ -426,6 +457,7 @@ export class EnhancedMarketAnalysisService {
       percentiles,
       daysOnMarket,
       competitors,
+      comparisons,
       priceTrends,
       priceRecommendation,
       sources,
@@ -734,6 +766,7 @@ export class EnhancedMarketAnalysisService {
         distribution: { under7Days: 0, under14Days: 0, under30Days: 0, over30Days: 0 }
       },
       competitors: [],
+      comparisons: [],
       priceTrends: [],
       priceRecommendation: {
         suggestedPrice: 0,
