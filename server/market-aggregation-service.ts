@@ -1,6 +1,7 @@
 import { storage } from './storage';
 import { getMarketCheckService, getMarketCheckServiceForDealership } from './marketcheck-service';
 import { getApifyService, getApifyServiceForDealership } from './apify-service';
+import { getBrowserlessUnifiedService, getBrowserlessUnifiedServiceForDealership } from './browserless-unified';
 import { autoTraderScraper } from './autotrader-scraper';
 import { kijijiScraper } from './kijiji-scraper';
 import { craigslistScraper } from './craigslist-scraper';
@@ -22,6 +23,7 @@ export interface MarketAggregationParams {
 export interface MarketAggregationResult {
   totalListings: number;
   marketCheckCount: number;
+  browserlessCount: number;
   cargurusCount: number;
   apifyCount: number;
   scraperCount: number;
@@ -53,6 +55,7 @@ export class MarketAggregationService {
     const result: MarketAggregationResult = {
       totalListings: 0,
       marketCheckCount: 0,
+      browserlessCount: 0,
       cargurusCount: 0,
       apifyCount: 0,
       scraperCount: 0,
@@ -96,28 +99,90 @@ export class MarketAggregationService {
       console.log('[MarketAggregation] MarketCheck API not configured (optional)');
     }
 
-    // 2. Try CarGurus scraper (priority rank 2 - rich data)
+    // 2. Try Browserless unified scraper (priority rank 2 - CarGurus + AutoTrader)
+    const browserlessService = params.dealershipId
+      ? await getBrowserlessUnifiedServiceForDealership(params.dealershipId)
+      : getBrowserlessUnifiedService();
+
     try {
-      console.log('[MarketAggregation] Fetching from CarGurus...');
-      const cargurusListings = await cargurusScraper.searchAndConvert({
-        ...params,
-        dealershipId,
-        maxResults: Math.floor((params.maxResults || 50) / 2)
+      console.log('[MarketAggregation] Fetching from Browserless (CarGurus + AutoTrader)...');
+      const browserlessResult = await browserlessService.scrapeMarketComparables({
+        make: params.make,
+        model: params.model,
+        yearMin: params.yearMin,
+        yearMax: params.yearMax,
+        postalCode: params.postalCode || 'V6B2W2',
+        radiusKm: params.radiusKm || 100,
+        maxResults: params.maxResults || 50,
       });
-      
-      for (const listing of cargurusListings) {
-        allListings.push(listing);
-        result.cargurusCount++;
+
+      if (browserlessResult.success && browserlessResult.listings.length > 0) {
+        for (const listing of browserlessResult.listings) {
+          if (!listing.year || !listing.make || !listing.model) continue;
+          
+          const source = listing.cargurusUrl ? 'cargurus_browserless' : 'autotrader_browserless';
+          const listingUrl = listing.cargurusUrl || listing.dealerVdpUrl || '';
+          const externalId = listing.vin 
+            ? `browserless_${listing.vin}`
+            : `browserless_${source}_${listing.year}_${listing.make.toLowerCase().replace(/\s+/g, '_')}_${listing.model.toLowerCase().replace(/\s+/g, '_')}_${listing.price || 0}`;
+          
+          const marketListing: InsertMarketListing = {
+            dealershipId,
+            externalId,
+            source,
+            listingType: listing.sellerType || 'dealer',
+            year: listing.year,
+            make: listing.make,
+            model: listing.model,
+            trim: listing.trim || null,
+            price: listing.price ?? 0,
+            mileage: listing.odometer ?? null,
+            location: listing.location || 'British Columbia',
+            postalCode: null,
+            latitude: null,
+            longitude: null,
+            sellerName: listing.dealership || 'Unknown Dealer',
+            imageUrl: listing.images?.[0] ?? null,
+            listingUrl: listingUrl,
+            postedDate: null,
+            isActive: true,
+            dataSourceRank: 2,
+          };
+          allListings.push(marketListing);
+          result.browserlessCount++;
+        }
+        console.log(`[MarketAggregation] Browserless: ${result.browserlessCount} listings`);
+        if (result.browserlessCount > 0) result.sources.push('browserless');
       }
-      
-      console.log(`[MarketAggregation] CarGurus: ${result.cargurusCount} listings`);
-      if (result.cargurusCount > 0) result.sources.push('cargurus');
     } catch (error) {
-      console.error('[MarketAggregation] CarGurus error:', error);
-      result.errors.push(`CarGurus: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('[MarketAggregation] Browserless error:', error);
+      result.errors.push(`Browserless: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 
-    // 3. Try Apify AutoTrader.ca actor (priority rank 3)
+    // 3. Try CarGurus scraper as fallback (priority rank 3 - rich data)
+    if (result.browserlessCount === 0) {
+      try {
+        console.log('[MarketAggregation] Fetching from CarGurus fallback...');
+        const cargurusListings = await cargurusScraper.searchAndConvert({
+          ...params,
+          dealershipId,
+          maxResults: Math.floor((params.maxResults || 50) / 2)
+        });
+
+        for (const listing of cargurusListings) {
+          allListings.push(listing);
+          result.cargurusCount++;
+        }
+
+        console.log(`[MarketAggregation] CarGurus: ${result.cargurusCount} listings`);
+        if (result.cargurusCount > 0) result.sources.push('cargurus');
+      } catch (error) {
+        console.error('[MarketAggregation] CarGurus error:', error);
+        result.errors.push(`CarGurus: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+
+    // 4. Try Apify AutoTrader.ca actor (priority rank 4)
     const apifyService = params.dealershipId 
       ? await getApifyServiceForDealership(params.dealershipId)
       : getApifyService();

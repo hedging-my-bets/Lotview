@@ -2068,6 +2068,94 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== BROWSERLESS SCRAPING ROUTES =====
+
+  // Test Browserless connection (super admin only)
+  app.get("/api/super-admin/browserless/test", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const { testBrowserlessConnection } = await import("./browserless-robust-scraper");
+      const dealershipId = req.query.dealershipId ? parseInt(req.query.dealershipId as string) : undefined;
+      
+      const result = await testBrowserlessConnection(dealershipId);
+      res.json(result);
+    } catch (error) {
+      logError('Error testing Browserless connection:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-browserless-test' });
+      res.status(500).json({ error: "Failed to test Browserless connection" });
+    }
+  });
+
+  // Trigger Browserless inventory scrape (super admin only)
+  app.post("/api/super-admin/browserless/scrape-inventory", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const { runBrowserlessInventoryScrape } = await import("./browserless-robust-scraper");
+      const { dealershipId, sourceId, scrapeVdp } = req.body;
+      
+      res.json({ success: true, message: "Browserless inventory scrape started in background" });
+      
+      runBrowserlessInventoryScrape({
+        dealershipId: dealershipId ? parseInt(dealershipId) : undefined,
+        sourceId: sourceId ? parseInt(sourceId) : undefined,
+        triggeredBy: 'manual',
+        scrapeVdp: scrapeVdp !== false,
+      }).catch((err: Error) => {
+        logError('Error during Browserless inventory scrape:', err instanceof Error ? err : new Error(String(err)), { route: 'api-super-admin-browserless-scrape-inventory' });
+      });
+    } catch (error) {
+      logError('Error starting Browserless scrape:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-browserless-scrape-inventory' });
+      res.status(500).json({ error: "Failed to start Browserless scrape" });
+    }
+  });
+
+  // Trigger Browserless market analysis scrape (super admin only)
+  app.post("/api/super-admin/browserless/scrape-market", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const { runMarketAnalysisScrape } = await import("./browserless-robust-scraper");
+      const { make, model, yearMin, yearMax, postalCode, radiusKm, maxResults, dealershipId } = req.body;
+      
+      if (!make || !model) {
+        return res.status(400).json({ error: "Make and model are required" });
+      }
+      
+      const result = await runMarketAnalysisScrape(
+        {
+          make,
+          model,
+          yearMin: yearMin ? parseInt(yearMin) : undefined,
+          yearMax: yearMax ? parseInt(yearMax) : undefined,
+          postalCode: postalCode || 'V6B2W2',
+          radiusKm: radiusKm ? parseInt(radiusKm) : 100,
+          maxResults: maxResults ? parseInt(maxResults) : 50,
+        },
+        dealershipId ? parseInt(dealershipId) : undefined
+      );
+      
+      res.json(result);
+    } catch (error) {
+      logError('Error during Browserless market scrape:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-browserless-scrape-market' });
+      res.status(500).json({ error: "Failed to run market analysis scrape" });
+    }
+  });
+
+  // Get Browserless scrape status (super admin only)
+  app.get("/api/super-admin/browserless/status", authMiddleware, superAdminOnly, async (req, res) => {
+    try {
+      const dealershipId = req.query.dealershipId ? parseInt(req.query.dealershipId as string) : undefined;
+      const runs = await storage.getScrapeRuns(dealershipId, 10);
+      
+      const browserlessRuns = runs.filter(r => r.scrapeMethod === 'browserless');
+      const apiKeyConfigured = !!process.env.BROWSERLESS_API_KEY;
+      
+      res.json({
+        apiKeyConfigured,
+        recentRuns: browserlessRuns,
+        totalRuns: browserlessRuns.length,
+      });
+    } catch (error) {
+      logError('Error fetching Browserless status:', error instanceof Error ? error : new Error(String(error)), { route: 'api-super-admin-browserless-status' });
+      res.status(500).json({ error: "Failed to fetch Browserless status" });
+    }
+  });
+
   // ===== SUPER ADMIN ONBOARDING ROUTES =====
   
   // Validate onboarding input (dry run)

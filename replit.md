@@ -60,15 +60,22 @@ Preferred communication style: Simple, everyday language.
 - **Authentication**: JWT, bcrypt.
 - **Sales Manager Tools**: NHTSA API (VIN Decoder), MarketCheck API (Market Pricing), Geocoder.ca API (Geocoding).
 - **Cron Scheduling**: Node-cron (inventory sync, Facebook token refresh, market analysis, Facebook Catalog sync, FWC CRM sync).
-- **Robust Scraper**: Four-tier fallback system for inventory sync:
-  1. **Primary**: Local Puppeteer scraping with 3 retries + exponential backoff (5s, 15s, 30s)
-  2. **Secondary**: Browserless.io cloud Puppeteer (TRUE fallback - same scraping logic, cloud infrastructure)
-  3. **Tertiary**: Apify market data refresh (validates existing inventory against AutoTrader.ca)
-  4. **Quaternary**: Cache preserve mode (keeps existing inventory to prevent data loss)
-  - Scrape runs are logged in `scrape_runs` table with status, method, duration, and error details
-  - **Methods tracked**: `puppeteer`, `browserless`, `apify`, `cache_preserve`
-  - **API Keys**: `browserlessApiKey` and `scrapingbeeApiKey` in `dealership_api_keys` table
-  - **Architectural Note**: Apify AutoTrader.ca actor searches by make/model, not by dealer URL, so it cannot fully substitute for Puppeteer dealer website scraping - Browserless IS the true backup
+- **Robust Scraper**: Three-tier system with Browserless.io as PRIMARY:
+  1. **Primary**: Browserless.io cloud Puppeteer (~$50/month for 10,000 sessions)
+     - Unified service: `browserless-unified.ts` handles all scraping
+     - Full VDP scraping for complete vehicle details (VIN, images, specs, colors)
+     - CarGurus and AutoTrader.ca market analysis
+     - Automatic retry with exponential backoff (3s, 8s, 15s)
+  2. **Secondary**: Local Puppeteer (FREE fallback when Browserless unavailable)
+  3. **Tertiary**: Cache preserve mode (keeps existing inventory to prevent data loss)
+  - **API Routes** (super admin):
+    - `GET /api/super-admin/browserless/test` - Test connection
+    - `POST /api/super-admin/browserless/scrape-inventory` - Trigger inventory scrape
+    - `POST /api/super-admin/browserless/scrape-market` - Market analysis scrape
+    - `GET /api/super-admin/browserless/status` - View scrape history
+  - **API Key**: `BROWSERLESS_API_KEY` environment secret (or per-dealership in `dealership_api_keys.browserlessApiKey`)
+  - Scrape runs logged in `scrape_runs` table with status, method, duration, and error details
+  - **Methods tracked**: `browserless`, `local_puppeteer`, `cache_preserve`
   - **Checkpoint System** (Dec 2025): Resume-capable scraping with crash recovery
     - `scrape_queue` table tracks VDP URLs with status (pending/processing/completed/failed)
     - Extracts all VDP URLs from listing page first, saves to queue
