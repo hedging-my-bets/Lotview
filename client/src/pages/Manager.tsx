@@ -2307,10 +2307,10 @@ export default function Manager() {
                           
                           {/* Details */}
                           <div>
-                            {previousAppraisal && (
+                            {previousAppraisal && previousAppraisal.quotedPrice != null && Number(previousAppraisal.quotedPrice) > 0 && (
                               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-semibold mb-2 border border-amber-200 dark:border-amber-800">
                                 <Clock className="w-3 h-3" />
-                                Previous Appraisal: ${previousAppraisal.quotedPrice?.toLocaleString() || 'N/A'} ({new Date(previousAppraisal.createdAt).toLocaleDateString()})
+                                Previous Appraisal: ${Number(previousAppraisal.quotedPrice).toLocaleString()} ({new Date(previousAppraisal.createdAt).toLocaleDateString()})
                               </div>
                             )}
                             <h2 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white mb-2">
@@ -2501,7 +2501,7 @@ export default function Manager() {
 
                   {/* Legacy VIN Details Accordion - Collapsed by default */}
                   {vinResults && (
-                    <Accordion type="single" collapsible className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
+                    <Accordion type="single" collapsible defaultValue="vin-details" className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
                       <AccordionItem value="vin-details" className="border-0">
                         <AccordionTrigger className="px-6 py-4 hover:no-underline">
                           <span className="flex items-center gap-2 font-semibold text-foreground">
