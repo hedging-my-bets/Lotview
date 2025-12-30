@@ -3135,6 +3135,7 @@ export default function Manager() {
                         <thead className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-xs uppercase text-slate-500 font-semibold">
                           <tr>
                             <th className="px-6 py-4">Vehicle Info</th>
+                            <th className="px-6 py-4">Ext / Int Color</th>
                             <th className="px-6 py-4">Mileage</th>
                             <th className="px-6 py-4">Seller</th>
                             <th className="px-6 py-4">Distance</th>
@@ -3149,17 +3150,35 @@ export default function Manager() {
                                 <div className="font-bold text-slate-800 dark:text-slate-200">{comp.year} {comp.make} {comp.model}</div>
                                 <div className="text-xs text-slate-500">{comp.trim}</div>
                               </td>
+                              <td className="px-6 py-4">
+                                <div className="flex flex-col gap-1">
+                                  {comp.exteriorColor ? (
+                                    <span className="inline-flex items-center gap-1 text-xs">
+                                      <span className="w-3 h-3 rounded-full border border-slate-200 dark:border-slate-600" style={{backgroundColor: comp.exteriorColor?.toLowerCase().includes('white') ? '#f5f5f5' : comp.exteriorColor?.toLowerCase().includes('black') ? '#1a1a1a' : comp.exteriorColor?.toLowerCase().includes('silver') ? '#c0c0c0' : comp.exteriorColor?.toLowerCase().includes('grey') || comp.exteriorColor?.toLowerCase().includes('gray') ? '#808080' : comp.exteriorColor?.toLowerCase().includes('red') ? '#dc2626' : comp.exteriorColor?.toLowerCase().includes('blue') ? '#2563eb' : comp.exteriorColor?.toLowerCase().includes('green') ? '#16a34a' : comp.exteriorColor?.toLowerCase().includes('brown') ? '#7c3a18' : comp.exteriorColor?.toLowerCase().includes('beige') ? '#d4b896' : '#e5e5e5'}}></span>
+                                      <span className="text-slate-600 dark:text-slate-400">{comp.exteriorColor}</span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs text-slate-400">-</span>
+                                  )}
+                                  {comp.interiorColor && (
+                                    <span className="inline-flex items-center gap-1 text-xs">
+                                      <span className="w-3 h-3 rounded-full border border-slate-200 dark:border-slate-600" style={{backgroundColor: comp.interiorColor?.toLowerCase().includes('black') ? '#1a1a1a' : comp.interiorColor?.toLowerCase().includes('tan') || comp.interiorColor?.toLowerCase().includes('beige') ? '#d4b896' : comp.interiorColor?.toLowerCase().includes('brown') ? '#7c3a18' : comp.interiorColor?.toLowerCase().includes('grey') || comp.interiorColor?.toLowerCase().includes('gray') ? '#808080' : '#e5e5e5'}}></span>
+                                      <span className="text-slate-600 dark:text-slate-400">{comp.interiorColor}</span>
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
                               <td className="px-6 py-4 font-mono text-slate-600 dark:text-slate-400">{comp.mileage?.toLocaleString()} km</td>
                               <td className="px-6 py-4">
                                 <Badge variant="outline" className={cn("font-normal", comp.listingType === 'private' ? "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-800" : "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800")}>
                                   {comp.listingType === 'private' ? 'Private' : 'Dealer'}
                                 </Badge>
                               </td>
-                              <td className="px-6 py-4 text-slate-500">{comp.distance} km</td>
+                              <td className="px-6 py-4 text-slate-500">{comp.distance ? `${comp.distance} km` : '-'}</td>
                               <td className="px-6 py-4 text-right font-bold text-slate-900 dark:text-white">${comp.price?.toLocaleString()}</td>
                               <td className="px-6 py-4 text-center flex items-center justify-center gap-2">
                                 {comp.listingUrl && (
-                                  <a href={comp.listingUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 hover:bg-blue-100 dark:bg-slate-800 dark:hover:bg-blue-900/50 text-slate-500 hover:text-blue-600 transition-colors">
+                                  <a href={comp.listingUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 hover:bg-blue-100 dark:bg-slate-800 dark:hover:bg-blue-900/50 text-slate-500 hover:text-blue-600 transition-colors" title="View Listing">
                                     <ExternalLink className="w-4 h-4" />
                                   </a>
                                 )}
@@ -3171,7 +3190,7 @@ export default function Manager() {
                           ))}
                           {(!pricingResults?.comparisons || pricingResults.comparisons.length === 0) && (
                             <tr>
-                              <td colSpan={6} className="px-6 py-12 text-center text-slate-400 italic">No comparable vehicles found. Run an analysis to see results.</td>
+                              <td colSpan={7} className="px-6 py-12 text-center text-slate-400 italic">No comparable vehicles found. Run an analysis to see results.</td>
                             </tr>
                           )}
                         </tbody>
@@ -3206,9 +3225,10 @@ export default function Manager() {
                                       <thead className="bg-muted/30 border-b">
                                         <tr>
                                           <th className="text-left p-3 font-medium text-muted-foreground">Vehicle Info</th>
+                                          <th className="text-left p-3 font-medium text-muted-foreground">Ext / Int Color</th>
                                           <th className="text-left p-3 font-medium text-muted-foreground">Mileage</th>
                                           <th className="text-left p-3 font-medium text-muted-foreground">Age</th>
-                                          <th className="text-left p-3 font-medium text-muted-foreground">Seller Type</th>
+                                          <th className="text-left p-3 font-medium text-muted-foreground">Seller</th>
                                           <th className="text-left p-3 font-medium text-muted-foreground">Distance</th>
                                           <th className="text-right p-3 font-medium text-muted-foreground">Price</th>
                                           <th className="w-10"></th>
@@ -3224,6 +3244,24 @@ export default function Manager() {
                                                 {comp.trim && ` (${comp.trim})`}
                                               </span>
                                             </td>
+                                            <td className="p-3">
+                                              <div className="flex flex-col gap-1">
+                                                {comp.exteriorColor ? (
+                                                  <span className="inline-flex items-center gap-1 text-xs">
+                                                    <span className="w-3 h-3 rounded-full border border-border" style={{backgroundColor: comp.exteriorColor?.toLowerCase().includes('white') ? '#f5f5f5' : comp.exteriorColor?.toLowerCase().includes('black') ? '#1a1a1a' : comp.exteriorColor?.toLowerCase().includes('silver') ? '#c0c0c0' : comp.exteriorColor?.toLowerCase().includes('grey') || comp.exteriorColor?.toLowerCase().includes('gray') ? '#808080' : comp.exteriorColor?.toLowerCase().includes('red') ? '#dc2626' : comp.exteriorColor?.toLowerCase().includes('blue') ? '#2563eb' : comp.exteriorColor?.toLowerCase().includes('green') ? '#16a34a' : comp.exteriorColor?.toLowerCase().includes('brown') ? '#7c3a18' : comp.exteriorColor?.toLowerCase().includes('beige') ? '#d4b896' : '#e5e5e5'}}></span>
+                                                    <span className="text-muted-foreground">{comp.exteriorColor}</span>
+                                                  </span>
+                                                ) : (
+                                                  <span className="text-xs text-muted-foreground/50">-</span>
+                                                )}
+                                                {comp.interiorColor && (
+                                                  <span className="inline-flex items-center gap-1 text-xs">
+                                                    <span className="w-3 h-3 rounded-full border border-border" style={{backgroundColor: comp.interiorColor?.toLowerCase().includes('black') ? '#1a1a1a' : comp.interiorColor?.toLowerCase().includes('tan') || comp.interiorColor?.toLowerCase().includes('beige') ? '#d4b896' : comp.interiorColor?.toLowerCase().includes('brown') ? '#7c3a18' : comp.interiorColor?.toLowerCase().includes('grey') || comp.interiorColor?.toLowerCase().includes('gray') ? '#808080' : '#e5e5e5'}}></span>
+                                                    <span className="text-muted-foreground">{comp.interiorColor}</span>
+                                                  </span>
+                                                )}
+                                              </div>
+                                            </td>
                                             <td className="p-3 text-muted-foreground">
                                               {comp.mileage ? `${comp.mileage.toLocaleString()} km` : '-'}
                                             </td>
@@ -3231,16 +3269,14 @@ export default function Manager() {
                                               {typeof comp.daysOnLot === 'number' ? `${comp.daysOnLot} days` : '-'}
                                             </td>
                                             <td className="p-3 text-muted-foreground">Dealer</td>
-                                            <td className="p-3 text-muted-foreground">
-                                              {comp.distance ? `${comp.distance} km` : '-'}
-                                            </td>
+                                            <td className="p-3 text-muted-foreground">{comp.distance ? `${comp.distance} km` : '-'}</td>
                                             <td className="p-3 text-right font-medium text-foreground">
                                               {comp.price ? `$${comp.price.toLocaleString()}` : 'N/A'}
                                             </td>
                                             <td className="p-3 text-center flex items-center justify-center gap-2">
                                               {comp.listingUrl && (
-                                                <a href={comp.listingUrl} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground">
-                                                  <Copy className="w-4 h-4" />
+                                                <a href={comp.listingUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:text-primary/80" title="View Listing">
+                                                  <ExternalLink className="w-4 h-4" />
                                                 </a>
                                               )}
                                               <a href={generateAutoTraderUrl({make: comp.make, model: comp.model, year: comp.year, trim: comp.trim})} target="_blank" rel="noopener noreferrer" className="text-red-500 hover:text-red-600" title="Search AutoTrader.ca">
@@ -3253,7 +3289,7 @@ export default function Manager() {
                                         {/* Dealer group separator */}
                                         {dealerListings.length > 0 && (
                                           <tr className="bg-muted/20 border-b">
-                                            <td colSpan={7} className="p-2 text-sm text-muted-foreground font-medium">
+                                            <td colSpan={8} className="p-2 text-sm text-muted-foreground font-medium">
                                               Dealer ({dealerListings.length} listings, ${dealerAvg.toLocaleString()} avg)
                                             </td>
                                           </tr>
@@ -3268,23 +3304,39 @@ export default function Manager() {
                                                 {comp.trim && ` (${comp.trim})`}
                                               </span>
                                             </td>
+                                            <td className="p-3">
+                                              <div className="flex flex-col gap-1">
+                                                {comp.exteriorColor ? (
+                                                  <span className="inline-flex items-center gap-1 text-xs">
+                                                    <span className="w-3 h-3 rounded-full border border-border" style={{backgroundColor: comp.exteriorColor?.toLowerCase().includes('white') ? '#f5f5f5' : comp.exteriorColor?.toLowerCase().includes('black') ? '#1a1a1a' : comp.exteriorColor?.toLowerCase().includes('silver') ? '#c0c0c0' : comp.exteriorColor?.toLowerCase().includes('grey') || comp.exteriorColor?.toLowerCase().includes('gray') ? '#808080' : comp.exteriorColor?.toLowerCase().includes('red') ? '#dc2626' : comp.exteriorColor?.toLowerCase().includes('blue') ? '#2563eb' : comp.exteriorColor?.toLowerCase().includes('green') ? '#16a34a' : comp.exteriorColor?.toLowerCase().includes('brown') ? '#7c3a18' : comp.exteriorColor?.toLowerCase().includes('beige') ? '#d4b896' : '#e5e5e5'}}></span>
+                                                    <span className="text-muted-foreground">{comp.exteriorColor}</span>
+                                                  </span>
+                                                ) : (
+                                                  <span className="text-xs text-muted-foreground/50">-</span>
+                                                )}
+                                                {comp.interiorColor && (
+                                                  <span className="inline-flex items-center gap-1 text-xs">
+                                                    <span className="w-3 h-3 rounded-full border border-border" style={{backgroundColor: comp.interiorColor?.toLowerCase().includes('black') ? '#1a1a1a' : comp.interiorColor?.toLowerCase().includes('tan') || comp.interiorColor?.toLowerCase().includes('beige') ? '#d4b896' : comp.interiorColor?.toLowerCase().includes('brown') ? '#7c3a18' : comp.interiorColor?.toLowerCase().includes('grey') || comp.interiorColor?.toLowerCase().includes('gray') ? '#808080' : '#e5e5e5'}}></span>
+                                                    <span className="text-muted-foreground">{comp.interiorColor}</span>
+                                                  </span>
+                                                )}
+                                              </div>
+                                            </td>
                                             <td className="p-3 text-muted-foreground">
                                               {comp.mileage ? `${comp.mileage.toLocaleString()} km` : '-'}
                                             </td>
                                             <td className="p-3 text-muted-foreground">
                                               {typeof comp.daysOnLot === 'number' ? `${comp.daysOnLot} days` : '-'}
                                             </td>
-                                            <td className="p-3 text-muted-foreground">Private Seller</td>
-                                            <td className="p-3 text-muted-foreground">
-                                              {comp.distance ? `${comp.distance} km` : '-'}
-                                            </td>
+                                            <td className="p-3 text-muted-foreground">Private</td>
+                                            <td className="p-3 text-muted-foreground">{comp.distance ? `${comp.distance} km` : '-'}</td>
                                             <td className="p-3 text-right font-medium text-foreground">
                                               {comp.price ? `$${comp.price.toLocaleString()}` : 'N/A'}
                                             </td>
                                             <td className="p-3 text-center flex items-center justify-center gap-2">
                                               {comp.listingUrl && (
-                                                <a href={comp.listingUrl} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground">
-                                                  <Copy className="w-4 h-4" />
+                                                <a href={comp.listingUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:text-primary/80" title="View Listing">
+                                                  <ExternalLink className="w-4 h-4" />
                                                 </a>
                                               )}
                                               <a href={generateAutoTraderUrl({make: comp.make, model: comp.model, year: comp.year, trim: comp.trim})} target="_blank" rel="noopener noreferrer" className="text-red-500 hover:text-red-600" title="Search AutoTrader.ca">
