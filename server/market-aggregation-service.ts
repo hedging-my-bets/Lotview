@@ -147,6 +147,8 @@ export class MarketAggregationService {
             postedDate: null,
             isActive: true,
             dataSourceRank: 2,
+            exteriorColor: listing.exteriorColor || null,
+            interiorColor: listing.interiorColor || null,
           };
           allListings.push(marketListing);
           result.browserlessCount++;

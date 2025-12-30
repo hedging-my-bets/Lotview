@@ -594,32 +594,32 @@ export class BrowserlessUnifiedService {
 
       const listings = await page.evaluate((ctx) => {
         const vehicles: any[] = [];
-        const cards = document.querySelectorAll('[data-cg-ft="car-blade"], .listing-row, .result-card');
+        const cards = document.querySelectorAll('[data-cg-ft="car-blade"], .listing-row, .result-card, article[data-testid]');
 
         cards.forEach((card, index) => {
           if (index >= ctx.maxResults) return;
 
-          const titleEl = card.querySelector('h4, .listing-title, .car-blade-title');
+          const titleEl = card.querySelector('h4, .listing-title, .car-blade-title, [data-testid="srp-tile-title"]');
           const title = titleEl?.textContent?.trim() || '';
 
-          const priceEl = card.querySelector('[class*="price"], .listing-price');
+          const priceEl = card.querySelector('[class*="price"], .listing-price, [data-testid="srp-tile-price"]');
           let price: number | null = null;
           if (priceEl) {
             const priceMatch = priceEl.textContent?.match(/\$([0-9,]+)/);
             if (priceMatch) price = parseInt(priceMatch[1].replace(/,/g, ''));
           }
 
-          const mileageEl = card.querySelector('[class*="mileage"], [class*="odometer"]');
+          const mileageEl = card.querySelector('[class*="mileage"], [class*="odometer"], [data-testid="srp-tile-mileage"]');
           let odometer: number | null = null;
           if (mileageEl) {
             const kmMatch = mileageEl.textContent?.match(/(\d+[,\d]*)\s*km/i);
             if (kmMatch) odometer = parseInt(kmMatch[1].replace(/,/g, ''));
           }
 
-          const locationEl = card.querySelector('[class*="location"], .seller-location');
+          const locationEl = card.querySelector('[class*="location"], .seller-location, [data-testid="srp-tile-location"]');
           const location = locationEl?.textContent?.trim() || '';
 
-          const dealRatingEl = card.querySelector('[class*="deal-rating"], .deal-badge');
+          const dealRatingEl = card.querySelector('[class*="deal-rating"], .deal-badge, [data-testid="deal-rating"]');
           const dealRating = dealRatingEl?.textContent?.trim() || '';
 
           const imgEl = card.querySelector('img') as HTMLImageElement;
@@ -627,6 +627,39 @@ export class BrowserlessUnifiedService {
 
           const linkEl = card.querySelector('a[href*="/listing/"]') as HTMLAnchorElement;
           const listingUrl = linkEl?.href || '';
+
+          // Extract exterior color - CarGurus shows color in specs section
+          let exteriorColor: string | undefined;
+          let interiorColor: string | undefined;
+          
+          // Try multiple selectors for colors (CarGurus shows colors in listing details)
+          const cardText = card.textContent || '';
+          
+          // Look for Exterior: Color pattern
+          const extColorMatch = cardText.match(/Exterior:?\s*([A-Za-z\s]+?)(?:\s*[|,]|\s*Interior|$)/i);
+          if (extColorMatch) exteriorColor = extColorMatch[1].trim();
+          
+          // Look for Interior: Color pattern
+          const intColorMatch = cardText.match(/Interior:?\s*([A-Za-z\s]+?)(?:\s*[|,]|$)/i);
+          if (intColorMatch) interiorColor = intColorMatch[1].trim();
+          
+          // Alternative: look for color labels in specs
+          const specEls = card.querySelectorAll('[class*="spec"], [class*="detail"], dd, span');
+          specEls.forEach(el => {
+            const text = el.textContent?.trim() || '';
+            if (text.toLowerCase().includes('exterior') && !exteriorColor) {
+              const colorText = text.replace(/exterior:?\s*/i, '').trim();
+              if (colorText && colorText.length < 30) exteriorColor = colorText;
+            }
+            if (text.toLowerCase().includes('interior') && !interiorColor) {
+              const colorText = text.replace(/interior:?\s*/i, '').trim();
+              if (colorText && colorText.length < 30) interiorColor = colorText;
+            }
+          });
+
+          // Extract dealer name
+          const dealerEl = card.querySelector('[class*="dealer"], [class*="seller"], [data-testid="srp-tile-seller"]');
+          const dealerName = dealerEl?.textContent?.trim() || 'CarGurus Listing';
 
           const titleMatch = title.match(/(\d{4})\s+([A-Za-z]+)\s+(.+)/);
           if (titleMatch) {
@@ -640,10 +673,12 @@ export class BrowserlessUnifiedService {
               images: image ? [image] : [],
               badges: [],
               location,
-              dealership: 'CarGurus Listing',
+              dealership: dealerName,
               dealershipId: 0,
               dealRating,
               cargurusUrl: listingUrl,
+              exteriorColor,
+              interiorColor,
               sellerType: 'dealer' as const,
             });
           }
@@ -707,31 +742,57 @@ export class BrowserlessUnifiedService {
 
       const listings = await page.evaluate((ctx) => {
         const vehicles: any[] = [];
-        const cards = document.querySelectorAll('.listing-details, .result-item, [class*="listing-card"]');
+        const cards = document.querySelectorAll('.listing-details, .result-item, [class*="listing-card"], [data-testid="result-card"]');
 
         cards.forEach((card, index) => {
           if (index >= ctx.maxResults) return;
 
-          const titleEl = card.querySelector('h2, h3, .title, [class*="title"]');
+          const titleEl = card.querySelector('h2, h3, .title, [class*="title"], [data-testid="listing-title"]');
           const title = titleEl?.textContent?.trim() || '';
 
-          const priceEl = card.querySelector('[class*="price"], .price-amount');
+          const priceEl = card.querySelector('[class*="price"], .price-amount, [data-testid="listing-price"]');
           let price: number | null = null;
           if (priceEl) {
             const priceMatch = priceEl.textContent?.match(/\$([0-9,]+)/);
             if (priceMatch) price = parseInt(priceMatch[1].replace(/,/g, ''));
           }
 
-          const mileageEl = card.querySelector('[class*="mileage"], [class*="odometer"], [class*="km"]');
-          let odometer: number | null = null;
           const cardText = card.textContent || '';
+          
+          // Extract mileage
+          let odometer: number | null = null;
           const kmMatch = cardText.match(/(\d+[,\d]*)\s*km/i);
           if (kmMatch) odometer = parseInt(kmMatch[1].replace(/,/g, ''));
+
+          // Extract colors from AutoTrader listing cards
+          let exteriorColor: string | undefined;
+          let interiorColor: string | undefined;
+          
+          // AutoTrader often shows colors in the specifications area
+          const extMatch = cardText.match(/Exterior(?:\s*Colour?)?:?\s*([A-Za-z\s]+?)(?:\s*[|,]|\s*Interior|$)/i);
+          if (extMatch) exteriorColor = extMatch[1].trim();
+          
+          const intMatch = cardText.match(/Interior(?:\s*Colour?)?:?\s*([A-Za-z\s]+?)(?:\s*[|,]|$)/i);
+          if (intMatch) interiorColor = intMatch[1].trim();
+          
+          // Alternative: Check spec elements
+          const specEls = card.querySelectorAll('[class*="spec"], [class*="attribute"], dt, dd');
+          specEls.forEach(el => {
+            const text = el.textContent?.trim() || '';
+            if (text.toLowerCase().includes('exterior') && !exteriorColor) {
+              const colorText = text.replace(/exterior(?:\s*colou?r)?:?\s*/i, '').trim();
+              if (colorText && colorText.length < 30) exteriorColor = colorText;
+            }
+            if (text.toLowerCase().includes('interior') && !interiorColor) {
+              const colorText = text.replace(/interior(?:\s*colou?r)?:?\s*/i, '').trim();
+              if (colorText && colorText.length < 30) interiorColor = colorText;
+            }
+          });
 
           const locationEl = card.querySelector('[class*="location"], [class*="dealer-location"]');
           const location = locationEl?.textContent?.trim() || '';
 
-          const dealerEl = card.querySelector('[class*="dealer-name"], .seller-name');
+          const dealerEl = card.querySelector('[class*="dealer-name"], .seller-name, [data-testid="dealer-name"]');
           const dealer = dealerEl?.textContent?.trim() || 'AutoTrader Listing';
 
           const imgEl = card.querySelector('img') as HTMLImageElement;
@@ -755,6 +816,8 @@ export class BrowserlessUnifiedService {
               dealership: dealer,
               dealershipId: 0,
               dealerVdpUrl: listingUrl,
+              exteriorColor,
+              interiorColor,
               sellerType: 'dealer' as const,
             });
           }
