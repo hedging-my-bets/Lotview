@@ -791,10 +791,15 @@ export class BrowserlessUnifiedService {
   async scrapeMarketComparables(
     searchParams: { make: string; model: string; yearMin?: number; yearMax?: number; postalCode?: string; radiusKm?: number; maxResults?: number }
   ): Promise<MarketAnalysisResult> {
-    const [cargurusResult, autotraderResult] = await Promise.all([
-      this.scrapeCarGurus(searchParams),
-      this.scrapeAutoTrader(searchParams),
-    ]);
+    // Run sequentially to avoid hitting concurrent session limits
+    console.log('[BrowserlessUnified] Starting CarGurus scrape...');
+    const cargurusResult = await this.scrapeCarGurus(searchParams);
+    
+    // Small delay between requests to avoid rate limiting
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    console.log('[BrowserlessUnified] Starting AutoTrader scrape...');
+    const autotraderResult = await this.scrapeAutoTrader(searchParams);
 
     const combinedListings = [
       ...cargurusResult.listings.map(l => ({ ...l, source: 'cargurus' as const })),
@@ -802,6 +807,8 @@ export class BrowserlessUnifiedService {
     ];
 
     combinedListings.sort((a, b) => (a.price || 0) - (b.price || 0));
+
+    console.log(`[BrowserlessUnified] Combined: ${combinedListings.length} listings (CarGurus: ${cargurusResult.listings.length}, AutoTrader: ${autotraderResult.listings.length})`);
 
     return {
       success: cargurusResult.success || autotraderResult.success,
