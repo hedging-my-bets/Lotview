@@ -740,100 +740,148 @@ export class BrowserlessUnifiedService {
 
       await sleep(2000);
 
-      const listings = await page.evaluate((ctx) => {
-        const vehicles: any[] = [];
-        const cards = document.querySelectorAll('.listing-details, .result-item, [class*="listing-card"], [data-testid="result-card"]');
-
-        cards.forEach((card, index) => {
-          if (index >= ctx.maxResults) return;
-
-          const titleEl = card.querySelector('h2, h3, .title, [class*="title"], [data-testid="listing-title"]');
-          const title = titleEl?.textContent?.trim() || '';
-
-          const priceEl = card.querySelector('[class*="price"], .price-amount, [data-testid="listing-price"]');
-          let price: number | null = null;
-          if (priceEl) {
-            const priceMatch = priceEl.textContent?.match(/\$([0-9,]+)/);
-            if (priceMatch) price = parseInt(priceMatch[1].replace(/,/g, ''));
+      // First pass: get listing URLs from search results
+      const listingUrls = await page.evaluate(() => {
+        const urls: string[] = [];
+        const links = document.querySelectorAll('a[href*="/a/"]');
+        links.forEach(link => {
+          const href = (link as HTMLAnchorElement).href;
+          if (href && href.includes('/a/') && !urls.includes(href)) {
+            urls.push(href);
           }
+        });
+        return urls;
+      });
 
-          const cardText = card.textContent || '';
-          
-          // Extract mileage
-          let odometer: number | null = null;
-          const kmMatch = cardText.match(/(\d+[,\d]*)\s*km/i);
-          if (kmMatch) odometer = parseInt(kmMatch[1].replace(/,/g, ''));
+      console.log(`[BrowserlessUnified] AutoTrader found ${listingUrls.length} listing URLs, scraping VDP pages...`);
 
-          // Extract colors from AutoTrader listing cards
-          let exteriorColor: string | undefined;
-          let interiorColor: string | undefined;
-          
-          // AutoTrader often shows colors in the specifications area
-          const extMatch = cardText.match(/Exterior(?:\s*Colour?)?:?\s*([A-Za-z\s]+?)(?:\s*[|,]|\s*Interior|$)/i);
-          if (extMatch) exteriorColor = extMatch[1].trim();
-          
-          const intMatch = cardText.match(/Interior(?:\s*Colour?)?:?\s*([A-Za-z\s]+?)(?:\s*[|,]|$)/i);
-          if (intMatch) interiorColor = intMatch[1].trim();
-          
-          // Alternative: Check spec elements
-          const specEls = card.querySelectorAll('[class*="spec"], [class*="attribute"], dt, dd');
-          specEls.forEach(el => {
-            const text = el.textContent?.trim() || '';
-            if (text.toLowerCase().includes('exterior') && !exteriorColor) {
-              const colorText = text.replace(/exterior(?:\s*colou?r)?:?\s*/i, '').trim();
-              if (colorText && colorText.length < 30) exteriorColor = colorText;
+      const vehicles: any[] = [];
+      
+      // Scrape each VDP page to get accurate mileage and colors
+      for (const url of listingUrls.slice(0, maxResults)) {
+        try {
+          await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+          await sleep(500);
+
+          const vehicleData = await page.evaluate(() => {
+            // Get title from h1
+            const titleEl = document.querySelector('h1');
+            const title = titleEl?.textContent?.trim() || '';
+            
+            // Get price
+            let price: number | null = null;
+            const priceEl = document.querySelector('[class*="price"], .price-amount, [data-testid="price"]');
+            if (priceEl) {
+              const priceMatch = priceEl.textContent?.match(/\$([0-9,]+)/);
+              if (priceMatch) price = parseInt(priceMatch[1].replace(/,/g, ''));
             }
-            if (text.toLowerCase().includes('interior') && !interiorColor) {
-              const colorText = text.replace(/interior(?:\s*colou?r)?:?\s*/i, '').trim();
-              if (colorText && colorText.length < 30) interiorColor = colorText;
+
+            // Get mileage from the subtitle area (appears as "65,987 km | North Vancouver")
+            let odometer: number | null = null;
+            const subtitleEl = document.querySelector('[class*="listing-subtitle"], [class*="kms"], .hero-header-secondary');
+            if (subtitleEl) {
+              const subtitleText = subtitleEl.textContent || '';
+              const kmMatch = subtitleText.match(/(\d{1,3}(?:,\d{3})+|\d{4,})\s*km/i);
+              if (kmMatch) odometer = parseInt(kmMatch[1].replace(/,/g, ''));
             }
+            
+            // Fallback: look for mileage in specs section
+            if (!odometer) {
+              const specsEl = document.querySelector('[class*="specs"], [class*="details"], .listing-specs');
+              if (specsEl) {
+                const specsText = specsEl.textContent || '';
+                const kmMatch = specsText.match(/(\d{1,3}(?:,\d{3})+|\d{4,})\s*km/i);
+                if (kmMatch) odometer = parseInt(kmMatch[1].replace(/,/g, ''));
+              }
+            }
+
+            // Extract colors from VDP specs
+            let exteriorColor: string | undefined;
+            let interiorColor: string | undefined;
+            
+            // Look in spec table/list for color info
+            const specRows = document.querySelectorAll('[class*="specs"] tr, [class*="specs"] li, dl dt, dl dd, .listing-specs-item, [class*="detail-item"], [class*="spec-row"]');
+            specRows.forEach((row, i) => {
+              const text = row.textContent?.trim() || '';
+              
+              // Check for explicit color labels
+              if (text.toLowerCase().includes('exterior') && text.toLowerCase().includes('colo')) {
+                const colorMatch = text.match(/(?:exterior\s*(?:colou?r)?[:\s]*)?([A-Za-z\s]+)/i);
+                if (colorMatch && colorMatch[1]) {
+                  const color = colorMatch[1].replace(/exterior|colou?r|:/gi, '').trim();
+                  if (color && color.length > 2 && color.length < 40) exteriorColor = color;
+                }
+              }
+              if (text.toLowerCase().includes('interior') && text.toLowerCase().includes('colo')) {
+                const colorMatch = text.match(/(?:interior\s*(?:colou?r)?[:\s]*)?([A-Za-z\s]+)/i);
+                if (colorMatch && colorMatch[1]) {
+                  const color = colorMatch[1].replace(/interior|colou?r|:/gi, '').trim();
+                  if (color && color.length > 2 && color.length < 40) interiorColor = color;
+                }
+              }
+            });
+            
+            // Alternative: search the entire page text for color patterns
+            const pageText = document.body.textContent || '';
+            if (!exteriorColor) {
+              const extMatch = pageText.match(/Exterior\s*(?:Colou?r)?[:\s]+([A-Za-z][A-Za-z\s]*?)(?=\s*(?:Interior|$|\n|\|))/i);
+              if (extMatch) exteriorColor = extMatch[1].trim();
+            }
+            if (!interiorColor) {
+              const intMatch = pageText.match(/Interior\s*(?:Colou?r)?[:\s]+([A-Za-z][A-Za-z\s]*?)(?=\s*(?:$|\n|\|))/i);
+              if (intMatch) interiorColor = intMatch[1].trim();
+            }
+
+            // Get location
+            const locationEl = document.querySelector('[class*="location"], [class*="dealer-location"], [class*="dealer-address"]');
+            const location = locationEl?.textContent?.trim() || '';
+
+            // Get dealer name
+            const dealerEl = document.querySelector('[class*="dealer-name"], .seller-name, h2[class*="dealer"]');
+            const dealer = dealerEl?.textContent?.trim() || 'AutoTrader Listing';
+
+            // Get image
+            const imgEl = document.querySelector('.hero-image img, [class*="gallery"] img, img[class*="vehicle"]') as HTMLImageElement;
+            const image = imgEl?.src || '';
+
+            return { title, price, odometer, exteriorColor, interiorColor, location, dealer, image };
           });
 
-          const locationEl = card.querySelector('[class*="location"], [class*="dealer-location"]');
-          const location = locationEl?.textContent?.trim() || '';
-
-          const dealerEl = card.querySelector('[class*="dealer-name"], .seller-name, [data-testid="dealer-name"]');
-          const dealer = dealerEl?.textContent?.trim() || 'AutoTrader Listing';
-
-          const imgEl = card.querySelector('img') as HTMLImageElement;
-          const image = imgEl?.src || imgEl?.getAttribute('data-src') || '';
-
-          const linkEl = card.querySelector('a[href*="/a/"]') as HTMLAnchorElement;
-          const listingUrl = linkEl?.href || '';
-
-          const titleMatch = title.match(/(\d{4})\s+([A-Za-z]+)\s+(.+)/);
+          // Parse title
+          const titleMatch = vehicleData.title.match(/(\d{4})\s+([A-Za-z]+)\s+(.+)/);
           if (titleMatch) {
             vehicles.push({
               year: parseInt(titleMatch[1]),
               make: titleMatch[2],
               model: titleMatch[3].split(/\s+/).slice(0, 2).join(' '),
               trim: titleMatch[3].split(/\s+/).slice(2).join(' ') || undefined,
-              price,
-              odometer,
-              images: image ? [image] : [],
+              price: vehicleData.price,
+              odometer: vehicleData.odometer,
+              images: vehicleData.image ? [vehicleData.image] : [],
               badges: [],
-              location,
-              dealership: dealer,
+              location: vehicleData.location,
+              dealership: vehicleData.dealer,
               dealershipId: 0,
-              dealerVdpUrl: listingUrl,
-              exteriorColor,
-              interiorColor,
+              dealerVdpUrl: url,
+              exteriorColor: vehicleData.exteriorColor,
+              interiorColor: vehicleData.interiorColor,
               sellerType: 'dealer' as const,
             });
+            console.log(`[BrowserlessUnified] AutoTrader VDP: ${vehicleData.title} - ${vehicleData.odometer} km, Ext: ${vehicleData.exteriorColor || 'N/A'}, Int: ${vehicleData.interiorColor || 'N/A'}`);
           }
-        });
-
-        return vehicles;
-      }, { maxResults });
+        } catch (vdpError) {
+          console.warn(`[BrowserlessUnified] AutoTrader VDP scrape failed for ${url}:`, vdpError);
+        }
+      }
 
       await page.close();
       if (isCloud) await browser.disconnect();
 
-      console.log(`[BrowserlessUnified] AutoTrader found ${listings.length} listings`);
+      console.log(`[BrowserlessUnified] AutoTrader scraped ${vehicles.length} vehicles with VDP data`);
 
       return {
         success: true,
-        listings,
+        listings: vehicles,
         source: 'autotrader',
       };
 
