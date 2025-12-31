@@ -592,109 +592,183 @@ export class BrowserlessUnifiedService {
 
       await this.scrollToLoadAll(page, maxResults);
 
-      const listings = await page.evaluate((ctx) => {
-        const vehicles: any[] = [];
-        const cards = document.querySelectorAll('[data-cg-ft="car-blade"], .listing-row, .result-card, article[data-testid]');
-
-        cards.forEach((card, index) => {
-          if (index >= ctx.maxResults) return;
-
-          const titleEl = card.querySelector('h4, .listing-title, .car-blade-title, [data-testid="srp-tile-title"]');
-          const title = titleEl?.textContent?.trim() || '';
-
-          const priceEl = card.querySelector('[class*="price"], .listing-price, [data-testid="srp-tile-price"]');
-          let price: number | null = null;
-          if (priceEl) {
-            const priceMatch = priceEl.textContent?.match(/\$([0-9,]+)/);
-            if (priceMatch) price = parseInt(priceMatch[1].replace(/,/g, ''));
+      // First pass: get listing URLs from search results
+      const listingUrls = await page.evaluate(() => {
+        const urls: string[] = [];
+        const links = document.querySelectorAll('a[href*="/listing/"]');
+        links.forEach(link => {
+          const href = (link as HTMLAnchorElement).href;
+          if (href && href.includes('/listing/') && !urls.includes(href)) {
+            urls.push(href);
           }
+        });
+        return urls;
+      });
 
-          const mileageEl = card.querySelector('[class*="mileage"], [class*="odometer"], [data-testid="srp-tile-mileage"]');
-          let odometer: number | null = null;
-          if (mileageEl) {
-            const kmMatch = mileageEl.textContent?.match(/(\d+[,\d]*)\s*km/i);
-            if (kmMatch) odometer = parseInt(kmMatch[1].replace(/,/g, ''));
-          }
+      console.log(`[BrowserlessUnified] CarGurus found ${listingUrls.length} listing URLs, scraping VDP pages for accurate data...`);
 
-          const locationEl = card.querySelector('[class*="location"], .seller-location, [data-testid="srp-tile-location"]');
-          const location = locationEl?.textContent?.trim() || '';
+      const vehicles: any[] = [];
+      
+      // Scrape each VDP page to get accurate mileage and colors
+      for (const url of listingUrls.slice(0, maxResults)) {
+        try {
+          await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+          await sleep(500);
 
-          const dealRatingEl = card.querySelector('[class*="deal-rating"], .deal-badge, [data-testid="deal-rating"]');
-          const dealRating = dealRatingEl?.textContent?.trim() || '';
-
-          const imgEl = card.querySelector('img') as HTMLImageElement;
-          const image = imgEl?.src || '';
-
-          const linkEl = card.querySelector('a[href*="/listing/"]') as HTMLAnchorElement;
-          const listingUrl = linkEl?.href || '';
-
-          // Extract exterior color - CarGurus shows color in specs section
-          let exteriorColor: string | undefined;
-          let interiorColor: string | undefined;
-          
-          // Try multiple selectors for colors (CarGurus shows colors in listing details)
-          const cardText = card.textContent || '';
-          
-          // Look for Exterior: Color pattern
-          const extColorMatch = cardText.match(/Exterior:?\s*([A-Za-z\s]+?)(?:\s*[|,]|\s*Interior|$)/i);
-          if (extColorMatch) exteriorColor = extColorMatch[1].trim();
-          
-          // Look for Interior: Color pattern
-          const intColorMatch = cardText.match(/Interior:?\s*([A-Za-z\s]+?)(?:\s*[|,]|$)/i);
-          if (intColorMatch) interiorColor = intColorMatch[1].trim();
-          
-          // Alternative: look for color labels in specs
-          const specEls = card.querySelectorAll('[class*="spec"], [class*="detail"], dd, span');
-          specEls.forEach(el => {
-            const text = el.textContent?.trim() || '';
-            if (text.toLowerCase().includes('exterior') && !exteriorColor) {
-              const colorText = text.replace(/exterior:?\s*/i, '').trim();
-              if (colorText && colorText.length < 30) exteriorColor = colorText;
+          const vehicleData = await page.evaluate(() => {
+            // Get title from h1 or main title element
+            const titleEl = document.querySelector('h1, [class*="listing-title"], [data-testid="listing-title"]');
+            const title = titleEl?.textContent?.trim() || '';
+            
+            // Get price
+            let price: number | null = null;
+            const priceEl = document.querySelector('[class*="price"], [data-testid="price"], .price-section');
+            if (priceEl) {
+              const priceMatch = priceEl.textContent?.match(/\$([0-9,]+)/);
+              if (priceMatch) price = parseInt(priceMatch[1].replace(/,/g, ''));
             }
-            if (text.toLowerCase().includes('interior') && !interiorColor) {
-              const colorText = text.replace(/interior:?\s*/i, '').trim();
-              if (colorText && colorText.length < 30) interiorColor = colorText;
+
+            // Get mileage - CarGurus VDP shows mileage prominently
+            let odometer: number | null = null;
+            
+            // Method 1: Look for dedicated mileage/odometer element
+            const mileageEl = document.querySelector('[class*="mileage"], [class*="odometer"], [data-testid*="mileage"]');
+            if (mileageEl) {
+              const text = mileageEl.textContent || '';
+              const kmMatch = text.match(/(\d{1,3}(?:,\d{3})+|\d+)\s*km/i);
+              if (kmMatch) odometer = parseInt(kmMatch[1].replace(/,/g, ''));
             }
+            
+            // Method 2: Look in specs/details section
+            if (odometer === null) {
+              const specRows = document.querySelectorAll('[class*="spec"] dt, [class*="spec"] dd, dl dt, dl dd, tr td, tr th');
+              let foundMileageLabel = false;
+              specRows.forEach((el, i) => {
+                const text = el.textContent?.trim().toLowerCase() || '';
+                if (text.includes('mileage') || text.includes('kilomet') || text.includes('odometer')) {
+                  foundMileageLabel = true;
+                } else if (foundMileageLabel && odometer === null) {
+                  const kmMatch = text.match(/(\d{1,3}(?:,\d{3})+|\d+)/);
+                  if (kmMatch) {
+                    odometer = parseInt(kmMatch[1].replace(/,/g, ''));
+                    foundMileageLabel = false;
+                  }
+                }
+              });
+            }
+            
+            // Method 3: Look for km pattern in page text with context
+            if (odometer === null) {
+              const pageText = document.body.textContent || '';
+              const mileagePatterns = [
+                /(?:mileage|kilomet|odometer)[:\s]+(\d{1,3}(?:,\d{3})+|\d+)\s*(?:km)?/gi,
+                /(\d{1,3}(?:,\d{3})+|\d{3,})\s*km(?!\s*\/|\s*per|\/100)/gi,
+              ];
+              for (const pattern of mileagePatterns) {
+                const matches = [...pageText.matchAll(pattern)];
+                for (const match of matches) {
+                  const value = parseInt(match[1].replace(/,/g, ''));
+                  if (!isNaN(value) && value >= 100) {
+                    const idx = match.index || 0;
+                    const context = pageText.substring(Math.max(0, idx - 30), idx + match[0].length + 20);
+                    if (!/L\/100|per\s*100|fuel|consumption|economy|range|battery/i.test(context)) {
+                      odometer = value;
+                      break;
+                    }
+                  }
+                }
+                if (odometer !== null) break;
+              }
+            }
+
+            // Extract colors from VDP specs - CarGurus has color info in vehicle details
+            let exteriorColor: string | undefined;
+            let interiorColor: string | undefined;
+            
+            // Method 1: Look for dt/dd pairs
+            const dtElements = document.querySelectorAll('dt');
+            dtElements.forEach(dt => {
+              const labelText = dt.textContent?.trim().toLowerCase() || '';
+              const ddEl = dt.nextElementSibling;
+              if (ddEl && ddEl.tagName === 'DD') {
+                const value = ddEl.textContent?.trim() || '';
+                if ((labelText.includes('exterior') && labelText.includes('colo')) || labelText === 'exterior') {
+                  if (value && !exteriorColor) exteriorColor = value;
+                }
+                if ((labelText.includes('interior') && labelText.includes('colo')) || labelText === 'interior') {
+                  if (value && !interiorColor) interiorColor = value;
+                }
+              }
+            });
+            
+            // Method 2: Look for labeled color sections
+            if (!exteriorColor || !interiorColor) {
+              const allText = document.body.textContent || '';
+              if (!exteriorColor) {
+                const extMatch = allText.match(/Exterior(?:\s*(?:Colou?r)?)?[:\s]+([A-Za-z][A-Za-z\s]*?)(?=\s*(?:Interior|Body|Drivetrain|Transmission|Engine|VIN|Stock|$|\n|\|))/i);
+                if (extMatch) exteriorColor = extMatch[1].trim();
+              }
+              if (!interiorColor) {
+                const intMatch = allText.match(/Interior(?:\s*(?:Colou?r)?)?[:\s]+([A-Za-z][A-Za-z\s]*?)(?=\s*(?:Body|Drivetrain|Transmission|Engine|VIN|Stock|Fuel|$|\n|\|))/i);
+                if (intMatch) interiorColor = intMatch[1].trim();
+              }
+            }
+
+            // Get location
+            const locationEl = document.querySelector('[class*="location"], [class*="dealer-location"], [class*="seller-location"]');
+            const location = locationEl?.textContent?.trim() || '';
+
+            // Get dealer name
+            const dealerEl = document.querySelector('[class*="dealer-name"], [class*="seller-name"], [data-testid*="dealer"]');
+            const dealer = dealerEl?.textContent?.trim() || 'CarGurus Listing';
+            
+            // Get deal rating
+            const dealRatingEl = document.querySelector('[class*="deal-rating"], [class*="deal-badge"], [data-testid*="deal"]');
+            const dealRating = dealRatingEl?.textContent?.trim() || '';
+
+            // Get image
+            const imgEl = document.querySelector('[class*="gallery"] img, [class*="hero"] img, img[class*="vehicle"]') as HTMLImageElement;
+            const image = imgEl?.src || '';
+
+            return { title, price, odometer, exteriorColor, interiorColor, location, dealer, dealRating, image };
           });
 
-          // Extract dealer name
-          const dealerEl = card.querySelector('[class*="dealer"], [class*="seller"], [data-testid="srp-tile-seller"]');
-          const dealerName = dealerEl?.textContent?.trim() || 'CarGurus Listing';
-
-          const titleMatch = title.match(/(\d{4})\s+([A-Za-z]+)\s+(.+)/);
+          // Parse title
+          const titleMatch = vehicleData.title.match(/(\d{4})\s+([A-Za-z]+)\s+(.+)/);
           if (titleMatch) {
             vehicles.push({
               year: parseInt(titleMatch[1]),
               make: titleMatch[2],
               model: titleMatch[3].split(/\s+/).slice(0, 2).join(' '),
               trim: titleMatch[3].split(/\s+/).slice(2).join(' ') || undefined,
-              price,
-              odometer,
-              images: image ? [image] : [],
+              price: vehicleData.price,
+              odometer: vehicleData.odometer,
+              images: vehicleData.image ? [vehicleData.image] : [],
               badges: [],
-              location,
-              dealership: dealerName,
+              location: vehicleData.location,
+              dealership: vehicleData.dealer,
               dealershipId: 0,
-              dealRating,
-              cargurusUrl: listingUrl,
-              exteriorColor,
-              interiorColor,
+              dealRating: vehicleData.dealRating,
+              cargurusUrl: url,
+              exteriorColor: vehicleData.exteriorColor,
+              interiorColor: vehicleData.interiorColor,
               sellerType: 'dealer' as const,
             });
+            console.log(`[BrowserlessUnified] CarGurus VDP: ${vehicleData.title} - ${vehicleData.odometer} km, Ext: ${vehicleData.exteriorColor || 'N/A'}, Int: ${vehicleData.interiorColor || 'N/A'}`);
           }
-        });
-
-        return vehicles;
-      }, { maxResults });
+        } catch (vdpError) {
+          console.warn(`[BrowserlessUnified] CarGurus VDP scrape failed for ${url}:`, vdpError);
+        }
+      }
 
       await page.close();
       if (isCloud) await browser.disconnect();
 
-      console.log(`[BrowserlessUnified] CarGurus found ${listings.length} listings`);
+      console.log(`[BrowserlessUnified] CarGurus scraped ${vehicles.length} vehicles with VDP data`);
 
       return {
         success: true,
-        listings,
+        listings: vehicles,
         source: 'cargurus',
       };
 
@@ -972,28 +1046,45 @@ export class BrowserlessUnifiedService {
   async scrapeMarketComparables(
     searchParams: { make: string; model: string; yearMin?: number; yearMax?: number; postalCode?: string; radiusKm?: number; maxResults?: number }
   ): Promise<MarketAnalysisResult> {
-    // Run sequentially to avoid hitting concurrent session limits
-    console.log('[BrowserlessUnified] Starting CarGurus scrape...');
+    const { maxResults = 50 } = searchParams;
+    
+    // CarGurus is PRIMARY source - it has better color and mileage data
+    console.log('[BrowserlessUnified] Starting CarGurus scrape (PRIMARY source)...');
     const cargurusResult = await this.scrapeCarGurus(searchParams);
     
-    // Small delay between requests to avoid rate limiting
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // If CarGurus returned enough results, use them as primary
+    // Only use AutoTrader as FALLBACK if CarGurus failed or returned few results
+    let autotraderResult: MarketAnalysisResult = { success: false, listings: [], source: 'autotrader' };
     
-    console.log('[BrowserlessUnified] Starting AutoTrader scrape...');
-    const autotraderResult = await this.scrapeAutoTrader(searchParams);
+    const cargurusCount = cargurusResult.listings.length;
+    const needsFallback = !cargurusResult.success || cargurusCount < 5;
+    
+    if (needsFallback) {
+      console.log(`[BrowserlessUnified] CarGurus returned ${cargurusCount} listings, using AutoTrader as fallback...`);
+      // Small delay between requests to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      autotraderResult = await this.scrapeAutoTrader(searchParams);
+    } else {
+      console.log(`[BrowserlessUnified] CarGurus returned ${cargurusCount} listings - skipping AutoTrader (not needed)`);
+    }
 
+    // Combine listings, prioritizing CarGurus results first
     const combinedListings = [
       ...cargurusResult.listings.map(l => ({ ...l, source: 'cargurus' as const })),
       ...autotraderResult.listings.map(l => ({ ...l, source: 'autotrader' as const })),
     ];
 
+    // Sort by price
     combinedListings.sort((a, b) => (a.price || 0) - (b.price || 0));
 
-    console.log(`[BrowserlessUnified] Combined: ${combinedListings.length} listings (CarGurus: ${cargurusResult.listings.length}, AutoTrader: ${autotraderResult.listings.length})`);
+    // Limit to maxResults
+    const finalListings = combinedListings.slice(0, maxResults);
+
+    console.log(`[BrowserlessUnified] Final: ${finalListings.length} listings (CarGurus: ${cargurusResult.listings.length}, AutoTrader: ${autotraderResult.listings.length})`);
 
     return {
       success: cargurusResult.success || autotraderResult.success,
-      listings: combinedListings,
+      listings: finalListings,
       source: 'combined',
       error: !cargurusResult.success && !autotraderResult.success
         ? `CarGurus: ${cargurusResult.error}, AutoTrader: ${autotraderResult.error}`
