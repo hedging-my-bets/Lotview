@@ -777,58 +777,128 @@ export class BrowserlessUnifiedService {
             }
 
             // Get mileage from the subtitle area (appears as "65,987 km | North Vancouver")
+            // Strategy: On VDP pages, the actual odometer is displayed prominently in the header area
+            // Distance badges (e.g., "6 km away") are in different locations and context
             let odometer: number | null = null;
-            const subtitleEl = document.querySelector('[class*="listing-subtitle"], [class*="kms"], .hero-header-secondary');
+            
+            // Method 1: Look in the subtitle/header area where AutoTrader shows odometer
+            const subtitleEl = document.querySelector('[class*="listing-subtitle"], [class*="kms"], .hero-header-secondary, [class*="hero"] [class*="km"], [class*="odometer"]');
             if (subtitleEl) {
               const subtitleText = subtitleEl.textContent || '';
-              const kmMatch = subtitleText.match(/(\d{1,3}(?:,\d{3})+|\d{4,})\s*km/i);
-              if (kmMatch) odometer = parseInt(kmMatch[1].replace(/,/g, ''));
+              // Match any km value - on VDP pages this should be the actual mileage
+              const kmMatch = subtitleText.match(/(\d{1,3}(?:,\d{3})+|\d+)\s*km/i);
+              if (kmMatch) {
+                const value = parseInt(kmMatch[1].replace(/,/g, ''));
+                // Accept any value - VDP header shows actual odometer
+                odometer = value;
+              }
             }
             
-            // Fallback: look for mileage in specs section
-            if (!odometer) {
-              const specsEl = document.querySelector('[class*="specs"], [class*="details"], .listing-specs');
-              if (specsEl) {
-                const specsText = specsEl.textContent || '';
-                const kmMatch = specsText.match(/(\d{1,3}(?:,\d{3})+|\d{4,})\s*km/i);
+            // Method 2: Look for dedicated odometer/mileage element
+            if (odometer === null) {
+              const odometerEl = document.querySelector('[class*="odometer"], [class*="mileage"], [data-testid*="mileage"], [data-testid*="odometer"]');
+              if (odometerEl) {
+                const text = odometerEl.textContent || '';
+                const kmMatch = text.match(/(\d{1,3}(?:,\d{3})+|\d+)\s*km/i);
                 if (kmMatch) odometer = parseInt(kmMatch[1].replace(/,/g, ''));
               }
             }
+            
+            // Method 3: Look in specs section for Kilometres/Odometer label
+            if (odometer === null) {
+              const dtElements = document.querySelectorAll('dt');
+              dtElements.forEach(dt => {
+                const labelText = dt.textContent?.trim().toLowerCase() || '';
+                if (labelText.includes('kilomet') || labelText.includes('odometer') || labelText.includes('mileage')) {
+                  const ddEl = dt.nextElementSibling;
+                  if (ddEl && ddEl.tagName === 'DD') {
+                    const value = ddEl.textContent?.trim() || '';
+                    const kmMatch = value.match(/(\d{1,3}(?:,\d{3})+|\d+)/);
+                    if (kmMatch) odometer = parseInt(kmMatch[1].replace(/,/g, ''));
+                  }
+                }
+              });
+            }
+            
+            // Method 4: Final fallback - ONLY accept km values with explicit odometer context
+            // This is conservative to avoid misreporting range/distance as mileage
+            if (odometer === null) {
+              const pageText = document.body.textContent || '';
+              // Look for patterns that explicitly mention odometer/kilometres/mileage followed by a number
+              // This requires the label to be present, not just any "* km" string
+              const odometerContextPatterns = [
+                /(?:kilomet(?:re|er)s?|odometer|mileage)[:\s]+(\d{1,3}(?:,\d{3})+|\d+)\s*(?:km)?/gi,
+                /(\d{1,3}(?:,\d{3})+|\d+)\s*km\s*\|/gi, // "65,987 km |" pattern common in AutoTrader headers
+                /(\d{1,3}(?:,\d{3})+|\d+)\s*kilomet(?:re|er)s?/gi,
+              ];
+              
+              for (const pattern of odometerContextPatterns) {
+                const matches = [...pageText.matchAll(pattern)];
+                for (const match of matches) {
+                  const value = parseInt(match[1].replace(/,/g, ''));
+                  if (!isNaN(value) && value > 0) {
+                    // Check surrounding context to exclude fuel economy, range, etc.
+                    const idx = match.index || 0;
+                    const context = pageText.substring(Math.max(0, idx - 30), idx + match[0].length + 20);
+                    if (!/L\/100|per\s*100|fuel|consumption|economy|range|battery/i.test(context)) {
+                      odometer = value;
+                      break;
+                    }
+                  }
+                }
+                if (odometer !== null) break;
+              }
+            }
+            
+            // If still null after all methods, leave as null rather than guessing
+            // This prevents incorrect data from being displayed
 
             // Extract colors from VDP specs
             let exteriorColor: string | undefined;
             let interiorColor: string | undefined;
             
-            // Look in spec table/list for color info
-            const specRows = document.querySelectorAll('[class*="specs"] tr, [class*="specs"] li, dl dt, dl dd, .listing-specs-item, [class*="detail-item"], [class*="spec-row"]');
-            specRows.forEach((row, i) => {
-              const text = row.textContent?.trim() || '';
-              
-              // Check for explicit color labels
-              if (text.toLowerCase().includes('exterior') && text.toLowerCase().includes('colo')) {
-                const colorMatch = text.match(/(?:exterior\s*(?:colou?r)?[:\s]*)?([A-Za-z\s]+)/i);
-                if (colorMatch && colorMatch[1]) {
-                  const color = colorMatch[1].replace(/exterior|colou?r|:/gi, '').trim();
-                  if (color && color.length > 2 && color.length < 40) exteriorColor = color;
+            // Method 1: Look for dt/dd pairs in spec lists (AutoTrader uses this format)
+            const dtElements = document.querySelectorAll('dt');
+            dtElements.forEach(dt => {
+              const labelText = dt.textContent?.trim().toLowerCase() || '';
+              const ddEl = dt.nextElementSibling;
+              if (ddEl && ddEl.tagName === 'DD') {
+                const value = ddEl.textContent?.trim() || '';
+                if (labelText.includes('exterior') && labelText.includes('colo') && value && !exteriorColor) {
+                  exteriorColor = value;
                 }
-              }
-              if (text.toLowerCase().includes('interior') && text.toLowerCase().includes('colo')) {
-                const colorMatch = text.match(/(?:interior\s*(?:colou?r)?[:\s]*)?([A-Za-z\s]+)/i);
-                if (colorMatch && colorMatch[1]) {
-                  const color = colorMatch[1].replace(/interior|colou?r|:/gi, '').trim();
-                  if (color && color.length > 2 && color.length < 40) interiorColor = color;
+                if (labelText.includes('interior') && labelText.includes('colo') && value && !interiorColor) {
+                  interiorColor = value;
                 }
               }
             });
             
-            // Alternative: search the entire page text for color patterns
+            // Method 2: Look in table rows for color info
+            if (!exteriorColor || !interiorColor) {
+              const rows = document.querySelectorAll('tr, [class*="spec-row"], [class*="detail-row"]');
+              rows.forEach(row => {
+                const cells = row.querySelectorAll('td, th, [class*="label"], [class*="value"]');
+                if (cells.length >= 2) {
+                  const label = cells[0]?.textContent?.trim().toLowerCase() || '';
+                  const value = cells[1]?.textContent?.trim() || '';
+                  if (label.includes('exterior') && label.includes('colo') && value && !exteriorColor) {
+                    exteriorColor = value;
+                  }
+                  if (label.includes('interior') && label.includes('colo') && value && !interiorColor) {
+                    interiorColor = value;
+                  }
+                }
+              });
+            }
+            
+            // Method 3: Search page text for color patterns as fallback
             const pageText = document.body.textContent || '';
             if (!exteriorColor) {
-              const extMatch = pageText.match(/Exterior\s*(?:Colou?r)?[:\s]+([A-Za-z][A-Za-z\s]*?)(?=\s*(?:Interior|$|\n|\|))/i);
+              const extMatch = pageText.match(/Exterior\s*(?:Colou?r)?[:\s]+([A-Za-z][A-Za-z\s]*?)(?=\s*(?:Interior|Body|Drivetrain|Transmission|$|\n|\|))/i);
               if (extMatch) exteriorColor = extMatch[1].trim();
             }
             if (!interiorColor) {
-              const intMatch = pageText.match(/Interior\s*(?:Colou?r)?[:\s]+([A-Za-z][A-Za-z\s]*?)(?=\s*(?:$|\n|\|))/i);
+              const intMatch = pageText.match(/Interior\s*(?:Colou?r)?[:\s]+([A-Za-z][A-Za-z\s]*?)(?=\s*(?:Body|Drivetrain|Transmission|Engine|$|\n|\|))/i);
               if (intMatch) interiorColor = intMatch[1].trim();
             }
 
