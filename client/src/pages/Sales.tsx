@@ -750,7 +750,7 @@ export default function Sales() {
                     <div>
                       <CardTitle>Facebook Accounts</CardTitle>
                       <CardDescription>
-                        Connect up to 5 Facebook accounts for marketplace posting ({accounts.length}/5 used)
+                        Connect up to 5 Facebook Pages for marketplace posting and Messenger AI nurture ({accounts.length}/5 used)
                       </CardDescription>
                     </div>
                     <Button 

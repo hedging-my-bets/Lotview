@@ -6862,7 +6862,8 @@ Format your response in clear sections with actionable recommendations.`;
       }
       
       // Create accounts for selected pages
-      const createdAccounts = [];
+      const createdAccounts: Array<{ id: number; accountName: string; pageName: string }> = [];
+      const subscriptionResults: Array<{ pageId: string; pageName: string; subscribed: boolean; error?: string }> = [];
       for (const pageId of pageIds) {
         const page = session.pages.find(p => p.id === pageId);
         if (!page) {
@@ -6872,7 +6873,35 @@ Format your response in clear sections with actionable recommendations.`;
         // Check if this page is already connected
         const existingPage = await storage.getFacebookPageByPageId(pageId);
         if (existingPage) {
-          // Page already exists, skip or update
+          if (!existingPage.accessToken && page.accessToken) {
+            await storage.updateFacebookPage(existingPage.id, {
+              pageName: page.name,
+              accessToken: page.accessToken,
+              isActive: true
+            });
+          }
+
+          const subscriptionToken = page.accessToken || existingPage.accessToken;
+          if (subscriptionToken) {
+            try {
+              await facebookService.subscribePageToWebhooks(subscriptionToken, page.id, defaultMetaWebhookFields);
+              subscriptionResults.push({ pageId: page.id, pageName: page.name, subscribed: true });
+            } catch (error) {
+              subscriptionResults.push({
+                pageId: page.id,
+                pageName: page.name,
+                subscribed: false,
+                error: error instanceof Error ? error.message : 'Failed to subscribe page'
+              });
+            }
+          } else {
+            subscriptionResults.push({
+              pageId: page.id,
+              pageName: page.name,
+              subscribed: false,
+              error: 'Page access token missing'
+            });
+          }
           continue;
         }
         
@@ -6896,6 +6925,27 @@ Format your response in clear sections with actionable recommendations.`;
           isActive: true
         });
         
+        if (page.accessToken) {
+          try {
+            await facebookService.subscribePageToWebhooks(page.accessToken, page.id, defaultMetaWebhookFields);
+            subscriptionResults.push({ pageId: page.id, pageName: page.name, subscribed: true });
+          } catch (error) {
+            subscriptionResults.push({
+              pageId: page.id,
+              pageName: page.name,
+              subscribed: false,
+              error: error instanceof Error ? error.message : 'Failed to subscribe page'
+            });
+          }
+        } else {
+          subscriptionResults.push({
+            pageId: page.id,
+            pageName: page.name,
+            subscribed: false,
+            error: 'Page access token missing'
+          });
+        }
+
         createdAccounts.push({
           id: account.id,
           accountName: account.accountName,
@@ -6910,10 +6960,16 @@ Format your response in clear sections with actionable recommendations.`;
         return res.status(400).json({ error: "No new pages were connected. They may already be connected." });
       }
       
-      res.json({ 
-        success: true, 
-        message: `Successfully connected ${createdAccounts.length} page(s)`,
-        accounts: createdAccounts 
+      const subscriptionFailures = subscriptionResults.filter(result => !result.subscribed);
+      const message = subscriptionFailures.length > 0
+        ? `Successfully connected ${createdAccounts.length} page(s). ${subscriptionFailures.length} page(s) still need webhook subscription.`
+        : `Successfully connected ${createdAccounts.length} page(s)`;
+
+      res.json({
+        success: true,
+        message,
+        accounts: createdAccounts,
+        subscriptions: subscriptionResults
       });
     } catch (error) {
       logError('Error connecting pages:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-accounts-connect' });
