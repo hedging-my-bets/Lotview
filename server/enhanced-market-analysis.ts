@@ -12,6 +12,8 @@ export interface EnhancedMarketAnalysisParams {
   radiusKm: number;
   dealershipId: number;
   targetPrice?: number;
+  centerLat?: number;
+  centerLon?: number;
 }
 
 export interface PercentileBreakdown {
@@ -113,6 +115,9 @@ export interface ComparisonListing {
   dealership?: string;
   daysOnLot?: number;
   source?: string;
+  similarityScore?: number;
+  weight?: number;
+  qualityScore?: number;
 }
 
 export interface EnhancedMarketAnalysisResult {
@@ -133,6 +138,12 @@ export interface EnhancedMarketAnalysisResult {
     minPrice: number;
     maxPrice: number;
     averageMileage: number;
+    unweightedAveragePrice?: number;
+    unweightedMedianPrice?: number;
+    weightedAveragePrice?: number;
+    weightedMedianPrice?: number;
+    averageSimilarityScore?: number;
+    avgDaysToSell?: number;
     averageQualityScore?: number;
     highQualityListings?: number;
   };
@@ -159,11 +170,20 @@ export interface EnhancedMarketAnalysisResult {
 const SOURCE_RELIABILITY: Record<string, { rank: number; reliability: 'high' | 'medium' | 'low' }> = {
   'marketcheck': { rank: 1, reliability: 'high' },
   'cargurus': { rank: 2, reliability: 'high' },
+  'cargurus_browserless': { rank: 2, reliability: 'high' },
+  'autotrader_browserless': { rank: 3, reliability: 'medium' },
+  'browserless': { rank: 3, reliability: 'medium' },
   'apify': { rank: 3, reliability: 'medium' },
   'autotrader_scraper': { rank: 4, reliability: 'medium' },
   'kijiji': { rank: 5, reliability: 'medium' },
   'craigslist': { rank: 6, reliability: 'low' },
   'unknown': { rank: 10, reliability: 'low' }
+};
+
+const RELIABILITY_WEIGHT: Record<'high' | 'medium' | 'low', number> = {
+  high: 1,
+  medium: 0.85,
+  low: 0.7
 };
 
 export class EnhancedMarketAnalysisService {
@@ -225,6 +245,210 @@ export class EnhancedMarketAnalysisService {
     return breakdown.sort((a, b) => a.dataRank - b.dataRank);
   }
 
+  private normalizeTrim(value: string): string {
+    return value.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  private fuzzyTrimMatch(listingTrim: string, targetTrim: string): boolean {
+    const normListing = this.normalizeTrim(listingTrim);
+    const normTarget = this.normalizeTrim(targetTrim);
+
+    if (!normListing || !normTarget) return false;
+    if (normListing.includes(normTarget) || normTarget.includes(normListing)) {
+      return true;
+    }
+
+    const listingWords = normListing.split(' ').filter(w => w.length > 0);
+    const targetWords = normTarget.split(' ').filter(w => w.length > 0);
+
+    const targetFoundInListing = targetWords.every(tw => listingWords.some(lw => lw.includes(tw) || tw.includes(lw)));
+    const listingFoundInTarget = listingWords.every(lw => targetWords.some(tw => tw.includes(lw) || lw.includes(tw)));
+
+    return targetFoundInListing || listingFoundInTarget;
+  }
+
+  private calculateTrimMatchScore(listingTrim?: string | null, targetTrims?: string[]): { score: number; matched: boolean; missing: boolean } {
+    if (!targetTrims || targetTrims.length === 0) {
+      return { score: 70, matched: true, missing: false };
+    }
+
+    if (!listingTrim) {
+      return { score: 55, matched: false, missing: true };
+    }
+
+    const matched = targetTrims.some(targetTrim => this.fuzzyTrimMatch(listingTrim, targetTrim));
+    return {
+      score: matched ? 95 : 35,
+      matched,
+      missing: false
+    };
+  }
+
+  private calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const toRad = (value: number) => (value * Math.PI) / 180;
+    const earthRadiusKm = 6371;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+
+    const a = Math.sin(dLat / 2) ** 2
+      + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return earthRadiusKm * c;
+  }
+
+  private calculateSimilarityScore(params: {
+    listing: MarketListing;
+    targetYears: number[];
+    targetTrims?: string[];
+    targetMileage?: number;
+    centerLat?: number;
+    centerLon?: number;
+    radiusKm?: number;
+    qualityScore: ListingQualityScore;
+  }): { score: number; weight: number; distanceKm?: number; trimMatched: boolean } {
+    const { listing, targetYears, targetTrims, targetMileage, centerLat, centerLon, radiusKm, qualityScore } = params;
+
+    const yearDiff = Math.min(...targetYears.map(y => Math.abs(listing.year - y)));
+    const yearScore = Math.max(35, 100 - yearDiff * 15);
+
+    const trimResult = this.calculateTrimMatchScore(listing.trim || undefined, targetTrims);
+
+    let mileageScore = 60;
+    if (targetMileage && listing.mileage && listing.mileage > 0) {
+      const diff = Math.abs(listing.mileage - targetMileage);
+      mileageScore = Math.max(25, 100 - (diff / 1000) * 1.2);
+    }
+
+    let distanceScore = 60;
+    let distanceKm: number | undefined;
+    if (centerLat !== undefined && centerLon !== undefined && listing.latitude && listing.longitude) {
+      const lat = parseFloat(listing.latitude);
+      const lon = parseFloat(listing.longitude);
+      if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
+        distanceKm = this.calculateDistanceKm(centerLat, centerLon, lat, lon);
+        const radius = radiusKm && radiusKm > 0 ? radiusKm : 100;
+        distanceScore = Math.max(30, 100 - (distanceKm / radius) * 40);
+      }
+    }
+
+    const score = Math.round(
+      yearScore * 0.3
+      + trimResult.score * 0.35
+      + mileageScore * 0.2
+      + distanceScore * 0.15
+    );
+
+    const sourceInfo = SOURCE_RELIABILITY[listing.source] || SOURCE_RELIABILITY['unknown'];
+    const reliabilityWeight = RELIABILITY_WEIGHT[sourceInfo.reliability];
+    const qualityWeight = Math.max(0.6, qualityScore.overall / 100);
+    const similarityWeight = Math.exp((score - 60) / 15);
+    const weight = Math.max(0.05, similarityWeight * reliabilityWeight * qualityWeight);
+
+    return {
+      score,
+      weight,
+      distanceKm,
+      trimMatched: trimResult.matched
+    };
+  }
+
+  private filterOutliersByMad(listings: MarketListing[]): { listings: MarketListing[]; outlierCount: number; median: number; mad: number } {
+    const prices = listings.map(l => l.price).filter(p => p > 0).sort((a, b) => a - b);
+    if (prices.length === 0) {
+      return { listings: [], outlierCount: 0, median: 0, mad: 0 };
+    }
+
+    const median = this.calculateMedian(prices);
+    const deviations = prices.map(p => Math.abs(p - median)).sort((a, b) => a - b);
+    const mad = this.calculateMedian(deviations);
+
+    if (mad === 0) {
+      const threshold = Math.max(1000, median * 3);
+      const filtered = listings.filter(l => l.price > 0 && l.price <= threshold);
+      return { listings: filtered, outlierCount: listings.length - filtered.length, median, mad };
+    }
+
+    const filtered = listings.filter(l => {
+      if (l.price <= 0) return false;
+      const robustZ = (0.6745 * (l.price - median)) / mad;
+      return Math.abs(robustZ) <= 3.5;
+    });
+
+    return { listings: filtered, outlierCount: listings.length - filtered.length, median, mad };
+  }
+
+  private calculateWeightedStats(weightedListings: Array<{ price: number; weight: number }>): {
+    average: number;
+    median: number;
+    p10: number;
+    p25: number;
+    p75: number;
+    p90: number;
+  } {
+    const sorted = weightedListings
+      .filter(l => l.price > 0 && l.weight > 0)
+      .sort((a, b) => a.price - b.price);
+
+    const totalWeight = sorted.reduce((sum, item) => sum + item.weight, 0);
+    if (sorted.length === 0 || totalWeight <= 0) {
+      return { average: 0, median: 0, p10: 0, p25: 0, p75: 0, p90: 0 };
+    }
+
+    const weightedAverage = Math.round(sorted.reduce((sum, item) => sum + item.price * item.weight, 0) / totalWeight);
+
+    const percentile = (p: number) => {
+      const target = totalWeight * p;
+      let cumulative = 0;
+      for (const item of sorted) {
+        cumulative += item.weight;
+        if (cumulative >= target) {
+          return item.price;
+        }
+      }
+      return sorted[sorted.length - 1].price;
+    };
+
+    return {
+      average: weightedAverage,
+      median: percentile(0.5),
+      p10: percentile(0.1),
+      p25: percentile(0.25),
+      p75: percentile(0.75),
+      p90: percentile(0.9)
+    };
+  }
+
+  private calculateMileageAdjustment(listings: MarketListing[], targetMileage?: number): {
+    adjustment: number;
+    slopePerKm: number | null;
+    marketAvgMileage: number | null;
+  } {
+    if (!targetMileage) {
+      return { adjustment: 0, slopePerKm: null, marketAvgMileage: null };
+    }
+
+    const samples = listings.filter(l => l.mileage && l.mileage > 0 && l.price > 0);
+    if (samples.length < 6) {
+      return { adjustment: 0, slopePerKm: null, marketAvgMileage: null };
+    }
+
+    const avgMileage = Math.round(samples.reduce((sum, l) => sum + (l.mileage || 0), 0) / samples.length);
+    const avgPrice = samples.reduce((sum, l) => sum + l.price, 0) / samples.length;
+    const numerator = samples.reduce((sum, l) => sum + ((l.mileage || 0) - avgMileage) * (l.price - avgPrice), 0);
+    const denominator = samples.reduce((sum, l) => sum + Math.pow((l.mileage || 0) - avgMileage, 2), 0);
+
+    if (denominator === 0) {
+      return { adjustment: 0, slopePerKm: null, marketAvgMileage: avgMileage };
+    }
+
+    let slope = numerator / denominator;
+    if (slope > -0.02) slope = -0.02;
+    if (slope < -0.3) slope = -0.3;
+
+    const adjustment = Math.round((targetMileage - avgMileage) * slope);
+    return { adjustment, slopePerKm: slope, marketAvgMileage: avgMileage };
+  }
+
   async analyze(params: EnhancedMarketAnalysisParams): Promise<EnhancedMarketAnalysisResult> {
     const startTime = Date.now();
     const errors: string[] = [];
@@ -284,35 +508,11 @@ export class EnhancedMarketAnalysisService {
       const trimMismatched: typeof listings = [];
       const noTrim: typeof listings = [];
       
-      // Normalize trim string for fuzzy matching (remove punctuation, extra spaces)
-      const normalizeTrim = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
-      
-      // Check if two trims are a fuzzy match (handles variations like "Ultimate" vs "Ultimate Calligraphy")
-      const fuzzyTrimMatch = (listingTrim: string, targetTrim: string): boolean => {
-        const normListing = normalizeTrim(listingTrim);
-        const normTarget = normalizeTrim(targetTrim);
-        
-        // Direct contains check (either direction)
-        if (normListing.includes(normTarget) || normTarget.includes(normListing)) {
-          return true;
-        }
-        
-        // Check if all words from the shorter string appear in the longer one
-        const listingWords = normListing.split(' ').filter(w => w.length > 0);
-        const targetWords = normTarget.split(' ').filter(w => w.length > 0);
-        
-        // Target words should be found in listing (e.g., "Ultimate" found in "Ultimate Calligraphy")
-        const targetFoundInListing = targetWords.every(tw => listingWords.some(lw => lw.includes(tw) || tw.includes(lw)));
-        const listingFoundInTarget = listingWords.every(lw => targetWords.some(tw => tw.includes(lw) || lw.includes(tw)));
-        
-        return targetFoundInListing || listingFoundInTarget;
-      };
-      
       for (const l of listings) {
         if (!l.trim) {
           noTrim.push(l);
         } else {
-          const matches = params.trims!.some(t => fuzzyTrimMatch(l.trim!, t));
+          const matches = params.trims!.some(t => this.fuzzyTrimMatch(l.trim!, t));
           if (matches) {
             trimMatched.push(l);
           } else {
@@ -347,34 +547,24 @@ export class EnhancedMarketAnalysisService {
       return this.createEmptyResult(params, sources, errors);
     }
 
-    // Filter out price outliers using two-pass approach:
-    // 1. First filter out non-positive prices (bad data)
-    // 2. Calculate median on valid positive prices only
-    // 3. Remove prices > 3x median (likely parsing errors like $500k for a $30k car)
+    // Filter out price outliers using robust MAD (median absolute deviation)
     const positiveListings = filteredListings.filter(l => l.price > 0);
     
     if (positiveListings.length === 0) {
       return this.createEmptyResult(params, sources, errors);
     }
-    
-    const positivePrices = positiveListings.map(l => l.price).sort((a, b) => a - b);
-    const initialMedian = this.calculateMedian(positivePrices);
-    const outlierThreshold = initialMedian * 3;
-    
-    // Filter listings to exclude high outliers (keep minimum at 1000 to catch data issues)
-    const validListings = positiveListings.filter(l => l.price <= outlierThreshold);
+
+    const { listings: validListings, outlierCount } = this.filterOutliersByMad(positiveListings);
     const zeroCount = filteredListings.length - positiveListings.length;
-    const outlierCount = positiveListings.length - validListings.length;
     
     if (zeroCount > 0) {
       console.log(`[EnhancedMarketAnalysis] Removed ${zeroCount} listings with zero/negative prices`);
     }
     if (outlierCount > 0) {
-      console.log(`[EnhancedMarketAnalysis] Filtered ${outlierCount} price outliers (threshold: $${outlierThreshold.toLocaleString()})`);
-      errors.push(`Filtered ${outlierCount} listings with outlier prices above $${outlierThreshold.toLocaleString()}`);
+      console.log(`[EnhancedMarketAnalysis] Filtered ${outlierCount} price outliers with robust MAD`);
+      errors.push(`Filtered ${outlierCount} listings with outlier prices (MAD)`);
     }
     
-    // Use valid listings for analysis
     filteredListings = validListings;
     
     if (filteredListings.length === 0) {
@@ -383,27 +573,87 @@ export class EnhancedMarketAnalysisService {
 
     const prices = filteredListings.map(l => l.price).sort((a, b) => a - b);
     const mileages = filteredListings.filter(l => l.mileage).map(l => l.mileage!);
+    const centerLat = typeof params.centerLat === 'number' ? params.centerLat : undefined;
+    const centerLon = typeof params.centerLon === 'number' ? params.centerLon : undefined;
 
-    const qualityScores = filteredListings.map(l => this.calculateListingQualityScore(l));
-    const avgQualityScore = Math.round(qualityScores.reduce((a, b) => a + b.overall, 0) / qualityScores.length);
-    const highQualityCount = qualityScores.filter(q => q.dataCompleteness === 'high').length;
+    const analysisListings = filteredListings.map(listing => {
+      const qualityScore = this.calculateListingQualityScore(listing);
+      const similarity = this.calculateSimilarityScore({
+        listing,
+        targetYears: params.years,
+        targetTrims: params.trims,
+        targetMileage: params.mileage,
+        centerLat,
+        centerLon,
+        radiusKm: params.radiusKm,
+        qualityScore
+      });
+
+      return {
+        listing,
+        qualityScore,
+        similarityScore: similarity.score,
+        weight: similarity.weight,
+        distanceKm: similarity.distanceKm,
+        trimMatched: similarity.trimMatched
+      };
+    });
+
+    const avgQualityScore = Math.round(
+      analysisListings.reduce((sum, item) => sum + item.qualityScore.overall, 0) / analysisListings.length
+    );
+    const highQualityCount = analysisListings.filter(item => item.qualityScore.dataCompleteness === 'high').length;
+    const averageSimilarityScore = Math.round(
+      analysisListings.reduce((sum, item) => sum + item.similarityScore, 0) / analysisListings.length
+    );
 
     const sourceBreakdown = this.calculateSourceBreakdown(filteredListings);
 
+    const unweightedAveragePrice = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length);
+    const unweightedMedianPrice = this.calculateMedian(prices);
+
+    const weightedStats = this.calculateWeightedStats(
+      analysisListings.map(item => ({ price: item.listing.price, weight: item.weight }))
+    );
+
+    const avgMileage = mileages.length > 0
+      ? Math.round(mileages.reduce((a, b) => a + b, 0) / mileages.length)
+      : 0;
+
+    const daysToSellSamples = filteredListings
+      .filter(l => l.removedAt && l.postedDate)
+      .map(l => Math.floor((new Date(l.removedAt!).getTime() - new Date(l.postedDate!).getTime()) / (1000 * 60 * 60 * 24)))
+      .filter(days => days > 0 && days < 365);
+
+    const avgDaysToSell = daysToSellSamples.length > 0
+      ? Math.round(daysToSellSamples.reduce((sum, days) => sum + days, 0) / daysToSellSamples.length)
+      : undefined;
+
     const summary = {
       totalListings: filteredListings.length,
-      averagePrice: Math.round(prices.reduce((a, b) => a + b, 0) / prices.length),
-      medianPrice: this.calculateMedian(prices),
+      averagePrice: weightedStats.average || unweightedAveragePrice,
+      medianPrice: weightedStats.median || unweightedMedianPrice,
       minPrice: prices[0],
       maxPrice: prices[prices.length - 1],
-      averageMileage: mileages.length > 0 
-        ? Math.round(mileages.reduce((a, b) => a + b, 0) / mileages.length)
-        : 0,
+      averageMileage: avgMileage,
+      unweightedAveragePrice,
+      unweightedMedianPrice,
+      weightedAveragePrice: weightedStats.average,
+      weightedMedianPrice: weightedStats.median,
+      averageSimilarityScore,
+      avgDaysToSell,
       averageQualityScore: avgQualityScore,
       highQualityListings: highQualityCount
     };
 
-    const percentiles = this.calculatePercentiles(prices);
+    const unweightedPercentiles = this.calculatePercentiles(prices);
+    const percentiles = {
+      p10: weightedStats.p10 || unweightedPercentiles.p10,
+      p25: weightedStats.p25 || unweightedPercentiles.p25,
+      p50: weightedStats.median || unweightedMedianPrice,
+      p75: weightedStats.p75 || unweightedPercentiles.p75,
+      p90: weightedStats.p90 || unweightedPercentiles.p90
+    };
 
     const daysOnMarket = this.calculateDaysOnMarket(filteredListings);
 
@@ -411,12 +661,12 @@ export class EnhancedMarketAnalysisService {
 
     const priceTrends = await this.getPriceTrends(params.dealershipId, params.make, params.model);
 
+    const mileageAdjustment = this.calculateMileageAdjustment(filteredListings, params.mileage);
     const priceRecommendation = this.generatePriceRecommendation(
       summary,
       percentiles,
       params.targetPrice,
-      params.mileage,
-      summary.averageMileage
+      mileageAdjustment
     );
 
     await this.recordPriceHistory(params.dealershipId, filteredListings);
@@ -426,19 +676,22 @@ export class EnhancedMarketAnalysisService {
     const elapsed = Date.now() - startTime;
     console.log(`[EnhancedMarketAnalysis] Complete in ${elapsed}ms - ${filteredListings.length} listings analyzed`);
 
-    const comparisons: ComparisonListing[] = filteredListings.map(l => ({
-      year: l.year,
-      make: l.make,
-      model: l.model,
-      trim: l.trim || undefined,
-      price: l.price,
-      mileage: l.mileage || undefined,
-      distance: typeof (l as any).distance === 'number' ? (l as any).distance : undefined,
-      listingUrl: l.listingUrl || undefined,
-      listingType: (l.listingType === 'private' ? 'private' : 'dealer') as 'dealer' | 'private',
-      dealership: l.sellerName || undefined,
-      daysOnLot: l.daysOnLot || undefined,
-      source: l.source || undefined
+    const comparisons: ComparisonListing[] = analysisListings.map(item => ({
+      year: item.listing.year,
+      make: item.listing.make,
+      model: item.listing.model,
+      trim: item.listing.trim || undefined,
+      price: item.listing.price,
+      mileage: item.listing.mileage || undefined,
+      distance: item.distanceKm,
+      listingUrl: item.listing.listingUrl || undefined,
+      listingType: (item.listing.listingType === 'private' ? 'private' : 'dealer') as 'dealer' | 'private',
+      dealership: item.listing.sellerName || undefined,
+      daysOnLot: item.listing.daysOnLot || undefined,
+      source: item.listing.source || undefined,
+      similarityScore: item.similarityScore,
+      weight: Math.round(item.weight * 1000) / 1000,
+      qualityScore: item.qualityScore.overall
     }));
 
     return {
@@ -624,18 +877,21 @@ export class EnhancedMarketAnalysisService {
   }
 
   private generatePriceRecommendation(
-    summary: { totalListings: number; averagePrice: number; medianPrice: number; minPrice: number; maxPrice: number },
+    summary: {
+      totalListings: number;
+      averagePrice: number;
+      medianPrice: number;
+      minPrice: number;
+      maxPrice: number;
+      averageMileage?: number | null;
+      averageQualityScore?: number;
+      averageSimilarityScore?: number;
+    },
     percentiles: PercentileBreakdown,
-    targetPrice?: number,
-    vehicleMileage?: number,
-    averageMileage?: number
+    targetPrice: number | undefined,
+    mileageContext: { adjustment: number; slopePerKm: number | null; marketAvgMileage: number | null }
   ): EnhancedMarketAnalysisResult['priceRecommendation'] {
-    let mileageAdjustment = 0;
-    if (vehicleMileage && averageMileage && averageMileage > 0) {
-      const mileageDiff = vehicleMileage - averageMileage;
-      const pricePerKm = (percentiles.p75 - percentiles.p25) / (averageMileage * 0.5);
-      mileageAdjustment = Math.round(mileageDiff * pricePerKm * -0.5);
-    }
+    const mileageAdjustment = mileageContext.adjustment || 0;
 
     const suggestedPrice = Math.round(summary.medianPrice + mileageAdjustment);
     const priceRange = {
@@ -664,7 +920,19 @@ export class EnhancedMarketAnalysisService {
       reasoning = `Based on ${summary.totalListings} comparable listings, we recommend pricing between $${priceRange.low.toLocaleString()} and $${priceRange.high.toLocaleString()}. The median market price is $${summary.medianPrice.toLocaleString()}.`;
     }
 
-    const confidence = summary.totalListings >= 20 ? 'high' : summary.totalListings >= 10 ? 'medium' : 'low';
+    const qualityScore = summary.averageQualityScore ?? 0;
+    const similarityScore = summary.averageSimilarityScore ?? 0;
+    let confidence: 'high' | 'medium' | 'low' = 'low';
+    if (summary.totalListings >= 20 && qualityScore >= 70 && similarityScore >= 70) {
+      confidence = 'high';
+    } else if (summary.totalListings >= 10 && qualityScore >= 55 && similarityScore >= 60) {
+      confidence = 'medium';
+    }
+
+    if (mileageContext.marketAvgMileage && mileageContext.slopePerKm) {
+      const direction = mileageAdjustment === 0 ? 'no mileage adjustment applied' : mileageAdjustment > 0 ? 'mileage-adjusted higher' : 'mileage-adjusted lower';
+      reasoning += ` Mileage adjustment: ${direction} versus market average of ${mileageContext.marketAvgMileage.toLocaleString()} km.`;
+    }
 
     return {
       suggestedPrice,
@@ -754,6 +1022,12 @@ export class EnhancedMarketAnalysisService {
         minPrice: 0,
         maxPrice: 0,
         averageMileage: 0,
+        unweightedAveragePrice: 0,
+        unweightedMedianPrice: 0,
+        weightedAveragePrice: 0,
+        weightedMedianPrice: 0,
+        averageSimilarityScore: 0,
+        avgDaysToSell: 0,
         averageQualityScore: 0,
         highQualityListings: 0
       },

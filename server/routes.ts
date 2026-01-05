@@ -40,6 +40,7 @@ import { marketplacePublisher } from "./marketplace-publisher";
 import { buildMarketplaceListingDraft } from "./marketplace-utils";
 import { generateMarketplaceContent, type SocialTemplates } from "./openai";
 import { buildListingBundlePayload } from "./listing-bundle-service";
+import { deriveAppraisalFieldsFromMarketData } from "./appraisal-valuation";
 import { suggestMarketplaceReply } from "./marketplace-copilot-service";
 import { handleMessengerNurture } from "./messenger-nurture-service";
 import { ensureMessengerResponseTask, completeMessengerResponseTasks, reassignMessengerResponseTasks } from "./messenger-sla-service";
@@ -7843,12 +7844,11 @@ Format your response in clear sections with actionable recommendations.`;
           try {
             const dealershipId = req.dealershipId || 1;
             const existing = await storage.getVehicleAppraisalByVin(vin, dealershipId);
+            const appraisalFields = deriveAppraisalFieldsFromMarketData(noListingsResponse);
+            const payload = { ...appraisalFields, comparableCount: 0 };
             
             if (existing) {
-              await storage.updateVehicleAppraisal(existing.id, dealershipId, {
-                marketAnalysisData: JSON.stringify(noListingsResponse),
-                comparableCount: 0,
-              });
+              await storage.updateVehicleAppraisal(existing.id, dealershipId, payload);
               appraisalId = existing.id;
             } else {
               const newAppraisal = await storage.createVehicleAppraisal({
@@ -7860,9 +7860,8 @@ Format your response in clear sections with actionable recommendations.`;
                 model,
                 trim: trim || (trims && trims.length === 1 ? trims[0] : undefined),
                 mileage: mileage ? parseInt(mileage) : undefined,
-                marketAnalysisData: JSON.stringify(noListingsResponse),
-                comparableCount: 0,
                 status: 'draft',
+                ...payload
               });
               appraisalId = newAppraisal.id;
             }
@@ -7951,8 +7950,8 @@ Format your response in clear sections with actionable recommendations.`;
         }
       }
       
-      // Calculate mileage adjustment - uses $0.12/km depreciation rate (industry standard)
-      const DEPRECIATION_RATE_PER_KM = 0.12; // CAD per km
+      // Calculate mileage adjustment - estimate slope from comps when possible
+      const DEFAULT_DEPRECIATION_PER_KM = 0.12; // CAD per km fallback
       let mileageAdjustment: { 
         targetMileage: number | null;
         marketAvgMileage: number;
@@ -7960,6 +7959,7 @@ Format your response in clear sections with actionable recommendations.`;
         priceAdjustment: number;
         adjustedPrice: number;
         adjustmentDirection: 'add' | 'subtract' | 'none';
+        slopePerKm?: number;
       } | null = null;
       
       if (result.comparisons && result.comparisons.length > 0) {
@@ -7969,11 +7969,28 @@ Format your response in clear sections with actionable recommendations.`;
           const targetMileage = mileage ? parseInt(mileage) : null;
           
           if (targetMileage && targetMileage > 0) {
-            const mileageDifference = marketAvgMileage - targetMileage; // Positive = target has fewer miles
-            const priceAdjustment = Math.round(Math.abs(mileageDifference) * DEPRECIATION_RATE_PER_KM);
-            const adjustedPrice = mileageDifference > 0 
-              ? result.averagePrice + priceAdjustment  // Fewer miles = worth more
-              : result.averagePrice - priceAdjustment; // More miles = worth less
+            let slopePerKm = -DEFAULT_DEPRECIATION_PER_KM;
+            if (mileages.length >= 6) {
+              const avgPrice = result.comparisons
+                .filter(c => c.mileage && c.mileage > 0)
+                .reduce((sum, c) => sum + c.price, 0) / mileages.length;
+              const numerator = result.comparisons
+                .filter(c => c.mileage && c.mileage > 0)
+                .reduce((sum, c) => sum + ((c.mileage || 0) - marketAvgMileage) * (c.price - avgPrice), 0);
+              const denominator = result.comparisons
+                .filter(c => c.mileage && c.mileage > 0)
+                .reduce((sum, c) => sum + Math.pow((c.mileage || 0) - marketAvgMileage, 2), 0);
+              if (denominator > 0) {
+                slopePerKm = numerator / denominator;
+                if (slopePerKm > -0.02) slopePerKm = -0.02;
+                if (slopePerKm < -0.3) slopePerKm = -0.3;
+              }
+            }
+
+            const mileageDifference = targetMileage - marketAvgMileage; // Positive = target has more miles
+            const adjustment = Math.round(mileageDifference * slopePerKm);
+            const adjustedPrice = Math.max(0, result.averagePrice + adjustment);
+            const priceAdjustment = Math.abs(adjustment);
             
             mileageAdjustment = {
               targetMileage,
@@ -7981,7 +7998,8 @@ Format your response in clear sections with actionable recommendations.`;
               mileageDifference,
               priceAdjustment,
               adjustedPrice: Math.max(0, adjustedPrice),
-              adjustmentDirection: mileageDifference > 0 ? 'add' : mileageDifference < 0 ? 'subtract' : 'none'
+              adjustmentDirection: adjustment > 0 ? 'add' : adjustment < 0 ? 'subtract' : 'none',
+              slopePerKm
             };
           } else {
             mileageAdjustment = {
@@ -8052,6 +8070,8 @@ Format your response in clear sections with actionable recommendations.`;
         }
       };
       
+      const appraisalFields = deriveAppraisalFieldsFromMarketData(responseWithMeta);
+
       // Auto-save market analysis to appraisal if VIN is provided and feature flag enabled
       let appraisalId: number | undefined;
       const appraisalFlagEnabled2 = await isFeatureEnabled(FEATURE_FLAGS.ENABLE_APPRAISAL_AUTOSAVE, req.dealershipId);
@@ -8059,26 +8079,12 @@ Format your response in clear sections with actionable recommendations.`;
         try {
           const dealershipId = req.dealershipId || 1;
           const existing = await storage.getVehicleAppraisalByVin(vin, dealershipId);
-          
+
+          const payload = { ...appraisalFields, comparableCount: result.totalComps };
           if (existing) {
-            // Update existing appraisal with market analysis data
-            const priceRangeStr = result.priceRange.low > 0 && result.priceRange.high > 0
-              ? `$${result.priceRange.low.toLocaleString()} - $${result.priceRange.high.toLocaleString()}`
-              : undefined;
-            
-            await storage.updateVehicleAppraisal(existing.id, dealershipId, {
-              marketAnalysisData: JSON.stringify(responseWithMeta),
-              comparableCount: result.totalComps,
-              averageMarketPrice: result.averagePrice * 100, // Convert to cents
-              marketPriceRange: priceRangeStr,
-            });
+            await storage.updateVehicleAppraisal(existing.id, dealershipId, payload);
             appraisalId = existing.id;
           } else {
-            // Create new appraisal with market analysis data
-            const priceRangeStr = result.priceRange.low > 0 && result.priceRange.high > 0
-              ? `$${result.priceRange.low.toLocaleString()} - $${result.priceRange.high.toLocaleString()}`
-              : undefined;
-            
             const newAppraisal = await storage.createVehicleAppraisal({
               dealershipId,
               createdBy: req.user?.id || null,
@@ -8088,11 +8094,8 @@ Format your response in clear sections with actionable recommendations.`;
               model,
               trim: trim || (trims && trims.length === 1 ? trims[0] : undefined),
               mileage: mileage ? parseInt(mileage) : undefined,
-              marketAnalysisData: JSON.stringify(responseWithMeta),
-              comparableCount: result.totalComps,
-              averageMarketPrice: result.averagePrice * 100, // Convert to cents
-              marketPriceRange: priceRangeStr,
               status: 'draft',
+              ...payload
             });
             appraisalId = newAppraisal.id;
           }
@@ -8130,6 +8133,8 @@ Format your response in clear sections with actionable recommendations.`;
       const settings = authReq.user ? await storage.getManagerSettings(authReq.user.id, dealershipId) : null;
       const searchPostalCode = postalCode || settings?.postalCode || 'V6B 1A1';
       const searchRadiusKm = radiusKm || settings?.defaultRadiusKm || 100;
+      const centerLat = settings?.geocodeLat ? parseFloat(settings.geocodeLat) : undefined;
+      const centerLon = settings?.geocodeLon ? parseFloat(settings.geocodeLon) : undefined;
       const searchYears = years || [new Date().getFullYear()];
       
       const { enhancedMarketAnalysis } = await import('./enhanced-market-analysis');
@@ -8143,7 +8148,9 @@ Format your response in clear sections with actionable recommendations.`;
         postalCode: searchPostalCode,
         radiusKm: searchRadiusKm,
         dealershipId,
-        targetPrice: targetPrice ? parseInt(targetPrice) : undefined
+        targetPrice: targetPrice ? parseInt(targetPrice) : undefined,
+        centerLat: Number.isNaN(centerLat) ? undefined : centerLat,
+        centerLon: Number.isNaN(centerLon) ? undefined : centerLon
       });
       
       res.json(result);
@@ -9154,6 +9161,14 @@ Format your response in clear sections with actionable recommendations.`;
   });
 
   // ===== VEHICLE APPRAISAL ROUTES (Manager+) =====
+  const deriveSuggestedBuyPrice = (appraisal: { tradeinValue?: number | null; wholesaleValue?: number | null; averageMarketPrice?: number | null }) => {
+    if (appraisal.tradeinValue && appraisal.tradeinValue > 0) return appraisal.tradeinValue;
+    if (appraisal.wholesaleValue && appraisal.wholesaleValue > 0) return appraisal.wholesaleValue;
+    if (appraisal.averageMarketPrice && appraisal.averageMarketPrice > 0) {
+      return Math.round(appraisal.averageMarketPrice * 0.85);
+    }
+    return null;
+  };
   
   // Get all appraisals for dealership
   app.get("/api/manager/appraisals", authMiddleware, requireRole("manager"), async (req, res) => {
@@ -9170,7 +9185,11 @@ Format your response in clear sections with actionable recommendations.`;
       };
       
       const result = await storage.getVehicleAppraisals(dealershipId, filters, limit, offset);
-      res.json({ ...result, limit, offset });
+      const enriched = result.appraisals.map(appraisal => ({
+        ...appraisal,
+        suggestedBuyPrice: deriveSuggestedBuyPrice(appraisal)
+      }));
+      res.json({ appraisals: enriched, total: result.total, limit, offset });
     } catch (error) {
       logError('Error fetching appraisals:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-appraisals' });
       res.status(500).json({ error: "Failed to fetch appraisals" });
@@ -9224,7 +9243,10 @@ Format your response in clear sections with actionable recommendations.`;
       }
       
       const appraisal = await storage.getVehicleAppraisalByVin(vin, dealershipId);
-      res.json({ exists: !!appraisal, appraisal: appraisal || null });
+      res.json({
+        exists: !!appraisal,
+        appraisal: appraisal ? { ...appraisal, suggestedBuyPrice: deriveSuggestedBuyPrice(appraisal) } : null
+      });
     } catch (error) {
       logError('Error checking VIN appraisal:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-appraisals-vin-vin' });
       res.status(500).json({ error: "Failed to check VIN appraisal" });
@@ -9246,7 +9268,7 @@ Format your response in clear sections with actionable recommendations.`;
         return res.status(404).json({ error: "Appraisal not found" });
       }
       
-      res.json(appraisal);
+      res.json({ ...appraisal, suggestedBuyPrice: deriveSuggestedBuyPrice(appraisal) });
     } catch (error) {
       logError('Error fetching appraisal:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-appraisals-id' });
       res.status(500).json({ error: "Failed to fetch appraisal" });
@@ -9259,9 +9281,28 @@ Format your response in clear sections with actionable recommendations.`;
       const dealershipId = req.dealershipId!;
       const authReq = req as AuthRequest;
       const userId = authReq.user?.id;
-      
+      const rawMarketData = req.body?.marketData ?? req.body?.marketAnalysisData;
+      let parsedMarketData: unknown = null;
+      if (rawMarketData) {
+        if (typeof rawMarketData === 'string') {
+          try {
+            parsedMarketData = JSON.parse(rawMarketData);
+          } catch {
+            parsedMarketData = null;
+          }
+        } else {
+          parsedMarketData = rawMarketData;
+        }
+      }
+
+      const appraisalFields = parsedMarketData
+        ? deriveAppraisalFieldsFromMarketData(parsedMarketData as any)
+        : {};
+
+      const { marketData, ...body } = req.body;
       const validationResult = insertVehicleAppraisalSchema.safeParse({
-        ...req.body,
+        ...body,
+        ...appraisalFields,
         dealershipId,
         createdBy: userId
       });
@@ -9299,8 +9340,31 @@ Format your response in clear sections with actionable recommendations.`;
       
       // Sanitize updates - don't allow changing dealershipId
       const { dealershipId: _, id: __, ...updates } = req.body;
-      
-      const updated = await storage.updateVehicleAppraisal(id, dealershipId, updates);
+
+      let parsedMarketData: unknown = null;
+      if (updates.marketData || updates.marketAnalysisData) {
+        const rawMarketData = updates.marketData ?? updates.marketAnalysisData;
+        if (typeof rawMarketData === 'string') {
+          try {
+            parsedMarketData = JSON.parse(rawMarketData);
+          } catch {
+            parsedMarketData = null;
+          }
+        } else {
+          parsedMarketData = rawMarketData;
+        }
+      }
+
+      const appraisalFields = parsedMarketData
+        ? deriveAppraisalFieldsFromMarketData(parsedMarketData as any)
+        : {};
+
+      delete (updates as any).marketData;
+
+      const updated = await storage.updateVehicleAppraisal(id, dealershipId, {
+        ...updates,
+        ...appraisalFields
+      });
       res.json(updated);
     } catch (error) {
       logError('Error updating appraisal:', error instanceof Error ? error : new Error(String(error)), { route: 'api-manager-appraisals-id' });

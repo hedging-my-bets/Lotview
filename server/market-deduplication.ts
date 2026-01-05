@@ -27,7 +27,9 @@ function getSourcePriority(source: string): number {
   const priorities: Record<string, number> = {
     'marketcheck': 1,
     'cargurus': 2,
+    'cargurus_browserless': 2,
     'apify': 3,
+    'autotrader_browserless': 3,
     'autotrader_scraper': 4,
     'kijiji': 5,
     'craigslist': 6

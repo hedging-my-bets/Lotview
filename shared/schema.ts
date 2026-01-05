@@ -1266,6 +1266,7 @@ export const marketListings = pgTable("market_listings", {
   postedDate: timestamp("posted_date"), // When the listing was posted
   scrapedAt: timestamp("scraped_at").defaultNow().notNull(), // When we scraped it
   isActive: boolean("is_active").notNull().default(true), // False if listing is removed
+  removedAt: timestamp("removed_at"), // When listing was last detected as removed
   interiorColor: text("interior_color"), // Interior color from CarGurus
   exteriorColor: text("exterior_color"), // Exterior color from CarGurus
   vin: text("vin"), // Vehicle VIN for color lookup

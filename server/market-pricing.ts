@@ -1,3 +1,107 @@
+const SOURCE_RELIABILITY: Record<string, { weight: number }> = {
+  marketcheck: { weight: 1 },
+  cargurus: { weight: 1 },
+  cargurus_browserless: { weight: 1 },
+  autotrader_browserless: { weight: 0.9 },
+  apify: { weight: 0.85 },
+  autotrader_scraper: { weight: 0.85 },
+  kijiji: { weight: 0.75 },
+  craigslist: { weight: 0.7 },
+  unknown: { weight: 0.75 }
+};
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+const calculateMedian = (values: number[]) => {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? Math.round((sorted[mid - 1] + sorted[mid]) / 2)
+    : sorted[mid];
+};
+
+const filterOutliersByMad = <T extends { price: number }>(listings: T[]) => {
+  const prices = listings.map(l => l.price).filter(p => p > 0).sort((a, b) => a - b);
+  if (prices.length === 0) return listings;
+  const median = calculateMedian(prices);
+  const deviations = prices.map(p => Math.abs(p - median)).sort((a, b) => a - b);
+  const mad = calculateMedian(deviations);
+  if (mad === 0) {
+    const threshold = Math.max(1000, median * 3);
+    return listings.filter(l => l.price > 0 && l.price <= threshold);
+  }
+  return listings.filter(l => {
+    if (l.price <= 0) return false;
+    const robustZ = (0.6745 * (l.price - median)) / mad;
+    return Math.abs(robustZ) <= 3.5;
+  });
+};
+
+const weightedStats = (values: Array<{ price: number; weight: number }>) => {
+  const sorted = values.filter(v => v.price > 0 && v.weight > 0).sort((a, b) => a.price - b.price);
+  const totalWeight = sorted.reduce((sum, item) => sum + item.weight, 0);
+  if (sorted.length === 0 || totalWeight <= 0) {
+    return { average: 0, median: 0, p25: 0, p75: 0 };
+  }
+  const average = Math.round(sorted.reduce((sum, item) => sum + item.price * item.weight, 0) / totalWeight);
+  const percentile = (p: number) => {
+    const target = totalWeight * p;
+    let cumulative = 0;
+    for (const item of sorted) {
+      cumulative += item.weight;
+      if (cumulative >= target) return item.price;
+    }
+    return sorted[sorted.length - 1].price;
+  };
+  return {
+    average,
+    median: percentile(0.5),
+    p25: percentile(0.25),
+    p75: percentile(0.75)
+  };
+};
+
+const normalizeTrim = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+
+const fuzzyTrimMatch = (listingTrim: string, targetTrim: string) => {
+  const normListing = normalizeTrim(listingTrim);
+  const normTarget = normalizeTrim(targetTrim);
+  if (!normListing || !normTarget) return false;
+  if (normListing.includes(normTarget) || normTarget.includes(normListing)) return true;
+  const listingWords = normListing.split(' ').filter(w => w.length > 0);
+  const targetWords = normTarget.split(' ').filter(w => w.length > 0);
+  const targetFoundInListing = targetWords.every(tw => listingWords.some(lw => lw.includes(tw) || tw.includes(lw)));
+  const listingFoundInTarget = listingWords.every(lw => targetWords.some(tw => tw.includes(lw) || lw.includes(tw)));
+  return targetFoundInListing || listingFoundInTarget;
+};
+
+const calculateSimilarityScore = (listing: Vehicle, target: MarketPricingRequest, colorScore: number) => {
+  const yearDiff = Math.abs(listing.year - target.year);
+  const yearScore = clamp(100 - yearDiff * 15, 40, 100);
+
+  let trimScore = 70;
+  if (target.trims && target.trims.length > 0) {
+    if (!listing.trim) {
+      trimScore = 55;
+    } else {
+      const matched = target.trims.some(t => fuzzyTrimMatch(listing.trim!, t));
+      trimScore = matched ? 95 : 35;
+    }
+  } else if (target.trim && listing.trim) {
+    trimScore = fuzzyTrimMatch(listing.trim, target.trim) ? 95 : 35;
+  }
+
+  let mileageScore = 60;
+  if (target.mileage && listing.mileage) {
+    const diff = Math.abs(listing.mileage - target.mileage);
+    mileageScore = clamp(100 - (diff / 1000) * 1.2, 25, 100);
+  }
+
+  const score = Math.round(yearScore * 0.3 + trimScore * 0.3 + mileageScore * 0.25 + colorScore * 0.15);
+  return score;
+};
+
 export interface MarketPricingRequest {
   year: number;
   make: string;
@@ -65,6 +169,8 @@ export interface PricingComparison {
   interiorColor?: string;
   exteriorColor?: string;
   colorMatchScore?: number; // 0-100 score for how well colors match target vehicle
+  similarityScore?: number;
+  weight?: number;
 }
 
 export interface MarketPricingResult {
@@ -78,6 +184,8 @@ export interface MarketPricingResult {
     low: number;
     high: number;
   };
+  weightedAveragePrice?: number;
+  weightedMedianPrice?: number;
   recommendation: string;
   marketPosition: 'below_market' | 'at_market' | 'above_market';
 }
@@ -169,31 +277,54 @@ export function analyzeMarketPricing(
     };
   }
 
+  // Filter outliers using robust MAD
+  const filteredComparables = filterOutliersByMad(comparables);
+  if (filteredComparables.length === 0) {
+    return {
+      averagePrice: 0,
+      medianPrice: 0,
+      minPrice: 0,
+      maxPrice: 0,
+      totalComps: 0,
+      comparisons: [],
+      priceRange: { low: 0, high: 0 },
+      recommendation: 'No comparable vehicles found after filtering outliers.',
+      marketPosition: 'at_market'
+    };
+  }
+
   // Sort by price
-  const sortedPrices = comparables.map(v => v.price).sort((a, b) => a - b);
-  
-  // Calculate statistics
-  const averagePrice = Math.round(
-    comparables.reduce((sum, v) => sum + v.price, 0) / comparables.length
+  const sortedPrices = filteredComparables.map(v => v.price).sort((a, b) => a - b);
+  const unweightedAverage = Math.round(
+    filteredComparables.reduce((sum, v) => sum + v.price, 0) / filteredComparables.length
   );
-  
-  const medianPrice = sortedPrices.length % 2 === 0
-    ? Math.round((sortedPrices[sortedPrices.length / 2 - 1] + sortedPrices[sortedPrices.length / 2]) / 2)
-    : sortedPrices[Math.floor(sortedPrices.length / 2)];
-  
+  const unweightedMedian = calculateMedian(sortedPrices);
+
   const minPrice = sortedPrices[0];
   const maxPrice = sortedPrices[sortedPrices.length - 1];
 
-  // Calculate price range (25th to 75th percentile)
-  const q1Index = Math.floor(sortedPrices.length * 0.25);
-  const q3Index = Math.floor(sortedPrices.length * 0.75);
+  const weightedInputs = filteredComparables.map(v => {
+    const interiorScore = calculateColorMatchScore(targetVehicle.interiorColor, v.interiorColor);
+    const exteriorScore = calculateColorMatchScore(targetVehicle.exteriorColor, v.exteriorColor);
+    const colorMatchScore = Math.round(interiorScore * 0.6 + exteriorScore * 0.4);
+    const similarityScore = calculateSimilarityScore(v, targetVehicle, colorMatchScore);
+    const sourceKey = v.source || 'unknown';
+    const sourceWeight = SOURCE_RELIABILITY[sourceKey]?.weight ?? SOURCE_RELIABILITY.unknown.weight;
+    const weight = Math.max(0.05, Math.exp((similarityScore - 60) / 15) * sourceWeight);
+    return { price: v.price, weight, similarityScore, colorMatchScore };
+  });
+
+  const weighted = weightedStats(weightedInputs);
+  const averagePrice = weighted.average || unweightedAverage;
+  const medianPrice = weighted.median || unweightedMedian;
+
   const priceRange = {
-    low: sortedPrices[q1Index],
-    high: sortedPrices[q3Index]
+    low: weighted.p25 || sortedPrices[Math.floor(sortedPrices.length * 0.25)],
+    high: weighted.p75 || sortedPrices[Math.floor(sortedPrices.length * 0.75)]
   };
 
   // Create detailed comparisons with source, URL, and color match info
-  const comparisons: PricingComparison[] = comparables.map(v => {
+  const comparisons: PricingComparison[] = filteredComparables.map(v => {
     const priceDiff = v.price - averagePrice;
     const percentDiff = ((priceDiff / averagePrice) * 100);
     
@@ -201,6 +332,10 @@ export function analyzeMarketPricing(
     const interiorScore = calculateColorMatchScore(targetVehicle.interiorColor, v.interiorColor);
     const exteriorScore = calculateColorMatchScore(targetVehicle.exteriorColor, v.exteriorColor);
     const colorMatchScore = Math.round(interiorScore * 0.6 + exteriorScore * 0.4);
+    const similarityScore = calculateSimilarityScore(v, targetVehicle, colorMatchScore);
+    const sourceKey = v.source || 'unknown';
+    const sourceWeight = SOURCE_RELIABILITY[sourceKey]?.weight ?? SOURCE_RELIABILITY.unknown.weight;
+    const weight = Math.max(0.05, Math.exp((similarityScore - 60) / 15) * sourceWeight);
     
     // Calculate days on lot from postedDate
     let daysOnLot: number | undefined;
@@ -230,7 +365,9 @@ export function analyzeMarketPricing(
       daysOnLot,
       interiorColor: v.interiorColor,
       exteriorColor: v.exteriorColor,
-      colorMatchScore
+      colorMatchScore,
+      similarityScore,
+      weight: Math.round(weight * 1000) / 1000
     };
   }).sort((a, b) => a.price - b.price);
 
@@ -261,9 +398,11 @@ export function analyzeMarketPricing(
     medianPrice,
     minPrice,
     maxPrice,
-    totalComps: comparables.length,
+    totalComps: filteredComparables.length,
     comparisons,
     priceRange,
+    weightedAveragePrice: weighted.average || averagePrice,
+    weightedMedianPrice: weighted.median || medianPrice,
     recommendation,
     marketPosition
   };

@@ -645,9 +645,10 @@ export interface IStorage {
   getMarketListingById(id: number, dealershipId: number): Promise<MarketListing | undefined>;
   getMarketListingsByUrls(dealershipId: number, urls: string[]): Promise<MarketListing[]>;
   createMarketListing(listing: InsertMarketListing): Promise<MarketListing>;
-  updateMarketListing(id: number, dealershipId: number, listing: Partial<InsertMarketListing>): Promise<MarketListing | undefined>;
+  updateMarketListing(id: number, dealershipId: number, listing: Partial<MarketListing>): Promise<MarketListing | undefined>;
   updateMarketListingColors(id: number, dealershipId: number, colors: { interiorColor?: string; exteriorColor?: string; vin?: string }): Promise<MarketListing | undefined>;
   deactivateMarketListing(dealershipId: number, url: string): Promise<boolean>;
+  deactivateStaleMarketListings(dealershipId: number, filters: { make?: string; model?: string; yearMin?: number; yearMax?: number; source?: string }, staleDays: number): Promise<number>;
   deleteOldMarketListings(dealershipId: number, daysOld: number): Promise<number>;
   
   // CarGurus Color Cache
@@ -4002,7 +4003,7 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  async updateMarketListing(id: number, dealershipId: number, listing: Partial<InsertMarketListing>): Promise<MarketListing | undefined> {
+  async updateMarketListing(id: number, dealershipId: number, listing: Partial<MarketListing>): Promise<MarketListing | undefined> {
     // REQUIRED: Only update listings for this dealership
     const result = await db
       .update(marketListings)
@@ -4071,12 +4072,51 @@ export class DatabaseStorage implements IStorage {
     // REQUIRED: Only deactivate listings for this dealership
     await db
       .update(marketListings)
-      .set({ isActive: false })
+      .set({ isActive: false, removedAt: new Date() })
       .where(and(
         eq(marketListings.listingUrl, url),
         eq(marketListings.dealershipId, dealershipId)
       ));
     return true;
+  }
+
+  async deactivateStaleMarketListings(
+    dealershipId: number,
+    filters: { make?: string; model?: string; yearMin?: number; yearMax?: number; source?: string },
+    staleDays: number
+  ): Promise<number> {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - staleDays);
+
+    const conditions: SQL[] = [
+      eq(marketListings.dealershipId, dealershipId),
+      eq(marketListings.isActive, true),
+      lte(marketListings.scrapedAt, cutoff)
+    ];
+
+    if (filters.make) {
+      conditions.push(sql`LOWER(${marketListings.make}) = LOWER(${filters.make})`);
+    }
+    if (filters.model) {
+      conditions.push(sql`LOWER(${marketListings.model}) = LOWER(${filters.model})`);
+    }
+    if (filters.yearMin) {
+      conditions.push(gte(marketListings.year, filters.yearMin));
+    }
+    if (filters.yearMax) {
+      conditions.push(lte(marketListings.year, filters.yearMax));
+    }
+    if (filters.source) {
+      conditions.push(eq(marketListings.source, filters.source));
+    }
+
+    const result = await db
+      .update(marketListings)
+      .set({ isActive: false, removedAt: new Date() })
+      .where(and(...conditions))
+      .returning({ id: marketListings.id });
+
+    return result.length;
   }
 
   async deleteOldMarketListings(dealershipId: number, daysOld: number): Promise<number> {
