@@ -736,7 +736,7 @@ export class EnhancedMarketAnalysisService {
 
     const competitors = this.analyzeCompetitors(filteredListings);
 
-    const priceTrends = await this.getPriceTrends(params.dealershipId, params.make, params.model);
+    const priceTrends = params.skipPriceHistory ? [] : await this.getPriceTrends(params.dealershipId, params.make, params.model);
 
     const mileageAdjustment = this.calculateMileageAdjustment(filteredListings, params.mileage);
     const priceRecommendation = this.generatePriceRecommendation(

@@ -7,8 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck, ClipboardCheck, BarChart3, Bot, Clock, Sparkles, Pencil, Save, TrendingDown, Minus, ArrowUp, ArrowDown, PackageOpen, ExternalLink, Eye, User, Send, Plus, Trash2, Copy, Building, DollarSign, Activity, Image as ImageIcon, Facebook, Link2, Webhook, AlertTriangle } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart } from 'recharts';
+import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck, ClipboardCheck, BarChart3, Bot, Clock, Sparkles, Pencil, Save, TrendingDown, ArrowUp, ArrowDown, PackageOpen, ExternalLink, Eye, User, Send, Plus, Trash2, Copy, Building, DollarSign, Image as ImageIcon, Facebook, Link2, Webhook, AlertTriangle } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CompetitorAlertsWidget } from "@/components/CompetitorAlertsWidget";
@@ -938,7 +937,7 @@ export default function Manager() {
   // Manager settings state
   const [settings, setSettings] = useState({
     postalCode: "",
-    defaultRadiusKm: 50
+    defaultRadiusKm: 500
   });
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [activeManagerTab, setActiveManagerTab] = useState<'appraisal' | 'inventory' | 'my-inventory' | 'conversations' | 'prompts' | 'settings' | 'history' | 'followup' | 'call-scoring' | 'templates' | 'appointments'>('appraisal');
@@ -974,11 +973,10 @@ export default function Manager() {
     model: "",
     selectedTrims: [] as string[],
     mileage: "",
-    radiusKm: "50"
+    radiusKm: "500"
   });
   const [pricingResults, setPricingResults] = useState<any>(null);
   const [enhancedResults, setEnhancedResults] = useState<any>(null);
-  const [showAllComparables, setShowAllComparables] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isScraping, setIsScraping] = useState(false);
   const [showEnhancedView, setShowEnhancedView] = useState(true);
@@ -1153,11 +1151,6 @@ export default function Manager() {
   const [targetRetailPrice, setTargetRetailPrice] = useState("");
   const [appraisalHistory, setAppraisalHistory] = useState<any[]>([]);
   const [isLoadingAppraisalHistory, setIsLoadingAppraisalHistory] = useState(false);
-
-  // Historical analytics state
-  const [priceTrends, setPriceTrends] = useState<{ date: string; averagePrice: number; medianPrice: number; listingCount: number }[]>([]);
-  const [isLoadingPriceTrends, setIsLoadingPriceTrends] = useState(false);
-  const [showHistoricalAnalytics, setShowHistoricalAnalytics] = useState(false);
 
   // Pass quotedPrice as acquisition cost for profit calculation
   const acquisitionCost = quotedPrice ? parseFloat(quotedPrice) : undefined;
@@ -1517,9 +1510,9 @@ export default function Manager() {
       if (data) {
         setSettings({
           postalCode: data.postalCode || "",
-          defaultRadiusKm: data.defaultRadiusKm || 50
+          defaultRadiusKm: data.defaultRadiusKm || 500
         });
-        setPricingForm(prev => ({ ...prev, radiusKm: String(data.defaultRadiusKm || 50) }));
+        setPricingForm(prev => ({ ...prev, radiusKm: String(data.defaultRadiusKm || 500) }));
       }
     } catch (error) {
       console.error("Error loading settings:", error);
@@ -1830,14 +1823,11 @@ export default function Manager() {
     setLivePricing(null);
     setPricingResults(null);
     setEnhancedResults(null);
-    setPriceTrends([]);
-    setShowHistoricalAnalytics(false);
     setPreviousAppraisal(null);
     setAppraisalNotes("");
     setQuotedPrice("");
     setReconCost("");
     setTargetRetailPrice("");
-    setShowAllComparables(false);
     setVin(typeof nextVin === 'string' ? nextVin.toUpperCase() : "");
   };
 
@@ -1886,7 +1876,7 @@ export default function Manager() {
           selectedTrims: result.trim ? [result.trim] : [],
           mileage: "",
           // Preserve existing radiusKm (from settings) or use settings default
-          radiusKm: prev.radiusKm || String(settings.defaultRadiusKm || 50)
+          radiusKm: prev.radiusKm || String(settings.defaultRadiusKm || 500)
         }));
 
         // Check for previous appraisal with this VIN
@@ -1934,10 +1924,6 @@ export default function Manager() {
         // Fetch live market pricing from MarketCheck
         fetchLivePricing(vin);
         
-        // Fetch historical price trends for this vehicle type
-        if (result.make && result.model) {
-          loadPriceTrends(result.make, result.model);
-        }
       }
     } catch (error) {
       console.error("VIN decode error:", error);
@@ -2003,7 +1989,6 @@ export default function Manager() {
     setIsAnalyzing(true);
     setPricingResults(null);
     setEnhancedResults(null);
-    setShowAllComparables(false);
 
     try {
       const token = localStorage.getItem('auth_token');
@@ -2020,6 +2005,9 @@ export default function Manager() {
         mileage: pricingForm.mileage ? parseInt(pricingForm.mileage) : undefined,
         radiusKm: parseInt(pricingForm.radiusKm) || settings.defaultRadiusKm,
         postalCode: settings.postalCode.trim(),
+        skipAggregation: true,
+        skipPriceHistory: true,
+        skipAiInsights: true
       }, {
         'Authorization': `Bearer ${token}`
       });
@@ -2193,38 +2181,6 @@ export default function Manager() {
     }
   };
 
-  const loadPriceTrends = async (make: string, model: string) => {
-    if (!make || !model) return;
-    
-    setIsLoadingPriceTrends(true);
-    try {
-      const token = localStorage.getItem('auth_token');
-      const data = await apiGet<any[]>(`/api/manager/market-snapshots?make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}&limit=30`, {
-        'Authorization': `Bearer ${token}`
-      });
-      
-      if (Array.isArray(data) && data.length > 0) {
-        const formattedData = data
-          .map(s => ({
-            date: new Date(s.snapshotDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-            averagePrice: s.averagePrice,
-            medianPrice: s.medianPrice,
-            listingCount: s.totalListings
-          }))
-          .reverse();
-        setPriceTrends(formattedData);
-        setShowHistoricalAnalytics(true);
-      } else {
-        setPriceTrends([]);
-      }
-    } catch (error) {
-      console.error('Error loading price trends:', error);
-      setPriceTrends([]);
-    } finally {
-      setIsLoadingPriceTrends(false);
-    }
-  };
-
   // Load appraisal history when history tab is selected
   useEffect(() => {
     if (activeManagerTab === 'history' && user) {
@@ -2240,7 +2196,25 @@ export default function Manager() {
     const bPrice = typeof b.price === 'number' ? b.price : 0;
     return aPrice - bPrice;
   });
-  const visibleComparisons = showAllComparables ? sortedComparisons : sortedComparisons.slice(0, 10);
+  const visibleComparisons = sortedComparisons;
+  const hasVinSpecs = Boolean(
+    vinResults?.bodyClass ||
+    vinResults?.vehicleType ||
+    vinResults?.fuelType ||
+    vinResults?.transmission ||
+    vinResults?.driveType ||
+    vinResults?.exteriorColor ||
+    vinResults?.interiorColor ||
+    vinResults?.engineCylinders ||
+    vinResults?.engineHP ||
+    vinResults?.msrp
+  );
+  const hasEquipment = Boolean(
+    vinResults?.packages?.length ||
+    vinResults?.installedOptions?.length ||
+    vinResults?.standardEquipment?.length ||
+    vinResults?.safetyFeatures?.length
+  );
 
   if (isLoading) {
     return (
@@ -2524,46 +2498,203 @@ export default function Manager() {
                           </div>
                         </div>
                       ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-[160px_1fr_auto] gap-6 items-start">
-                          {/* Image Placeholder */}
-                          <div className="w-full h-32 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center overflow-hidden border border-slate-200 dark:border-slate-700">
-                            <ImageIcon className="w-10 h-10 text-slate-300" />
-                          </div>
-                          
-                          {/* Details */}
-                          <div>
-                            {previousAppraisal && previousAppraisal.quotedPrice != null && Number(previousAppraisal.quotedPrice) > 0 && (
-                              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-semibold mb-2 border border-amber-200 dark:border-amber-800">
-                                <Clock className="w-3 h-3" />
-                                Previous Appraisal: ${Number(previousAppraisal.quotedPrice).toLocaleString()} ({new Date(previousAppraisal.createdAt).toLocaleDateString()})
+                        <>
+                          <div className="grid grid-cols-1 md:grid-cols-[160px_1fr_auto] gap-6 items-start">
+                            {/* Image Placeholder */}
+                            <div className="w-full h-32 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center overflow-hidden border border-slate-200 dark:border-slate-700">
+                              <ImageIcon className="w-10 h-10 text-slate-300" />
+                            </div>
+                            
+                            {/* Details */}
+                            <div>
+                              {previousAppraisal && previousAppraisal.quotedPrice != null && Number(previousAppraisal.quotedPrice) > 0 && (
+                                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-semibold mb-2 border border-amber-200 dark:border-amber-800">
+                                  <Clock className="w-3 h-3" />
+                                  Previous Appraisal: ${Number(previousAppraisal.quotedPrice).toLocaleString()} ({new Date(previousAppraisal.createdAt).toLocaleDateString()})
+                                </div>
+                              )}
+                              <h2 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white mb-2">
+                                <span data-testid="result-year">{vinResults.year}</span>{" "}
+                                <span data-testid="result-make">{vinResults.make}</span>{" "}
+                                <span data-testid="result-model">{vinResults.model}</span>{" "}
+                                {vinResults.trim && (
+                                  <span className="text-slate-500 font-normal" data-testid="result-trim">
+                                    {vinResults.trim}
+                                  </span>
+                                )}
+                              </h2>
+                              <div className="flex flex-wrap gap-y-2 gap-x-6 text-sm text-slate-600 dark:text-slate-400">
+                                <span className="flex items-center gap-1.5"><Badge variant="outline" className="rounded-md font-mono">{vin}</Badge></span>
+                                {vinResults.engineCylinders && <span className="flex items-center gap-1.5"><strong>{vinResults.engineCylinders} Cyl</strong> {vinResults.engineHP && `(${vinResults.engineHP} HP)`}</span>}
+                                {vinResults.driveType && <span className="flex items-center gap-1.5"><strong>{vinResults.driveType}</strong></span>}
+                                {vinResults.transmission && <span className="flex items-center gap-1.5"><strong>{vinResults.transmission}</strong></span>}
+                                {vinResults.exteriorColor && <span className="flex items-center gap-1.5 px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-xs">Ext: {vinResults.exteriorColor}</span>}
                               </div>
-                            )}
-                            <h2 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white mb-2">
-                              {vinResults.year} {vinResults.make} {vinResults.model} <span className="text-slate-500 font-normal">{vinResults.trim}</span>
-                            </h2>
-                            <div className="flex flex-wrap gap-y-2 gap-x-6 text-sm text-slate-600 dark:text-slate-400">
-                              <span className="flex items-center gap-1.5"><Badge variant="outline" className="rounded-md font-mono">{vin}</Badge></span>
-                              {vinResults.engineCylinders && <span className="flex items-center gap-1.5"><strong>{vinResults.engineCylinders} Cyl</strong> {vinResults.engineHP && `(${vinResults.engineHP} HP)`}</span>}
-                              {vinResults.driveType && <span className="flex items-center gap-1.5"><strong>{vinResults.driveType}</strong></span>}
-                              {vinResults.transmission && <span className="flex items-center gap-1.5"><strong>{vinResults.transmission}</strong></span>}
-                              {vinResults.exteriorColor && <span className="flex items-center gap-1.5 px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-xs">Ext: {vinResults.exteriorColor}</span>}
+                            </div>
+
+                            {/* Quick Market Context */}
+                            <div className="text-right">
+                              <div className="text-sm text-slate-500 font-medium mb-1">Market Average</div>
+                              <div className="text-3xl font-bold text-slate-900 dark:text-white">
+                                ${livePricing?.retailPrice?.average?.toLocaleString() || pricingResults?.averagePrice?.toLocaleString() || "---,---"}
+                              </div>
+                              <div className="text-xs text-slate-500 mt-1">
+                                Range: ${livePricing?.retailPrice?.min?.toLocaleString() || pricingResults?.minPrice?.toLocaleString() || "---"} - ${livePricing?.retailPrice?.max?.toLocaleString() || pricingResults?.maxPrice?.toLocaleString() || "---"}
+                              </div>
+                              <Button variant="ghost" size="sm" onClick={() => resetVinState()} className="mt-2 text-slate-400 hover:text-red-500">
+                                <X className="w-4 h-4 mr-1" /> New VIN
+                              </Button>
                             </div>
                           </div>
 
-                          {/* Quick Market Context */}
-                          <div className="text-right">
-                            <div className="text-sm text-slate-500 font-medium mb-1">Market Average</div>
-                            <div className="text-3xl font-bold text-slate-900 dark:text-white">
-                              ${livePricing?.retailPrice?.average?.toLocaleString() || pricingResults?.averagePrice?.toLocaleString() || "---,---"}
+                          {(hasVinSpecs || hasEquipment) && (
+                            <div className="mt-6 border-t border-slate-200 dark:border-slate-800 pt-5">
+                              <div className="grid gap-6 lg:grid-cols-3">
+                                {hasVinSpecs && (
+                                  <div className={`space-y-3 ${hasEquipment ? 'lg:col-span-2' : 'lg:col-span-3'}`}>
+                                    <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Specifications</div>
+                                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="vin-results">
+                                      {vinResults.bodyClass && (
+                                        <div data-testid="result-body-class">
+                                          <div className="text-xs text-muted-foreground font-medium">Body Class</div>
+                                          <div className="text-sm font-semibold">{vinResults.bodyClass}</div>
+                                        </div>
+                                      )}
+                                      {vinResults.vehicleType && (
+                                        <div data-testid="result-vehicle-type">
+                                          <div className="text-xs text-muted-foreground font-medium">Vehicle Type</div>
+                                          <div className="text-sm font-semibold">{vinResults.vehicleType}</div>
+                                        </div>
+                                      )}
+                                      {vinResults.fuelType && (
+                                        <div data-testid="result-fuel-type">
+                                          <div className="text-xs text-muted-foreground font-medium">Fuel Type</div>
+                                          <div className="text-sm font-semibold">{vinResults.fuelType}</div>
+                                        </div>
+                                      )}
+                                      {vinResults.transmission && (
+                                        <div data-testid="result-transmission">
+                                          <div className="text-xs text-muted-foreground font-medium">Transmission</div>
+                                          <div className="text-sm font-semibold">{vinResults.transmission}</div>
+                                        </div>
+                                      )}
+                                      {vinResults.driveType && (
+                                        <div data-testid="result-drive-type">
+                                          <div className="text-xs text-muted-foreground font-medium">Drive Type</div>
+                                          <div className="text-sm font-semibold">{vinResults.driveType}</div>
+                                        </div>
+                                      )}
+                                      {vinResults.exteriorColor && (
+                                        <div data-testid="result-exterior-color">
+                                          <div className="text-xs text-muted-foreground font-medium">Exterior Color</div>
+                                          <div className="text-sm font-semibold">{vinResults.exteriorColor}</div>
+                                        </div>
+                                      )}
+                                      {vinResults.interiorColor && (
+                                        <div data-testid="result-interior-color">
+                                          <div className="text-xs text-muted-foreground font-medium">Interior Color</div>
+                                          <div className="text-sm font-semibold">{vinResults.interiorColor}</div>
+                                        </div>
+                                      )}
+                                      {(vinResults.engineCylinders || vinResults.engineHP) && (
+                                        <div data-testid="result-engine-cylinders">
+                                          <div className="text-xs text-muted-foreground font-medium">Engine</div>
+                                          <div className="text-sm font-semibold">
+                                            {vinResults.engineCylinders ? `${vinResults.engineCylinders} cyl` : ''}
+                                            {vinResults.engineHP ? `${vinResults.engineCylinders ? ' / ' : ''}${vinResults.engineHP} HP` : ''}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {vinResults.msrp && (
+                                        <div data-testid="result-msrp">
+                                          <div className="text-xs text-muted-foreground font-medium">Original MSRP</div>
+                                          <div className="text-sm font-semibold text-green-600 dark:text-green-400">
+                                            ${vinResults.msrp.toLocaleString()}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                                {hasEquipment && (
+                                  <div className="space-y-3">
+                                    <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Equipment</div>
+                                    <div className="space-y-3">
+                                      {vinResults.packages?.length > 0 && (
+                                        <div data-testid="result-packages">
+                                          <div className="text-xs text-muted-foreground font-medium mb-2">Packages</div>
+                                          <div className="flex flex-wrap gap-1">
+                                            {vinResults.packages.slice(0, 6).map((pkg: string, idx: number) => (
+                                              <span key={idx} className="px-2 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded text-xs">
+                                                {pkg}
+                                              </span>
+                                            ))}
+                                            {vinResults.packages.length > 6 && (
+                                              <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded text-xs">
+                                                +{vinResults.packages.length - 6} more
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {vinResults.installedOptions?.length > 0 && (
+                                        <div data-testid="result-options">
+                                          <div className="text-xs text-muted-foreground font-medium mb-2">Installed Options</div>
+                                          <div className="flex flex-wrap gap-1">
+                                            {vinResults.installedOptions.slice(0, 8).map((opt: string, idx: number) => (
+                                              <span key={idx} className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded text-xs">
+                                                {opt}
+                                              </span>
+                                            ))}
+                                            {vinResults.installedOptions.length > 8 && (
+                                              <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded text-xs">
+                                                +{vinResults.installedOptions.length - 8} more
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {vinResults.standardEquipment?.length > 0 && (
+                                        <div data-testid="result-standard-equipment">
+                                          <div className="text-xs text-muted-foreground font-medium mb-2">Standard Equipment</div>
+                                          <div className="flex flex-wrap gap-1">
+                                            {vinResults.standardEquipment.slice(0, 8).map((item: string, idx: number) => (
+                                              <span key={idx} className="px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded text-xs">
+                                                {item}
+                                              </span>
+                                            ))}
+                                            {vinResults.standardEquipment.length > 8 && (
+                                              <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded text-xs">
+                                                +{vinResults.standardEquipment.length - 8} more
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {vinResults.safetyFeatures?.length > 0 && (
+                                        <div data-testid="result-safety">
+                                          <div className="text-xs text-muted-foreground font-medium mb-2">Safety Features</div>
+                                          <div className="flex flex-wrap gap-1">
+                                            {vinResults.safetyFeatures.slice(0, 6).map((feat: string, idx: number) => (
+                                              <span key={idx} className="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded text-xs">
+                                                {feat}
+                                              </span>
+                                            ))}
+                                            {vinResults.safetyFeatures.length > 6 && (
+                                              <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded text-xs">
+                                                +{vinResults.safetyFeatures.length - 6} more
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                            <div className="text-xs text-slate-500 mt-1">
-                              Range: ${livePricing?.retailPrice?.min?.toLocaleString() || pricingResults?.minPrice?.toLocaleString() || "---"} - ${livePricing?.retailPrice?.max?.toLocaleString() || pricingResults?.maxPrice?.toLocaleString() || "---"}
-                            </div>
-                            <Button variant="ghost" size="sm" onClick={() => resetVinState()} className="mt-2 text-slate-400 hover:text-red-500">
-                              <X className="w-4 h-4 mr-1" /> New VIN
-                            </Button>
-                          </div>
-                        </div>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -2722,165 +2853,6 @@ export default function Manager() {
                         </div>
                       </div>
                     </div>
-                  )}
-
-                  {/* Legacy VIN Details Accordion - Collapsed by default */}
-                  {vinResults && (
-                    <Accordion type="single" collapsible defaultValue="vin-details" className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
-                      <AccordionItem value="vin-details" className="border-0">
-                        <AccordionTrigger className="px-6 py-4 hover:no-underline">
-                          <span className="flex items-center gap-2 font-semibold text-foreground">
-                            <Settings className="w-4 h-4" />
-                            Vehicle Specifications & Equipment
-                          </span>
-                        </AccordionTrigger>
-                        <AccordionContent className="px-6 pb-6">
-                          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3" data-testid="vin-results">
-                            {vinResults.year && (
-                              <div data-testid="result-year">
-                                <div className="text-xs text-muted-foreground font-medium">Year</div>
-                                <div className="text-sm font-semibold">{vinResults.year}</div>
-                              </div>
-                            )}
-                            {vinResults.make && (
-                              <div data-testid="result-make">
-                                <div className="text-xs text-muted-foreground font-medium">Make</div>
-                                <div className="text-sm font-semibold">{vinResults.make}</div>
-                              </div>
-                            )}
-                            {vinResults.model && (
-                              <div data-testid="result-model">
-                                <div className="text-xs text-muted-foreground font-medium">Model</div>
-                                <div className="text-sm font-semibold">{vinResults.model}</div>
-                              </div>
-                            )}
-                            {vinResults.trim && (
-                              <div data-testid="result-trim">
-                                <div className="text-xs text-muted-foreground font-medium">Trim</div>
-                                <div className="text-sm font-semibold">{vinResults.trim}</div>
-                              </div>
-                            )}
-                            {vinResults.bodyClass && (
-                              <div data-testid="result-body-class">
-                                <div className="text-xs text-muted-foreground font-medium">Body Class</div>
-                                <div className="text-sm font-semibold">{vinResults.bodyClass}</div>
-                              </div>
-                            )}
-                            {vinResults.vehicleType && (
-                              <div data-testid="result-vehicle-type">
-                                <div className="text-xs text-muted-foreground font-medium">Vehicle Type</div>
-                                <div className="text-sm font-semibold">{vinResults.vehicleType}</div>
-                              </div>
-                            )}
-                            {vinResults.fuelType && (
-                              <div data-testid="result-fuel-type">
-                                <div className="text-xs text-muted-foreground font-medium">Fuel Type</div>
-                                <div className="text-sm font-semibold">{vinResults.fuelType}</div>
-                              </div>
-                            )}
-                            {vinResults.transmission && (
-                              <div data-testid="result-transmission">
-                                <div className="text-xs text-muted-foreground font-medium">Transmission</div>
-                                <div className="text-sm font-semibold">{vinResults.transmission}</div>
-                              </div>
-                            )}
-                            {vinResults.driveType && (
-                              <div data-testid="result-drive-type">
-                                <div className="text-xs text-muted-foreground font-medium">Drive Type</div>
-                                <div className="text-sm font-semibold">{vinResults.driveType}</div>
-                              </div>
-                            )}
-                            {vinResults.exteriorColor && (
-                              <div data-testid="result-exterior-color">
-                                <div className="text-xs text-muted-foreground font-medium">Exterior Color</div>
-                                <div className="text-sm font-semibold">{vinResults.exteriorColor}</div>
-                              </div>
-                            )}
-                            {vinResults.interiorColor && (
-                              <div data-testid="result-interior-color">
-                                <div className="text-xs text-muted-foreground font-medium">Interior Color</div>
-                                <div className="text-sm font-semibold">{vinResults.interiorColor}</div>
-                              </div>
-                            )}
-                            {vinResults.engineCylinders && (
-                              <div data-testid="result-engine-cylinders">
-                                <div className="text-xs text-muted-foreground font-medium">Engine</div>
-                                <div className="text-sm font-semibold">
-                                  {vinResults.engineCylinders} cyl
-                                  {vinResults.engineHP && ` / ${vinResults.engineHP} HP`}
-                                </div>
-                              </div>
-                            )}
-                            {vinResults.msrp && (
-                              <div data-testid="result-msrp">
-                                <div className="text-xs text-muted-foreground font-medium">Original MSRP</div>
-                                <div className="text-sm font-semibold text-green-600 dark:text-green-400">
-                                  ${vinResults.msrp.toLocaleString()}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Equipment & Options Section */}
-                          {(vinResults.installedOptions?.length > 0 || vinResults.standardEquipment?.length > 0 || vinResults.packages?.length > 0 || vinResults.safetyFeatures?.length > 0) && (
-                            <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
-                              <h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
-                                <Settings className="w-4 h-4" />
-                                Equipment & Options
-                              </h4>
-                              <div className="grid gap-4 md:grid-cols-2">
-                                {vinResults.packages?.length > 0 && (
-                                  <div data-testid="result-packages">
-                                    <div className="text-xs text-muted-foreground font-medium mb-2">Packages</div>
-                                    <div className="flex flex-wrap gap-1">
-                                      {vinResults.packages.map((pkg: string, idx: number) => (
-                                        <span key={idx} className="px-2 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded text-xs">
-                                          {pkg}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                                {vinResults.installedOptions?.length > 0 && (
-                                  <div data-testid="result-options">
-                                    <div className="text-xs text-muted-foreground font-medium mb-2">Installed Options</div>
-                                    <div className="flex flex-wrap gap-1">
-                                      {vinResults.installedOptions.slice(0, 8).map((opt: string, idx: number) => (
-                                        <span key={idx} className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded text-xs">
-                                          {opt}
-                                        </span>
-                                      ))}
-                                      {vinResults.installedOptions.length > 8 && (
-                                        <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded text-xs">
-                                          +{vinResults.installedOptions.length - 8} more
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                )}
-                                {vinResults.safetyFeatures?.length > 0 && (
-                                  <div data-testid="result-safety">
-                                    <div className="text-xs text-muted-foreground font-medium mb-2">Safety Features</div>
-                                    <div className="flex flex-wrap gap-1">
-                                      {vinResults.safetyFeatures.slice(0, 6).map((feat: string, idx: number) => (
-                                        <span key={idx} className="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded text-xs">
-                                          {feat}
-                                        </span>
-                                      ))}
-                                      {vinResults.safetyFeatures.length > 6 && (
-                                        <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded text-xs">
-                                          +{vinResults.safetyFeatures.length - 6} more
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </AccordionContent>
-                      </AccordionItem>
-                    </Accordion>
                   )}
 
                   {/* Live Market Pricing Section (MarketCheck Real-time Data) */}
@@ -3235,12 +3207,12 @@ export default function Manager() {
                     </div>
                   )}
 
-                  {/* 3. Market Analysis Section - Clean Design */}
+                  {/* 3. Comparable Vehicles Section */}
                   <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6" data-testid="section-market-analysis">
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                       <div>
-                        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Market Analysis</h3>
-                        <p className="text-sm text-slate-500">Real-time listing data for {pricingForm.make || 'your vehicle'} {pricingForm.model || ''}</p>
+                        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Comparable Vehicles</h3>
+                        <p className="text-sm text-slate-500">Comparable listings for {pricingForm.make || 'your vehicle'} {pricingForm.model || ''}</p>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <Button 
@@ -3249,7 +3221,7 @@ export default function Manager() {
                           className="bg-blue-600 hover:bg-blue-700 text-white shadow-md"
                           data-testid="button-analyze-pricing"
                         >
-                          {isAnalyzing ? "Analyzing..." : "Analyze Market Pricing"}
+                          {isAnalyzing ? "Loading..." : "Load Comparables"}
                         </Button>
                         <Button
                           variant="outline"
@@ -3258,7 +3230,7 @@ export default function Manager() {
                           className="shadow-sm"
                           data-testid="button-refresh-market"
                         >
-                          {isScraping ? "Refreshing..." : "Refresh Market Data"}
+                          {isScraping ? "Refreshing..." : "Refresh Listings"}
                         </Button>
                       </div>
                     </div>
@@ -3345,99 +3317,12 @@ export default function Manager() {
                       />
                     </div>
 
-                    {/* Stats and Recommendation Panels */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                      {/* Stats Panel */}
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-6 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-100 dark:border-slate-700">
-                        <div>
-                          <div className="text-xs text-slate-400 font-semibold uppercase mb-1">Average Price</div>
-                          <div className="text-2xl font-bold text-slate-900 dark:text-white" data-testid="stat-average-price">
-                            ${pricingResults?.averagePrice?.toLocaleString() || "---,---"}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-slate-400 font-semibold uppercase mb-1">Median Price</div>
-                          <div className="text-2xl font-bold text-slate-900 dark:text-white" data-testid="stat-median-price">
-                            ${pricingResults?.medianPrice?.toLocaleString() || "---,---"}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-slate-400 font-semibold uppercase mb-1">Comparables</div>
-                          <div className="text-2xl font-bold text-blue-600" data-testid="stat-total-comps">
-                            {pricingResults?.totalComps || 0}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-slate-400 font-semibold uppercase mb-1">Avg Days on Market</div>
-                          <div className="text-2xl font-bold text-slate-900 dark:text-white" data-testid="stat-avg-dom">
-                            {enhancedResults?.daysOnMarket?.average || 0}d
-                          </div>
-                        </div>
+                    {/* Results Summary */}
+                    {pricingResults?.comparisons?.length ? (
+                      <div className="mb-4 text-xs text-slate-500" data-testid="comparables-summary">
+                        Showing {pricingResults.comparisons.length} comparables within {pricingForm.radiusKm} km
                       </div>
-
-                      {/* Recommendation Panel */}
-                      <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900 rounded-lg p-5 flex flex-col justify-center">
-                        <div className="text-sm font-medium text-amber-800 dark:text-amber-500 mb-1">Strategic Recommendation</div>
-                        <div className="text-lg font-bold text-amber-900 dark:text-amber-400" data-testid="stat-price-range">
-                          ${pricingResults?.priceRange?.low?.toLocaleString() || "---"} — ${pricingResults?.priceRange?.high?.toLocaleString() || "---"}
-                        </div>
-                        <div className="text-xs text-amber-700/70 mt-1">
-                          Based on {pricingResults?.totalComps || 0} comparable listings in {pricingForm.radiusKm}km radius
-                        </div>
-                      </div>
-                    </div>
-
-                    {(enhancedResults?.distanceCoverage || enhancedResults?.trimCoverage) && (
-                      <div className="mb-6 flex flex-wrap gap-4 text-xs text-slate-500">
-                        {enhancedResults?.distanceCoverage && (
-                          <div data-testid="distance-coverage">
-                            Distance coverage: {enhancedResults.distanceCoverage.listingsWithinRadius}/{enhancedResults.distanceCoverage.totalListings} within radius, {enhancedResults.distanceCoverage.listingsUnknownDistance} unknown
-                          </div>
-                        )}
-                        {enhancedResults?.trimCoverage && (
-                          <div data-testid="trim-coverage">
-                            Trim coverage: {enhancedResults.trimCoverage.listingsWithTrim}/{enhancedResults.trimCoverage.totalListings} with trim data
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {enhancedResults?.aiInsights && (
-                      <div className="mb-6 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5" data-testid="market-ai-insights">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
-                          <Sparkles className="w-4 h-4 text-blue-500" />
-                          AI Market Summary
-                        </div>
-                        <p className="text-sm text-slate-600 dark:text-slate-300">{enhancedResults.aiInsights}</p>
-                      </div>
-                    )}
-
-                    {enhancedResults?.competitors && enhancedResults.competitors.length > 0 && (
-                      <div className="mb-6 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5" data-testid="market-competitor-summary">
-                        <div className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3 flex items-center gap-2">
-                          <Users className="w-4 h-4 text-slate-500" />
-                          Top Competitors
-                        </div>
-                        <div className="space-y-2">
-                          {enhancedResults.competitors.slice(0, 5).map((competitor: any, idx: number) => (
-                            <div key={`${competitor.sellerName}-${idx}`} className="flex items-center justify-between text-sm">
-                              <div className="flex items-center gap-2">
-                                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-300">
-                                  {idx + 1}
-                                </span>
-                                <span className="font-medium text-slate-700 dark:text-slate-200 truncate max-w-[240px]">
-                                  {competitor.sellerName}
-                                </span>
-                                <span className="text-xs text-slate-500">({competitor.listingCount} listings)</span>
-                              </div>
-                              <div className="text-slate-600 dark:text-slate-300">
-                                Avg ${competitor.averagePrice?.toLocaleString()}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                    ) : null}
 
                     {/* Modern Comparable Vehicles Table */}
                     <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
@@ -3470,11 +3355,13 @@ export default function Manager() {
                                   ) : (
                                     <span className="text-xs text-slate-400">-</span>
                                   )}
-                                  {comp.interiorColor && (
+                                  {comp.interiorColor ? (
                                     <span className="inline-flex items-center gap-1 text-xs">
                                       <span className="w-3 h-3 rounded-full border border-slate-200 dark:border-slate-600" style={{backgroundColor: comp.interiorColor?.toLowerCase().includes('black') ? '#1a1a1a' : comp.interiorColor?.toLowerCase().includes('tan') || comp.interiorColor?.toLowerCase().includes('beige') ? '#d4b896' : comp.interiorColor?.toLowerCase().includes('brown') ? '#7c3a18' : comp.interiorColor?.toLowerCase().includes('grey') || comp.interiorColor?.toLowerCase().includes('gray') ? '#808080' : '#e5e5e5'}}></span>
                                       <span className="text-slate-600 dark:text-slate-400">{comp.interiorColor}</span>
                                     </span>
+                                  ) : (
+                                    <span className="text-xs text-slate-400">-</span>
                                   )}
                                 </div>
                               </td>
@@ -3500,175 +3387,13 @@ export default function Manager() {
                           ))}
                           {(!pricingResults?.comparisons || pricingResults.comparisons.length === 0) && (
                             <tr>
-                              <td colSpan={7} className="px-6 py-12 text-center text-slate-400 italic">No comparable vehicles found. Run an analysis to see results.</td>
+                              <td colSpan={7} className="px-6 py-12 text-center text-slate-400 italic">No comparable vehicles found. Load comparables to see results.</td>
                             </tr>
                           )}
                         </tbody>
                       </table>
                     </div>
-                    {pricingResults?.comparisons && pricingResults.comparisons.length > 10 && (
-                      <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
-                        <span>Showing {visibleComparisons.length} of {pricingResults.comparisons.length} comparables</span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setShowAllComparables(prev => !prev)}
-                          className="text-slate-600 hover:text-slate-900"
-                          data-testid="button-toggle-comparables"
-                        >
-                          {showAllComparables ? "Show Top 10" : "Show All"}
-                        </Button>
-                      </div>
-                    )}
                   </div>
-
-                  {/* Historical Analytics Section */}
-                  {vinResults && showHistoricalAnalytics && (
-                    <div className="border-t pt-6" data-testid="historical-analytics-section">
-                      <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-lg p-6">
-                        <h4 className="font-semibold text-foreground mb-4 flex items-center gap-2">
-                          <Activity className="w-5 h-5 text-blue-600" />
-                          Historical Market Analytics
-                          <span className="text-sm font-normal text-muted-foreground ml-2">
-                            {vinResults.make} {vinResults.model}
-                          </span>
-                        </h4>
-
-                        {isLoadingPriceTrends ? (
-                          <div className="flex items-center justify-center py-12">
-                            <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                          </div>
-                        ) : priceTrends.length > 0 ? (
-                          <div className="space-y-6">
-                            {/* Price Trend Chart */}
-                            <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
-                              <h5 className="text-sm font-medium text-muted-foreground mb-4">Price Trends (Last 30 Days)</h5>
-                              <div className="h-64" data-testid="price-trend-chart">
-                                <ResponsiveContainer width="100%" height="100%">
-                                  <AreaChart data={priceTrends} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                                    <defs>
-                                      <linearGradient id="colorAvg" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                                      </linearGradient>
-                                      <linearGradient id="colorMedian" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3}/>
-                                        <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
-                                      </linearGradient>
-                                    </defs>
-                                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                                    <XAxis 
-                                      dataKey="date" 
-                                      tick={{ fontSize: 12 }} 
-                                      className="text-muted-foreground"
-                                    />
-                                    <YAxis 
-                                      tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
-                                      tick={{ fontSize: 12 }}
-                                      className="text-muted-foreground"
-                                    />
-                                    <Tooltip 
-                                      formatter={(value: number) => [`$${value.toLocaleString()}`, '']}
-                                      labelStyle={{ color: 'var(--foreground)' }}
-                                      contentStyle={{ 
-                                        backgroundColor: 'var(--background)', 
-                                        border: '1px solid var(--border)',
-                                        borderRadius: '8px'
-                                      }}
-                                    />
-                                    <Legend />
-                                    <Area 
-                                      type="monotone" 
-                                      dataKey="averagePrice" 
-                                      name="Average Price"
-                                      stroke="#3b82f6" 
-                                      fillOpacity={1} 
-                                      fill="url(#colorAvg)" 
-                                    />
-                                    <Area 
-                                      type="monotone" 
-                                      dataKey="medianPrice" 
-                                      name="Median Price"
-                                      stroke="#22c55e" 
-                                      fillOpacity={1} 
-                                      fill="url(#colorMedian)" 
-                                    />
-                                  </AreaChart>
-                                </ResponsiveContainer>
-                              </div>
-                            </div>
-
-                            {/* Market Velocity Metrics */}
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                              {/* Price Change */}
-                              <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-blue-200 dark:border-blue-800" data-testid="metric-price-change">
-                                <div className="text-xs text-muted-foreground">Price Change</div>
-                                {(() => {
-                                  if (priceTrends.length < 2) return <div className="text-lg font-bold">N/A</div>;
-                                  const first = priceTrends[0].averagePrice;
-                                  const last = priceTrends[priceTrends.length - 1].averagePrice;
-                                  const change = last - first;
-                                  const pct = first > 0 ? ((change / first) * 100).toFixed(1) : '0';
-                                  return (
-                                    <>
-                                      <div className={`text-lg font-bold ${change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                        {change >= 0 ? '+' : ''}{pct}%
-                                      </div>
-                                      <div className="text-xs text-muted-foreground">
-                                        {change >= 0 ? '+' : '-'}${Math.abs(change).toLocaleString()}
-                                      </div>
-                                    </>
-                                  );
-                                })()}
-                              </div>
-
-                              {/* Current Avg */}
-                              <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-blue-200 dark:border-blue-800" data-testid="metric-current-avg">
-                                <div className="text-xs text-muted-foreground">Current Average</div>
-                                <div className="text-lg font-bold text-foreground">
-                                  ${priceTrends[priceTrends.length - 1]?.averagePrice?.toLocaleString() || 'N/A'}
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  Latest snapshot
-                                </div>
-                              </div>
-
-                              {/* Listing Volume */}
-                              <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-blue-200 dark:border-blue-800" data-testid="metric-listing-volume">
-                                <div className="text-xs text-muted-foreground">Avg Listings</div>
-                                <div className="text-lg font-bold text-foreground">
-                                  {Math.round(priceTrends.reduce((sum, t) => sum + t.listingCount, 0) / priceTrends.length)}
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  Per snapshot
-                                </div>
-                              </div>
-
-                              {/* Market Trend */}
-                              <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-blue-200 dark:border-blue-800" data-testid="metric-market-trend">
-                                <div className="text-xs text-muted-foreground">Market Trend</div>
-                                {(() => {
-                                  if (priceTrends.length < 2) return <div className="text-lg font-bold">Stable</div>;
-                                  const first = priceTrends[0].averagePrice;
-                                  const last = priceTrends[priceTrends.length - 1].averagePrice;
-                                  const pctChange = first > 0 ? ((last - first) / first) * 100 : 0;
-                                  if (pctChange > 3) return <div className="text-lg font-bold text-green-600 flex items-center gap-1"><TrendingUp className="w-4 h-4" /> Rising</div>;
-                                  if (pctChange < -3) return <div className="text-lg font-bold text-red-600 flex items-center gap-1"><TrendingDown className="w-4 h-4" /> Falling</div>;
-                                  return <div className="text-lg font-bold text-amber-600 flex items-center gap-1"><Minus className="w-4 h-4" /> Stable</div>;
-                                })()}
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="text-center py-8 text-muted-foreground">
-                            <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                            <p className="text-sm">No historical data available yet.</p>
-                            <p className="text-xs mt-1">Historical trends will appear after market analysis runs.</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
 
                   {!pricingResults && !vinResults && (
                     <div className="border-t pt-6">
@@ -3676,7 +3401,7 @@ export default function Manager() {
                         <Car className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
                         <h3 className="text-lg font-medium mb-2">Get Started</h3>
                         <p className="text-sm mb-4">
-                          Enter a VIN to decode and automatically analyze market pricing, or manually enter vehicle details
+                          Enter a VIN to decode and automatically load comparable listings, or manually enter vehicle details
                         </p>
                       </div>
                     </div>
@@ -3873,7 +3598,7 @@ export default function Manager() {
                         id="default-radius"
                         type="number"
                         value={settings.defaultRadiusKm}
-                        onChange={(e) => setSettings({ ...settings, defaultRadiusKm: parseInt(e.target.value) || 50 })}
+                        onChange={(e) => setSettings({ ...settings, defaultRadiusKm: parseInt(e.target.value) || 500 })}
                         data-testid="input-default-radius"
                         className="mt-2"
                       />

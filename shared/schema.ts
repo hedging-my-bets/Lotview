@@ -1230,7 +1230,7 @@ export const managerSettings = pgTable("manager_settings", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id),
   postalCode: text("postal_code").notNull(), // Canadian postal code (e.g., V6B 1A1)
-  defaultRadiusKm: integer("default_radius_km").notNull().default(50), // Default search radius in kilometers
+  defaultRadiusKm: integer("default_radius_km").notNull().default(500), // Default search radius in kilometers
   geocodeLat: text("geocode_lat"), // Cached latitude from postal code
   geocodeLon: text("geocode_lon"), // Cached longitude from postal code
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -1267,6 +1267,7 @@ export const marketListings = pgTable("market_listings", {
   postedDate: timestamp("posted_date"), // When the listing was posted
   scrapedAt: timestamp("scraped_at").defaultNow().notNull(), // When we scraped it
   isActive: boolean("is_active").notNull().default(true), // False if listing is removed
+  removedAt: timestamp("removed_at"), // When listing was last detected as removed
   interiorColor: text("interior_color"), // Interior color from CarGurus
   exteriorColor: text("exterior_color"), // Exterior color from CarGurus
   vin: text("vin"), // Vehicle VIN for color lookup
