@@ -353,6 +353,7 @@ export interface IStorage {
   // Facebook pages
   getFacebookPages(dealershipId?: number): Promise<FacebookPage[]>;
   getFacebookPageByPageId(pageId: string): Promise<FacebookPage | undefined>;
+  getFacebookPageByInstagramAccountId(instagramAccountId: string): Promise<FacebookPage | undefined>;
   createFacebookPage(page: InsertFacebookPage): Promise<FacebookPage>;
   updateFacebookPage(id: number, page: Partial<InsertFacebookPage>): Promise<FacebookPage | undefined>;
   
@@ -1453,6 +1454,11 @@ export class DatabaseStorage implements IStorage {
 
   async getFacebookPageByPageId(pageId: string): Promise<FacebookPage | undefined> {
     const result = await db.select().from(facebookPages).where(eq(facebookPages.pageId, pageId));
+    return result[0];
+  }
+
+  async getFacebookPageByInstagramAccountId(instagramAccountId: string): Promise<FacebookPage | undefined> {
+    const result = await db.select().from(facebookPages).where(eq(facebookPages.instagramAccountId, instagramAccountId));
     return result[0];
   }
 

@@ -197,7 +197,8 @@ async function generateAiReply(params: {
   const { client, source } = await getOpenAIClient(params.dealershipId);
   if (!client) return null;
 
-  const model = source === "dealership" ? "gpt-4o-mini" : "gpt-5";
+  const replitDefaultModel = process.env.OPENAI_DEFAULT_MODEL || "gpt-4o";
+  const model = source === "dealership" ? "gpt-4o-mini" : replitDefaultModel;
   const vehicleText = params.vehicleLabel ? `Vehicle: ${params.vehicleLabel}` : "Vehicle: unknown";
   const contactText = params.contactMissing ? "Contact info missing (ask for phone or email)." : "Contact info captured.";
   const appointmentText = `Appointment options: ${params.appointmentOptions.optionA} or ${params.appointmentOptions.optionB}.`;

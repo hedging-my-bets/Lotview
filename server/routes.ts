@@ -9508,23 +9508,36 @@ Format your response in clear sections with actionable recommendations.`;
     try {
       const body = req.body;
 
-      if (body?.object !== "page" || !Array.isArray(body?.entry)) {
+      // Accept both Facebook Page and Instagram webhooks
+      if (!["page", "instagram"].includes(body?.object) || !Array.isArray(body?.entry)) {
         return res.sendStatus(200);
       }
+      
+      const isInstagram = body.object === "instagram";
 
       const pageCache = new Map<string, any>();
-      const loadPage = async (pageId: string) => {
-        if (pageCache.has(pageId)) {
-          return pageCache.get(pageId);
+      const loadPage = async (accountId: string, isIg: boolean = false) => {
+        const cacheKey = `${isIg ? 'ig:' : 'fb:'}${accountId}`;
+        if (pageCache.has(cacheKey)) {
+          return pageCache.get(cacheKey);
         }
-        const page = await storage.getFacebookPageByPageId(pageId);
-        pageCache.set(pageId, page || null);
+        // For Instagram webhooks, try to find by Instagram Account ID first, then fall back to Page ID
+        let page = isIg 
+          ? await storage.getFacebookPageByInstagramAccountId(accountId) 
+          : await storage.getFacebookPageByPageId(accountId);
+        
+        // If Instagram lookup failed, try Facebook Page ID as fallback (in case IG account ID matches page ID)
+        if (!page && isIg) {
+          page = await storage.getFacebookPageByPageId(accountId);
+        }
+        
+        pageCache.set(cacheKey, page || null);
         return page;
       };
 
       const firstEntry = body.entry[0];
-      const firstPageId = firstEntry?.id;
-      const firstPage = firstPageId ? await loadPage(firstPageId) : null;
+      const firstAccountId = firstEntry?.id;
+      const firstPage = firstAccountId ? await loadPage(firstAccountId, isInstagram) : null;
       const appConfig = await resolveFacebookAppConfig(firstPage?.dealershipId);
       const signatureHash = parseFacebookSignature(req.headers['x-hub-signature-256']);
       const rawBody = req.rawBody;
@@ -9542,14 +9555,29 @@ Format your response in clear sections with actionable recommendations.`;
           logWarn('Meta webhook signature mismatch', { route: 'webhooks-meta' });
           return res.sendStatus(403);
         }
+      } else {
+        // Log security warning when signature verification is disabled
+        logWarn('Meta webhook signature verification skipped - FACEBOOK_APP_SECRET not configured. This is a security risk in production.', {
+          route: 'webhooks-meta',
+          dealershipId: firstPage?.dealershipId
+        });
       }
 
       for (const entry of body.entry) {
-        const pageId = entry.id;
-        if (!pageId || !Array.isArray(entry.messaging)) continue;
+        const accountId = entry.id;
+        if (!accountId || !Array.isArray(entry.messaging)) continue;
 
-        const page = await loadPage(pageId);
-        if (!page) continue;
+        const page = await loadPage(accountId, isInstagram);
+        if (!page) {
+          // Log when we can't resolve an account (especially important for Instagram)
+          if (isInstagram) {
+            logWarn('Instagram webhook received but account not found - ensure Instagram Account ID is stored in facebook_pages.instagram_account_id', {
+              route: 'webhooks-meta',
+              instagramAccountId: accountId
+            });
+          }
+          continue;
+        }
 
         const dealershipId = page.dealershipId;
 
@@ -9558,7 +9586,7 @@ Format your response in clear sections with actionable recommendations.`;
           if (!senderId) continue;
 
           if (event.read) {
-            const conversationKey = `${pageId}:${senderId}`;
+            const conversationKey = `${accountId}:${senderId}`;
             const existingConversation = await storage.getMessengerConversationByConversationId(dealershipId, conversationKey);
             if (existingConversation) {
               await storage.markMessagesAsRead(dealershipId, existingConversation.id);
@@ -9572,7 +9600,7 @@ Format your response in clear sections with actionable recommendations.`;
           if (message?.is_echo) continue;
           if (!message && !postback) continue;
 
-          const conversationKey = `${pageId}:${senderId}`;
+          const conversationKey = `${accountId}:${senderId}`;
           let conversation = await storage.getMessengerConversationByConversationId(dealershipId, conversationKey);
 
           const eventTimestamp = event.timestamp || Date.now();
@@ -9600,14 +9628,15 @@ Format your response in clear sections with actionable recommendations.`;
           }
 
           if (!conversation) {
+            const participantLabel = isInstagram ? 'Instagram User' : 'Facebook User';
             conversation = await storage.createMessengerConversation({
               dealershipId,
               facebookAccountId: null,
               rooftopId: page.rooftopId ?? null,
-              pageId,
+              pageId: page.pageId, // Always use the Facebook Page ID for storage consistency
               pageName: page.pageName,
               conversationId: conversationKey,
-              participantName: `Facebook User`,
+              participantName: participantLabel,
               participantId: senderId,
               lastMessage: content,
               lastMessageAt: new Date(eventTimestamp),
@@ -9630,9 +9659,10 @@ Format your response in clear sections with actionable recommendations.`;
             }
           }
 
+          const messagePrefix = isInstagram ? 'ig' : 'fb';
           const fallbackId = postback
-            ? `fb_postback_${pageId}_${senderId}_${eventTimestamp}`
-            : `fb_${pageId}_${senderId}_${eventTimestamp}`;
+            ? `${messagePrefix}_postback_${accountId}_${senderId}_${eventTimestamp}`
+            : `${messagePrefix}_${accountId}_${senderId}_${eventTimestamp}`;
           const facebookMessageId = message?.mid || fallbackId;
           const existingMessage = await storage.getMessengerMessageByFacebookId(dealershipId, facebookMessageId);
           if (existingMessage) continue;
@@ -14685,6 +14715,15 @@ Format your response in clear sections with actionable recommendations.`;
 
       res.status(201).json({ success: true, listingInstanceId: created.id, status: created.status });
     } catch (error: any) {
+      // Handle unique constraint violation (race condition) - PostgreSQL error code 23505
+      if (error?.code === '23505' || error?.message?.includes('duplicate key') || error?.message?.includes('unique constraint')) {
+        logWarn('Posting lock race condition - duplicate VIN listing attempted', { route: 'api-marketplace-blast-start-posting-vehicleId' });
+        return res.status(409).json({ 
+          error: "An active listing already exists for this VIN",
+          code: "CONFLICT_EXISTING_LOCK",
+          message: "Another user has already started posting this vehicle. Please wait for them to complete or have a manager release the lock."
+        });
+      }
       logError('Error starting posting lock:', error instanceof Error ? error : new Error(String(error)), { route: 'api-marketplace-blast-start-posting-vehicleId' });
       res.status(500).json({ error: error.message || "Failed to start posting" });
     }

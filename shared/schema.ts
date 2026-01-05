@@ -256,6 +256,7 @@ export const facebookPages = pgTable("facebook_pages", {
   dealershipId: integer("dealership_id").notNull().references(() => dealerships.id, { onDelete: 'cascade' }),
   pageName: text("page_name").notNull(),
   pageId: text("page_id").notNull().unique(),
+  instagramAccountId: text("instagram_account_id"), // Linked Instagram Business Account ID for IG webhook resolution
   accessToken: text("access_token"), // Optional - for future OAuth integration
   rooftopId: integer("rooftop_id").references(() => rooftops.id, { onDelete: 'set null' }),
   pageDmLink: text("page_dm_link"), // Page DM link for Marketplace CTA

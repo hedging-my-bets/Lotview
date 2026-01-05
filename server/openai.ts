@@ -103,8 +103,9 @@ Be helpful and action-oriented. If you don't have specific information, offer to
     // Get the appropriate OpenAI client (dealership-specific or fallback)
     const { client: openai, source } = await getOpenAIClient(dealershipId);
     
-    // Use gpt-4o-mini for dealership keys (better compatibility), gpt-5 for Replit AI Integrations
-    const model = source === 'dealership' ? 'gpt-4o-mini' : 'gpt-5';
+    // Use gpt-4o-mini for dealership keys (better compatibility), env-configurable for Replit AI Integrations
+    const replitDefaultModel = process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o';
+    const model = source === 'dealership' ? 'gpt-4o-mini' : replitDefaultModel;
 
     const response = await openai.chat.completions.create({
       model: model,
