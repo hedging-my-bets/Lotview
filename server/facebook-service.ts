@@ -39,7 +39,7 @@ export class FacebookService {
       client_id: config.appId,
       redirect_uri: config.redirectUri,
       state,
-      scope: 'pages_manage_posts,pages_read_engagement,pages_messaging,catalog_management',
+      scope: 'pages_manage_posts,pages_read_engagement,pages_messaging,pages_manage_metadata,catalog_management',
       response_type: 'code'
     });
 
@@ -52,7 +52,7 @@ export class FacebookService {
       client_id: config.appId,
       redirect_uri: config.redirectUri,
       state,
-      scope: 'business_management,pages_show_list,pages_read_engagement,pages_messaging,pages_manage_posts',
+      scope: 'business_management,pages_show_list,pages_read_engagement,pages_messaging,pages_manage_posts,pages_manage_metadata',
       response_type: 'code'
     });
 
@@ -342,16 +342,29 @@ export class FacebookService {
    * @param recipientPsid - The Page-Scoped User ID of the recipient
    * @param messageText - The message text to send
    */
-  async sendMessengerMessage(pageAccessToken: string, recipientPsid: string, messageText: string): Promise<{ messageId: string; recipientId: string }> {
+  async sendMessengerMessage(
+    pageAccessToken: string,
+    recipientPsid: string,
+    messageText: string,
+    options?: { messagingType?: 'RESPONSE' | 'UPDATE' | 'MESSAGE_TAG'; tag?: string }
+  ): Promise<{ messageId: string; recipientId: string }> {
+    const messagingType = options?.messagingType || (options?.tag ? 'MESSAGE_TAG' : 'RESPONSE');
+    const payload: Record<string, any> = {
+      recipient: { id: recipientPsid },
+      message: { text: messageText },
+      messaging_type: messagingType
+    };
+
+    if (messagingType === 'MESSAGE_TAG' && options?.tag) {
+      payload.tag = options.tag;
+    }
+
     const response = await fetch(`https://graph.facebook.com/v18.0/me/messages?access_token=${encodeURIComponent(pageAccessToken)}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        recipient: { id: recipientPsid },
-        message: { text: messageText }
-      })
+      body: JSON.stringify(payload)
     });
 
     if (!response.ok) {
@@ -384,6 +397,47 @@ export class FacebookService {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error?.message || 'Failed to get conversation messages');
+    }
+
+    const data = await response.json();
+    return data.data || [];
+  }
+
+  async subscribePageToWebhooks(
+    pageAccessToken: string,
+    pageId: string,
+    fields: string[] = ['messages', 'message_deliveries', 'message_reads', 'messaging_postbacks']
+  ): Promise<{ success: boolean }> {
+    const params = new URLSearchParams({
+      access_token: pageAccessToken,
+      subscribed_fields: fields.join(',')
+    });
+
+    const response = await fetch(`https://graph.facebook.com/v18.0/${pageId}/subscribed_apps`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString()
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message || 'Failed to subscribe page to webhooks');
+    }
+
+    return { success: true };
+  }
+
+  async getPageSubscribedApps(
+    pageAccessToken: string,
+    pageId: string
+  ): Promise<Array<{ id: string; name?: string }>> {
+    const response = await fetch(
+      `https://graph.facebook.com/v18.0/${pageId}/subscribed_apps?fields=id,name&access_token=${encodeURIComponent(pageAccessToken)}`
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message || 'Failed to fetch subscribed apps');
     }
 
     const data = await response.json();

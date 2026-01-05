@@ -21,6 +21,7 @@ This guide covers compliant Page messaging automation, Business login, and the M
    - pages_read_engagement
    - pages_messaging
    - pages_manage_posts
+   - pages_manage_metadata
    - catalog_management (only if using Catalog sync)
 
 ## Step 3: Set Environment Variables
@@ -60,6 +61,7 @@ Set MARKETPLACE_PARTNER_APPROVED=true only after approval.
    - message_deliveries
    - message_reads
    - messaging_postbacks
+5. Optional: In LotView, click "Subscribe Pages" to auto-register Page webhooks.
 
 ## Step 7: Route Pages + DM Links
 

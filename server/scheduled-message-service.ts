@@ -1,5 +1,6 @@
 import { storage } from "./storage";
 import { createGhlApiService } from "./ghl-api-service";
+import { completeMessengerResponseTasks } from "./messenger-sla-service";
 import OpenAI from "openai";
 
 interface ScheduleDetectionResult {
@@ -309,6 +310,16 @@ export async function processScheduledMessages(): Promise<void> {
             });
             continue;
           }
+
+          const lastInboundAt = await storage.getLastInboundMessageAt(message.dealershipId, message.conversationId);
+          if (!lastInboundAt || (Date.now() - lastInboundAt.getTime()) > 24 * 60 * 60 * 1000) {
+            console.log(`[ScheduledMessage] Skipping message ${message.id} - outside 24-hour messaging window`);
+            await storage.updateScheduledMessage(message.id, message.dealershipId, {
+              status: 'skipped',
+              errorMessage: 'Messaging window closed (outside 24-hour window)',
+            });
+            continue;
+          }
           
           // Check if conversation is in watch mode (manual takeover)
           // AI should watch but not send auto-responses
@@ -352,6 +363,14 @@ export async function processScheduledMessages(): Promise<void> {
             await storage.updateScheduledMessage(message.id, message.dealershipId, {
               status: 'sent',
             });
+            try {
+              await completeMessengerResponseTasks({
+                dealershipId: message.dealershipId,
+                conversationId: message.conversationId,
+              });
+            } catch (slaError: any) {
+              console.warn('[ScheduledMessage] Messenger SLA completion failed:', slaError?.message || slaError);
+            }
             console.log(`[ScheduledMessage] Sent scheduled message ${message.id}`);
           } else {
             await storage.updateScheduledMessage(message.id, message.dealershipId, {

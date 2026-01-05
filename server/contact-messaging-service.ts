@@ -494,14 +494,18 @@ export function createContactMessagingService(dealershipId: number) {
       
       const conversation = conversations[0];
       
-      // Get the Facebook account to get the page access token
-      const facebookAccount = await storage.getFacebookAccountByIdDirect(conversation.facebookAccountId, dealershipId);
-      if (!facebookAccount || !facebookAccount.accessToken) {
+      const conversationWithToken = await storage.getMessengerConversationById(conversation.id, dealershipId);
+      if (!conversationWithToken?.pageAccessToken) {
         return { success: false, error: 'Facebook page access token not available' };
+      }
+
+      const lastInboundAt = await storage.getLastInboundMessageAt(dealershipId, conversation.id);
+      if (!lastInboundAt || (Date.now() - lastInboundAt.getTime()) > 24 * 60 * 60 * 1000) {
+        return { success: false, error: 'Messaging window closed (outside 24-hour window)' };
       }
       
       const result = await facebookService.sendMessengerMessage(
-        facebookAccount.accessToken,
+        conversationWithToken.pageAccessToken,
         contact.facebookId,
         content
       );

@@ -228,6 +228,7 @@ async function seedDealerships() {
     const chatPromptData = dealershipsNeedingPrompts.flatMap(dealership => [
       {
         dealershipId: dealership.id,
+        name: "Test Drive Assistant",
         scenario: "test-drive",
         systemPrompt: `You are a helpful assistant for ${dealership.name}. Help customers schedule test drives. Be friendly, professional, and gather: preferred date/time, contact information, and which vehicle they're interested in. If they have questions about the vehicle, answer them enthusiastically.`,
         greeting: `Hi! I'd love to help you schedule a test drive at ${dealership.name}. Which vehicle are you interested in?`,
@@ -235,6 +236,7 @@ async function seedDealerships() {
       },
       {
         dealershipId: dealership.id,
+        name: "Get Approved Assistant",
         scenario: "get-approved",
         systemPrompt: `You are a financing specialist for ${dealership.name}. Help customers understand their financing options and pre-approval process. Gather: employment status, credit score range, down payment amount, and monthly budget. Explain the benefits of getting pre-approved and how it speeds up the buying process.`,
         greeting: `Welcome to ${dealership.name}! Let's explore your financing options. Getting pre-approved is quick and won't affect your credit score. What vehicle are you interested in financing?`,
@@ -242,6 +244,7 @@ async function seedDealerships() {
       },
       {
         dealershipId: dealership.id,
+        name: "Trade-In Valuation",
         scenario: "value-trade",
         systemPrompt: `You are a trade-in specialist for ${dealership.name}. Help customers get a trade-in valuation for their current vehicle. Gather: year, make, model, trim, odometer reading, condition, and any issues. Explain that we offer competitive trade-in values and can provide an instant estimate.`,
         greeting: `Hi! I can help you get a trade-in value for your current vehicle. What are you driving right now?`,
@@ -249,6 +252,7 @@ async function seedDealerships() {
       },
       {
         dealershipId: dealership.id,
+        name: "Reservation Assistant",
         scenario: "reserve",
         systemPrompt: `You are a reservation specialist for ${dealership.name}. Help customers reserve vehicles with a refundable deposit. Gather: which vehicle they want to reserve, contact information, and preferred payment method. Explain that reservations are fully refundable and hold the vehicle for 48 hours.`,
         greeting: `Great choice! I can help you reserve this vehicle. Reservations are fully refundable and hold the vehicle for 48 hours. Let me get a few details from you.`,
@@ -256,6 +260,7 @@ async function seedDealerships() {
       },
       {
         dealershipId: dealership.id,
+        name: "General Sales Assistant",
         scenario: "general",
         systemPrompt: `You are a knowledgeable sales assistant for ${dealership.name}. Answer questions about vehicles, inventory, features, pricing, and dealership services. Be helpful, enthusiastic, and guide customers toward booking a test drive or speaking with a sales specialist for specific pricing questions.`,
         greeting: `Welcome to ${dealership.name}! How can I help you today? Are you looking for something specific or would you like to browse our inventory?`,

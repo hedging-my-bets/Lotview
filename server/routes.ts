@@ -17,6 +17,7 @@ import {
   insertCrmTagSchema,
   insertCrmActivitySchema,
   insertCrmTaskSchema,
+  type ListingBundle,
   ghlAccounts,
   ghlContactSync,
   ghlAppointmentSync,
@@ -38,11 +39,16 @@ import { facebookService } from "./facebook-service";
 import { marketplacePublisher } from "./marketplace-publisher";
 import { buildMarketplaceListingDraft } from "./marketplace-utils";
 import { generateMarketplaceContent, type SocialTemplates } from "./openai";
+import { buildListingBundlePayload } from "./listing-bundle-service";
+import { suggestMarketplaceReply } from "./marketplace-copilot-service";
+import { handleMessengerNurture } from "./messenger-nurture-service";
+import { ensureMessengerResponseTask, completeMessengerResponseTasks, reassignMessengerResponseTasks } from "./messenger-sla-service";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import archiver from "archiver";
 import { decodeVIN } from "./vin-decoder";
 import { enrichVIN, toVINDecodeResult } from "./vin-enrichment-service";
 import { createPbsApiService } from "./pbs-api-service";
@@ -86,6 +92,35 @@ interface OAuthSession {
 }
 const oauthSessionStore = new Map<string, OAuthSession>();
 const facebookWebhookVerifyToken = process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN || process.env.META_WEBHOOK_VERIFY_TOKEN;
+const defaultMetaWebhookFields = ['messages', 'message_deliveries', 'message_reads', 'messaging_postbacks'];
+
+function parseFacebookSignature(signatureHeader: string | string[] | undefined): string | null {
+  if (!signatureHeader || Array.isArray(signatureHeader)) return null;
+  const [algo, hash] = signatureHeader.split('=');
+  if (!hash || algo !== 'sha256') return null;
+  return hash;
+}
+
+function verifyFacebookSignature(rawBody: Buffer, appSecret: string, signatureHash: string): boolean {
+  const expected = crypto.createHmac('sha256', appSecret).update(rawBody).digest('hex');
+  if (expected.length !== signatureHash.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signatureHash));
+}
+
+async function resolveFacebookAppConfig(dealershipId?: number): Promise<{ appId?: string; appSecret?: string }> {
+  if (dealershipId) {
+    const apiKeys = await storage.getDealershipApiKeys(dealershipId);
+    return {
+      appId: apiKeys?.facebookAppId || process.env.FACEBOOK_APP_ID,
+      appSecret: apiKeys?.facebookAppSecret || process.env.FACEBOOK_APP_SECRET
+    };
+  }
+
+  return {
+    appId: process.env.FACEBOOK_APP_ID,
+    appSecret: process.env.FACEBOOK_APP_SECRET
+  };
+}
 
 // Clean up expired states every hour
 setInterval(() => {
@@ -3921,6 +3956,17 @@ Provide a single, concise, friendly message that continues the conversation natu
         lastMessageAt: new Date()
       });
 
+      try {
+        await completeMessengerResponseTasks({ dealershipId, conversationId });
+      } catch (slaError) {
+        logWarn('Messenger SLA completion failed', {
+          route: 'api-messenger-conversations-id-reply',
+          dealershipId,
+          conversationId,
+          error: slaError instanceof Error ? slaError.message : String(slaError)
+        });
+      }
+
       // Sync message to GoHighLevel - MUST await to store ghlMessageId before webhook arrives
       // This prevents duplicate messages when GHL webhook fires before ghlMessageId is persisted
       const ghlSyncEnabled = await isFeatureEnabled(FEATURE_FLAGS.ENABLE_GHL_MESSENGER_SYNC, dealershipId);
@@ -4233,11 +4279,26 @@ Provide a single, concise, friendly message that continues the conversation natu
       }
 
       const assignment = await storage.updateConversationAssignment(
-        dealershipId, 
-        conversationId, 
+        dealershipId,
+        conversationId,
         assignedToUserId,
         req.user?.id
       );
+
+      try {
+        await reassignMessengerResponseTasks({
+          dealershipId,
+          conversationId,
+          assignedToUserId,
+        });
+      } catch (slaError) {
+        logWarn('Messenger SLA reassignment failed', {
+          route: 'api-messenger-conversations-id-assign',
+          dealershipId,
+          conversationId,
+          error: slaError instanceof Error ? slaError.message : String(slaError)
+        });
+      }
 
       res.json({ success: true, assignment });
     } catch (error) {
@@ -4538,6 +4599,23 @@ Provide a single, concise, friendly message that continues the conversation natu
       
       if (!conversation) {
         return res.status(404).json({ error: "Conversation not found" });
+      }
+
+      if (assignedToUserId !== undefined) {
+        try {
+          await reassignMessengerResponseTasks({
+            dealershipId,
+            conversationId,
+            assignedToUserId: assignedToUserId ?? null,
+          });
+        } catch (slaError) {
+          logWarn('Messenger SLA reassignment failed', {
+            route: 'api-messenger-conversations-id-metadata',
+            dealershipId,
+            conversationId,
+            error: slaError instanceof Error ? slaError.message : String(slaError)
+          });
+        }
       }
       
       // Sync metadata to GHL if conversation is linked and GHL sync is enabled
@@ -6593,8 +6671,15 @@ Format your response in clear sections with actionable recommendations.`;
   });
 
   // Check if Facebook is configured
-  app.get("/api/facebook/config/status", authMiddleware, requireRole("salesperson"), (req, res) => {
-    res.json({ configured: facebookService.isConfigured() });
+  app.get("/api/facebook/config/status", authMiddleware, requireRole("salesperson"), async (req, res) => {
+    const dealershipId = req.dealershipId!;
+    const appConfig = await resolveFacebookAppConfig(dealershipId);
+    res.json({ 
+      configured: facebookService.isConfigured({
+        facebookAppId: appConfig.appId,
+        facebookAppSecret: appConfig.appSecret
+      }) 
+    });
   });
 
   // ===== NEW SESSION-BASED OAUTH FLOW =====
@@ -6629,7 +6714,11 @@ Format your response in clear sections with actionable recommendations.`;
       (oauthStateStore.get(state) as any).sessionId = sessionId;
       (oauthStateStore.get(state) as any).isNewFlow = true;
       
-      const authUrl = facebookService.getAuthUrl(state);
+      const appConfig = await resolveFacebookAppConfig(dealershipId);
+      const authUrl = facebookService.getAuthUrl(state, {
+        facebookAppId: appConfig.appId,
+        facebookAppSecret: appConfig.appSecret
+      });
       res.json({ authUrl, sessionId });
     } catch (error) {
       logError('Error starting OAuth session:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-oauth-start' });
@@ -6652,7 +6741,11 @@ Format your response in clear sections with actionable recommendations.`;
         flow: 'business'
       });
 
-      const authUrl = facebookService.getBusinessAuthUrl(state);
+      const appConfig = await resolveFacebookAppConfig(dealershipId);
+      const authUrl = facebookService.getBusinessAuthUrl(state, {
+        facebookAppId: appConfig.appId,
+        facebookAppSecret: appConfig.appSecret
+      });
       res.json({ authUrl });
     } catch (error) {
       logError('Error starting Business OAuth session:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-business-oauth-start' });
@@ -6851,7 +6944,11 @@ Format your response in clear sections with actionable recommendations.`;
         expiresAt: Date.now() + 600000
       });
       
-      const authUrl = facebookService.getAuthUrl(state);
+      const appConfig = await resolveFacebookAppConfig(dealershipId);
+      const authUrl = facebookService.getAuthUrl(state, {
+        facebookAppId: appConfig.appId,
+        facebookAppSecret: appConfig.appSecret
+      });
       res.json({ authUrl });
     } catch (error) {
       logError('Error initiating OAuth:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-oauth-init-accountId' });
@@ -6919,10 +7016,16 @@ Format your response in clear sections with actionable recommendations.`;
         `);
       }
 
+      const appConfig = await resolveFacebookAppConfig(dealershipId);
+      const facebookConfig = {
+        facebookAppId: appConfig.appId,
+        facebookAppSecret: appConfig.appSecret
+      };
+
       // BUSINESS FLOW: connect Pages via Business Login
       if (flow === 'business') {
-        const { accessToken } = await facebookService.exchangeCodeForToken(code as string);
-        const longLivedToken = await facebookService.getLongLivedToken(accessToken);
+        const { accessToken } = await facebookService.exchangeCodeForToken(code as string, facebookConfig);
+        const longLivedToken = await facebookService.getLongLivedToken(accessToken, facebookConfig);
         const expiresAt = new Date(Date.now() + longLivedToken.expiresIn * 1000);
 
         const businesses = await facebookService.getUserBusinesses(longLivedToken.accessToken);
@@ -6983,8 +7086,8 @@ Format your response in clear sections with actionable recommendations.`;
       }
       
       // Exchange code for tokens
-      const { accessToken } = await facebookService.exchangeCodeForToken(code as string);
-      const longLivedToken = await facebookService.getLongLivedToken(accessToken);
+      const { accessToken } = await facebookService.exchangeCodeForToken(code as string, facebookConfig);
+      const longLivedToken = await facebookService.getLongLivedToken(accessToken, facebookConfig);
       const userInfo = await facebookService.getUserInfo(longLivedToken.accessToken);
       const expiresAt = new Date(Date.now() + longLivedToken.expiresIn * 1000);
       
@@ -7031,6 +7134,19 @@ Format your response in clear sections with actionable recommendations.`;
       }
       
       // LEGACY FLOW: Update existing account directly
+      if (!accountId || typeof accountId !== 'number') {
+        return res.status(400).send(`
+          <html>
+            <head><title>Invalid Account</title></head>
+            <body style="font-family: system-ui; text-align: center; padding: 50px;">
+              <h1>Account Missing</h1>
+              <p>This connection request is missing the account reference. Please restart the connection.</p>
+              <button onclick="window.close()">Close</button>
+            </body>
+          </html>
+        `);
+      }
+
       const account = await storage.getFacebookAccountById(accountId, userId, dealershipId);
       if (!account) {
         return res.status(403).send(`
@@ -7181,18 +7297,85 @@ Format your response in clear sections with actionable recommendations.`;
   app.get("/api/facebook/connected-pages", authMiddleware, async (req, res) => {
     try {
       const dealershipId = req.dealershipId!;
+      const includeWebhookStatus = req.query.includeWebhookStatus === 'true';
       const pages = await storage.getFacebookPages(dealershipId);
-      
+
+      const appConfig = includeWebhookStatus ? await resolveFacebookAppConfig(dealershipId) : null;
+      const appId = appConfig?.appId;
+
       // Explicitly exclude sensitive token data from response
-      const safePages = pages.map(({ accessToken, ...page }) => ({
-        ...page,
-        hasValidToken: !!accessToken
-      }));
-      
+      const safePages = await Promise.all(
+        pages.map(async ({ accessToken, ...page }) => {
+          let webhookSubscribed: boolean | null = null;
+
+          if (includeWebhookStatus && accessToken && appId) {
+            try {
+              const subscribedApps = await facebookService.getPageSubscribedApps(accessToken, page.pageId);
+              webhookSubscribed = subscribedApps.some((app) => app.id === appId);
+            } catch (error) {
+              logWarn('Error checking webhook subscription status', {
+                route: 'api-facebook-connected-pages',
+                pageId: page.pageId,
+                error: error instanceof Error ? error.message : String(error)
+              });
+            }
+          }
+
+          return {
+            ...page,
+            hasValidToken: !!accessToken,
+            webhookSubscribed
+          };
+        })
+      );
+
       res.json(safePages);
     } catch (error) {
       logError('Error fetching connected pages:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-connected-pages' });
       res.status(500).json({ error: "Failed to fetch connected pages" });
+    }
+  });
+
+  // Subscribe connected Pages to Messenger webhooks
+  app.post("/api/facebook/pages/subscribe", authMiddleware, requireRole("manager", "admin", "master", "super_admin"), async (req, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const { pageIds, fields } = req.body || {};
+      const pages = await storage.getFacebookPages(dealershipId);
+
+      const targetPages = Array.isArray(pageIds) && pageIds.length > 0
+        ? pages.filter((page) => pageIds.includes(page.pageId))
+        : pages;
+
+      const subscribedFields = Array.isArray(fields) && fields.length > 0
+        ? fields.filter((field) => typeof field === 'string')
+        : defaultMetaWebhookFields;
+
+      const results: Array<{ pageId: string; pageName: string; success: boolean; error?: string }> = [];
+
+      for (const page of targetPages) {
+        if (!page.accessToken) {
+          results.push({ pageId: page.pageId, pageName: page.pageName, success: false, error: 'Page access token missing' });
+          continue;
+        }
+
+        try {
+          await facebookService.subscribePageToWebhooks(page.accessToken, page.pageId, subscribedFields);
+          results.push({ pageId: page.pageId, pageName: page.pageName, success: true });
+        } catch (error) {
+          results.push({
+            pageId: page.pageId,
+            pageName: page.pageName,
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to subscribe page'
+          });
+        }
+      }
+
+      res.json({ success: true, fields: subscribedFields, results });
+    } catch (error) {
+      logError('Error subscribing Pages to webhooks:', error instanceof Error ? error : new Error(String(error)), { route: 'api-facebook-pages-subscribe' });
+      res.status(500).json({ error: "Failed to subscribe pages" });
     }
   });
 
@@ -9329,24 +9512,92 @@ Format your response in clear sections with actionable recommendations.`;
         return res.sendStatus(200);
       }
 
+      const pageCache = new Map<string, any>();
+      const loadPage = async (pageId: string) => {
+        if (pageCache.has(pageId)) {
+          return pageCache.get(pageId);
+        }
+        const page = await storage.getFacebookPageByPageId(pageId);
+        pageCache.set(pageId, page || null);
+        return page;
+      };
+
+      const firstEntry = body.entry[0];
+      const firstPageId = firstEntry?.id;
+      const firstPage = firstPageId ? await loadPage(firstPageId) : null;
+      const appConfig = await resolveFacebookAppConfig(firstPage?.dealershipId);
+      const signatureHash = parseFacebookSignature(req.headers['x-hub-signature-256']);
+      const rawBody = req.rawBody;
+
+      if (appConfig.appSecret) {
+        if (!signatureHash || !rawBody || !Buffer.isBuffer(rawBody)) {
+          logWarn('Meta webhook signature missing or invalid', {
+            route: 'webhooks-meta',
+            hasSignature: !!signatureHash
+          });
+          return res.sendStatus(403);
+        }
+
+        if (!verifyFacebookSignature(rawBody as Buffer, appConfig.appSecret, signatureHash)) {
+          logWarn('Meta webhook signature mismatch', { route: 'webhooks-meta' });
+          return res.sendStatus(403);
+        }
+      }
+
       for (const entry of body.entry) {
         const pageId = entry.id;
         if (!pageId || !Array.isArray(entry.messaging)) continue;
 
-        const page = await storage.getFacebookPageByPageId(pageId);
+        const page = await loadPage(pageId);
         if (!page) continue;
 
         const dealershipId = page.dealershipId;
 
         for (const event of entry.messaging) {
           const senderId = event.sender?.id;
-          const message = event.message;
+          if (!senderId) continue;
 
-          if (!senderId || !message) continue;
-          if (message.is_echo) continue;
+          if (event.read) {
+            const conversationKey = `${pageId}:${senderId}`;
+            const existingConversation = await storage.getMessengerConversationByConversationId(dealershipId, conversationKey);
+            if (existingConversation) {
+              await storage.markMessagesAsRead(dealershipId, existingConversation.id);
+            }
+            continue;
+          }
+
+          const message = event.message;
+          const postback = event.postback;
+
+          if (message?.is_echo) continue;
+          if (!message && !postback) continue;
 
           const conversationKey = `${pageId}:${senderId}`;
           let conversation = await storage.getMessengerConversationByConversationId(dealershipId, conversationKey);
+
+          const eventTimestamp = event.timestamp || Date.now();
+          let content = '';
+          let attachmentType: string | undefined;
+          let attachmentUrl: string | undefined;
+
+          if (message) {
+            content = message.text || '';
+
+            const quickReplyPayload = message.quick_reply?.payload;
+            if (!content && quickReplyPayload) {
+              content = `Quick reply: ${quickReplyPayload}`;
+            }
+
+            const attachment = Array.isArray(message.attachments) ? message.attachments[0] : null;
+            attachmentType = attachment?.type;
+            attachmentUrl = attachment?.payload?.url;
+
+            if (!content) {
+              content = attachmentUrl ? '[Attachment]' : '[Message]';
+            }
+          } else if (postback) {
+            content = postback.title || postback.payload || '[Postback]';
+          }
 
           if (!conversation) {
             conversation = await storage.createMessengerConversation({
@@ -9358,8 +9609,8 @@ Format your response in clear sections with actionable recommendations.`;
               conversationId: conversationKey,
               participantName: `Facebook User`,
               participantId: senderId,
-              lastMessage: message.text || '[Attachment]',
-              lastMessageAt: new Date(event.timestamp || Date.now()),
+              lastMessage: content,
+              lastMessageAt: new Date(eventTimestamp),
               unreadCount: 1,
               status: 'active'
             });
@@ -9379,13 +9630,12 @@ Format your response in clear sections with actionable recommendations.`;
             }
           }
 
-          const facebookMessageId = message.mid || `fb_${pageId}_${senderId}_${event.timestamp || Date.now()}`;
+          const fallbackId = postback
+            ? `fb_postback_${pageId}_${senderId}_${eventTimestamp}`
+            : `fb_${pageId}_${senderId}_${eventTimestamp}`;
+          const facebookMessageId = message?.mid || fallbackId;
           const existingMessage = await storage.getMessengerMessageByFacebookId(dealershipId, facebookMessageId);
           if (existingMessage) continue;
-
-          const attachment = Array.isArray(message.attachments) ? message.attachments[0] : null;
-          const attachmentType = attachment?.type;
-          const attachmentUrl = attachment?.payload?.url;
 
           await storage.createMessengerMessage({
             dealershipId,
@@ -9394,18 +9644,43 @@ Format your response in clear sections with actionable recommendations.`;
             senderId,
             senderName: conversation.participantName || 'Facebook User',
             isFromCustomer: true,
-            content: message.text || '[Attachment]',
+            content,
             attachmentType,
             attachmentUrl,
             isRead: false,
-            sentAt: new Date(event.timestamp || Date.now()),
+            sentAt: new Date(eventTimestamp),
             syncSource: 'facebook'
           });
 
           await storage.updateMessengerConversation(conversation.id, dealershipId, {
-            lastMessage: message.text || '[Attachment]',
-            lastMessageAt: new Date(event.timestamp || Date.now()),
+            lastMessage: content,
+            lastMessageAt: new Date(eventTimestamp),
             unreadCount: (conversation.unreadCount || 0) + 1
+          });
+
+          try {
+            await ensureMessengerResponseTask({
+              dealershipId,
+              conversationId: conversation.id,
+              assignedToUserId: conversation.assignedToUserId ?? null,
+              participantName: conversation.participantName,
+              pageName: conversation.pageName,
+              messagePreview: content,
+            });
+          } catch (slaError) {
+            logWarn('Messenger SLA task update failed', {
+              route: 'webhooks-meta',
+              dealershipId,
+              conversationId: conversation.id,
+              error: slaError instanceof Error ? slaError.message : String(slaError)
+            });
+          }
+
+          void handleMessengerNurture({
+            dealershipId,
+            conversationId: conversation.id,
+            messageText: content,
+            senderId,
           });
         }
       }
@@ -13850,6 +14125,39 @@ Format your response in clear sections with actionable recommendations.`;
   });
 
   // ==================== MARKETPLACE BLAST ROUTES ====================
+
+  const parseJsonArray = (value?: string | null): string[] => {
+    if (!value) return [];
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.map(item => String(item)).filter(Boolean);
+      }
+    } catch {
+      return [];
+    }
+    return [];
+  };
+
+  const normalizeListingBundle = (bundle: ListingBundle) => ({
+    ...bundle,
+    features: parseJsonArray(bundle.features),
+    hashtags: parseJsonArray(bundle.hashtags),
+  });
+
+  const extractMarketplaceListingId = (listingUrl: string): string | null => {
+    try {
+      const url = new URL(listingUrl);
+      const pathMatch = url.pathname.match(/\/item\/(\d+)/i);
+      if (pathMatch?.[1]) {
+        return pathMatch[1];
+      }
+      const queryId = url.searchParams.get("item_id") || url.searchParams.get("id");
+      return queryId || null;
+    } catch {
+      return null;
+    }
+  };
   
   // Get vehicles for Marketplace Blast queue (sorted by priority - aged inventory first)
   app.get("/api/marketplace-blast/queue", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
@@ -13912,15 +14220,284 @@ Format your response in clear sections with actionable recommendations.`;
         carfaxUrl: v.carfaxUrl,
         badges: v.badges || []
       }));
+
+      const vehicleIds = queue.map(vehicle => vehicle.id);
+      const activeListings = await storage.getActiveListingInstancesByVehicleIds(dealershipId, vehicleIds);
+      const activeListingMap = new Map<number, (typeof activeListings)[number]>();
+      for (const listing of activeListings) {
+        if (!activeListingMap.has(listing.vehicleId)) {
+          activeListingMap.set(listing.vehicleId, listing);
+        }
+      }
+
+      const queueWithListings = queue.map(vehicle => {
+        const activeListing = activeListingMap.get(vehicle.id);
+        return {
+          ...vehicle,
+          activeListingStatus: activeListing?.status ?? null,
+          activeListingByName: activeListing?.postedByName ?? null,
+          activeListingById: activeListing?.postedById ?? null,
+          activeListingId: activeListing?.id ?? null,
+          activeListingBundleId: activeListing?.bundleId ?? null
+        };
+      });
       
       res.json({ 
-        vehicles: queue,
+        vehicles: queueWithListings,
         total: filtered.length,
         hasMore: filtered.length > limit
       });
     } catch (error: any) {
       logError('Error fetching marketplace blast queue:', error instanceof Error ? error : new Error(String(error)), { route: 'api-marketplace-blast-queue' });
       res.status(500).json({ error: error.message || "Failed to fetch queue" });
+    }
+  });
+
+  app.get("/api/listing-bundles/vehicle/:vehicleId", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const vehicleId = parseInt(req.params.vehicleId);
+
+      if (Number.isNaN(vehicleId)) {
+        return res.status(400).json({ error: "Invalid vehicleId" });
+      }
+
+      const bundle = await storage.getListingBundleByVehicleId(dealershipId, vehicleId);
+      res.json({ bundle: bundle ? normalizeListingBundle(bundle) : null });
+    } catch (error: any) {
+      logError('Error fetching listing bundle:', error instanceof Error ? error : new Error(String(error)), { route: 'api-listing-bundles-vehicle-id' });
+      res.status(500).json({ error: error.message || "Failed to fetch listing bundle" });
+    }
+  });
+
+  app.post("/api/listing-bundles/vehicle/:vehicleId", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const userId = req.user!.id;
+      const vehicleId = parseInt(req.params.vehicleId);
+
+      if (Number.isNaN(vehicleId)) {
+        return res.status(400).json({ error: "Invalid vehicleId" });
+      }
+
+      const vehicle = await storage.getVehicleById(vehicleId, dealershipId);
+      if (!vehicle) {
+        return res.status(404).json({ error: "Vehicle not found" });
+      }
+
+      const canPost = await storage.userCanPostForRooftop(dealershipId, vehicle.rooftopId ?? 0, userId);
+      if (!canPost) {
+        return res.status(403).json({ error: "You do not have posting access for this rooftop" });
+      }
+
+      const rawTemplateId = req.body?.templateId;
+      const templateId = typeof rawTemplateId === "number" ? rawTemplateId : parseInt(rawTemplateId, 10);
+      const useAi = req.body?.useAi === true;
+      const includePageDmCta = req.body?.includePageDmCta === true;
+      const includeComplianceFooter = req.body?.includeComplianceFooter !== false;
+      const complianceFooter = typeof req.body?.complianceFooter === "string" ? req.body.complianceFooter : null;
+      const pageDmLink = typeof req.body?.pageDmLink === "string" ? req.body.pageDmLink : null;
+      const titleTemplate = typeof req.body?.titleTemplate === "string" ? req.body.titleTemplate : null;
+      const descriptionTemplate = typeof req.body?.descriptionTemplate === "string" ? req.body.descriptionTemplate : null;
+      const templateOverride = (titleTemplate || descriptionTemplate)
+        ? {
+            titleTemplate: titleTemplate || "",
+            descriptionTemplate: descriptionTemplate || ""
+          }
+        : null;
+
+      let template = null;
+      if (!Number.isNaN(templateId) && templateId > 0) {
+        template = await storage.getAdTemplateById(templateId, userId, dealershipId);
+        if (!template) {
+          template = await storage.getSharedAdTemplateById(templateId, dealershipId);
+        }
+      }
+
+      const payload = await buildListingBundlePayload({
+        vehicle,
+        dealershipId,
+        userId,
+        options: {
+          template,
+          templateOverride,
+          useAi,
+          pageDmLink,
+          includePageDmCta,
+          includeComplianceFooter,
+          complianceFooter,
+        },
+      });
+
+      const existing = await storage.getListingBundleByVehicleId(dealershipId, vehicleId);
+      if (existing) {
+        const updated = await storage.updateListingBundle(existing.id, dealershipId, {
+          title: payload.title,
+          description: payload.description,
+          price: payload.price,
+          features: JSON.stringify(payload.features),
+          hashtags: JSON.stringify(payload.hashtags),
+          imageUrls: payload.imageUrls,
+          status: "ready",
+          rooftopId: vehicle.rooftopId ?? null,
+          updatedById: userId,
+        });
+        res.json({ bundle: updated ? normalizeListingBundle(updated) : normalizeListingBundle(existing) });
+        return;
+      }
+
+      const created = await storage.createListingBundle({
+        dealershipId,
+        vehicleId,
+        rooftopId: vehicle.rooftopId ?? null,
+        title: payload.title,
+        description: payload.description,
+        price: payload.price,
+        features: JSON.stringify(payload.features),
+        hashtags: JSON.stringify(payload.hashtags),
+        imageUrls: payload.imageUrls,
+        status: "ready",
+        createdById: userId,
+        updatedById: userId,
+      });
+
+      res.status(201).json({ bundle: normalizeListingBundle(created) });
+    } catch (error: any) {
+      logError('Error generating listing bundle:', error instanceof Error ? error : new Error(String(error)), { route: 'api-listing-bundles-vehicle-id' });
+      res.status(500).json({ error: error.message || "Failed to generate listing bundle" });
+    }
+  });
+
+  app.post("/api/listing-bundles/auto-prep", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const userId = req.user!.id;
+      const includePosted = req.body?.includePosted === true;
+      const limit = Math.min(parseInt(req.body?.limit, 10) || 10, 20);
+      const regenerate = req.body?.regenerate === true;
+      const useAi = req.body?.useAi === true;
+      const includePageDmCta = req.body?.includePageDmCta === true;
+      const includeComplianceFooter = req.body?.includeComplianceFooter !== false;
+      const complianceFooter = typeof req.body?.complianceFooter === "string" ? req.body.complianceFooter : null;
+      const pageDmLink = typeof req.body?.pageDmLink === "string" ? req.body.pageDmLink : null;
+      const titleTemplate = typeof req.body?.titleTemplate === "string" ? req.body.titleTemplate : null;
+      const descriptionTemplate = typeof req.body?.descriptionTemplate === "string" ? req.body.descriptionTemplate : null;
+      const templateOverride = (titleTemplate || descriptionTemplate)
+        ? {
+            titleTemplate: titleTemplate || "",
+            descriptionTemplate: descriptionTemplate || ""
+          }
+        : null;
+
+      const rawTemplateId = req.body?.templateId;
+      const templateId = typeof rawTemplateId === "number" ? rawTemplateId : parseInt(rawTemplateId, 10);
+      let template = null;
+      if (!Number.isNaN(templateId) && templateId > 0) {
+        template = await storage.getAdTemplateById(templateId, userId, dealershipId);
+        if (!template) {
+          template = await storage.getSharedAdTemplateById(templateId, dealershipId);
+        }
+      }
+
+      const result = await storage.getVehicles(dealershipId, 1000, 0);
+      const allVehicles = result.vehicles;
+      const now = new Date();
+      type VehicleWithAge = typeof allVehicles[number] & { daysInStock: number };
+      const vehiclesWithAge: VehicleWithAge[] = allVehicles.map(v => {
+        const createdAt = new Date(v.createdAt);
+        const daysInStock = Math.floor((now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
+        return { ...v, daysInStock };
+      });
+
+      let filtered = vehiclesWithAge;
+      if (!includePosted) {
+        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        filtered = vehiclesWithAge.filter(v =>
+          !v.marketplacePostedAt || new Date(v.marketplacePostedAt) < sevenDaysAgo
+        );
+      }
+
+      filtered.sort((a, b) => {
+        if (b.daysInStock !== a.daysInStock) {
+          return b.daysInStock - a.daysInStock;
+        }
+        return b.price - a.price;
+      });
+
+      const candidates = filtered.slice(0, limit);
+      const results: { vehicleId: number; status: string; reason?: string }[] = [];
+
+      for (const vehicle of candidates) {
+        const canPost = await storage.userCanPostForRooftop(dealershipId, vehicle.rooftopId ?? 0, userId);
+        if (!canPost) {
+          results.push({ vehicleId: vehicle.id, status: "skipped", reason: "no-permission" });
+          continue;
+        }
+
+        const existing = await storage.getListingBundleByVehicleId(dealershipId, vehicle.id);
+        if (existing && !regenerate) {
+          results.push({ vehicleId: vehicle.id, status: "skipped", reason: "exists" });
+          continue;
+        }
+
+        const payload = await buildListingBundlePayload({
+          vehicle,
+          dealershipId,
+          userId,
+          options: {
+            template,
+            templateOverride,
+            useAi,
+            pageDmLink,
+            includePageDmCta,
+            includeComplianceFooter,
+            complianceFooter,
+          },
+        });
+
+        if (existing) {
+          await storage.updateListingBundle(existing.id, dealershipId, {
+            title: payload.title,
+            description: payload.description,
+            price: payload.price,
+            features: JSON.stringify(payload.features),
+            hashtags: JSON.stringify(payload.hashtags),
+            imageUrls: payload.imageUrls,
+            status: "ready",
+            rooftopId: vehicle.rooftopId ?? null,
+            updatedById: userId,
+          });
+          results.push({ vehicleId: vehicle.id, status: "updated" });
+        } else {
+          await storage.createListingBundle({
+            dealershipId,
+            vehicleId: vehicle.id,
+            rooftopId: vehicle.rooftopId ?? null,
+            title: payload.title,
+            description: payload.description,
+            price: payload.price,
+            features: JSON.stringify(payload.features),
+            hashtags: JSON.stringify(payload.hashtags),
+            imageUrls: payload.imageUrls,
+            status: "ready",
+            createdById: userId,
+            updatedById: userId,
+          });
+          results.push({ vehicleId: vehicle.id, status: "created" });
+        }
+      }
+
+      res.json({
+        success: true,
+        processed: results.length,
+        created: results.filter(result => result.status === "created").length,
+        updated: results.filter(result => result.status === "updated").length,
+        skipped: results.filter(result => result.status === "skipped").length,
+        results
+      });
+    } catch (error: any) {
+      logError('Error auto-prepping listing bundles:', error instanceof Error ? error : new Error(String(error)), { route: 'api-listing-bundles-auto-prep' });
+      res.status(500).json({ error: error.message || "Failed to auto-prep listing bundles" });
     }
   });
   
@@ -14042,6 +14619,76 @@ Format your response in clear sections with actionable recommendations.`;
       res.status(500).json({ error: error.message || "Failed to generate content" });
     }
   });
+
+  // Lock a vehicle for posting (prevents duplicate posts)
+  app.post("/api/marketplace-blast/start-posting/:vehicleId", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const userId = req.user!.id;
+      const vehicleId = parseInt(req.params.vehicleId);
+      const posterType = typeof req.body?.posterType === 'string' ? req.body.posterType : 'personal';
+      const channel = typeof req.body?.channel === 'string' ? req.body.channel : 'facebook_marketplace';
+      const rawBundleId = req.body?.bundleId;
+      const bundleId = typeof rawBundleId === 'number'
+        ? rawBundleId
+        : typeof rawBundleId === 'string'
+        ? parseInt(rawBundleId, 10)
+        : null;
+      const normalizedBundleId = Number.isNaN(bundleId ?? NaN) ? null : bundleId;
+
+      if (Number.isNaN(vehicleId)) {
+        return res.status(400).json({ error: "Invalid vehicleId" });
+      }
+      if (posterType && !['personal', 'page'].includes(posterType)) {
+        return res.status(400).json({ error: "Invalid posterType" });
+      }
+      if (channel && !['facebook_marketplace', 'facebook_page', 'instagram'].includes(channel)) {
+        return res.status(400).json({ error: "Invalid channel" });
+      }
+
+      const vehicle = await storage.getVehicleById(vehicleId, dealershipId);
+      if (!vehicle) {
+        return res.status(404).json({ error: "Vehicle not found" });
+      }
+
+      const canPost = await storage.userCanPostForRooftop(dealershipId, vehicle.rooftopId ?? 0, userId);
+      if (!canPost) {
+        return res.status(403).json({ error: "You do not have posting access for this rooftop" });
+      }
+
+      const vin = vehicle.vin?.trim();
+      if (!vin) {
+        return res.status(400).json({ error: "Vehicle VIN is required to start posting" });
+      }
+
+      const existingActive = await storage.getActiveListingInstanceByVin(dealershipId, vin);
+      if (existingActive) {
+        if (existingActive.status === "posting" && existingActive.postedById === userId) {
+          return res.json({ success: true, listingInstanceId: existingActive.id, status: existingActive.status });
+        }
+        return res.status(409).json({ error: "An active listing already exists for this VIN" });
+      }
+
+      const created = await storage.createListingInstance({
+        dealershipId,
+        dealerGroupId: vehicle.dealerGroupId ?? null,
+        rooftopId: vehicle.rooftopId ?? null,
+        vehicleId: vehicle.id,
+        bundleId: normalizedBundleId,
+        vin,
+        channel,
+        posterType,
+        status: 'posting',
+        isActive: true,
+        postedById: userId
+      });
+
+      res.status(201).json({ success: true, listingInstanceId: created.id, status: created.status });
+    } catch (error: any) {
+      logError('Error starting posting lock:', error instanceof Error ? error : new Error(String(error)), { route: 'api-marketplace-blast-start-posting-vehicleId' });
+      res.status(500).json({ error: error.message || "Failed to start posting" });
+    }
+  });
   
   // Mark vehicle as posted to Marketplace
   app.post("/api/marketplace-blast/mark-posted/:vehicleId", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
@@ -14068,30 +14715,61 @@ Format your response in clear sections with actionable recommendations.`;
         return res.status(404).json({ error: "Vehicle not found" });
       }
 
+      const canPost = await storage.userCanPostForRooftop(dealershipId, vehicle.rooftopId ?? 0, userId);
+      if (!canPost) {
+        return res.status(403).json({ error: "You do not have posting access for this rooftop" });
+      }
+
       const vin = vehicle.vin?.trim();
       if (!vin) {
         return res.status(400).json({ error: "Vehicle VIN is required to mark as posted" });
       }
 
       const existingActive = await storage.getActiveListingInstanceByVin(dealershipId, vin);
-      if (existingActive) {
-        return res.status(409).json({ error: "An active listing already exists for this VIN" });
-      }
+      const externalListingId = extractMarketplaceListingId(listingUrl);
+      const isManager = ["manager", "admin", "master", "super_admin"].includes(req.user?.role || "salesperson");
+      const rawBundleId = req.body?.bundleId;
+      const bundleId = typeof rawBundleId === "number"
+        ? rawBundleId
+        : typeof rawBundleId === "string"
+        ? parseInt(rawBundleId, 10)
+        : null;
+      const normalizedBundleId = Number.isNaN(bundleId ?? NaN) ? null : bundleId;
 
-      await storage.createListingInstance({
-        dealershipId,
-        dealerGroupId: vehicle.dealerGroupId ?? null,
-        rooftopId: vehicle.rooftopId ?? null,
-        vehicleId: vehicle.id,
-        vin,
-        channel,
-        posterType,
-        listingUrl,
-        status: 'posted',
-        isActive: true,
-        postedAt: new Date(),
-        postedById: userId
-      });
+      if (existingActive) {
+        const canFinalize = existingActive.status === "posting" && (existingActive.postedById === userId || isManager || !existingActive.postedById);
+        if (!canFinalize) {
+          return res.status(409).json({ error: "An active listing already exists for this VIN" });
+        }
+
+        await storage.updateListingInstance(existingActive.id, dealershipId, {
+          listingUrl,
+          externalListingId,
+          status: 'posted',
+          postedAt: new Date(),
+          postedById: existingActive.postedById ?? userId,
+          channel,
+          posterType,
+          bundleId: (normalizedBundleId ?? existingActive.bundleId) || null
+        });
+      } else {
+        await storage.createListingInstance({
+          dealershipId,
+          dealerGroupId: vehicle.dealerGroupId ?? null,
+          rooftopId: vehicle.rooftopId ?? null,
+          vehicleId: vehicle.id,
+          bundleId: normalizedBundleId,
+          vin,
+          channel,
+          posterType,
+          listingUrl,
+          externalListingId,
+          status: 'posted',
+          isActive: true,
+          postedAt: new Date(),
+          postedById: userId
+        });
+      }
       
       await storage.updateVehicle(vehicleId, {
         marketplacePostedAt: new Date(),
@@ -14119,7 +14797,41 @@ Format your response in clear sections with actionable recommendations.`;
       
       // Return first N images (optimized for Marketplace)
       const images = (vehicle.images || []).slice(0, limit);
-      
+      const format = typeof req.query.format === "string" ? req.query.format : "";
+
+      if (format === "zip") {
+        const safePart = (value: string) => value.replace(/[^a-zA-Z0-9-_]+/g, "-");
+        const fileBase = `${safePart(String(vehicle.year))}-${safePart(vehicle.make)}-${safePart(vehicle.model)}${vehicle.stockNumber ? `-${safePart(vehicle.stockNumber)}` : ""}`;
+        const fileName = `${fileBase || "marketplace-photos"}.zip`;
+
+        res.setHeader("Content-Type", "application/zip");
+        res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+
+        const archive = archiver("zip", { zlib: { level: 9 } });
+        archive.on("error", (err: any) => {
+          throw err;
+        });
+        archive.pipe(res);
+
+        for (let index = 0; index < images.length; index += 1) {
+          const imageUrl = images[index];
+          if (!imageUrl) continue;
+          try {
+            const response = await fetch(imageUrl);
+            if (!response.ok) continue;
+            const buffer = Buffer.from(await response.arrayBuffer());
+            const ext = path.extname(new URL(imageUrl).pathname) || ".jpg";
+            const name = `photo-${String(index + 1).padStart(2, "0")}${ext}`;
+            archive.append(buffer, { name });
+          } catch {
+            continue;
+          }
+        }
+
+        await archive.finalize();
+        return;
+      }
+
       res.json({
         vehicleId,
         vehicleName: `${vehicle.year} ${vehicle.make} ${vehicle.model} ${vehicle.trim}`,
@@ -14129,6 +14841,38 @@ Format your response in clear sections with actionable recommendations.`;
     } catch (error: any) {
       logError('Error fetching photos:', error instanceof Error ? error : new Error(String(error)), { route: 'api-marketplace-blast-photos-vehicleId' });
       res.status(500).json({ error: error.message || "Failed to fetch photos" });
+    }
+  });
+
+  app.post("/api/marketplace-blast/suggest-reply", authMiddleware, requireRole("salesperson", "manager", "admin", "master", "super_admin"), requireDealership, async (req: AuthRequest, res) => {
+    try {
+      const dealershipId = req.dealershipId!;
+      const buyerMessage = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+      const rawVehicleId = req.body?.vehicleId;
+      const vehicleId = typeof rawVehicleId === "number" ? rawVehicleId : parseInt(rawVehicleId, 10);
+
+      if (!buyerMessage) {
+        return res.status(400).json({ error: "message is required" });
+      }
+
+      let vehicle = null;
+      if (!Number.isNaN(vehicleId)) {
+        vehicle = await storage.getVehicleById(vehicleId, dealershipId);
+      }
+
+      const dealership = await storage.getDealership(dealershipId);
+      const result = await suggestMarketplaceReply({
+        dealershipId,
+        buyerMessage,
+        dealershipName: dealership?.name,
+        timeZone: dealership?.timezone || "America/Vancouver",
+        vehicle
+      });
+
+      res.json({ reply: result.reply, intent: result.intent });
+    } catch (error: any) {
+      logError('Error generating marketplace reply:', error instanceof Error ? error : new Error(String(error)), { route: 'api-marketplace-blast-suggest-reply' });
+      res.status(500).json({ error: error.message || "Failed to generate reply" });
     }
   });
   

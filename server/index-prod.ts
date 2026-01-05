@@ -5,7 +5,7 @@ import path from "node:path";
 import express, { type Express, type Request } from "express";
 
 import runApp from "./app";
-import { startInventoryScheduler, startMarketAnalysisScheduler, startFacebookCatalogScheduler, startGhlSyncScheduler, startAutomationScheduler, startReengagementScheduler, startScheduledMessageScheduler } from "./scheduler";
+import { startInventoryScheduler, startMarketAnalysisScheduler, startFacebookCatalogScheduler, startGhlSyncScheduler, startAutomationScheduler, startReengagementScheduler, startScheduledMessageScheduler, startMessengerSlaScheduler } from "./scheduler";
 import { startPostingScheduler } from "./posting-scheduler";
 
 export async function serveStatic(app: Express, server: Server) {
@@ -49,6 +49,9 @@ export async function serveStatic(app: Express, server: Server) {
   
   // Start the scheduled message scheduler
   startScheduledMessageScheduler();
+
+  // Start the Messenger SLA alert scheduler
+  startMessengerSlaScheduler();
   
   await runApp(serveStatic);
 })();

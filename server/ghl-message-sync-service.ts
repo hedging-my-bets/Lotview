@@ -1,6 +1,7 @@
 import { storage as defaultStorage } from "./storage";
 import { createGhlApiService as defaultCreateGhlApiService } from "./ghl-api-service";
 import { facebookService as defaultFacebookService } from "./facebook-service";
+import { ensureMessengerResponseTask, completeMessengerResponseTasks } from "./messenger-sla-service";
 import type { MessengerConversation, MessengerMessage } from "@shared/schema";
 import type { IStorage } from "./storage";
 
@@ -17,7 +18,12 @@ export interface IGhlApiService {
 
 // Type for Facebook service methods used by this service
 export interface IFacebookService {
-  sendMessengerMessage(pageAccessToken: string, recipientId: string, message: string): Promise<{ messageId: string }>;
+  sendMessengerMessage(
+    pageAccessToken: string,
+    recipientId: string,
+    message: string,
+    options?: { messagingType?: 'RESPONSE' | 'UPDATE' | 'MESSAGE_TAG'; tag?: string }
+  ): Promise<{ messageId: string; recipientId?: string }>;
 }
 
 // Dependencies interface for constructor injection
@@ -241,13 +247,20 @@ export class GhlMessageSyncService {
         // This handles staff replies made directly in GHL (not from Lotview)
         if (conversationWithToken.pageAccessToken && conversationWithToken.participantId) {
           try {
-            console.log(`[GHL Sync] Forwarding outbound GHL message to Facebook Messenger for conversation ${conversationWithToken.id}`);
-            const fbResult = await this.facebookService.sendMessengerMessage(
-              conversationWithToken.pageAccessToken,
-              conversationWithToken.participantId,
-              webhookData.body
-            );
-            console.log(`[GHL Sync] Successfully sent message to Facebook, messageId: ${fbResult.messageId}`);
+            const lastInboundAt = await this.storage.getLastInboundMessageAt(this.dealershipId, conversationWithToken.id);
+            const messagingWindowOpen = !!lastInboundAt && (Date.now() - lastInboundAt.getTime()) <= 24 * 60 * 60 * 1000;
+
+            if (!messagingWindowOpen) {
+              console.log(`[GHL Sync] Skipping Facebook send - outside 24-hour window for conversation ${conversationWithToken.id}`);
+            } else {
+              console.log(`[GHL Sync] Forwarding outbound GHL message to Facebook Messenger for conversation ${conversationWithToken.id}`);
+              const fbResult = await this.facebookService.sendMessengerMessage(
+                conversationWithToken.pageAccessToken,
+                conversationWithToken.participantId,
+                webhookData.body
+              );
+              console.log(`[GHL Sync] Successfully sent message to Facebook, messageId: ${fbResult.messageId}`);
+            }
           } catch (fbError: any) {
             console.error(`[GHL Sync] Failed to forward message to Facebook Messenger:`, fbError.message);
             // Don't fail the whole sync, just log the error
@@ -279,6 +292,35 @@ export class GhlMessageSyncService {
         unreadCount: webhookData.direction === 'inbound' ? (conversationWithToken.unreadCount || 0) + 1 : conversationWithToken.unreadCount,
         lastGhlSyncAt: new Date(),
       } as any);
+
+      const hasSlaSupport =
+        typeof this.storage.getActiveMessengerSlaTasks === 'function' &&
+        typeof this.storage.updateCrmTask === 'function' &&
+        typeof this.storage.createCrmTask === 'function';
+
+      if (hasSlaSupport) {
+        try {
+          if (webhookData.direction === 'inbound') {
+            await ensureMessengerResponseTask({
+              dealershipId: this.dealershipId,
+              conversationId: conversationWithToken.id,
+              assignedToUserId: conversationWithToken.assignedToUserId ?? null,
+              participantName: conversationWithToken.participantName,
+              pageName: conversationWithToken.pageName,
+              messagePreview: webhookData.body,
+              storageOverride: this.storage,
+            });
+          } else {
+            await completeMessengerResponseTasks({
+              dealershipId: this.dealershipId,
+              conversationId: conversationWithToken.id,
+              storageOverride: this.storage,
+            });
+          }
+        } catch (slaError: any) {
+          console.warn('[GHL Sync] Messenger SLA update failed:', slaError?.message || slaError);
+        }
+      }
 
       console.log(`[GHL Sync] Created message from GHL webhook for conversation ${conversationWithToken.id}`);
 

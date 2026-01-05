@@ -246,17 +246,8 @@ export async function seedVehicleForDealership(dealershipId: number, stockNumber
     location: 'Test Location',
     dealership: 'Test Dealership',
     description: 'Test vehicle for integration tests',
-    exteriorColour: 'White',
-    interiorColour: 'Black',
-    transmission: 'Automatic',
-    drivetrain: 'AWD',
-    fuelType: 'Gasoline',
-    engine: '2.0L I4',
-    doors: 4,
-    passengers: 5,
-    listingUrl: '',
-    isNew: false,
-    isHidden: false
+    exteriorColor: 'White',
+    interiorColor: 'Black'
   });
   
   return vehicle;

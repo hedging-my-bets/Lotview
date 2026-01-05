@@ -2633,6 +2633,7 @@ export const crmTasks = pgTable("crm_tasks", {
   aiReason: text("ai_reason"), // Why AI suggested this task
   // Related entities
   vehicleId: integer("vehicle_id").references(() => vehicles.id, { onDelete: 'set null' }),
+  messengerConversationId: integer("messenger_conversation_id").references(() => messengerConversations.id, { onDelete: 'set null' }),
   // Timestamps
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

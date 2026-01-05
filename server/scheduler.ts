@@ -5,11 +5,13 @@ import { storage } from './storage';
 import { facebookService } from './facebook-service';
 import { facebookCatalogService } from './facebook-catalog-service';
 import { processScheduledMessages } from './scheduled-message-service';
+import { processMessengerSlaAlerts } from './messenger-sla-service';
 
 let schedulerInitialized = false;
 let marketAnalysisSchedulerInitialized = false;
 let facebookCatalogSchedulerInitialized = false;
 let scheduledMessageSchedulerInitialized = false;
+let messengerSlaSchedulerInitialized = false;
 
 export function startInventoryScheduler() {
   if (schedulerInitialized) {
@@ -642,4 +644,26 @@ export function startScheduledMessageScheduler() {
 
   scheduledMessageSchedulerInitialized = true;
   console.log('✓ Scheduled message scheduler started (runs every minute)');
+}
+
+/**
+ * Start the Messenger SLA alert scheduler.
+ * Runs every minute to send reminders and overdue alerts.
+ */
+export function startMessengerSlaScheduler() {
+  if (messengerSlaSchedulerInitialized) {
+    console.log('Messenger SLA scheduler already running');
+    return;
+  }
+
+  cron.schedule('* * * * *', async () => {
+    try {
+      await processMessengerSlaAlerts();
+    } catch (error) {
+      console.error('Messenger SLA alert processing failed:', error);
+    }
+  });
+
+  messengerSlaSchedulerInitialized = true;
+  console.log('Messenger SLA scheduler started (runs every minute)');
 }

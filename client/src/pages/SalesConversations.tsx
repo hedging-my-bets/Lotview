@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -47,14 +49,23 @@ import {
   Loader2,
   Bot,
   Brain,
+  CheckCircle2,
   CalendarClock,
   Power,
   X,
   Sparkles,
+  AlertTriangle,
+  Circle,
+  Target,
+  Activity,
+  Phone,
+  Mail,
+  Car,
   Hand,
 } from "lucide-react";
-import { format, isToday, isYesterday } from "date-fns";
+import { format, formatDistanceToNowStrict, isToday, isYesterday } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { useNotifications } from "@/hooks/useNotifications";
 
 type Conversation = {
   id: number;
@@ -74,6 +85,12 @@ type Conversation = {
   aiEnabled?: boolean;
   aiDisabledReason?: string | null;
   aiWatchMode?: boolean;
+  leadStatus?: string | null;
+  pipelineStage?: string | null;
+  tags?: string[] | null;
+  vehicleOfInterest?: string | null;
+  customerPhone?: string | null;
+  customerEmail?: string | null;
 };
 
 type Message = {
@@ -103,6 +120,146 @@ type SalesPerson = {
   name: string;
   role: string;
 };
+
+type IntentCategory =
+  | "availability"
+  | "price"
+  | "appointment"
+  | "financing"
+  | "trade"
+  | "complaint"
+  | "general";
+
+const SLA_RESPONSE_MINUTES = 10;
+
+const INTENT_PATTERNS: { intent: IntentCategory; patterns: RegExp[] }[] = [
+  { intent: "complaint", patterns: [/\bcomplaint\b/i, /\bupset\b/i, /\bangry\b/i, /\bscam\b/i, /\bfraud\b/i] },
+  { intent: "financing", patterns: [/\bfinance\b/i, /\bfinancing\b/i, /\bcredit\b/i, /\bapproval\b/i, /\bapr\b/i] },
+  { intent: "trade", patterns: [/\btrade\b/i, /\btrade[- ]?in\b/i, /\bmy (car|truck|vehicle)\b/i] },
+  { intent: "appointment", patterns: [/\btest drive\b/i, /\bappointment\b/i, /\bschedule\b/i, /\bbook\b/i, /\bvisit\b/i] },
+  { intent: "price", patterns: [/\bprice\b/i, /\bcost\b/i, /\bdeal\b/i, /\bdiscount\b/i, /\bout the door\b/i] },
+  { intent: "availability", patterns: [/\bstill available\b/i, /\bavailable\b/i, /\bin stock\b/i, /\bon the lot\b/i] },
+];
+
+function detectIntentFromMessage(message: string | null | undefined): IntentCategory {
+  if (!message) return "general";
+  for (const rule of INTENT_PATTERNS) {
+    if (rule.patterns.some((pattern) => pattern.test(message))) {
+      return rule.intent;
+    }
+  }
+  return "general";
+}
+
+function formatLabel(value?: string | null): string {
+  if (!value) return "Unknown";
+  return value
+    .split("_")
+    .map((part) => (part.length > 0 ? part[0].toUpperCase() + part.slice(1) : part))
+    .join(" ");
+}
+
+function getLastInboundIndex(messages: Message[]): number {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i].isFromCustomer) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function getSlaState(messages: Message[]) {
+  const lastInboundIndex = getLastInboundIndex(messages);
+  if (lastInboundIndex < 0) {
+    return { status: "none" as const };
+  }
+
+  const lastInbound = messages[lastInboundIndex];
+  const inboundAt = new Date(lastInbound.sentAt);
+  const dueAt = new Date(inboundAt.getTime() + SLA_RESPONSE_MINUTES * 60 * 1000);
+  const now = new Date();
+
+  let responseMessage: Message | null = null;
+  for (let i = lastInboundIndex + 1; i < messages.length; i += 1) {
+    if (!messages[i].isFromCustomer) {
+      responseMessage = messages[i];
+      break;
+    }
+  }
+
+  if (responseMessage) {
+    const responseAt = new Date(responseMessage.sentAt);
+    const responseMinutes = Math.max(1, Math.ceil((responseAt.getTime() - inboundAt.getTime()) / 60000));
+    return {
+      status: "responded" as const,
+      inboundAt,
+      dueAt,
+      responseAt,
+      responseMinutes,
+    };
+  }
+
+  if (now.getTime() <= dueAt.getTime()) {
+    const dueMinutes = Math.max(1, Math.ceil((dueAt.getTime() - now.getTime()) / 60000));
+    return {
+      status: "due" as const,
+      inboundAt,
+      dueAt,
+      dueMinutes,
+    };
+  }
+
+  const overdueMinutes = Math.max(1, Math.ceil((now.getTime() - dueAt.getTime()) / 60000));
+  return {
+    status: "overdue" as const,
+    inboundAt,
+    dueAt,
+    overdueMinutes,
+  };
+}
+
+function computeLeadScore(params: {
+  conversation: Conversation;
+  intent: IntentCategory;
+  slaStatus: ReturnType<typeof getSlaState>;
+}): number {
+  const statusScore: Record<string, number> = {
+    new: 20,
+    cold: 10,
+    warm: 45,
+    hot: 70,
+    pending: 60,
+    sold: 100,
+    lost: 0,
+  };
+  const stageScore: Record<string, number> = {
+    inquiry: 10,
+    qualified: 30,
+    test_drive: 55,
+    negotiation: 70,
+    closed: 90,
+  };
+
+  const base = Math.max(
+    statusScore[params.conversation.leadStatus || "new"] ?? 0,
+    stageScore[params.conversation.pipelineStage || "inquiry"] ?? 0
+  );
+
+  const contactCaptured = !!(params.conversation.customerPhone || params.conversation.customerEmail);
+  const vehicleIdentified = !!params.conversation.vehicleOfInterest;
+  const appointmentIntent = params.intent === "appointment";
+  const responseBonus = params.slaStatus.status === "responded" ? 5 : 0;
+  const overduePenalty = params.slaStatus.status === "overdue" ? 10 : 0;
+
+  const score = base
+    + (contactCaptured ? 10 : 0)
+    + (vehicleIdentified ? 10 : 0)
+    + (appointmentIntent ? 10 : 0)
+    + responseBonus
+    - overduePenalty;
+
+  return Math.max(0, Math.min(100, score));
+}
 
 function formatMessageTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -792,6 +949,217 @@ function EmptyState() {
   );
 }
 
+function NurturePanel({
+  conversation,
+  messages,
+  isLoading,
+}: {
+  conversation: Conversation;
+  messages: Message[];
+  isLoading: boolean;
+}) {
+  const [, forceTick] = useState(0);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      forceTick((value) => value + 1);
+    }, 60000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  const lastInboundIndex = getLastInboundIndex(messages);
+  const lastInbound = lastInboundIndex >= 0 ? messages[lastInboundIndex] : null;
+  const lastInboundAt = lastInbound ? new Date(lastInbound.sentAt) : null;
+  const intent = detectIntentFromMessage(lastInbound?.content);
+  const slaState = getSlaState(messages);
+  const leadScore = computeLeadScore({ conversation, intent, slaStatus: slaState });
+  const contactCaptured = !!(conversation.customerPhone || conversation.customerEmail);
+  const vehicleIdentified = !!conversation.vehicleOfInterest;
+  const appointmentCheckpoint =
+    intent === "appointment" ||
+    conversation.pipelineStage === "test_drive" ||
+    conversation.leadStatus === "hot";
+  const responseSent = slaState.status === "responded";
+  const messagingWindowOpen = lastInboundAt
+    ? Date.now() - lastInboundAt.getTime() <= 24 * 60 * 60 * 1000
+    : false;
+  const tags = conversation.tags || [];
+
+  let slaLabel = "No inbound yet";
+  let slaClass = "text-muted-foreground";
+  if (slaState.status === "responded") {
+    slaLabel = `Replied in ${slaState.responseMinutes} min`;
+    slaClass = "text-green-600";
+  } else if (slaState.status === "due") {
+    slaLabel = `Due in ${slaState.dueMinutes} min`;
+    slaClass = "text-amber-600";
+  } else if (slaState.status === "overdue") {
+    slaLabel = `Overdue by ${slaState.overdueMinutes} min`;
+    slaClass = "text-red-600";
+  }
+
+  const checkpointIcon = (done: boolean, overdue: boolean) => {
+    if (overdue) {
+      return <AlertTriangle className="w-4 h-4 text-red-600" />;
+    }
+    return done ? (
+      <CheckCircle2 className="w-4 h-4 text-green-600" />
+    ) : (
+      <Circle className="w-4 h-4 text-muted-foreground" />
+    );
+  };
+
+  return (
+    <div className="h-full flex flex-col bg-card/70">
+      <div className="p-4 border-b border-border bg-card">
+        <div className="flex items-center gap-2">
+          <Activity className="w-4 h-4 text-[#022d60]" />
+          <span className="font-semibold">Nurture Insights</span>
+        </div>
+      </div>
+      <ScrollArea className="flex-1">
+        <div className="p-4 space-y-4">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-10 text-muted-foreground">
+              <Loader2 className="w-5 h-5 animate-spin mr-2" />
+              Loading insights...
+            </div>
+          ) : (
+            <>
+              <Card>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm">Lead Score</CardTitle>
+                    <Badge variant="outline" className="text-xs">
+                      {leadScore}
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <Progress value={leadScore} className="h-2" />
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1">
+                      <Target className="w-3 h-3" />
+                      Intent
+                    </div>
+                    <Badge variant="secondary" className="text-xs capitalize">
+                      {formatLabel(intent)}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1 text-muted-foreground">
+                      <Clock className="w-3 h-3" />
+                      SLA
+                    </div>
+                    <span className={slaClass}>{slaLabel}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Last inbound</span>
+                    <span>
+                      {lastInboundAt
+                        ? formatDistanceToNowStrict(lastInboundAt, { addSuffix: true })
+                        : "None"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={messagingWindowOpen ? "default" : "secondary"} className="text-xs">
+                      Window {messagingWindowOpen ? "Open" : "Closed"}
+                    </Badge>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm">Conversion Checkpoints</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm">
+                  <div className="flex items-center gap-2">
+                    {checkpointIcon(contactCaptured, false)}
+                    <span className={contactCaptured ? "text-foreground" : "text-muted-foreground"}>
+                      Contact captured
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {checkpointIcon(vehicleIdentified, false)}
+                    <span className={vehicleIdentified ? "text-foreground" : "text-muted-foreground"}>
+                      Vehicle identified
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {checkpointIcon(appointmentCheckpoint, false)}
+                    <span className={appointmentCheckpoint ? "text-foreground" : "text-muted-foreground"}>
+                      Appointment interest
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {checkpointIcon(responseSent, slaState.status === "overdue")}
+                    <span className={responseSent ? "text-foreground" : "text-muted-foreground"}>
+                      Response sent
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm">Lead Details</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Lead status</span>
+                    <Badge variant="outline" className="text-xs">
+                      {formatLabel(conversation.leadStatus)}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Pipeline stage</span>
+                    <Badge variant="outline" className="text-xs">
+                      {formatLabel(conversation.pipelineStage)}
+                    </Badge>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Car className="w-4 h-4 mt-0.5 text-muted-foreground" />
+                    <span className="text-muted-foreground">
+                      {conversation.vehicleOfInterest || "Vehicle not set"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Phone className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-muted-foreground">
+                      {conversation.customerPhone || "Phone not captured"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Mail className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-muted-foreground">
+                      {conversation.customerEmail || "Email not captured"}
+                    </span>
+                  </div>
+                  {tags.length > 0 && (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {tags.slice(0, 4).map((tag) => (
+                        <Badge key={tag} variant="secondary" className="text-xs">
+                          {tag}
+                        </Badge>
+                      ))}
+                      {tags.length > 4 && (
+                        <Badge variant="outline" className="text-xs">
+                          +{tags.length - 4}
+                        </Badge>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
+
 export default function SalesConversations() {
   const [, setLocation] = useLocation();
   const [selectedConversationId, setSelectedConversationId] = useState<number | null>(null);
@@ -801,6 +1169,8 @@ export default function SalesConversations() {
   const [trainingMessageId, setTrainingMessageId] = useState<number | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const authToken = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+  useNotifications({ token: authToken, showToasts: true });
 
   const [user, setUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -1149,32 +1519,48 @@ export default function SalesConversations() {
           />
         </div>
 
-        <div className="hidden md:flex flex-1 flex-col">
-          {selectedConversation ? (
-            <MessageThread
-              conversation={selectedConversation}
-              messages={messages}
-              scheduledMessages={scheduledMessages}
-              onSendMessage={(content) => sendMessageMutation.mutate(content)}
-              onAssign={(id) => assignMutation.mutate(id)}
-              onToggleAI={() => toggleAIMutation.mutate()}
-              onToggleWatchMode={() => toggleWatchModeMutation.mutate()}
-              onCancelScheduled={(id) => cancelScheduledMutation.mutate(id)}
-              onTrainMessage={(messageId, editedPrompt, reason) => 
-                trainMessageMutation.mutate({ messageId, editedPrompt, reason })
-              }
-              salespeople={salespeople}
-              isManager={isManager}
-              isLoadingMessages={messagesLoading}
-              isSending={sendMessageMutation.isPending}
-              isTogglingAI={toggleAIMutation.isPending}
-              isTogglingWatchMode={toggleWatchModeMutation.isPending}
-              cancellingScheduledId={cancellingScheduledId}
-              trainingMessageId={trainingMessageId}
-            />
-          ) : (
-            <EmptyState />
-          )}
+        <div className="hidden md:flex flex-1">
+          <div className="flex-1 flex flex-col">
+            {selectedConversation ? (
+              <MessageThread
+                conversation={selectedConversation}
+                messages={messages}
+                scheduledMessages={scheduledMessages}
+                onSendMessage={(content) => sendMessageMutation.mutate(content)}
+                onAssign={(id) => assignMutation.mutate(id)}
+                onToggleAI={() => toggleAIMutation.mutate()}
+                onToggleWatchMode={() => toggleWatchModeMutation.mutate()}
+                onCancelScheduled={(id) => cancelScheduledMutation.mutate(id)}
+                onTrainMessage={(messageId, editedPrompt, reason) => 
+                  trainMessageMutation.mutate({ messageId, editedPrompt, reason })
+                }
+                salespeople={salespeople}
+                isManager={isManager}
+                isLoadingMessages={messagesLoading}
+                isSending={sendMessageMutation.isPending}
+                isTogglingAI={toggleAIMutation.isPending}
+                isTogglingWatchMode={toggleWatchModeMutation.isPending}
+                cancellingScheduledId={cancellingScheduledId}
+                trainingMessageId={trainingMessageId}
+              />
+            ) : (
+              <EmptyState />
+            )}
+          </div>
+
+          <div className="hidden xl:flex w-[320px] border-l border-border">
+            {selectedConversation ? (
+              <NurturePanel
+                conversation={selectedConversation}
+                messages={messages}
+                isLoading={messagesLoading}
+              />
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
+                Select a conversation
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

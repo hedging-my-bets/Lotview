@@ -321,6 +321,7 @@ export interface IStorage {
   getRooftopMemberships(dealershipId: number, rooftopId: number): Promise<(RooftopMembership & { userName: string; userRole: string })[]>;
   upsertRooftopMembership(params: { dealershipId: number; rooftopId: number; userId: number; role?: string; canPost?: boolean }): Promise<RooftopMembership>;
   getAssignableUsersForRooftop(dealershipId: number, rooftopId: number): Promise<{ id: number; name: string }[]>;
+  userCanPostForRooftop(dealershipId: number, rooftopId: number, userId: number): Promise<boolean>;
   pickAssigneeForRooftop(dealershipId: number, rooftopId: number): Promise<{ id: number; name: string } | null>;
   
   // Dealership API keys
@@ -338,6 +339,7 @@ export interface IStorage {
   getVehicles(dealershipId: number, limit?: number, offset?: number): Promise<{ vehicles: Vehicle[]; total: number }>;
   getVehicleById(id: number, dealershipId: number): Promise<Vehicle | undefined>;
   getVehicleByVin(vin: string, dealershipId: number): Promise<Vehicle | undefined>;
+  getVehicleByStockNumber(stockNumber: string, dealershipId: number): Promise<Vehicle | undefined>;
   deleteVehiclesByVinNotIn(vins: string[], dealershipId: number): Promise<{ deletedCount: number; deletedVins: string[] }>;
   createVehicle(vehicle: InsertVehicle): Promise<Vehicle>;
   updateVehicle(id: number, vehicle: Partial<InsertVehicle>, dealershipId: number): Promise<Vehicle | undefined>;
@@ -559,8 +561,11 @@ export interface IStorage {
   // Listings
   getActiveListingInstanceByVin(dealershipId: number, vin: string): Promise<ListingInstance | undefined>;
   createListingBundle(bundle: InsertListingBundle): Promise<ListingBundle>;
+  getListingBundleByVehicleId(dealershipId: number, vehicleId: number): Promise<ListingBundle | undefined>;
+  updateListingBundle(id: number, dealershipId: number, updates: Partial<InsertListingBundle>): Promise<ListingBundle | undefined>;
   createListingInstance(instance: InsertListingInstance): Promise<ListingInstance>;
   updateListingInstance(id: number, dealershipId: number, updates: Partial<InsertListingInstance>): Promise<ListingInstance | undefined>;
+  getActiveListingInstancesByVehicleIds(dealershipId: number, vehicleIds: number[]): Promise<(ListingInstance & { postedByName?: string | null })[]>;
   
   // Posting Queue (Multi-Tenant - Defense-in-Depth)
   getPostingQueueByUser(userId: number, dealershipId: number): Promise<PostingQueue[]>;
@@ -918,11 +923,16 @@ export interface IStorage {
     priority?: string;
     dueAfter?: Date;
     dueBefore?: Date;
+    messengerConversationId?: number;
+    taskType?: string;
   }, limit?: number): Promise<CrmTask[]>;
   getCrmTaskById(id: number, dealershipId: number): Promise<CrmTask | undefined>;
   createCrmTask(task: InsertCrmTask): Promise<CrmTask>;
   updateCrmTask(id: number, dealershipId: number, task: Partial<InsertCrmTask>): Promise<CrmTask | undefined>;
   deleteCrmTask(id: number, dealershipId: number): Promise<boolean>;
+  getActiveMessengerSlaTasks(dealershipId: number, conversationId: number): Promise<CrmTask[]>;
+  getMessengerSlaTasksForReminder(dealershipId: number, now: Date): Promise<{ task: CrmTask; conversation: MessengerConversation | null }[]>;
+  getMessengerSlaTasksOverdue(dealershipId: number, now: Date): Promise<{ task: CrmTask; conversation: MessengerConversation | null }[]>;
   
   // ====== CRM MESSAGES ======
   createCrmMessage(message: InsertCrmMessage): Promise<CrmMessage>;
@@ -1132,6 +1142,49 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(users.name));
   }
 
+  async userCanPostForRooftop(dealershipId: number, rooftopId: number, userId: number): Promise<boolean> {
+    const userRows = await db.select({
+      role: users.role,
+      isActive: users.isActive
+    })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    const user = userRows[0];
+    if (!user || !user.isActive) {
+      return false;
+    }
+
+    const elevatedRoles = new Set(["manager", "admin", "master", "super_admin"]);
+    if (elevatedRoles.has(user.role)) {
+      return true;
+    }
+
+    if (!rooftopId) {
+      const membership = await db.select({ id: rooftopMemberships.id })
+        .from(rooftopMemberships)
+        .where(and(
+          eq(rooftopMemberships.dealershipId, dealershipId),
+          eq(rooftopMemberships.userId, userId),
+          eq(rooftopMemberships.canPost, true)
+        ))
+        .limit(1);
+      return !!membership[0];
+    }
+
+    const membership = await db.select({ id: rooftopMemberships.id })
+      .from(rooftopMemberships)
+      .where(and(
+        eq(rooftopMemberships.dealershipId, dealershipId),
+        eq(rooftopMemberships.rooftopId, rooftopId),
+        eq(rooftopMemberships.userId, userId),
+        eq(rooftopMemberships.canPost, true)
+      ))
+      .limit(1);
+    return !!membership[0];
+  }
+
   async pickAssigneeForRooftop(dealershipId: number, rooftopId: number): Promise<{ id: number; name: string } | null> {
     const assignedCount = sql<number>`count(${messengerConversations.id})`;
     const rows = await db.select({
@@ -1253,6 +1306,19 @@ export class DatabaseStorage implements IStorage {
     const result = await db.select().from(vehicles)
       .where(and(
         sql`UPPER(TRIM(${vehicles.vin})) = ${normalizedVin}`,
+        eq(vehicles.dealershipId, dealershipId)
+      ))
+      .limit(1);
+    return result[0];
+  }
+
+  async getVehicleByStockNumber(stockNumber: string, dealershipId: number): Promise<Vehicle | undefined> {
+    const normalizedStock = stockNumber.trim().toUpperCase();
+    if (!normalizedStock) return undefined;
+
+    const result = await db.select().from(vehicles)
+      .where(and(
+        sql`UPPER(TRIM(${vehicles.stockNumber})) = ${normalizedStock}`,
         eq(vehicles.dealershipId, dealershipId)
       ))
       .limit(1);
@@ -1691,7 +1757,10 @@ export class DatabaseStorage implements IStorage {
       if (assignedConversationIds.length > 0) {
         accessConditions.push(inArray(messengerConversations.id, assignedConversationIds));
       }
-      conditions.push(or(...accessConditions));
+      const accessFilter = or(...accessConditions);
+      if (accessFilter) {
+        conditions.push(accessFilter);
+      }
     }
 
     const rows = await db.select()
@@ -2899,12 +2968,55 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
+  async getListingBundleByVehicleId(dealershipId: number, vehicleId: number): Promise<ListingBundle | undefined> {
+    const result = await db.select()
+      .from(listingBundles)
+      .where(and(
+        eq(listingBundles.dealershipId, dealershipId),
+        eq(listingBundles.vehicleId, vehicleId)
+      ))
+      .orderBy(desc(listingBundles.updatedAt))
+      .limit(1);
+    return result[0];
+  }
+
+  async updateListingBundle(id: number, dealershipId: number, updates: Partial<InsertListingBundle>): Promise<ListingBundle | undefined> {
+    const result = await db.update(listingBundles)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(
+        eq(listingBundles.id, id),
+        eq(listingBundles.dealershipId, dealershipId)
+      ))
+      .returning();
+    return result[0];
+  }
+
   async createListingInstance(instance: InsertListingInstance): Promise<ListingInstance> {
     if (!instance.dealershipId) {
       throw new Error('dealershipId is required when creating a listing instance');
     }
     const result = await db.insert(listingInstances).values(instance).returning();
     return result[0];
+  }
+
+  async getActiveListingInstancesByVehicleIds(dealershipId: number, vehicleIds: number[]): Promise<(ListingInstance & { postedByName?: string | null })[]> {
+    if (vehicleIds.length === 0) {
+      return [];
+    }
+
+    const rows = await db.select()
+      .from(listingInstances)
+      .leftJoin(users, eq(listingInstances.postedById, users.id))
+      .where(and(
+        eq(listingInstances.dealershipId, dealershipId),
+        eq(listingInstances.isActive, true),
+        inArray(listingInstances.vehicleId, vehicleIds)
+      ));
+
+    return rows.map(row => ({
+      ...row.listing_instances,
+      postedByName: row.users?.name ?? null
+    }));
   }
 
   async updateListingInstance(id: number, dealershipId: number, updates: Partial<InsertListingInstance>): Promise<ListingInstance | undefined> {
@@ -6223,6 +6335,8 @@ export class DatabaseStorage implements IStorage {
       priority?: string;
       dueAfter?: Date;
       dueBefore?: Date;
+      messengerConversationId?: number;
+      taskType?: string;
     }, 
     limit: number = 100
   ): Promise<CrmTask[]> {
@@ -6246,12 +6360,70 @@ export class DatabaseStorage implements IStorage {
     if (filters?.dueBefore) {
       conditions.push(lte(crmTasks.dueAt, filters.dueBefore));
     }
+    if (filters?.messengerConversationId) {
+      conditions.push(eq(crmTasks.messengerConversationId, filters.messengerConversationId));
+    }
+    if (filters?.taskType) {
+      conditions.push(eq(crmTasks.taskType, filters.taskType));
+    }
     
     return await db.select()
       .from(crmTasks)
       .where(and(...conditions))
       .orderBy(crmTasks.dueAt)
       .limit(limit);
+  }
+
+  async getActiveMessengerSlaTasks(dealershipId: number, conversationId: number): Promise<CrmTask[]> {
+    return await db.select()
+      .from(crmTasks)
+      .where(and(
+        eq(crmTasks.dealershipId, dealershipId),
+        eq(crmTasks.taskType, 'messenger-response'),
+        eq(crmTasks.messengerConversationId, conversationId),
+        inArray(crmTasks.status, ['pending', 'in_progress'])
+      ))
+      .orderBy(desc(crmTasks.dueAt));
+  }
+
+  async getMessengerSlaTasksForReminder(dealershipId: number, now: Date): Promise<{ task: CrmTask; conversation: MessengerConversation | null }[]> {
+    const rows = await db.select()
+      .from(crmTasks)
+      .leftJoin(messengerConversations, eq(crmTasks.messengerConversationId, messengerConversations.id))
+      .where(and(
+        eq(crmTasks.dealershipId, dealershipId),
+        eq(crmTasks.taskType, 'messenger-response'),
+        inArray(crmTasks.status, ['pending', 'in_progress']),
+        isNotNull(crmTasks.reminderAt),
+        isNotNull(crmTasks.dueAt),
+        lte(crmTasks.reminderAt, now),
+        gt(crmTasks.dueAt, now)
+      ))
+      .orderBy(crmTasks.reminderAt);
+
+    return rows.map(row => ({
+      task: row.crm_tasks,
+      conversation: row.messenger_conversations || null
+    }));
+  }
+
+  async getMessengerSlaTasksOverdue(dealershipId: number, now: Date): Promise<{ task: CrmTask; conversation: MessengerConversation | null }[]> {
+    const rows = await db.select()
+      .from(crmTasks)
+      .leftJoin(messengerConversations, eq(crmTasks.messengerConversationId, messengerConversations.id))
+      .where(and(
+        eq(crmTasks.dealershipId, dealershipId),
+        eq(crmTasks.taskType, 'messenger-response'),
+        inArray(crmTasks.status, ['pending', 'in_progress']),
+        isNotNull(crmTasks.dueAt),
+        lte(crmTasks.dueAt, now)
+      ))
+      .orderBy(crmTasks.dueAt);
+
+    return rows.map(row => ({
+      task: row.crm_tasks,
+      conversation: row.messenger_conversations || null
+    }));
   }
   
   async getCrmTaskById(id: number, dealershipId: number): Promise<CrmTask | undefined> {

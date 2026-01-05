@@ -27,6 +27,7 @@ function renderTemplate(template: string, vehicle: Vehicle): string {
     "{trim}": vehicle.trim || "",
     "{odometer}": vehicle.odometer?.toString() || "",
     "{mileage}": vehicle.odometer?.toLocaleString() || "",
+    "{location}": vehicle.location || "",
     "{carfaxUrl}": vehicle.carfaxUrl || "",
   };
 

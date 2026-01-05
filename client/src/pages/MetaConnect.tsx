@@ -26,6 +26,7 @@ type ConnectedPage = {
   pageDmLink?: string | null;
   rooftopId?: number | null;
   hasValidToken?: boolean;
+  webhookSubscribed?: boolean | null;
 };
 
 type Rooftop = {
@@ -62,6 +63,8 @@ export default function MetaConnect() {
   const [isConnectingBusiness, setIsConnectingBusiness] = useState(false);
   const [isSavingDealershipDmLink, setIsSavingDealershipDmLink] = useState(false);
   const [isCreatingRooftop, setIsCreatingRooftop] = useState(false);
+  const [isSubscribingPages, setIsSubscribingPages] = useState(false);
+  const [subscribingPageId, setSubscribingPageId] = useState<string | null>(null);
 
   const [businessAccounts, setBusinessAccounts] = useState<BusinessAccount[]>([]);
   const [connectedPages, setConnectedPages] = useState<ConnectedPage[]>([]);
@@ -149,7 +152,7 @@ export default function MetaConnect() {
       const token = localStorage.getItem("auth_token");
       const [accounts, pages, rooftopList, dealershipSettings, salespeopleList] = await Promise.all([
         apiGet<BusinessAccount[]>("/api/facebook/business/accounts", { Authorization: `Bearer ${token}` }).catch(() => []),
-        apiGet<ConnectedPage[]>("/api/facebook/connected-pages", { Authorization: `Bearer ${token}` }).catch(() => []),
+        apiGet<ConnectedPage[]>("/api/facebook/connected-pages?includeWebhookStatus=true", { Authorization: `Bearer ${token}` }).catch(() => []),
         apiGet<Rooftop[]>("/api/rooftops", { Authorization: `Bearer ${token}` }).catch(() => []),
         apiGet<{ pageDmLink?: string | null }>("/api/manager/dealership-settings", { Authorization: `Bearer ${token}` }).catch(() => null),
         apiGet<SalesPerson[]>("/api/salespeople", { Authorization: `Bearer ${token}` }).catch(() => []),
@@ -292,6 +295,45 @@ export default function MetaConnect() {
         description: error.body?.error || error.message || "Unable to save token",
         variant: "destructive",
       });
+    }
+  };
+
+  const handleSubscribePages = async (pageIds?: string[]) => {
+    if (pageIds && pageIds.length === 1) {
+      setSubscribingPageId(pageIds[0]);
+    } else {
+      setIsSubscribingPages(true);
+    }
+
+    try {
+      const token = localStorage.getItem("auth_token");
+      const result = await apiPost<{ results?: Array<{ pageId: string; success: boolean; error?: string }> }>(
+        "/api/facebook/pages/subscribe",
+        pageIds && pageIds.length > 0 ? { pageIds } : {},
+        { Authorization: `Bearer ${token}` }
+      );
+
+      const failures = result?.results?.filter((r) => !r.success) || [];
+      if (failures.length > 0) {
+        toast({
+          title: "Some pages failed",
+          description: `${failures.length} page(s) could not be subscribed.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: "Subscribed", description: "Webhook subscriptions updated" });
+      }
+
+      loadMetaSettings();
+    } catch (error: any) {
+      toast({
+        title: "Subscription failed",
+        description: error.body?.error || error.message || "Unable to subscribe pages",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubscribingPages(false);
+      setSubscribingPageId(null);
     }
   };
 
@@ -544,6 +586,19 @@ export default function MetaConnect() {
                 Copy
               </Button>
             </div>
+            <div className="flex flex-col md:flex-row md:items-center gap-3">
+              <Button
+                variant="outline"
+                onClick={() => handleSubscribePages()}
+                disabled={isSubscribingPages || connectedPages.length === 0}
+              >
+                <Webhook className="w-4 h-4 mr-2" />
+                {isSubscribingPages ? "Subscribing..." : "Subscribe Pages"}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Auto-register connected Pages with your app for webhook events.
+              </p>
+            </div>
             <p className="text-xs text-muted-foreground">
               Verify token must match FACEBOOK_WEBHOOK_VERIFY_TOKEN in your environment.
             </p>
@@ -583,17 +638,30 @@ export default function MetaConnect() {
               </div>
             ) : (
               <div className="space-y-4">
-                {connectedPages.map((page) => (
-                  <div key={page.id} className="border rounded-lg p-4 space-y-3">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="font-medium">{page.pageName}</div>
-                        <div className="text-xs text-muted-foreground">Page ID: {page.pageId}</div>
+                {connectedPages.map((page) => {
+                  const webhookLabel =
+                    page.webhookSubscribed === true
+                      ? "Webhook OK"
+                      : page.webhookSubscribed === false
+                        ? "Webhook Off"
+                        : "Webhook Unknown";
+                  const webhookVariant = page.webhookSubscribed === true ? "default" : "secondary";
+                  const canSubscribe = page.hasValidToken && page.webhookSubscribed !== true;
+
+                  return (
+                    <div key={page.id} className="border rounded-lg p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <div className="font-medium">{page.pageName}</div>
+                          <div className="text-xs text-muted-foreground">Page ID: {page.pageId}</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={page.hasValidToken ? "default" : "secondary"}>
+                            {page.hasValidToken ? "Token OK" : "Reconnect"}
+                          </Badge>
+                          <Badge variant={webhookVariant}>{webhookLabel}</Badge>
+                        </div>
                       </div>
-                      <Badge variant={page.hasValidToken ? "default" : "secondary"}>
-                        {page.hasValidToken ? "Token OK" : "Reconnect"}
-                      </Badge>
-                    </div>
                     <div className="grid gap-3 md:grid-cols-2">
                       <div>
                         <Label htmlFor={`page-dm-${page.pageId}`}>Page DM Link</Label>
@@ -645,14 +713,24 @@ export default function MetaConnect() {
                         </Select>
                       </div>
                     </div>
-                    <div className="flex justify-end">
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleSubscribePages([page.pageId])}
+                        disabled={!canSubscribe || subscribingPageId === page.pageId}
+                      >
+                        <Webhook className="w-4 h-4 mr-2" />
+                        {subscribingPageId === page.pageId ? "Subscribing..." : "Subscribe"}
+                      </Button>
                       <Button variant="outline" size="sm" onClick={() => handleSavePageMeta(page.pageId)}>
                         <Save className="w-4 h-4 mr-2" />
                         Save Page
                       </Button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>

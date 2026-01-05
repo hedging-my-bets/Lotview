@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { vehicles } from "@shared/schema";
+import { vehicles, dealerships } from "@shared/schema";
 
 const MOCK_VEHICLES = [
   { 
@@ -118,8 +118,19 @@ const MOCK_VEHICLES = [
 
 async function seed() {
   console.log("Seeding database with inventory...");
-  
-  await db.insert(vehicles).values(MOCK_VEHICLES);
+
+  const [dealership] = await db.select().from(dealerships).limit(1);
+  if (!dealership) {
+    throw new Error("No dealership found. Seed dealerships before seeding inventory.");
+  }
+
+  const vehiclesToInsert = MOCK_VEHICLES.map(vehicle => ({
+    ...vehicle,
+    dealershipId: dealership.id,
+    dealerGroupId: dealership.dealerGroupId ?? null
+  }));
+
+  await db.insert(vehicles).values(vehiclesToInsert);
 
   console.log(`✓ Seeded ${MOCK_VEHICLES.length} vehicles`);
   process.exit(0);
