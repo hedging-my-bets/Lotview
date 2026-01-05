@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck, ClipboardCheck, BarChart3, Bot, Clock, Sparkles, Pencil, Save, TrendingDown, Minus, ArrowUp, ArrowDown, PackageOpen, ExternalLink, Eye, User, Send, Plus, Trash2, Copy, Building, DollarSign, Activity, Image as ImageIcon, Facebook, Link2, Webhook } from "lucide-react";
+import { LogOut, Search, TrendingUp, Car, ChevronDown, Check, Settings, RefreshCw, X, MessageSquare, Users, Calendar, CalendarCheck, ClipboardCheck, BarChart3, Bot, Clock, Sparkles, Pencil, Save, TrendingDown, Minus, ArrowUp, ArrowDown, PackageOpen, ExternalLink, Eye, User, Send, Plus, Trash2, Copy, Building, DollarSign, Activity, Image as ImageIcon, Facebook, Link2, Webhook, AlertTriangle } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -978,6 +978,7 @@ export default function Manager() {
   });
   const [pricingResults, setPricingResults] = useState<any>(null);
   const [enhancedResults, setEnhancedResults] = useState<any>(null);
+  const [showAllComparables, setShowAllComparables] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isScraping, setIsScraping] = useState(false);
   const [showEnhancedView, setShowEnhancedView] = useState(true);
@@ -1824,6 +1825,22 @@ export default function Manager() {
     }
   };
 
+  const resetVinState = (nextVin?: string) => {
+    setVinResults(null);
+    setLivePricing(null);
+    setPricingResults(null);
+    setEnhancedResults(null);
+    setPriceTrends([]);
+    setShowHistoricalAnalytics(false);
+    setPreviousAppraisal(null);
+    setAppraisalNotes("");
+    setQuotedPrice("");
+    setReconCost("");
+    setTargetRetailPrice("");
+    setShowAllComparables(false);
+    setVin(typeof nextVin === 'string' ? nextVin.toUpperCase() : "");
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('auth_token');
     localStorage.removeItem('user');
@@ -1986,6 +2003,7 @@ export default function Manager() {
     setIsAnalyzing(true);
     setPricingResults(null);
     setEnhancedResults(null);
+    setShowAllComparables(false);
 
     try {
       const token = localStorage.getItem('auth_token');
@@ -2213,6 +2231,16 @@ export default function Manager() {
       loadAppraisalHistory();
     }
   }, [activeManagerTab, user]);
+
+  const sortedComparisons = [...(pricingResults?.comparisons || [])].sort((a: any, b: any) => {
+    const aScore = typeof a.similarityScore === 'number' ? a.similarityScore : 0;
+    const bScore = typeof b.similarityScore === 'number' ? b.similarityScore : 0;
+    if (bScore !== aScore) return bScore - aScore;
+    const aPrice = typeof a.price === 'number' ? a.price : 0;
+    const bPrice = typeof b.price === 'number' ? b.price : 0;
+    return aPrice - bPrice;
+  });
+  const visibleComparisons = showAllComparables ? sortedComparisons : sortedComparisons.slice(0, 10);
 
   if (isLoading) {
     return (
@@ -2531,8 +2559,8 @@ export default function Manager() {
                             <div className="text-xs text-slate-500 mt-1">
                               Range: ${livePricing?.retailPrice?.min?.toLocaleString() || pricingResults?.minPrice?.toLocaleString() || "---"} - ${livePricing?.retailPrice?.max?.toLocaleString() || pricingResults?.maxPrice?.toLocaleString() || "---"}
                             </div>
-                            <Button variant="ghost" size="sm" onClick={() => { setVin(""); setVinResults(null); setPricingResults(null); setLivePricing(null); }} className="mt-2 text-slate-400 hover:text-red-500">
-                              <X className="w-4 h-4 mr-1" /> Clear
+                            <Button variant="ghost" size="sm" onClick={() => resetVinState()} className="mt-2 text-slate-400 hover:text-red-500">
+                              <X className="w-4 h-4 mr-1" /> New VIN
                             </Button>
                           </div>
                         </div>
@@ -3214,15 +3242,42 @@ export default function Manager() {
                         <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Market Analysis</h3>
                         <p className="text-sm text-slate-500">Real-time listing data for {pricingForm.make || 'your vehicle'} {pricingForm.model || ''}</p>
                       </div>
-                      <Button 
-                        onClick={() => handleMarketSearch()} 
-                        disabled={isAnalyzing || !pricingForm.make || !pricingForm.model} 
-                        className="bg-blue-600 hover:bg-blue-700 text-white shadow-md"
-                        data-testid="button-analyze-pricing"
-                      >
-                        {isAnalyzing ? "Analyzing..." : "Analyze Market Pricing"}
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button 
+                          onClick={() => handleMarketSearch()} 
+                          disabled={isAnalyzing || !pricingForm.make || !pricingForm.model} 
+                          className="bg-blue-600 hover:bg-blue-700 text-white shadow-md"
+                          data-testid="button-analyze-pricing"
+                        >
+                          {isAnalyzing ? "Analyzing..." : "Analyze Market Pricing"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={handleRefreshMarketData}
+                          disabled={isScraping || !pricingForm.make || !pricingForm.model}
+                          className="shadow-sm"
+                          data-testid="button-refresh-market"
+                        >
+                          {isScraping ? "Refreshing..." : "Refresh Market Data"}
+                        </Button>
+                      </div>
                     </div>
+
+                    {enhancedResults?.errors && enhancedResults.errors.length > 0 && (
+                      <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 text-amber-900 px-4 py-3 text-sm" data-testid="market-analysis-warnings">
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle className="w-4 h-4 mt-0.5 text-amber-600" />
+                          <div className="space-y-1">
+                            <div className="font-semibold">Data Quality Warnings</div>
+                            <ul className="list-disc pl-4 space-y-0.5">
+                              {enhancedResults.errors.map((error: string, idx: number) => (
+                                <li key={`${error}-${idx}`}>{error}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Inline Filters */}
                     <div className="flex flex-wrap gap-3 mb-6 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-800">
@@ -3293,7 +3348,7 @@ export default function Manager() {
                     {/* Stats and Recommendation Panels */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                       {/* Stats Panel */}
-                      <div className="flex justify-between items-center p-6 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-100 dark:border-slate-700">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-6 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-100 dark:border-slate-700">
                         <div>
                           <div className="text-xs text-slate-400 font-semibold uppercase mb-1">Average Price</div>
                           <div className="text-2xl font-bold text-slate-900 dark:text-white" data-testid="stat-average-price">
@@ -3312,6 +3367,12 @@ export default function Manager() {
                             {pricingResults?.totalComps || 0}
                           </div>
                         </div>
+                        <div>
+                          <div className="text-xs text-slate-400 font-semibold uppercase mb-1">Avg Days on Market</div>
+                          <div className="text-2xl font-bold text-slate-900 dark:text-white" data-testid="stat-avg-dom">
+                            {enhancedResults?.daysOnMarket?.average || 0}d
+                          </div>
+                        </div>
                       </div>
 
                       {/* Recommendation Panel */}
@@ -3325,6 +3386,58 @@ export default function Manager() {
                         </div>
                       </div>
                     </div>
+
+                    {(enhancedResults?.distanceCoverage || enhancedResults?.trimCoverage) && (
+                      <div className="mb-6 flex flex-wrap gap-4 text-xs text-slate-500">
+                        {enhancedResults?.distanceCoverage && (
+                          <div data-testid="distance-coverage">
+                            Distance coverage: {enhancedResults.distanceCoverage.listingsWithinRadius}/{enhancedResults.distanceCoverage.totalListings} within radius, {enhancedResults.distanceCoverage.listingsUnknownDistance} unknown
+                          </div>
+                        )}
+                        {enhancedResults?.trimCoverage && (
+                          <div data-testid="trim-coverage">
+                            Trim coverage: {enhancedResults.trimCoverage.listingsWithTrim}/{enhancedResults.trimCoverage.totalListings} with trim data
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {enhancedResults?.aiInsights && (
+                      <div className="mb-6 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5" data-testid="market-ai-insights">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
+                          <Sparkles className="w-4 h-4 text-blue-500" />
+                          AI Market Summary
+                        </div>
+                        <p className="text-sm text-slate-600 dark:text-slate-300">{enhancedResults.aiInsights}</p>
+                      </div>
+                    )}
+
+                    {enhancedResults?.competitors && enhancedResults.competitors.length > 0 && (
+                      <div className="mb-6 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5" data-testid="market-competitor-summary">
+                        <div className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3 flex items-center gap-2">
+                          <Users className="w-4 h-4 text-slate-500" />
+                          Top Competitors
+                        </div>
+                        <div className="space-y-2">
+                          {enhancedResults.competitors.slice(0, 5).map((competitor: any, idx: number) => (
+                            <div key={`${competitor.sellerName}-${idx}`} className="flex items-center justify-between text-sm">
+                              <div className="flex items-center gap-2">
+                                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                                  {idx + 1}
+                                </span>
+                                <span className="font-medium text-slate-700 dark:text-slate-200 truncate max-w-[240px]">
+                                  {competitor.sellerName}
+                                </span>
+                                <span className="text-xs text-slate-500">({competitor.listingCount} listings)</span>
+                              </div>
+                              <div className="text-slate-600 dark:text-slate-300">
+                                Avg ${competitor.averagePrice?.toLocaleString()}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Modern Comparable Vehicles Table */}
                     <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
@@ -3341,7 +3454,7 @@ export default function Manager() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                          {pricingResults?.comparisons?.slice(0, 5).map((comp: any, i: number) => (
+                          {visibleComparisons.map((comp: any, i: number) => (
                             <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors" data-testid={`comp-row-${i}`}>
                               <td className="px-6 py-4">
                                 <div className="font-bold text-slate-800 dark:text-slate-200">{comp.year} {comp.make} {comp.model}</div>
@@ -3371,7 +3484,7 @@ export default function Manager() {
                                   {comp.listingType === 'private' ? 'Private' : 'Dealer'}
                                 </Badge>
                               </td>
-                              <td className="px-6 py-4 text-slate-500">{comp.distance ? `${comp.distance} km` : '-'}</td>
+                              <td className="px-6 py-4 text-slate-500">{typeof comp.distance === 'number' ? `${Math.round(comp.distance)} km` : '-'}</td>
                               <td className="px-6 py-4 text-right font-bold text-slate-900 dark:text-white">${comp.price?.toLocaleString()}</td>
                               <td className="px-6 py-4 text-center flex items-center justify-center gap-2">
                                 {comp.listingUrl && (
@@ -3393,163 +3506,21 @@ export default function Manager() {
                         </tbody>
                       </table>
                     </div>
+                    {pricingResults?.comparisons && pricingResults.comparisons.length > 10 && (
+                      <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+                        <span>Showing {visibleComparisons.length} of {pricingResults.comparisons.length} comparables</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowAllComparables(prev => !prev)}
+                          className="text-slate-600 hover:text-slate-900"
+                          data-testid="button-toggle-comparables"
+                        >
+                          {showAllComparables ? "Show Top 10" : "Show All"}
+                        </Button>
+                      </div>
+                    )}
                   </div>
-
-                  {/* Comparable Vehicles - Reference Design Match */}
-                        {pricingResults?.comparisons && pricingResults.comparisons.length > 0 && (
-                          <div data-testid="comparable-vehicles-section">
-                            {(() => {
-                              const dealerListings = pricingResults.comparisons.filter((c: any) => c.listingType === 'dealer' || (!c.listingType && c.dealership));
-                              const privateListings = pricingResults.comparisons.filter((c: any) => c.listingType === 'private');
-                              const dealerAvg = dealerListings.length > 0 ? Math.round(dealerListings.reduce((sum: number, c: any) => sum + (c.price || 0), 0) / dealerListings.length) : 0;
-                              const privateAvg = privateListings.length > 0 ? Math.round(privateListings.reduce((sum: number, c: any) => sum + (c.price || 0), 0) / privateListings.length) : 0;
-                              
-                              return (
-                                <>
-                                  {/* Tab navigation matching reference */}
-                                  <div className="flex border-b mb-4">
-                                    <button className="px-4 py-2 text-sm font-medium border-b-2 border-primary text-foreground">
-                                      Comparable Vehicles
-                                    </button>
-                                    <button className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground">
-                                      Comparable Vehicles
-                                    </button>
-                                  </div>
-                                  
-                                  {/* Single table with all listings and group separators */}
-                                  <div className="border rounded-lg overflow-hidden">
-                                    <table className="w-full text-sm">
-                                      <thead className="bg-muted/30 border-b">
-                                        <tr>
-                                          <th className="text-left p-3 font-medium text-muted-foreground">Vehicle Info</th>
-                                          <th className="text-left p-3 font-medium text-muted-foreground">Ext / Int Color</th>
-                                          <th className="text-left p-3 font-medium text-muted-foreground">Mileage</th>
-                                          <th className="text-left p-3 font-medium text-muted-foreground">Age</th>
-                                          <th className="text-left p-3 font-medium text-muted-foreground">Seller</th>
-                                          <th className="text-left p-3 font-medium text-muted-foreground">Distance</th>
-                                          <th className="text-right p-3 font-medium text-muted-foreground">Price</th>
-                                          <th className="w-10"></th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {/* First few dealer vehicles */}
-                                        {dealerListings.slice(0, 2).map((comp: any, index: number) => (
-                                          <tr key={`dealer-${index}`} className="hover:bg-muted/30 border-b" data-testid={`dealer-row-${index}`}>
-                                            <td className="p-3">
-                                              <span className="font-medium text-foreground">
-                                                {comp.year} {comp.make?.toUpperCase()} {comp.model?.toUpperCase()}
-                                                {comp.trim && ` (${comp.trim})`}
-                                              </span>
-                                            </td>
-                                            <td className="p-3">
-                                              <div className="flex flex-col gap-1">
-                                                {comp.exteriorColor ? (
-                                                  <span className="inline-flex items-center gap-1 text-xs">
-                                                    <span className="w-3 h-3 rounded-full border border-border" style={{backgroundColor: comp.exteriorColor?.toLowerCase().includes('white') ? '#f5f5f5' : comp.exteriorColor?.toLowerCase().includes('black') ? '#1a1a1a' : comp.exteriorColor?.toLowerCase().includes('silver') ? '#c0c0c0' : comp.exteriorColor?.toLowerCase().includes('grey') || comp.exteriorColor?.toLowerCase().includes('gray') ? '#808080' : comp.exteriorColor?.toLowerCase().includes('red') ? '#dc2626' : comp.exteriorColor?.toLowerCase().includes('blue') ? '#2563eb' : comp.exteriorColor?.toLowerCase().includes('green') ? '#16a34a' : comp.exteriorColor?.toLowerCase().includes('brown') ? '#7c3a18' : comp.exteriorColor?.toLowerCase().includes('beige') ? '#d4b896' : '#e5e5e5'}}></span>
-                                                    <span className="text-muted-foreground">{comp.exteriorColor}</span>
-                                                  </span>
-                                                ) : (
-                                                  <span className="text-xs text-muted-foreground/50">-</span>
-                                                )}
-                                                {comp.interiorColor && (
-                                                  <span className="inline-flex items-center gap-1 text-xs">
-                                                    <span className="w-3 h-3 rounded-full border border-border" style={{backgroundColor: comp.interiorColor?.toLowerCase().includes('black') ? '#1a1a1a' : comp.interiorColor?.toLowerCase().includes('tan') || comp.interiorColor?.toLowerCase().includes('beige') ? '#d4b896' : comp.interiorColor?.toLowerCase().includes('brown') ? '#7c3a18' : comp.interiorColor?.toLowerCase().includes('grey') || comp.interiorColor?.toLowerCase().includes('gray') ? '#808080' : '#e5e5e5'}}></span>
-                                                    <span className="text-muted-foreground">{comp.interiorColor}</span>
-                                                  </span>
-                                                )}
-                                              </div>
-                                            </td>
-                                            <td className="p-3 text-muted-foreground">
-                                              {comp.mileage ? `${comp.mileage.toLocaleString()} km` : '-'}
-                                            </td>
-                                            <td className="p-3 text-muted-foreground">
-                                              {typeof comp.daysOnLot === 'number' ? `${comp.daysOnLot} days` : '-'}
-                                            </td>
-                                            <td className="p-3 text-muted-foreground">Dealer</td>
-                                            <td className="p-3 text-muted-foreground">{comp.distance ? `${comp.distance} km` : '-'}</td>
-                                            <td className="p-3 text-right font-medium text-foreground">
-                                              {comp.price ? `$${comp.price.toLocaleString()}` : 'N/A'}
-                                            </td>
-                                            <td className="p-3 text-center flex items-center justify-center gap-2">
-                                              {comp.listingUrl && (
-                                                <a href={comp.listingUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:text-primary/80" title="View Listing">
-                                                  <ExternalLink className="w-4 h-4" />
-                                                </a>
-                                              )}
-                                              <a href={generateAutoTraderUrl({make: comp.make, model: comp.model, year: comp.year, trim: comp.trim})} target="_blank" rel="noopener noreferrer" className="text-red-500 hover:text-red-600" title="Search AutoTrader.ca">
-                                                <Search className="w-4 h-4" />
-                                              </a>
-                                            </td>
-                                          </tr>
-                                        ))}
-                                        
-                                        {/* Dealer group separator */}
-                                        {dealerListings.length > 0 && (
-                                          <tr className="bg-muted/20 border-b">
-                                            <td colSpan={8} className="p-2 text-sm text-muted-foreground font-medium">
-                                              Dealer ({dealerListings.length} listings, ${dealerAvg.toLocaleString()} avg)
-                                            </td>
-                                          </tr>
-                                        )}
-                                        
-                                        {/* Private seller vehicles */}
-                                        {privateListings.slice(0, 3).map((comp: any, index: number) => (
-                                          <tr key={`private-${index}`} className="hover:bg-muted/30 border-b" data-testid={`private-row-${index}`}>
-                                            <td className="p-3">
-                                              <span className="font-medium text-foreground">
-                                                {comp.year} {comp.make?.toUpperCase()} {comp.model?.toUpperCase()}
-                                                {comp.trim && ` (${comp.trim})`}
-                                              </span>
-                                            </td>
-                                            <td className="p-3">
-                                              <div className="flex flex-col gap-1">
-                                                {comp.exteriorColor ? (
-                                                  <span className="inline-flex items-center gap-1 text-xs">
-                                                    <span className="w-3 h-3 rounded-full border border-border" style={{backgroundColor: comp.exteriorColor?.toLowerCase().includes('white') ? '#f5f5f5' : comp.exteriorColor?.toLowerCase().includes('black') ? '#1a1a1a' : comp.exteriorColor?.toLowerCase().includes('silver') ? '#c0c0c0' : comp.exteriorColor?.toLowerCase().includes('grey') || comp.exteriorColor?.toLowerCase().includes('gray') ? '#808080' : comp.exteriorColor?.toLowerCase().includes('red') ? '#dc2626' : comp.exteriorColor?.toLowerCase().includes('blue') ? '#2563eb' : comp.exteriorColor?.toLowerCase().includes('green') ? '#16a34a' : comp.exteriorColor?.toLowerCase().includes('brown') ? '#7c3a18' : comp.exteriorColor?.toLowerCase().includes('beige') ? '#d4b896' : '#e5e5e5'}}></span>
-                                                    <span className="text-muted-foreground">{comp.exteriorColor}</span>
-                                                  </span>
-                                                ) : (
-                                                  <span className="text-xs text-muted-foreground/50">-</span>
-                                                )}
-                                                {comp.interiorColor && (
-                                                  <span className="inline-flex items-center gap-1 text-xs">
-                                                    <span className="w-3 h-3 rounded-full border border-border" style={{backgroundColor: comp.interiorColor?.toLowerCase().includes('black') ? '#1a1a1a' : comp.interiorColor?.toLowerCase().includes('tan') || comp.interiorColor?.toLowerCase().includes('beige') ? '#d4b896' : comp.interiorColor?.toLowerCase().includes('brown') ? '#7c3a18' : comp.interiorColor?.toLowerCase().includes('grey') || comp.interiorColor?.toLowerCase().includes('gray') ? '#808080' : '#e5e5e5'}}></span>
-                                                    <span className="text-muted-foreground">{comp.interiorColor}</span>
-                                                  </span>
-                                                )}
-                                              </div>
-                                            </td>
-                                            <td className="p-3 text-muted-foreground">
-                                              {comp.mileage ? `${comp.mileage.toLocaleString()} km` : '-'}
-                                            </td>
-                                            <td className="p-3 text-muted-foreground">
-                                              {typeof comp.daysOnLot === 'number' ? `${comp.daysOnLot} days` : '-'}
-                                            </td>
-                                            <td className="p-3 text-muted-foreground">Private</td>
-                                            <td className="p-3 text-muted-foreground">{comp.distance ? `${comp.distance} km` : '-'}</td>
-                                            <td className="p-3 text-right font-medium text-foreground">
-                                              {comp.price ? `$${comp.price.toLocaleString()}` : 'N/A'}
-                                            </td>
-                                            <td className="p-3 text-center flex items-center justify-center gap-2">
-                                              {comp.listingUrl && (
-                                                <a href={comp.listingUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:text-primary/80" title="View Listing">
-                                                  <ExternalLink className="w-4 h-4" />
-                                                </a>
-                                              )}
-                                              <a href={generateAutoTraderUrl({make: comp.make, model: comp.model, year: comp.year, trim: comp.trim})} target="_blank" rel="noopener noreferrer" className="text-red-500 hover:text-red-600" title="Search AutoTrader.ca">
-                                                <Search className="w-4 h-4" />
-                                              </a>
-                                            </td>
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                </>
-                              );
-                            })()}
-                          </div>
-                        )}
 
                   {/* Historical Analytics Section */}
                   {vinResults && showHistoricalAnalytics && (
@@ -4317,7 +4288,7 @@ export default function Manager() {
                                   size="sm"
                                   className="mt-2"
                                   onClick={() => {
-                                    setVin(appraisal.vin);
+                                    resetVinState(appraisal.vin);
                                     setPreviousAppraisal(appraisal);
                                     setActiveManagerTab('appraisal');
                                     toast({

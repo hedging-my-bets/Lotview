@@ -6,8 +6,9 @@ import { autoTraderScraper } from './autotrader-scraper';
 import { kijijiScraper } from './kijiji-scraper';
 import { craigslistScraper } from './craigslist-scraper';
 import { cargurusScraper } from './cargurus-scraper-service';
+import { geocodingService } from './geocoding-service';
 import { deduplicateListings } from './market-deduplication';
-import type { InsertMarketListing } from '@shared/schema';
+import type { InsertMarketListing, InsertPriceHistory, MarketListing } from '@shared/schema';
 
 export interface MarketAggregationParams {
   make: string;
@@ -70,6 +71,37 @@ export class MarketAggregationService {
 
     const allListings: InsertMarketListing[] = [];
     const dealershipId = params.dealershipId || 1;
+    const geocodeLimit = Math.max(0, parseInt(process.env.GEOCODER_CA_LOOKUP_LIMIT || '25', 10));
+    let geocodeLookups = 0;
+
+    const isGenericLocation = (location: string): boolean => {
+      const normalized = location.trim().toLowerCase();
+      if (!normalized || normalized.length < 3) return true;
+      if (normalized === 'canada' || normalized === 'unknown' || normalized === 'unknown location') return true;
+      if (normalized === 'british columbia' || normalized === 'ontario' || normalized === 'alberta') return true;
+      return false;
+    };
+
+    const buildGeocodeQuery = (location: string): string => {
+      if (/canada|usa|united states/i.test(location)) {
+        return location;
+      }
+      return `${location}, Canada`;
+    };
+
+    const hydrateListingLocation = async (listing: InsertMarketListing): Promise<void> => {
+      if (listing.latitude || listing.longitude) return;
+      if (!listing.location || isGenericLocation(listing.location)) return;
+      if (geocodeLookups >= geocodeLimit) return;
+
+      const query = buildGeocodeQuery(listing.location);
+      geocodeLookups += 1;
+      const geocoded = await geocodingService.geocodeLocation(query);
+      if (geocoded) {
+        listing.latitude = geocoded.latitude.toString();
+        listing.longitude = geocoded.longitude.toString();
+      }
+    };
 
     console.log(`[MarketAggregation] Starting data collection for ${params.make} ${params.model}${params.dealershipId ? ` (dealership ${params.dealershipId})` : ''}`);
 
@@ -326,22 +358,57 @@ export class MarketAggregationService {
     
     console.log(`[MarketAggregation] After dedup: ${deduped.uniqueListings.length} unique (${deduped.duplicatesRemoved} removed, ${deduped.mergedRecords} merged)`);
 
+    // Backfill missing lat/lon for better distance filtering (best effort, limited lookups)
+    if (geocodeLimit > 0) {
+      for (const listing of deduped.uniqueListings) {
+        if (geocodeLookups >= geocodeLimit) break;
+        await hydrateListingLocation(listing);
+      }
+    }
+
     // Fetch existing listings to avoid re-inserting
     const listingUrls = deduped.uniqueListings.map(l => l.listingUrl);
-    let existingUrls = new Set<string>();
+    let existingByUrl = new Map<string, MarketListing>();
     try {
       const existingListings = await storage.getMarketListingsByUrls(dealershipId, listingUrls);
-      existingUrls = new Set(existingListings.map(l => l.listingUrl));
+      existingByUrl = new Map(existingListings.map(l => [l.listingUrl, l]));
     } catch (error) {
       console.error('[MarketAggregation] Error fetching existing listings:', error);
     }
     
-    // Save only new listings
+    // Save new listings and refresh existing ones (price changes, last seen, lifecycle)
     let savedCount = 0;
+    const priceHistoryRecords: InsertPriceHistory[] = [];
+    const now = new Date();
+
+    const buildPriceHistoryRecord = (listing: InsertMarketListing): InsertPriceHistory => ({
+      dealershipId,
+      marketListingId: null,
+      externalId: listing.externalId,
+      source: listing.source,
+      year: listing.year,
+      make: listing.make,
+      model: listing.model,
+      trim: listing.trim || null,
+      price: listing.price,
+      mileage: listing.mileage || null,
+      location: listing.location,
+      sellerName: listing.sellerName || null
+    });
+
+    const applyIfChanged = <T>(current: T | null | undefined, next: T | null | undefined) => {
+      if (next === undefined || next === null) return undefined;
+      return current !== next ? next : undefined;
+    };
+
     for (const listing of deduped.uniqueListings) {
-      if (!existingUrls.has(listing.listingUrl)) {
+      const existing = existingByUrl.get(listing.listingUrl);
+      if (!existing) {
         try {
           await storage.createMarketListing(listing);
+          if (listing.price > 0) {
+            priceHistoryRecords.push(buildPriceHistoryRecord(listing));
+          }
           savedCount++;
         } catch (error) {
           if (error instanceof Error && (error.message.includes('unique') || error.message.includes('duplicate key'))) {
@@ -350,7 +417,98 @@ export class MarketAggregationService {
             console.error(`[MarketAggregation] Error saving listing:`, error);
           }
         }
+        continue;
       }
+
+      const updates: Partial<MarketListing> = {
+        scrapedAt: now,
+        isActive: true,
+        removedAt: null
+      };
+
+      const nextPrice = applyIfChanged(existing.price, listing.price);
+      if (typeof nextPrice === 'number' && nextPrice > 0) {
+        updates.price = nextPrice;
+        priceHistoryRecords.push(buildPriceHistoryRecord({ ...listing, price: nextPrice }));
+      }
+
+      const nextMileage = applyIfChanged(existing.mileage, listing.mileage ?? null);
+      if (typeof nextMileage === 'number') updates.mileage = nextMileage;
+
+      const nextTrim = applyIfChanged(existing.trim, listing.trim ?? null);
+      if (typeof nextTrim === 'string') updates.trim = nextTrim;
+
+      const nextVin = applyIfChanged(existing.vin, listing.vin ?? null);
+      if (typeof nextVin === 'string') updates.vin = nextVin;
+
+      const nextInterior = applyIfChanged(existing.interiorColor, listing.interiorColor ?? null);
+      if (typeof nextInterior === 'string') updates.interiorColor = nextInterior;
+
+      const nextExterior = applyIfChanged(existing.exteriorColor, listing.exteriorColor ?? null);
+      if (typeof nextExterior === 'string') updates.exteriorColor = nextExterior;
+
+      const nextLatitude = applyIfChanged(existing.latitude, listing.latitude ?? null);
+      if (typeof nextLatitude === 'string') updates.latitude = nextLatitude;
+
+      const nextLongitude = applyIfChanged(existing.longitude, listing.longitude ?? null);
+      if (typeof nextLongitude === 'string') updates.longitude = nextLongitude;
+
+      const nextDealer = applyIfChanged(existing.sellerName, listing.sellerName ?? null);
+      if (typeof nextDealer === 'string') updates.sellerName = nextDealer;
+
+      const nextLocation = applyIfChanged(existing.location, listing.location ?? null);
+      if (typeof nextLocation === 'string') updates.location = nextLocation;
+
+      const nextPostedDate = applyIfChanged(existing.postedDate, listing.postedDate ?? null);
+      if (nextPostedDate instanceof Date || nextPostedDate === null) updates.postedDate = nextPostedDate as Date | null;
+
+      const nextSourceConfidence = applyIfChanged(existing.sourceConfidence, listing.sourceConfidence ?? null);
+      if (typeof nextSourceConfidence === 'number') updates.sourceConfidence = nextSourceConfidence;
+
+      const nextSpecs = applyIfChanged(existing.specsJson, listing.specsJson ?? null);
+      if (typeof nextSpecs === 'string') updates.specsJson = nextSpecs;
+
+      const nextFeatures = applyIfChanged(existing.featuresJson, listing.featuresJson ?? null);
+      if (typeof nextFeatures === 'string') updates.featuresJson = nextFeatures;
+
+      const nextHistory = applyIfChanged(existing.historyBadges, listing.historyBadges ?? null);
+      if (typeof nextHistory === 'string') updates.historyBadges = nextHistory;
+
+      const nextRating = applyIfChanged(existing.dealerRating, listing.dealerRating ?? null);
+      if (typeof nextRating === 'string') updates.dealerRating = nextRating;
+
+      const nextDaysOnLot = applyIfChanged(existing.daysOnLot, listing.daysOnLot ?? null);
+      if (typeof nextDaysOnLot === 'number') updates.daysOnLot = nextDaysOnLot;
+
+      if (Object.keys(updates).length > 0) {
+        try {
+          await storage.updateMarketListing(existing.id, dealershipId, updates);
+        } catch (error) {
+          console.error(`[MarketAggregation] Error updating listing:`, error);
+        }
+      }
+    }
+
+    if (priceHistoryRecords.length > 0) {
+      try {
+        await storage.createPriceHistoryBatch(priceHistoryRecords);
+      } catch (error) {
+        console.error('[MarketAggregation] Error recording price history:', error);
+      }
+    }
+
+    const staleDays = Math.max(7, parseInt(process.env.MARKET_LISTING_STALE_DAYS || '45', 10));
+    try {
+      const staleCount = await storage.deactivateStaleMarketListings(
+        dealershipId,
+        { make: params.make, model: params.model, yearMin: params.yearMin, yearMax: params.yearMax },
+        staleDays
+      );
+      if (staleCount > 0) {
+        console.log(`[MarketAggregation] Marked ${staleCount} stale listings inactive (${staleDays}d cutoff)`);
+      }
+    } catch (error) {
+      console.error('[MarketAggregation] Error deactivating stale listings:', error);
     }
 
     result.totalListings = savedCount;

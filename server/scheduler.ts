@@ -351,8 +351,9 @@ async function refreshAllDealershipMarketData(): Promise<void> {
           }
         });
         
-        // Import market aggregation service
+        // Import market aggregation and analysis services
         const { marketAggregationService } = await import('./market-aggregation-service');
+        const { enhancedMarketAnalysis } = await import('./enhanced-market-analysis');
         
         // Aggregate market data for each unique vehicle
         let totalNewListings = 0;
@@ -371,6 +372,21 @@ async function refreshAllDealershipMarketData(): Promise<void> {
               dealershipId: dealership.id
             });
             totalNewListings += result.totalListings;
+
+            // Create/update market snapshots without re-aggregating
+            await enhancedMarketAnalysis.analyze({
+              make: vehicleInfo.make,
+              model: vehicleInfo.model,
+              years: [vehicleInfo.yearMin, vehicleInfo.yearMax],
+              postalCode,
+              radiusKm: 250,
+              dealershipId: dealership.id,
+              centerLat: settings?.geocodeLat ? parseFloat(settings.geocodeLat) : undefined,
+              centerLon: settings?.geocodeLon ? parseFloat(settings.geocodeLon) : undefined,
+              skipAggregation: true,
+              skipPriceHistory: true,
+              skipAiInsights: true
+            });
           } catch (e) {
             console.error(`[MarketAnalysis] Error for ${key}:`, e);
           }

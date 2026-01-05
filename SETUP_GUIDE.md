@@ -1550,14 +1550,13 @@ Geocoder.ca provides Canadian-specific address lookup and distance calculations.
 
 - Converts addresses to latitude/longitude
 - Calculates driving distances between locations
-- Detects customer location from IP address
 - Powers regional pricing comparisons
 
 #### Setup
 
-1. Create account at [geocoder.ca](https://geocoder.ca)
+1. Create account at [geocoder.ca](https://geocoder.ca) (optional but recommended for higher limits)
 2. Get credentials from your account
-3. Add to Replit Secrets:
+3. Add to Replit Secrets (optional):
 
 ```
 GEOCODER_CA_USERNAME=your-username

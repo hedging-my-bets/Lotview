@@ -8,7 +8,8 @@ export interface GeocodeResult {
   longitude: number;
   city?: string;
   province?: string;
-  postalCode: string;
+  postalCode?: string;
+  query?: string;
 }
 
 export interface DistanceCalculationResult {
@@ -18,6 +19,70 @@ export interface DistanceCalculationResult {
 
 export class GeocodingService {
   private cache: Map<string, GeocodeResult> = new Map();
+  private inFlight: Map<string, Promise<GeocodeResult | null>> = new Map();
+  private maxCacheSize = 500;
+  private maxQueryLength = 120;
+
+  private buildCacheKey(prefix: 'postal' | 'location', value: string): string {
+    return `${prefix}:${value}`;
+  }
+
+  private buildGeocoderUrl(query: string): string {
+    const username = process.env.GEOCODER_CA_USERNAME;
+    const password = process.env.GEOCODER_CA_PASSWORD;
+    const auth = username && password
+      ? `&auth=${encodeURIComponent(`${username}:${password}`)}`
+      : '';
+    return `https://geocoder.ca/?locate=${encodeURIComponent(query)}&geoit=xml${auth}`;
+  }
+
+  private async fetchGeocode(query: string, cacheKey: string): Promise<GeocodeResult | null> {
+    if (this.inFlight.has(cacheKey)) {
+      return this.inFlight.get(cacheKey)!;
+    }
+
+    const request = (async () => {
+      try {
+        const url = this.buildGeocoderUrl(query);
+        const response = await fetch(url);
+        const xmlText = await response.text();
+
+        const latMatch = xmlText.match(/<latt>([-\d.]+)<\/latt>/);
+        const lonMatch = xmlText.match(/<longt>([-\d.]+)<\/longt>/);
+        const cityMatch = xmlText.match(/<city>(.*?)<\/city>/);
+        const provMatch = xmlText.match(/<prov>(.*?)<\/prov>/);
+
+        if (!latMatch || !lonMatch) {
+          console.warn(`[Geocoding] Could not geocode query: ${query}`);
+          return null;
+        }
+
+        const result: GeocodeResult = {
+          latitude: parseFloat(latMatch[1]),
+          longitude: parseFloat(lonMatch[1]),
+          city: cityMatch ? cityMatch[1] : undefined,
+          province: provMatch ? provMatch[1] : undefined,
+          query
+        };
+
+        this.cache.set(cacheKey, result);
+        if (this.cache.size > this.maxCacheSize) {
+          const firstKey = this.cache.keys().next().value;
+          if (firstKey) this.cache.delete(firstKey);
+        }
+
+        return result;
+      } catch (error) {
+        console.error(`[Geocoding] Error geocoding query ${query}:`, error);
+        return null;
+      } finally {
+        this.inFlight.delete(cacheKey);
+      }
+    })();
+
+    this.inFlight.set(cacheKey, request);
+    return request;
+  }
 
   /**
    * Geocode a Canadian postal code to lat/lon using Geocoder.ca
@@ -26,46 +91,39 @@ export class GeocodingService {
   async geocodePostalCode(postalCode: string): Promise<GeocodeResult | null> {
     // Normalize postal code (remove spaces, uppercase)
     const normalized = postalCode.replace(/\s/g, '').toUpperCase();
+    const cacheKey = this.buildCacheKey('postal', normalized);
     
     // Check cache first
-    if (this.cache.has(normalized)) {
-      return this.cache.get(normalized)!;
+    if (this.cache.has(cacheKey)) {
+      return this.cache.get(cacheKey)!;
     }
     
     try {
-      // Geocoder.ca free XML endpoint (no API key required for basic use)
-      const url = `https://geocoder.ca/?locate=${normalized}&geoit=xml`;
-      
-      const response = await fetch(url);
-      const xmlText = await response.text();
-      
-      // Parse XML response (simple regex extraction)
-      const latMatch = xmlText.match(/<latt>([-\d.]+)<\/latt>/);
-      const lonMatch = xmlText.match(/<longt>([-\d.]+)<\/longt>/);
-      const cityMatch = xmlText.match(/<city>(.*?)<\/city>/);
-      const provMatch = xmlText.match(/<prov>(.*?)<\/prov>/);
-      
-      if (!latMatch || !lonMatch) {
-        console.warn(`[Geocoding] Could not geocode postal code: ${postalCode}`);
-        return null;
+      const result = await this.fetchGeocode(normalized, cacheKey);
+      if (result) {
+        result.postalCode = normalized;
       }
-      
-      const result: GeocodeResult = {
-        latitude: parseFloat(latMatch[1]),
-        longitude: parseFloat(lonMatch[1]),
-        city: cityMatch ? cityMatch[1] : undefined,
-        province: provMatch ? provMatch[1] : undefined,
-        postalCode: normalized
-      };
-      
-      // Cache the result
-      this.cache.set(normalized, result);
-      
       return result;
     } catch (error) {
       console.error(`[Geocoding] Error geocoding postal code ${postalCode}:`, error);
       return null;
     }
+  }
+
+  /**
+   * Geocode a city/province/location string to lat/lon using Geocoder.ca
+   */
+  async geocodeLocation(location: string): Promise<GeocodeResult | null> {
+    if (!location) return null;
+    const trimmed = location.trim().replace(/\s+/g, ' ');
+    if (!trimmed || trimmed.length > this.maxQueryLength) return null;
+
+    const cacheKey = this.buildCacheKey('location', trimmed.toLowerCase());
+    if (this.cache.has(cacheKey)) {
+      return this.cache.get(cacheKey)!;
+    }
+
+    return this.fetchGeocode(trimmed, cacheKey);
   }
 
   /**

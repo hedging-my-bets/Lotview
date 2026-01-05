@@ -402,3 +402,88 @@ Return ONLY valid JSON in this exact format, no other text:
     };
   }
 }
+
+export async function generateMarketInsights(params: {
+  dealershipId: number;
+  make: string;
+  model: string;
+  years: number[];
+  summary: {
+    totalListings: number;
+    averagePrice: number;
+    medianPrice: number;
+    minPrice: number;
+    maxPrice: number;
+    averageMileage?: number;
+    averageQualityScore?: number;
+    averageSimilarityScore?: number;
+    averageDaysOnMarket?: number;
+  };
+  percentiles: {
+    p25: number;
+    p50: number;
+    p75: number;
+  };
+  daysOnMarket: {
+    average: number;
+    median: number;
+    fastest: number;
+    slowest: number;
+  };
+  priceRecommendation: {
+    suggestedPrice: number;
+    priceRange: { low: number; high: number };
+    marketPosition: 'below_market' | 'at_market' | 'above_market' | 'competitive';
+    confidence: 'high' | 'medium' | 'low';
+    reasoning: string;
+  };
+  distanceCoverage?: {
+    listingsWithinRadius: number;
+    listingsUnknownDistance: number;
+    totalListings: number;
+  };
+}): Promise<string> {
+  try {
+    const { client: openaiClient, source } = await getOpenAIClient(params.dealershipId);
+    const model = source === 'dealership'
+      ? 'gpt-4o-mini'
+      : (process.env.OPENAI_DEFAULT_MODEL || 'gpt-5');
+
+    const yearsText = params.years.length > 0 ? params.years.join(', ') : 'n/a';
+    const distanceNote = params.distanceCoverage
+      ? `Distance coverage: ${params.distanceCoverage.listingsWithinRadius}/${params.distanceCoverage.totalListings} within radius, ${params.distanceCoverage.listingsUnknownDistance} unknown distance.`
+      : 'Distance coverage: not available.';
+
+    const prompt = [
+      `Vehicle: ${params.make} ${params.model} (${yearsText})`,
+      `Listings analyzed: ${params.summary.totalListings}`,
+      `Prices: avg $${params.summary.averagePrice.toLocaleString()} | median $${params.summary.medianPrice.toLocaleString()} | range $${params.summary.minPrice.toLocaleString()}-$${params.summary.maxPrice.toLocaleString()}`,
+      `Percentiles: P25 $${params.percentiles.p25.toLocaleString()} | P50 $${params.percentiles.p50.toLocaleString()} | P75 $${params.percentiles.p75.toLocaleString()}`,
+      `Days on market: avg ${params.daysOnMarket.average}d | median ${params.daysOnMarket.median}d`,
+      `Recommendation: ${params.priceRecommendation.marketPosition} (confidence ${params.priceRecommendation.confidence}), suggested $${params.priceRecommendation.suggestedPrice.toLocaleString()}, range $${params.priceRecommendation.priceRange.low.toLocaleString()}-$${params.priceRecommendation.priceRange.high.toLocaleString()}`,
+      distanceNote
+    ].join('\n');
+
+    const response = await openaiClient.chat.completions.create({
+      model,
+      messages: [
+        {
+          role: "system",
+          content: "You are an automotive market analyst. Write 2-4 concise sentences in Canadian English. Summarize market position, pricing guidance, and any data limitations. Do not use markdown or bullet points."
+        },
+        { role: "user", content: prompt }
+      ],
+      max_completion_tokens: 180,
+      temperature: 0.7,
+    });
+
+    const insights = response.choices[0]?.message?.content?.trim();
+    if (!insights) {
+      throw new Error("Empty response from OpenAI");
+    }
+    return insights;
+  } catch (error: any) {
+    console.error("Error generating market insights:", error?.message || error);
+    throw new Error("Failed to generate market insights");
+  }
+}
